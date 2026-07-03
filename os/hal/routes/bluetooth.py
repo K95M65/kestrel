@@ -6,7 +6,6 @@ through the existing OS server reverse proxy).
 """
 
 import logging
-import os
 import time
 from typing import Optional
 
@@ -14,6 +13,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 import hal.app_state as state
+from hal import config
 from hal.drivers.audio_route import (
     current_label,
     route_to_bluetooth_pa,
@@ -136,18 +136,14 @@ def bt_active_set(req: ActiveRequest):
     if not mgr.info(target)["connected"] and not mgr.connect(target):
         raise HTTPException(503, f"Could not connect to {target}")
 
-    # Profile choice: A2DP by default. HFP would also give the headset mic,
-    # but SCO audio needs a working HCI audio path in the BT radio — on chips
-    # without one (e.g. the lamp's uwe5622) the HFP link is silent and the
-    # headset drops the connection after a few seconds. Boards with working
-    # SCO can opt in via HAL_BT_PREFER_HFP=1; under A2DP the STT mic falls
-    # back to the device's built-in mic.
-    prefer_hfp = os.environ.get("HAL_BT_PREFER_HFP", "0") == "1"
+    # Profile choice (config.BT_PREFER_HFP): HFP routes the headset mic too
+    # (mono 16kHz both ways over SCO); default A2DP = stereo playback with the
+    # STT mic falling back to the device's built-in mic.
     card = mgr.pa_card_for_mac(target)
     if card:
         profiles = mgr.pa_card_profiles(card)
         profile = None
-        if prefer_hfp and profiles.get("handsfree_head_unit", False):
+        if config.BT_PREFER_HFP and profiles.get("handsfree_head_unit", False):
             profile = "handsfree_head_unit"
         elif profiles.get("a2dp_sink", False):
             profile = "a2dp_sink"

@@ -44,6 +44,9 @@ CAMERA_BRIGHTNESS = int(os.environ["HAL_CAMERA_BRIGHTNESS"]) if os.environ.get("
 # e.g. HAL_AUDIO_INPUT_ALSA=plughw:1,0  HAL_AUDIO_OUTPUT_ALSA=plughw:2,0
 AUDIO_INPUT_ALSA: Optional[str] = os.environ.get("HAL_AUDIO_INPUT_ALSA") or None
 AUDIO_OUTPUT_ALSA: Optional[str] = os.environ.get("HAL_AUDIO_OUTPUT_ALSA") or None
+# Bluetooth headset profile for "use headset" mode. HFP gives the headset mic
+# (mono 16kHz both ways over SCO); off = A2DP stereo playback + built-in mic.
+BT_PREFER_HFP: bool = os.environ.get("HAL_BT_PREFER_HFP", "0") == "1"
 # Separate mic device for SoundPerception (noise sensing).
 # Accepts int (sounddevice index) or string (ALSA device name like "plughw:6,0").
 _sensing_device_env = os.environ.get("HAL_AUDIO_SENSING_DEVICE")
