@@ -324,6 +324,33 @@ class AnimationService:
         animation loop AND by the tracker's servo worker (tracker_service)."""
         return self._frozen.is_set()
 
+    # Recordings whose movement is gentle enough to be inaudible on the
+    # sensing mic — exempt from is_actively_moving. Idle breathing is exempt
+    # implicitly (via _idle_settled); extend this set through
+    # HAL_QUIET_RECORDINGS (comma-separated names) as more are measured.
+    _QUIET_RECORDINGS: frozenset = frozenset(
+        r.strip()
+        for r in os.environ.get("HAL_QUIET_RECORDINGS", "").split(",")
+        if r.strip()
+    )
+
+    @property
+    def is_actively_moving(self) -> bool:
+        """True while the arm makes AUDIBLE movement: the vision tracker owns
+        the servos, or a recording is playing and hasn't settled into the
+        idle loop yet (covers emotion/scanning plays and the swing back to
+        idle). Two exemptions: idle breathing (settled — writes servo
+        positions continuously but is acoustically silent, ~11 RMS measured
+        vs 500+ for real animations) and recordings listed in
+        HAL_QUIET_RECORDINGS. Used by SoundPerception so the lamp doesn't
+        startle at its own joints."""
+        if self._tracking_active:
+            return True
+        rec = self._current_recording
+        if rec is None or self._idle_settled:
+            return False
+        return rec not in self._QUIET_RECORDINGS
+
     @property
     def last_servo_write(self) -> float:
         """Monotonic timestamp of the last servo motion command, across ALL

@@ -157,11 +157,18 @@ class SoundPerception(Perception[Any]):
         # Music guard — the speaker's own playback reaches the sensing mic just
         # like TTS does. Read late from app_state (music service starts after
         # sensing); `streaming` is True only while audio actually plays.
+        # Movement guard — REAL arm movement (tracking / non-idle animation)
+        # is audible on the sensing mic (500+ RMS); idle breathing is not
+        # (~11 RMS) and is excluded by is_actively_moving, so detection stays
+        # live while the lamp just sits and breathes.
         try:
             import hal.app_state as app_state
 
             music = app_state.music_service
             if music is not None and music.streaming:
+                return
+            anim = app_state.animation_service
+            if anim is not None and anim.is_actively_moving:
                 return
         except Exception:
             pass
