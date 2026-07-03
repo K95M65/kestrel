@@ -90,6 +90,11 @@ class VoiceService:
         self._running = False
         self._thread: Optional[threading.Thread] = None
         self._listening = False
+        # Latest mic frame RMS (int16 scale) + capture timestamp — published by
+        # the capture loops below, read by GET /voice/mic-level for the web VU
+        # meter. Plain float writes are atomic under the GIL, no lock needed.
+        self._mic_level = 0.0
+        self._mic_level_ts = 0.0
         self._tts = tts_service
         self._music = music_service
         self._device_rate: Optional[int] = None  # detected once at first use
@@ -212,6 +217,18 @@ class VoiceService:
     @property
     def listening(self) -> bool:
         return self._listening
+
+    @property
+    def mic_level(self) -> float:
+        """Latest mic input RMS (int16 scale, 0..32768).
+
+        Returns 0.0 when the reading is stale (>1s old) — e.g. while the mic
+        drains under TTS/music playback or the capture loop is paused — so the
+        VU meter falls to zero instead of freezing at the last value.
+        """
+        if (time.time() - self._mic_level_ts) > 1.0:
+            return 0.0
+        return self._mic_level
 
     def start(self):
         if self._running:
@@ -707,6 +724,8 @@ class VoiceService:
                 last_keepalive_ping = time.time()
 
             energy = rms(data, self._np)
+            self._mic_level = energy
+            self._mic_level_ts = time.time()
 
             if energy >= voice_cfg.RMS_THRESHOLD and self._webrtcvad_is_speech(data, device_rate):
                 if speech_start is None:
@@ -993,6 +1012,8 @@ class VoiceService:
                     rt_audio_buffer.append(audio_f32)
 
                 energy = rms(data, self._np)
+                self._mic_level = energy
+                self._mic_level_ts = time.time()
                 if energy >= voice_cfg.RMS_THRESHOLD:
                     last_speech_time = time.time()
                     last_speech_idx = len(audio_buffer) - 1

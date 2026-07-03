@@ -17,7 +17,9 @@ import (
 	"go.autonomous.ai/os/internal/beclient"
 	"go.autonomous.ai/os/internal/network"
 	"go.autonomous.ai/os/internal/statusled"
+	"go.autonomous.ai/os/lib/hal"
 	"go.autonomous.ai/os/lib/i18n"
+	"go.autonomous.ai/os/lib/runtimereg"
 	"go.autonomous.ai/os/server/config"
 )
 
@@ -137,6 +139,42 @@ func (s *Service) SetupStatus() (phase, lanIP, errMsg string) {
 		}
 	}
 	return phase, lanIP, errMsg
+}
+
+// buildPingPayload assembles the backend ping body with the same device-state
+// fields the MQTT `info` uplink publishes (local_ip, versions, runtime,
+// voice/STT, timezone) so the backend can read them from either channel. The
+// critical field is LocalIP: the setup web popup's parent page polls the
+// backend for it to rescue the AP→STA redirect when both the AP-alive window
+// and mDNS fail (see docs/setup-flow.md). Every field is omitempty — a backend
+// that consumes none of them loses nothing.
+func (s *Service) buildPingPayload(status string) beclient.PingPayload {
+	runtime := CurrentAgentRuntimeFromConfig(s.config)
+	p := beclient.PingPayload{
+		Status:              status,
+		SetupCompleted:      s.config.SetUpCompleted,
+		Mac:                 GetDeviceMac(),
+		Version:             config.OSVersion,
+		Device:              s.config.DeviceTypeOrDefault(),
+		DeviceID:            s.config.DeviceID,
+		Timezone:            s.CurrentTimezone(),
+		AgentRuntime:        runtime,
+		AgentRuntimeVersion: runtimereg.Version(runtime),
+		TTSProvider:         s.config.TTSProvider,
+		TTSVoice:            s.config.TTSVoice,
+		STTLanguage:         s.config.STTLanguage,
+		UnsupportedChannels: s.config.ChannelsUnsupported,
+	}
+	if ip, err := s.networkService.GetCurrentIP(); err == nil && ip != apSetupIP {
+		p.LocalIP = ip
+	}
+	if v, err := hal.GetVersion(); err == nil {
+		p.HalVersion = v
+	}
+	if s.beClient != nil {
+		p.SlackTeamID = s.beClient.SlackTeamID()
+	}
+	return p
 }
 
 func (s *Service) Setup(data domain.SetupRequest) error {
@@ -278,6 +316,17 @@ func (s *Service) Setup(data domain.SetupRequest) error {
 	}
 	slog.Info("config saved", "component", "device")
 
+	// Early presence ping — fire-and-forget: publish the freshly-acquired STA
+	// IP to the backend the moment WiFi + config are ready, WITHOUT waiting for
+	// the agent setup below (up to ~2 min). The page that opened the Setup
+	// popup polls the backend for this IP and redirects the popup when neither
+	// the AP-alive window nor mDNS could deliver it (see docs/setup-flow.md).
+	// Must run after config.Save above: beclient derives the ping URL from the
+	// just-assigned LLMBaseURL.
+	if s.beClient != nil && llmAPIKey != "" {
+		go func() { s.beClient.PingSafe(llmAPIKey, s.buildPingPayload("setting_up")) }()
+	}
+
 	// SetupAgent runs AFTER config.json is saved: a backend that materializes its
 	// own config from config.json (Hermes presync) then sees the freshly-entered
 	// llm_api_key/base_url + channel tokens immediately, instead of waiting for the
@@ -300,12 +349,7 @@ func (s *Service) Setup(data domain.SetupRequest) error {
 
 	slog.Info("agent gateway is ready", "component", "device")
 	if s.beClient != nil && llmAPIKey != "" {
-		s.beClient.PingSafe(llmAPIKey, beclient.PingPayload{
-			Status:         "working",
-			SetupCompleted: true,
-			Mac:            GetDeviceMac(),
-			Version:        config.OSVersion,
-		})
+		s.beClient.PingSafe(llmAPIKey, s.buildPingPayload("working"))
 	}
 	return nil
 }
@@ -471,13 +515,7 @@ func (s *Service) StartStatusReporter(ctx context.Context) {
 			// is a no-op when team_id is already cached OR when slack isn't configured,
 			// so it's safe to call on every tick — the auth.test call only fires once.
 			s.beClient.ResolveSlackTeamIDFromConfig(s.config.OpenclawConfigDir)
-			resp := s.beClient.PingSafe(s.config.LLMAPIKey, beclient.PingPayload{
-				Status:         "working",
-				SetupCompleted: s.config.SetUpCompleted,
-				Mac:            GetDeviceMac(),
-				Version:        config.OSVersion,
-				SlackTeamID:    s.beClient.SlackTeamID(),
-			})
+			resp := s.beClient.PingSafe(s.config.LLMAPIKey, s.buildPingPayload("working"))
 			dump, _ := json.Marshal(resp)
 			slog.Debug("received response from backend", "component", "status-reporter", "response", string(dump))
 			if resp == nil {

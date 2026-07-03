@@ -374,6 +374,22 @@ class BluetoothManager:
             logger.warning("set-default-source %s failed: %s", source_name, e)
             return False
 
+    def first_alsa_sink(self) -> Optional[str]:
+        """First non-bluez hardware sink — the safe 'built-in speaker' default
+        when the captured snapshot is unusable (e.g. hal booted while a BT
+        sink was still PulseAudio's default)."""
+        try:
+            r = _pactl(["list", "short", "sinks"], timeout=5)
+            if r.returncode != 0:
+                return None
+            for line in r.stdout.splitlines():
+                cols = line.split("\t")
+                if len(cols) >= 2 and cols[1].startswith("alsa_output."):
+                    return cols[1]
+        except Exception as e:
+            logger.warning("first_alsa_sink failed: %s", e)
+        return None
+
     def set_pa_sink_volume(self, sink_name: str, pct: int) -> bool:
         """Set the sink volume (0-100%). On A2DP sinks PulseAudio forwards it
         to the headset via AVRCP absolute volume, so this is the volume knob
