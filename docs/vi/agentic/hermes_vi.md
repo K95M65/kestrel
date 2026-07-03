@@ -442,9 +442,14 @@ làm 3 việc theo thứ tự:
      `model: qwen/qwen3.6-plus`, `timeout: 120`, `download_timeout: 30`, `extra_body: {}`
      — model hiểu ảnh, định tuyến qua cùng custom provider autonomous.
    - `.agent.image_input_mode = "auto"` — để agent tự quyết khi nào đính kèm ảnh.
-   - Chỉ ghi `.auxiliary.vision` và `.agent.image_input_mode`; **các key khác dưới
-     `.auxiliary`/`.agent` được giữ nguyên** (cả hai được coerce từ scalar bị reset về
-     map trước, giống `.model`).
+   - `.approvals.mode = "off"` — tắt hoàn toàn prompt duyệt lệnh của Hermes (card
+     tirith / dangerous-command). Thiết bị chạy không giám sát trên kênh voice +
+     chat, nơi card duyệt lệnh là ngõ cụt làm kẹt lượt (quyết định sản phẩm).
+     Hardline blocklist của Hermes vẫn áp dụng. Ghi dưới dạng chuỗi có nháy
+     `"off"` — `off` không nháy là boolean YAML.
+   - Chỉ ghi `.auxiliary.vision`, `.agent.image_input_mode` và `.approvals.mode`;
+     **các key khác dưới `.auxiliary`/`.agent`/`.approvals` được giữ nguyên** (mỗi
+     node được coerce từ scalar bị reset về map trước, giống `.model`).
 3. **Sync giá trị theo máy** từ `config.json` (chỉ field khác rỗng, nên kênh chưa
    cấu hình giữ nguyên):
 
