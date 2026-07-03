@@ -94,7 +94,7 @@ except ImportError as e:
 SensingService = None
 FacePerception = None
 try:
-    from hal.drivers.sensing.perceptions.processors.facerecognizer import FacePerception
+    from hal.drivers.sensing.perceptions.processors.facerecognizer_v2 import FacePerception
     from hal.drivers.sensing.sensing_service import SensingService
 except ImportError as e:
     logger.warning(f"Sensing service not available: {e}")
