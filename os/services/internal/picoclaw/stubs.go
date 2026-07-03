@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"path/filepath"
 
 	"go.autonomous.ai/os/domain"
 )
@@ -61,12 +60,11 @@ func (s *PicoclawService) FetchChatHistory(_ string, _ int) (json.RawMessage, er
 }
 
 // GetConfigJSON returns the raw bytes of PicoClaw's config.json (the structure
-// file: agents/model_list/gateway/channel_list — secrets live in .security.yml,
-// which we never expose). Read-only; feeds the gw-config debug UI. The config dir
-// is the parent of the workspace (HOME=/root → /root/.picoclaw).
+// file: agents/model_list/gateway/channel_list/tools — secrets live in .security.yml,
+// which we never expose). Read-only; feeds the gw-config debug UI. Path helper +
+// MCP writers live in mcp.go.
 func (s *PicoclawService) GetConfigJSON() (json.RawMessage, error) {
-	path := filepath.Join(filepath.Dir(picoclawWorkspaceDir), "config.json")
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(picoclawConfigPath())
 	if err != nil {
 		return nil, fmt.Errorf("read picoclaw config.json: %w", err)
 	}
@@ -124,16 +122,5 @@ func (s *PicoclawService) NewSession(sessionKey string) error {
 	return nil
 }
 
-// WriteMCPEntry — MCP connector writes are an OpenClaw-only feature today.
-// No-op so the AgentGateway interface is satisfied.
-func (s *PicoclawService) WriteMCPEntry(_ string, _ map[string]any) error {
-	slog.Info("WriteMCPEntry: no-op (picoclaw backend)", "component", "picoclaw")
-	return nil
-}
-
-// RemoveMCPEntry — pairs with WriteMCPEntry. Returns removed=false so callers
-// treat it as "entry already absent" — idempotent no-op, no restart triggered.
-func (s *PicoclawService) RemoveMCPEntry(_ string) (bool, error) {
-	slog.Info("RemoveMCPEntry: no-op (picoclaw backend)", "component", "picoclaw")
-	return false, nil
-}
+// WriteMCPEntry + RemoveMCPEntry live in mcp.go — PicoClaw writes tools.mcp.servers
+// in config.json (nested, gated by tools.mcp.enabled), so they do real work.

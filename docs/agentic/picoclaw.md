@@ -273,14 +273,15 @@ switching back to openclaw restores them.
 Everything not on the PicoClaw hot path is a no-op so the single
 `domain.AgentGateway` interface is satisfied without inventing features the
 backend does not have: `SetupAgent`, WhatsApp pairing, `ResetAgent`,
-`RefreshModelsConfig`, `FetchChatHistory`, `CompactSession`, MCP entry writes,
+`RefreshModelsConfig`, `FetchChatHistory`, `CompactSession`,
 the model watchers (`StartModelSync`/`StartPrimaryModelWatch`), `UpdatePrimaryModel`.
 (`AddChannel` / `RefreshChannelConfig` are NOT stubs — they return
 `domain.ErrChannelNotSupported` for unsupported channels, see §7; `EnsureOnboarding`
 (§1.1) and `StartSkillWatcher` (skill auto-update, §1.1) are real.) These are also
 real, not stubs: `RestartAgent` (restarts the `picoclaw` systemd unit via
 `restartPicoclawGateway`), `GetConfigJSON` (returns `/root/.picoclaw/config.json` —
-the structure file; secrets in `.security.yml` are never exposed), and
+the structure file; secrets in `.security.yml` are never exposed),
+`WriteMCPEntry` / `RemoveMCPEntry` (MCP connectors — see §8.1), and
 `WatchIdentity` / `UpdateIdentityName` (`identity.go`) — PicoClaw's `IDENTITY.md` is
 a 1-for-1 copy of OpenClaw's, so the `**Name:**` card line is watched (→ wake words)
 and rewritten exactly as on OpenClaw.
@@ -294,3 +295,26 @@ model/channel config, and persona migration all happen in those scripts during t
 `switch-runtime` flow. The one exception is **`EnsureOnboarding`**
 (`onboarding.go`), which is real: it injects the OS-managed block into
 `workspace/AGENTS.md` on boot/config-change (§1.1), the same contract openclaw has.
+
+### 8.1 MCP connectors (`mcp.go`)
+
+`WriteMCPEntry` / `RemoveMCPEntry` wire remote-MCP connectors (the `connector.set`
+MQTT flow — Notion, Asana, Linear, GitHub, Ahrefs, Figma) into PicoClaw's
+`config.json`. They are the same shared callers OpenClaw/Hermes use; only the on-disk
+shape differs, and PicoClaw's differs in two ways that `mcp.go` handles:
+
+1. **Nesting.** PicoClaw servers live under **`tools.mcp.servers.<name>`**, not a
+   top-level `mcp.servers` (OpenClaw) or `mcp_servers` (Hermes) map. `applyMCPServerWrite`
+   creates the `tools` → `mcp` → `servers` chain if absent.
+2. **Global gate.** `tools.mcp.enabled` defaults to **`false`** — a server written
+   under a disabled block is silently ignored. `WriteMCPEntry` asserts it `true`.
+
+The incoming OpenClaw-shaped entry (`{type:"http", url, headers}` for hosted MCP,
+`{command, args, env}` for stdio) is passed through with **`enabled: true`** asserted
+(PicoClaw's per-server flag). The `type` key is **kept verbatim** — PicoClaw's
+transport values (`stdio` / `sse` / `http`) already match, and an explicit
+`type:"http"` avoids PicoClaw's empty-type→`sse` inference. `RemoveMCPEntry` deletes
+the named server (idempotent — `removed=false`, no restart, when absent) and leaves
+`tools.mcp.enabled` on so other wired servers keep loading. Both paths write
+`config.json` atomically (temp + rename, no chown — PicoClaw runs as root) under
+`mcpMu`, then `restartPicoclawGateway`. Secrets in `.security.yml` are never touched.
