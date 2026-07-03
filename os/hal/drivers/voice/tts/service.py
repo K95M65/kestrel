@@ -181,6 +181,11 @@ class TTSService:
         self._realtime_feedback: bool = False
 
         self._device_rate = None
+        # Verified sample rate per output device (keyed by device NAME). Route
+        # swaps re-probe the device; without this cache each swap burns ~5s
+        # walking the rate list. The playback retry path bypasses + clears it.
+        # MUST init before the first _probe_device_rate() call below.
+        self._rate_cache: dict = {}
         self._backend: Optional[TTSBackend] = None
         try:
             self._backend = create_backend(provider=provider, api_key=api_key, base_url=base_url)
@@ -360,12 +365,25 @@ class TTSService:
         except Exception:
             logger.exception("BT→builtin fallback failed")
 
-    def _probe_device_rate(self, force: bool = False):
+    def _device_key(self) -> str:
+        """Stable cache key for the current output device — its PortAudio name
+        when resolvable (indices shift after PortAudio re-inits), else the
+        index."""
+        idx = self._output_device
+        try:
+            if idx is not None and self._sd is not None:
+                return str(self._sd.query_devices(idx)["name"])
+        except Exception:
+            pass
+        return str(idx)
+
+    def _probe_device_rate(self, force: bool = False, use_cache: bool = True):
         """Probe the output device to find a supported sample rate.
 
-        In-memory cache only via self._device_rate -- probe runs once per
-        TTSService lifetime, ~50ms total. force=True bypasses the cache
-        (used by the playback retry path when the cached rate stops working).
+        force=True bypasses the self._device_rate short-circuit (route swaps
+        change the device; retries suspect the rate). use_cache=False also
+        ignores + clears the per-device rate cache — for the playback retry
+        path, where the previously verified rate stopped working.
         """
         if not force and self._device_rate:
             return
@@ -373,6 +391,18 @@ class TTSService:
         dev_label = (
             self._output_device if self._output_device is not None else "default"
         )
+        key = self._device_key()
+        if use_cache:
+            cached = self._rate_cache.get(key)
+            if cached:
+                self._device_rate = cached
+                logger.info(
+                    "Output device [%s]: rate=%d Hz (cached for '%s')",
+                    dev_label, cached, key,
+                )
+                return
+        else:
+            self._rate_cache.pop(key, None)
         self._device_rate = None
         for rate in [44100, 48000, 16000, 32000, 24000, 22050, 8000]:
             try:
@@ -387,6 +417,7 @@ class TTSService:
                 ) as stream:
                     _ = stream.write(np.zeros(probe_frames, dtype=np.float32))
                 self._device_rate = rate
+                self._rate_cache[key] = rate
                 logger.info("Output device [%s]: verified rate=%d Hz", dev_label, rate)
                 break
             except Exception as e:
@@ -887,7 +918,7 @@ class TTSService:
                     logger.warning("TTS server error %s — skipping retries", status)
                     break
                 if attempt < self._max_retries:
-                    self._probe_device_rate(force=True)
+                    self._probe_device_rate(force=True, use_cache=False)
                 attempt += 1
         logger.error("TTS give up for chunk %d/%d: text='%s'", idx, total, text[:80])
         return total_samples
@@ -1092,7 +1123,7 @@ class TTSService:
                 self._invalidate_stream()
                 if _play_attempt == 0:
                     logger.warning("Re-probing output device rate and retrying...")
-                    self._probe_device_rate(force=True)
+                    self._probe_device_rate(force=True, use_cache=False)
                     dst_rate = self._device_rate or TTS_SAMPLE_RATE
                     # Old head producer is at the stale rate -- orphan it and
                     # restart at the new rate. Daemon thread will exit on its own.
