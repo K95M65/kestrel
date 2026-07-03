@@ -307,6 +307,9 @@ export function OverviewSection({
                   }}
                 />
               </div>
+
+              {/* Live mic input VU meter */}
+              <MicLevelBar muted={voice.mic_muted} />
             </div>
           ) : <AudioSkeleton />}
         </div>
@@ -631,6 +634,88 @@ function HeroChip({ icon, label, value, tone }: {
       <span style={{ display: "flex", color }} aria-hidden>{icon}</span>
       <span style={{ fontSize: 10, color: "var(--lm-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</span>
       <span style={{ fontSize: 12.5, fontWeight: 700, color, fontFamily: label === "IP" ? "monospace" : undefined }}>{value}</span>
+    </div>
+  );
+}
+
+// Perceptual VU mapping: raw mic RMS (int16 scale, 0..32768) → 0..100% via
+// dBFS so quiet-room noise sits low and speech visibly pumps the bar.
+// -60dBFS (RMS ≈ 33) → 0%, 0dBFS (full scale) → 100%.
+function micRmsToPct(rms: number): number {
+  if (rms <= 0) return 0;
+  const db = 20 * Math.log10(rms / 32768);
+  return Math.max(0, Math.min(100, ((db + 60) / 60) * 100));
+}
+
+// MicLevelBar is the live VU meter under the volume slider: it subscribes to
+// HAL's `/voice/mic-level` SSE stream (~10Hz, via the /api/hardware proxy) and
+// pumps the fill width when the user talks into the device mic — same idea as
+// the vu-bar in the Gemini test page, but reading the DEVICE mic, not the
+// browser's. The fill is mutated directly through a ref (no state) so 10Hz
+// updates never re-render the Audio card; the amber tick marks the VAD
+// threshold — speech must peak past it for the device to start listening.
+function MicLevelBar({ muted }: { muted: boolean }) {
+  const fillRef = useRef<HTMLDivElement>(null);
+  const [threshold, setThreshold] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (muted) {
+      if (fillRef.current) fillRef.current.style.width = "0%";
+      return; // don't hold an SSE connection slot while the mic is muted
+    }
+    let es: EventSource | null = null;
+    const open = () => {
+      if (es || document.hidden) return;
+      es = new EventSource(`${HW}/voice/mic-level`, { withCredentials: true });
+      es.onmessage = (e) => {
+        try {
+          const d = JSON.parse(e.data) as { level: number; threshold: number };
+          if (fillRef.current) fillRef.current.style.width = `${micRmsToPct(d.level)}%`;
+          setThreshold((t) => (t === d.threshold ? t : d.threshold));
+        } catch { /* malformed frame — skip */ }
+      };
+      // EventSource auto-reconnects on transient errors; nothing to do here.
+    };
+    const close = () => { es?.close(); es = null; };
+    // Gate on tab visibility so a background monitor tab doesn't hold the
+    // stream open (same pattern as the Logs section SSE).
+    const onVis = () => (document.hidden ? close() : open());
+    document.addEventListener("visibilitychange", onVis);
+    open();
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      close();
+    };
+  }, [muted]);
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+        <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--lm-text-dim)" }}>Mic level</span>
+        {muted && (
+          <span style={{ fontSize: 10, color: "var(--lm-text-muted)" }}>muted</span>
+        )}
+      </div>
+      <div style={{ position: "relative", height: 6, borderRadius: 999, background: "var(--lm-surface)", opacity: muted ? 0.5 : 1 }}>
+        <div
+          ref={fillRef}
+          style={{
+            position: "absolute", left: 0, top: 0, bottom: 0, width: "0%",
+            borderRadius: 999,
+            background: "linear-gradient(90deg, var(--lm-green), var(--lm-amber))",
+            transition: "width 0.1s linear",
+          }}
+        />
+        {threshold != null && threshold > 0 && !muted && (
+          <div
+            title="VAD threshold — speech must pass this level to wake the device"
+            style={{
+              position: "absolute", left: `${micRmsToPct(threshold)}%`, top: -2, bottom: -2,
+              width: 2, borderRadius: 1, background: "var(--lm-amber)", opacity: 0.7,
+            }}
+          />
+        )}
+      </div>
     </div>
   );
 }

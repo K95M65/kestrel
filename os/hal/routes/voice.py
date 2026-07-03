@@ -5,9 +5,12 @@ Note: ``/voice/strangers*`` (unknown-voice-cluster browsing) lives in
 recognition service, kept next to the rest of that code.
 """
 
+import asyncio
+import json
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import StreamingResponse
 
 import hal.app_state as state
 from hal.config import AUDIO_INPUT_ALSA, TTS_SPEED, TTS_VOICE, TTS_INSTRUCTIONS
@@ -353,6 +356,46 @@ def unmute_mic():
         state.voice_service.start()
     state.logger.info("Mic unmuted")
     return {"status": "ok"}
+
+
+@router.get("/voice/mic-level")
+async def mic_level_stream(request: Request):
+    """Stream the live mic input level as Server-Sent Events (~10Hz).
+
+    Each event: `data: {"level": <rms>, "threshold": <vad>, "active": bool,
+    "muted": bool}`. `level` is the latest capture-frame RMS on int16 scale
+    (0..32768, computed anyway by the VAD loop — zero added DSP cost) and
+    falls to 0 while the mic drains under TTS/music or the pipeline is down.
+    Consumed by the web Overview audio card (VU meter) via the os-server
+    `/api/hardware` proxy — httputil.ReverseProxy streams event-stream
+    responses unbuffered, same as the MJPEG camera stream.
+    """
+    try:
+        from hal.drivers.voice._internal.config import RMS_THRESHOLD as vad_threshold
+    except ImportError:
+        vad_threshold = 0
+
+    async def gen():
+        while not await request.is_disconnected():
+            vs = state.voice_service
+            active = bool(vs and vs.available and getattr(vs, "_running", False))
+            level = float(getattr(vs, "mic_level", 0.0)) if vs else 0.0
+            payload = json.dumps(
+                {
+                    "level": round(level, 1),
+                    "threshold": vad_threshold,
+                    "active": active,
+                    "muted": state._mic_muted,
+                }
+            )
+            yield f"data: {payload}\n\n"
+            await asyncio.sleep(0.1)
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.get("/voice/status", response_model=VoiceStatusResponse)

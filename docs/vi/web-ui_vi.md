@@ -156,6 +156,7 @@ Monitor poll API system/HW mỗi **3 giây**. Flow dùng hybrid theo file: REST 
 | `POST /hw/servo/upload` | Upload recording CSV (`timestamp` + cột `<joint>.pos`) để thêm/replace animation |
 | `GET /hw/display` | mode, hardware, available_expressions |
 | `GET /hw/audio/volume` | control, volume (0–100) |
+| `GET /hw/voice/mic-level` | SSE stream (~10Hz): level (RMS mic, thang int16), threshold (VAD), active, muted |
 | `GET /hw/led/color` | led_count, color [R,G,B], hex (#rrggbb) |
 
 ---
@@ -191,6 +192,13 @@ Gồm các card:
 - Mic available + đang listening (badge LIVE)
 - TTS available + đang speaking (badge SPEAKING)
 - Volume hiện tại
+- **Thanh VU mic level** (ngay dưới slider volume): thanh bar sống động, nhảy
+  lên khi user nói vào mic của device. Subscribe SSE stream `GET
+  /hw/voice/mic-level` (~10Hz, qua proxy `/api/hardware`); RMS thô được map
+  sang phần trăm theo thang dBFS (-60dBFS → 0%, 0dBFS → 100%). Vạch amber
+  đánh dấu ngưỡng VAD (giọng nói phải vượt vạch này thì device mới bắt đầu
+  nghe). Bar rơi về 0 khi TTS/nhạc đang phát (mic đang drain), và stream đóng
+  khi mic bị mute hoặc tab trình duyệt bị ẩn.
 
 **Hardware** (card ngang)
 - 8 badge: Servo / LED / Camera / Audio / Sensing / Voice / TTS / Display

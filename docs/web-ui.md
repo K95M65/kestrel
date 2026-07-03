@@ -156,6 +156,7 @@ Monitor polls system/HW APIs every **3 seconds**. Flow uses file-backed hybrid m
 | `POST /hw/servo/upload` | Upload a new servo recording CSV (`timestamp` + `<joint>.pos` columns) |
 | `GET /hw/display` | mode, hardware, available_expressions |
 | `GET /hw/audio/volume` | control, volume (0-100) |
+| `GET /hw/voice/mic-level` | SSE stream (~10Hz): level (mic RMS, int16 scale), threshold (VAD), active, muted |
 | `GET /hw/led/color` | led_count, color [R,G,B], hex (#rrggbb) |
 
 ---
@@ -192,6 +193,14 @@ Cards included:
 - Mic available + listening (LIVE badge)
 - TTS available + speaking (SPEAKING badge)
 - Current volume
+- **Mic level VU meter** (under the volume slider): live bar that pumps when
+  the user talks into the device mic. Subscribes to the `GET
+  /hw/voice/mic-level` SSE stream (~10Hz, via the `/api/hardware` proxy);
+  raw RMS is mapped to percent on a dBFS scale (-60dBFS → 0%, 0dBFS → 100%).
+  An amber tick marks the VAD threshold (speech must peak past it for the
+  device to start listening). The bar drops to 0 while TTS/music plays
+  (mic is draining) and the stream is closed while the mic is muted or the
+  browser tab is hidden.
 
 **Hardware** (horizontal card)
 - 8 badges: Servo / LED / Camera / Audio / Sensing / Voice / TTS / Display
