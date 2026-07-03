@@ -74,6 +74,19 @@ after a runtime switch — e.g. switching `openclaw` → `picoclaw` (telegram-on
 any configured `slack`/`discord` as unsupported. The list is sourced from
 `config.channels_unsupported`, which `ChannelReconcile` rewrites on each switch.
 
+**HTTP backend ping mirrors these fields.** The device-initiated ping
+(`POST {llm_base}/ping`, built by `internal/device.buildPingPayload`, sent via
+`internal/beclient`) carries the same device-state fields as this `info` uplink —
+`local_ip`, `device`, `device_id`, `timezone`, `tts_provider`, `tts_voice`,
+`stt_language`, `hal_version`, `unsupported_channels` — plus `agent_runtime` and
+`agent_runtime_version`. Unlike `info` (which reports every installed backend's
+version side by side), the ping sends **only the active runtime's version**. It
+fires (1) right after WiFi join during setup (status `setting_up`,
+fire-and-forget — publishes `local_ip` before the up-to-2-min agent setup, so
+the Setup-popup rescue described in `docs/setup-flow.md` can work), (2) once
+when setup completes (status `working`), and (3) periodically from the status
+reporter. Fields the backend doesn't consume are simply ignored.
+
 ### `add_channel` — Add messaging channel
 
 **Receive:**

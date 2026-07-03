@@ -18,11 +18,15 @@ Khi OS server chưa được cấu hình (`SetUpCompleted = false`), thiết b�
       IP (trước cả khi có internet), để Web UI đọc được lúc AP còn sống
       trong giây lát (xem "Tự Động Chuyển Hướng AP→STA")
    b. Chờ internet (poll 60s)
-   c. Setup agent gateway
-   d. Lưu config
-   e. Chờ agent ready (poll 120s)
-   f. Báo cáo backend (MQTT)
+   c. Lưu config
+   d. Ping backend sớm (fire-and-forget HTTP POST {llm_base}/ping, status
+      "setting_up") — publish IP LAN mới (local_ip) lên backend mà KHÔNG chờ
+      bước setup agent bên dưới, để trang đã mở popup Setup có thể tra IP và
+      cứu cú redirect
+   e. Setup agent gateway
+   f. Chờ agent ready (poll 120s)
    g. SetUpCompleted = true
+   h. Ping backend (status "working", setup_completed=true)
 7. Nếu thất bại → quay lại AP mode
 8. Web UI tự chuyển hướng browser sang http://<lan_ip>/setup ngay khi
    operator đã về Wi-Fi nhà (IP-first; mDNS .local là fallback discovery
@@ -196,6 +200,13 @@ early-poll lấy được `lan_ip`, link copy thủ công fallback về
   được `lan_ip` thì không kênh tự động nào bắn được, và **nhập IP thủ công là
   fallback chắc chắn** — operator tra IP thiết bị trong router rồi gõ vào, nên
   không bao giờ bị kẹt.
+- **Backend rendezvous (phía device đã sẵn sàng):** cú ping backend sớm (bước
+  6d) publish `local_ip` ngay khi WiFi lên, nên trang đã mở popup Setup (vd
+  autonomous.ai) có thể poll backend theo `mac` rồi navigate popup sang
+  `http://<ip>/setup?<params>` — opener được phép *navigate* popup
+  cross-origin dù không đọc được. Cách này tự động cover cả mạng chặn mDNS,
+  nhưng cần backend lưu/expose IP và parent page chịu poll; cả hai đều nằm
+  ngoài repo này.
 - **Đánh đổi bảo mật của `http:` trong CSP:** `connect-src http:` cho phép trang
   Setup `fetch` mọi origin HTTP thuần, không chỉ thiết bị. Chấp nhận được vì
   bundle Setup chỉ phục vụ trên LAN/AP, không gửi secret trong các health probe
