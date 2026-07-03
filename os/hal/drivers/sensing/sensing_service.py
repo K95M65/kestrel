@@ -101,6 +101,10 @@ class SensingService:
         self._perception_orchestrator: PerceptionOrchestrator = PerceptionOrchestrator(
             poll_interval_ts=self._poll_interval,
             send_event=self._send_event,
+            # Sensing mic for SoundPerception (HAL_AUDIO_SENSING_DEVICE, falls
+            # back to the voice mic upstream). Without this the orchestrator's
+            # sound_device_id stays None and loud-noise detection never runs.
+            sound_device_id=self._input_device,
             perception_config=PerceptionConfig(
                 # People perception (face identity + facial emotion) is the
                 # `presence` capability — ML over the camera via dlbackend. Gated

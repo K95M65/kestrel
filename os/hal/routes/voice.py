@@ -7,6 +7,7 @@ recognition service, kept next to the rest of that code.
 
 import asyncio
 import json
+import time
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
@@ -358,15 +359,39 @@ def unmute_mic():
     return {"status": "ok"}
 
 
+def _sound_perception():
+    """Sensing-mic SoundPerception instance, or None when sensing is down.
+
+    Same private-attribute access path the face endpoints use
+    (state.sensing_service._perception_orchestrator._processors.*).
+    """
+    if not state.sensing_service:
+        return None
+    try:
+        return state.sensing_service._perception_orchestrator._processors.sound_recognizer
+    except AttributeError:
+        return None
+
+
 @router.get("/voice/mic-level")
 async def mic_level_stream(request: Request):
-    """Stream the live mic input level as Server-Sent Events (~10Hz).
+    """Stream live mic input levels as Server-Sent Events (~10Hz).
 
-    Each event: `data: {"level": <rms>, "threshold": <vad>, "active": bool,
-    "muted": bool}`. `level` is the latest capture-frame RMS on int16 scale
-    (0..32768, computed anyway by the VAD loop — zero added DSP cost) and
-    falls to 0 while the mic drains under TTS/music or the pipeline is down.
-    Consumed by the web Overview audio card (VU meter) via the os-server
+    Each event: `data: {"level", "threshold", "active", "muted",
+    "sensing_level", "sensing_age_s", "sensing_threshold"}`.
+
+    - `level` — voice-pipeline mic (STT), latest capture-frame RMS on int16
+      scale (0..32768, computed anyway by the VAD loop — zero added DSP
+      cost). Falls to 0 while the mic drains under TTS/music or the
+      pipeline is down. `threshold` is the VAD wake threshold.
+    - `sensing_level` / `sensing_age_s` — noise mic (SoundPerception on
+      HAL_AUDIO_SENSING_DEVICE): the last 0.5s sample's RMS and how old it
+      is. Sampled once per sensing poll (a few seconds apart, paused
+      during/after TTS), NOT continuous — the web bar steps rather than
+      pumps. null when sensing/sound perception isn't running.
+      `sensing_threshold` is the loud-noise threshold.
+
+    Consumed by the web Overview audio card (VU meters) via the os-server
     `/api/hardware` proxy — httputil.ReverseProxy streams event-stream
     responses unbuffered, same as the MJPEG camera stream.
     """
@@ -374,18 +399,35 @@ async def mic_level_stream(request: Request):
         from hal.drivers.voice._internal.config import RMS_THRESHOLD as vad_threshold
     except ImportError:
         vad_threshold = 0
+    from hal.config import SOUND_RMS_THRESHOLD as sound_threshold
 
     async def gen():
         while not await request.is_disconnected():
             vs = state.voice_service
             active = bool(vs and vs.available and getattr(vs, "_running", False))
             level = float(getattr(vs, "mic_level", 0.0)) if vs else 0.0
+
+            sensing_level = None
+            sensing_age_s = None
+            sp = _sound_perception()
+            if sp is not None:
+                s_rms, s_ts = sp.last_level
+                if s_ts > 0:
+                    sensing_level = round(float(s_rms), 1)
+                    sensing_age_s = round(time.time() - s_ts, 1)
+
             payload = json.dumps(
                 {
                     "level": round(level, 1),
                     "threshold": vad_threshold,
                     "active": active,
                     "muted": state._mic_muted,
+                    # present = sound perception exists (noise bar should render,
+                    # even before its first sample); level stays null until then.
+                    "sensing_present": sp is not None,
+                    "sensing_level": sensing_level,
+                    "sensing_age_s": sensing_age_s,
+                    "sensing_threshold": sound_threshold,
                 }
             )
             yield f"data: {payload}\n\n"

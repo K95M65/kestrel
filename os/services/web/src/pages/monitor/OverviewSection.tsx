@@ -647,31 +647,52 @@ function micRmsToPct(rms: number): number {
   return Math.max(0, Math.min(100, ((db + 60) / 60) * 100));
 }
 
-// MicLevelBar is the live VU meter under the volume slider: it subscribes to
-// HAL's `/voice/mic-level` SSE stream (~10Hz, via the /api/hardware proxy) and
-// pumps the fill width when the user talks into the device mic — same idea as
-// the vu-bar in the Gemini test page, but reading the DEVICE mic, not the
-// browser's. The fill is mutated directly through a ref (no state) so 10Hz
-// updates never re-render the Audio card; the amber tick marks the VAD
-// threshold — speech must peak past it for the device to start listening.
+// A sensing-mic sample older than this is shown as dead air (bar at 0): the
+// sensing loop samples every few seconds and pauses during/after TTS, so a
+// minute without a fresh sample means sound perception isn't really running.
+const NOISE_STALE_S = 60;
+
+// MicLevelBar renders the live VU meters under the volume slider from HAL's
+// `/voice/mic-level` SSE stream (~10Hz, via the /api/hardware proxy):
+// - "Mic level" — the voice-pipeline (STT) mic; pumps as the user talks into
+//   the device, same idea as the vu-bar in the Gemini test page but reading
+//   the DEVICE mic, not the browser's.
+// - "Noise mic" — the sensing mic (SoundPerception); one 0.5s RMS sample per
+//   sensing poll, so this bar steps every few seconds rather than pumping.
+//   Hidden entirely when the device has no sound perception running.
+// Fills are mutated directly through refs (no state) so 10Hz updates never
+// re-render the Audio card; amber ticks mark each pipeline's trigger
+// threshold (VAD wake / loud-noise). The stream stays open while the voice
+// mic is muted — the sensing mic is independent of the mute switch.
 function MicLevelBar({ muted }: { muted: boolean }) {
   const fillRef = useRef<HTMLDivElement>(null);
+  const noiseFillRef = useRef<HTMLDivElement>(null);
   const [threshold, setThreshold] = useState<number | null>(null);
+  const [noiseThreshold, setNoiseThreshold] = useState<number | null>(null);
+  const [hasNoiseMic, setHasNoiseMic] = useState(false);
 
   useEffect(() => {
-    if (muted) {
-      if (fillRef.current) fillRef.current.style.width = "0%";
-      return; // don't hold an SSE connection slot while the mic is muted
-    }
     let es: EventSource | null = null;
     const open = () => {
       if (es || document.hidden) return;
       es = new EventSource(`${HW}/voice/mic-level`, { withCredentials: true });
       es.onmessage = (e) => {
         try {
-          const d = JSON.parse(e.data) as { level: number; threshold: number };
+          const d = JSON.parse(e.data) as {
+            level: number; threshold: number; sensing_present?: boolean;
+            sensing_level: number | null; sensing_age_s: number | null; sensing_threshold: number;
+          };
           if (fillRef.current) fillRef.current.style.width = `${micRmsToPct(d.level)}%`;
           setThreshold((t) => (t === d.threshold ? t : d.threshold));
+          const noiseLive = d.sensing_level != null && (d.sensing_age_s ?? Infinity) < NOISE_STALE_S;
+          // Render the noise bar as soon as sound perception exists — it sits
+          // at 0 until the first sample lands (one per sensing poll).
+          const present = d.sensing_present ?? d.sensing_level != null;
+          setHasNoiseMic((h) => (h === present ? h : present));
+          setNoiseThreshold((t) => (t === d.sensing_threshold ? t : d.sensing_threshold));
+          if (noiseFillRef.current) {
+            noiseFillRef.current.style.width = noiseLive ? `${micRmsToPct(d.sensing_level!)}%` : "0%";
+          }
         } catch { /* malformed frame — skip */ }
       };
       // EventSource auto-reconnects on transient errors; nothing to do here.
@@ -686,36 +707,64 @@ function MicLevelBar({ muted }: { muted: boolean }) {
       document.removeEventListener("visibilitychange", onVis);
       close();
     };
-  }, [muted]);
+  }, []);
 
   return (
-    <div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-        <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--lm-text-dim)" }}>Mic level</span>
-        {muted && (
-          <span style={{ fontSize: 10, color: "var(--lm-text-muted)" }}>muted</span>
-        )}
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+          <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--lm-text-dim)" }}>Mic level</span>
+          {muted && (
+            <span style={{ fontSize: 10, color: "var(--lm-text-muted)" }}>muted</span>
+          )}
+        </div>
+        <LevelTrack fillRef={fillRef} dim={muted}
+          tick={muted ? null : threshold} tickTitle="VAD threshold — speech must pass this level to wake the device" />
       </div>
-      <div style={{ position: "relative", height: 6, borderRadius: 999, background: "var(--lm-surface)", opacity: muted ? 0.5 : 1 }}>
+      {hasNoiseMic && (
+        <div>
+          <div style={{ marginBottom: 6 }}>
+            <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--lm-text-dim)" }}>Noise mic</span>
+          </div>
+          {/* Slow transition: one sample per sensing poll → ease between steps */}
+          <LevelTrack fillRef={noiseFillRef} dim={false} slow
+            tick={noiseThreshold} tickTitle="Loud-noise threshold — samples past this level raise a sound event" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// One VU track: surface-colored rail, green→amber gradient fill driven
+// externally via `fillRef` (direct style writes, no re-render), optional
+// amber threshold tick.
+function LevelTrack({ fillRef, dim, tick, tickTitle, slow }: {
+  fillRef: React.RefObject<HTMLDivElement | null>;
+  dim: boolean;
+  tick: number | null;
+  tickTitle: string;
+  slow?: boolean;
+}) {
+  return (
+    <div style={{ position: "relative", height: 6, borderRadius: 999, background: "var(--lm-surface)", opacity: dim ? 0.5 : 1 }}>
+      <div
+        ref={fillRef}
+        style={{
+          position: "absolute", left: 0, top: 0, bottom: 0, width: "0%",
+          borderRadius: 999,
+          background: "linear-gradient(90deg, var(--lm-green), var(--lm-amber))",
+          transition: slow ? "width 0.4s ease" : "width 0.1s linear",
+        }}
+      />
+      {tick != null && tick > 0 && (
         <div
-          ref={fillRef}
+          title={tickTitle}
           style={{
-            position: "absolute", left: 0, top: 0, bottom: 0, width: "0%",
-            borderRadius: 999,
-            background: "linear-gradient(90deg, var(--lm-green), var(--lm-amber))",
-            transition: "width 0.1s linear",
+            position: "absolute", left: `${micRmsToPct(tick)}%`, top: -2, bottom: -2,
+            width: 2, borderRadius: 1, background: "var(--lm-amber)", opacity: 0.7,
           }}
         />
-        {threshold != null && threshold > 0 && !muted && (
-          <div
-            title="VAD threshold — speech must pass this level to wake the device"
-            style={{
-              position: "absolute", left: `${micRmsToPct(threshold)}%`, top: -2, bottom: -2,
-              width: 2, borderRadius: 1, background: "var(--lm-amber)", opacity: 0.7,
-            }}
-          />
-        )}
-      </div>
+      )}
     </div>
   );
 }

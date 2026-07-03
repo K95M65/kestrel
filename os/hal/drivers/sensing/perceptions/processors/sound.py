@@ -81,6 +81,20 @@ class SoundPerception(Perception[Any]):
         self._window_start: float = 0.0
         self._last_passed: float = 0.0
         self._suppress_until: float = 0.0
+        # Latest sampled RMS + timestamp — published every check (even below
+        # threshold) so the web VU meter can show the sensing mic's ambient
+        # level. Sampled once per sensing poll, NOT a continuous stream.
+        self._last_rms: float = 0.0
+        self._last_rms_ts: float = 0.0
+
+    @property
+    def last_level(self) -> tuple[float, float]:
+        """(last sampled RMS on int16 scale, unix ts of that sample).
+
+        ts stays 0.0 until the first sample; readers use it to age the value
+        (samples arrive once per sensing poll, and pause during/after TTS).
+        """
+        return self._last_rms, self._last_rms_ts
 
     def set_tts_service(self, tts_service) -> None:
         self._tts = tts_service
@@ -154,6 +168,8 @@ class SoundPerception(Perception[Any]):
             rms = float(
                 self._np.sqrt(self._np.mean(recording.astype(self._np.float64) ** 2))
             )
+            self._last_rms = rms
+            self._last_rms_ts = time.time()
             if rms < config.SOUND_RMS_THRESHOLD:
                 return
 
@@ -194,4 +210,5 @@ class SoundPerception(Perception[Any]):
             "echo_suppression": self._tts is not None,
             "occurrence_count": self._count,
             "suppressed": time.time() < self._suppress_until,
+            "last_rms": int(self._last_rms),
         }
