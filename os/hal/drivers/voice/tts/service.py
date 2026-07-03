@@ -59,6 +59,33 @@ DEFAULT_VOICE = "alloy"
 DEFAULT_MODEL = "tts-1"
 
 TTS_CHANNELS = 1
+# A single chunk write normally completes in well under a second. A write
+# blocked longer means the sink stopped pulling audio (classic case: a BT
+# headset going idle/out of range mid-utterance — PortAudio then blocks
+# forever, the stop event is never re-checked and `speaking` wedges True,
+# gating the mic). The watchdog aborts the stream to unblock it.
+TTS_WRITE_STALL_S = 8.0
+
+
+class _WatchedStream:
+    """Thin wrapper over sounddevice.OutputStream that stamps when a blocking
+    write() starts, so the stall watchdog can spot one wedged on a sink that
+    stopped pulling audio and abort the stream from outside — the write then
+    raises and the write site's normal error handling recovers."""
+
+    def __init__(self, stream, owner):
+        self._stream = stream
+        self._owner = owner
+
+    def write(self, data):
+        self._owner._write_started_ts = time.monotonic()
+        try:
+            return self._stream.write(data)
+        finally:
+            self._owner._write_started_ts = None
+
+    def __getattr__(self, name):
+        return getattr(self._stream, name)
 
 
 class _PendingSpeech:
@@ -177,6 +204,7 @@ class TTSService:
         self._stream = None
         self._stream_rate: Optional[int] = None
         self._stream_lock = threading.Lock()
+        self._write_started_ts: Optional[float] = None
         if self._sd and self._device_rate:
             try:
                 self._ensure_stream(self._device_rate)
@@ -187,6 +215,9 @@ class TTSService:
                 ).start()
             except Exception:
                 logger.exception("Persistent stream init failed")
+        threading.Thread(
+            target=self._write_watchdog, daemon=True, name="tts-write-watchdog"
+        ).start()
 
     def _ensure_stream(self, dst_rate: int):
         """Open persistent OutputStream or return existing one. Reopens if rate
@@ -214,10 +245,10 @@ class TTSService:
             device=self._output_device,
         )
         stream.start()
-        self._stream = stream
+        self._stream = _WatchedStream(stream, self)
         self._stream_rate = dst_rate
         logger.info("Persistent OutputStream opened at %d Hz", dst_rate)
-        return stream
+        return self._stream
 
     def _invalidate_stream(self):
         """Force the persistent stream to be reopened on next use (after a
@@ -266,6 +297,68 @@ class TTSService:
                     pass
                 self._stream = None
                 self._stream_rate = None
+
+    def _write_watchdog(self):
+        """Break writes wedged on a sink that stopped pulling audio.
+
+        A blocking write past TTS_WRITE_STALL_S means the sink died mid-stream
+        (BT headset idled/went out of range while still "connected", USB DAC
+        unplugged): the stop event is only checked between writes, so without
+        this the `speaking` flag wedges True and gates the mic forever.
+        abort() forces the blocked write to raise; the write site's error
+        handling then invalidates the stream and clears state. Two stalls in
+        short order mean the route itself is dead — fall back to the built-in
+        speaker so the voice pipeline stays usable."""
+        last_fire = 0.0
+        consecutive = 0
+        while True:
+            time.sleep(1.0)
+            ts = self._write_started_ts
+            if ts is None or (time.monotonic() - ts) < TTS_WRITE_STALL_S:
+                continue
+            self._write_started_ts = None
+            now = time.monotonic()
+            if now - last_fire > 120.0:
+                consecutive = 0
+            consecutive += 1
+            last_fire = now
+            logger.error(
+                "TTS write stalled >%.0fs — sink stopped pulling audio; aborting stream (stall #%d)",
+                TTS_WRITE_STALL_S, consecutive,
+            )
+            try:
+                stream = self._stream
+                if stream is not None:
+                    # No _stream_lock here: the wedged writer holds it, and
+                    # Pa_AbortStream is safe to call from another thread.
+                    stream.abort()
+            except Exception:
+                logger.exception("Watchdog stream abort failed")
+            if consecutive >= 2:
+                consecutive = 0
+                threading.Thread(
+                    target=self._fallback_to_builtin, daemon=True, name="tts-bt-fallback"
+                ).start()
+
+    def _fallback_to_builtin(self):
+        """Repeated stalled writes on a Bluetooth route: the headset is gone in
+        practice even if BlueZ still shows it connected (e.g. AirPods parked in
+        their case — in-ear detection keeps the link but stops the audio).
+        Re-route to the built-in speaker/mic and clear the persisted preference
+        so a HAL restart doesn't walk straight back into the dead route."""
+        try:
+            from hal.drivers import audio_route
+            if not audio_route.bt_active():
+                return
+            logger.warning(
+                "Repeated TTS stalls on BT route — falling back to built-in speaker"
+            )
+            from hal.drivers.bluetooth_manager import BluetoothManager
+            with audio_route.route_op_lock:
+                audio_route.route_to_builtin()
+                BluetoothManager().set_active_mac(None)
+        except Exception:
+            logger.exception("BT→builtin fallback failed")
 
     def _probe_device_rate(self, force: bool = False):
         """Probe the output device to find a supported sample rate.
