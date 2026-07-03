@@ -95,6 +95,12 @@ class VoiceService:
         # meter. Plain float writes are atomic under the GIL, no lock needed.
         self._mic_level = 0.0
         self._mic_level_ts = 0.0
+        # When STT last produced transcript text (partial or final) — proof
+        # that the loud audio in the room is PEOPLE TALKING, not noise. Read
+        # by SoundPerception: on the saturating sensing mic, conversation
+        # (~740 RMS) is indistinguishable from thunder (~755) by level, but
+        # speech transcribes and thunder comes back empty.
+        self._last_transcript_ts = 0.0
         self._tts = tts_service
         self._music = music_service
         self._device_rate: Optional[int] = None  # detected once at first use
@@ -217,6 +223,12 @@ class VoiceService:
     @property
     def listening(self) -> bool:
         return self._listening
+
+    @property
+    def last_transcript_ts(self) -> float:
+        """Unix ts of the last non-empty STT transcript (partial or final).
+        0.0 until someone has spoken. See _last_transcript_ts above."""
+        return self._last_transcript_ts
 
     @property
     def mic_level(self) -> float:
@@ -858,6 +870,8 @@ class VoiceService:
         )
 
         def on_transcript(text: str, is_final: bool):
+            if text.strip():
+                self._last_transcript_ts = time.time()
             if not is_final:
                 logger.info("STT partial: '%s'", text)
                 if len(text) > len(longest_partial[0]):

@@ -19,6 +19,11 @@ _DEDUPE_INTERVAL_S = 15.0
 _WINDOW_DURATION_S = 120.0
 _PERSISTENT_AFTER = 3
 _SUPPRESS_DURATION_S = 180.0
+# Conversation guard window: skip loud-noise events this long after STT last
+# produced transcript text. On the saturating sensing mic, nearby talk
+# (~740 RMS) reads the same as thunder (~755) — but talk transcribes and
+# thunder comes back empty, so a recent transcript means "people talking".
+_CONVERSATION_HOLDOFF_S = 15.0
 
 
 class SoundPerception(Perception[Any]):
@@ -161,6 +166,8 @@ class SoundPerception(Perception[Any]):
         # is audible on the sensing mic (500+ RMS); idle breathing is not
         # (~11 RMS) and is excluded by is_actively_moving, so detection stays
         # live while the lamp just sits and breathes.
+        # Conversation guard — recent STT transcript = the loud audio is
+        # people talking, not noise (see _CONVERSATION_HOLDOFF_S above).
         try:
             import hal.app_state as app_state
 
@@ -169,6 +176,11 @@ class SoundPerception(Perception[Any]):
                 return
             anim = app_state.animation_service
             if anim is not None and anim.is_actively_moving:
+                return
+            voice = app_state.voice_service
+            if voice is not None and (
+                time.time() - getattr(voice, "last_transcript_ts", 0.0)
+            ) < _CONVERSATION_HOLDOFF_S:
                 return
         except Exception:
             pass
