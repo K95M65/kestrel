@@ -18,11 +18,15 @@ When the OS server is not yet configured (`SetUpCompleted = false`), the device 
       gets one (before internet is up), so the Web UI can read it while the
       AP is still briefly alive (see "AP→STA Auto-Redirect")
    b. Wait for internet (poll 60s)
-   c. Setup agent gateway
-   d. Save config
-   e. Wait for agent ready (poll 120s)
-   f. Report to backend (MQTT)
+   c. Save config
+   d. Early backend ping (fire-and-forget HTTP POST {llm_base}/ping, status
+      "setting_up") — publishes the device's fresh LAN IP (local_ip) to the
+      backend WITHOUT waiting for the agent setup below, so a page that
+      opened the Setup popup can look the IP up and rescue the redirect
+   e. Setup agent gateway
+   f. Wait for agent ready (poll 120s)
    g. SetUpCompleted = true
+   h. Backend ping (status "working", setup_completed=true)
 7. On failure → return to AP mode
 8. Web UI auto-redirects the browser to http://<lan_ip>/setup once the
    operator is back on home Wi-Fi (IP-first; mDNS .local is a last-resort
@@ -207,6 +211,13 @@ Until the early `lan_ip` poll lands, the manual copy link falls back to
   can fire, and the **manual IP entry is the guaranteed fallback** — the
   operator finds the device's IP in their router and types it in, so they are
   never stranded.
+- **Backend rendezvous (device side ready):** the early backend ping (step 6d)
+  publishes `local_ip` the moment WiFi is up, so a page that opened the Setup
+  popup (e.g. autonomous.ai) can poll the backend by `mac` and navigate the
+  popup to `http://<ip>/setup?<params>` — cross-origin popup *navigation* by
+  the opener is allowed even though reads aren't. This covers the
+  mDNS-blocking case automatically, but needs the backend to store/expose the
+  IP and the parent page to poll it; neither exists in this repo.
 - **Security trade-off of `http:` in CSP:** `connect-src http:` permits the
   Setup page to `fetch` any plaintext-HTTP origin, not just the device.
   Acceptable here because the Setup bundle is served only on the LAN/AP, ships
