@@ -309,7 +309,7 @@ export function OverviewSection({
               </div>
 
               {/* Live mic input VU meter */}
-              <MicLevelBar muted={voice.mic_muted} />
+              <MicLevelBar muted={voice.mic_muted ?? false} />
             </div>
           ) : <AudioSkeleton />}
         </div>
