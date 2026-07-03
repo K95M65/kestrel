@@ -156,6 +156,7 @@ Monitor poll API system/HW mỗi **3 giây**. Flow dùng hybrid theo file: REST 
 | `POST /hw/servo/upload` | Upload recording CSV (`timestamp` + cột `<joint>.pos`) để thêm/replace animation |
 | `GET /hw/display` | mode, hardware, available_expressions |
 | `GET /hw/audio/volume` | control, volume (0–100) |
+| `GET /hw/voice/mic-level` | SSE stream (~10Hz): level (RMS mic nói, thang int16), threshold (VAD), active, muted, sensing_level / sensing_age_s / sensing_threshold (mic tiếng ồn — mẫu SoundPerception gần nhất, null khi sensing tắt) |
 | `GET /hw/led/color` | led_count, color [R,G,B], hex (#rrggbb) |
 
 ---
@@ -191,6 +192,22 @@ Gồm các card:
 - Mic available + đang listening (badge LIVE)
 - TTS available + đang speaking (badge SPEAKING)
 - Volume hiện tại
+- **Thanh VU mic level** (ngay dưới slider volume), lấy từ SSE stream `GET
+  /hw/voice/mic-level` (~10Hz, qua proxy `/api/hardware`); RMS thô được map
+  sang phần trăm theo thang dBFS (-60dBFS → 0%, 0dBFS → 100%), mỗi bar có
+  vạch amber đánh dấu ngưỡng trigger tương ứng kèm số `RMS hiện tại /
+  ngưỡng` bên phải label:
+  - **Mic level** — mic của voice pipeline (STT); nhảy realtime khi user nói
+    vào device. Vạch = ngưỡng VAD (giọng phải vượt vạch thì device mới bắt
+    đầu nghe). Rơi về 0 khi TTS/nhạc đang phát (mic đang drain); mờ đi kèm
+    chữ "muted" khi mic bị mute.
+  - **Noise mic** — mic sensing (SoundPerception): mỗi vòng sensing poll chỉ
+    lấy 1 mẫu RMS 0.5s, nên bar này nhảy nấc vài giây/lần chứ không mượt
+    (mẫu cũng tạm dừng trong lúc/sau khi TTS nói). Vạch = ngưỡng tiếng ồn
+    lớn. Ẩn hoàn toàn khi device không chạy sound perception; về 0 khi mẫu
+    cuối cũ hơn 60s.
+  Stream vẫn mở khi mic nói bị mute (mic sensing độc lập với nút mute), và
+  đóng khi tab trình duyệt bị ẩn.
 
 **Hardware** (card ngang)
 - 8 badge: Servo / LED / Camera / Audio / Sensing / Voice / TTS / Display

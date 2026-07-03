@@ -233,7 +233,10 @@ export function BluetoothSection() {
           )}
           {(status?.paired || []).map((d) => {
             const isActive = active === d.mac;
-            const rowBusy = busyMac === d.mac;
+            // Disconnect posts with busyMac="__device__" (routing back to the
+            // device), but the click came from the ACTIVE row — that row must
+            // show the "Disconnecting..." spinner too, not sit inert.
+            const rowBusy = busyMac === d.mac || (busyMac === "__device__" && isActive);
             return (
               <div key={d.mac} className="lm-bt-row" style={deviceRow}>
                 <div style={{ flex: 1, minWidth: 0 }}>
