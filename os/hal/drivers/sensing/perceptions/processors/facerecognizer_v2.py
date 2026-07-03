@@ -1,4 +1,4 @@
-"""Face recognition processor — v2 pipeline (SCRFD + MediaPipe + EdgeFace).
+"""Face recognition processor — v2 pipeline (SCRFD + ONNX landmark + EdgeFace).
 
 Drop-in, API-compatible replacement for ``facerecognizer.py``. The PUBLIC API is
 byte-for-byte identical: same ``FaceRecognizer`` / ``FacePerception`` class names,
@@ -7,8 +7,14 @@ detection + recognition models change:
 
     old (facerecognizer.py):  insightface buffalo_sc  (SCRFD det + ArcFace rec)
     new (this file):          SCRFD  -> detection      (bbox + 5 kps + score)
-                              MediaPipe FaceMesh -> alignment (112x112 crop)
+                              MediaPipe landmark ONNX -> alignment (112x112 crop)
                               EdgeFace ONNX -> recognition (embedding)
+
+Alignment originally used the pip ``mediapipe`` FaceMesh, but that package cannot
+be installed in the deployment environment. It is replaced here by a local ONNX
+port of the MediaPipe FaceMesh landmark regressor (``_MediaPipeLandmarkONNX``,
+inlined & renamed from ``temp-updated-for-facerecognizer/mediapipe_landmark_onnx.py``).
+No ``import mediapipe`` remains.
 
 The swap is localized to the ``FaceRecognizer._app`` object. Everything the rest
 of the codebase touches — ``start()``, ``register()``, ``detect()``, ``reset()``,
@@ -16,10 +22,12 @@ the ``owners`` / ``strangers`` properties, and the whole ``FacePerception`` stat
 machine — is unchanged, so no external caller breaks.
 
 This file is SELF-CONTAINED for side-by-side testing against the old pipeline:
-  * All helpers ported from ``temp-updated-face-recognizer/`` are inlined here and
-    renamed (``_v2_*`` funcs, ``_SCRFDDetector`` / ``_EdgeFaceEmbedder`` /
-    ``_EdgeFacePipeline`` classes) so they NEVER collide with the sibling
-    ``utils.py`` (which has a different, unrelated API).
+  * All helpers ported from ``temp-updated-for-facerecognizer/`` are inlined here
+    and renamed (``_v2_*`` funcs, ``_SCRFDDetector`` / ``_MediaPipeLandmarkONNX`` /
+    ``_OnnxLandmarkAligner`` / ``_EdgeFaceEmbedder`` / ``_EdgeFacePipeline``
+    classes) so they NEVER collide with the sibling ``utils.py`` (which has a
+    different, unrelated API). Nothing imports from ``temp-updated-for-facerecognizer``
+    at runtime; that folder is reference-only and can be removed.
   * The embedding pipeline exposes ``.get(frame)`` returning the exact dict shape
     insightface produced: ``{'bbox', 'kps', 'det_score', 'embedding'}``.
 
@@ -27,6 +35,7 @@ Model files are resolved from env vars (defaults follow the pose-model conventio
 in config.py, i.e. ``/root/local/models/``) — NO existing file is modified:
     HAL_FACE_SCRFD_MODEL_PATH     (default /root/local/models/scrfd.onnx)
     HAL_FACE_EDGEFACE_MODEL_PATH  (default /root/local/models/edgeface.onnx)
+    HAL_FACE_LANDMARK_MODEL_PATH  (default /root/local/models/mediapipe_landmark.onnx)
 
 Persisted stranger state (embeds.npy / labels.npy) is kept in a SEPARATE ``v2``
 subdirectory. EdgeFace embeddings are not comparable with buffalo_sc embeddings,
@@ -47,7 +56,6 @@ from pathlib import Path
 from typing import Any, Callable, override
 
 import cv2
-import mediapipe as mp
 import numpy as np
 import numpy.typing as npt
 import onnxruntime as ort
@@ -75,10 +83,21 @@ _NO_MATCH = -2.0  # sentinel score used when an embedding bank is empty
 # POSE_MOTION_MODEL_PATH in config.py. Kept local to this file so config.py stays
 # untouched.
 _SCRFD_MODEL_PATH: str = os.environ.get(
-    "HAL_FACE_SCRFD_MODEL_PATH", "/root/local/models/scrfd.onnx"
+    "HAL_FACE_SCRFD_MODEL_PATH", "/root/local/models/scrfd_2.5g_fp32.onnx"
 )
 _EDGEFACE_MODEL_PATH: str = os.environ.get(
-    "HAL_FACE_EDGEFACE_MODEL_PATH", "/root/local/models/edgeface.onnx"
+    "HAL_FACE_EDGEFACE_MODEL_PATH", "/root/local/models/edgeface_s_gamma_05_opt.onnx"
+)
+# MediaPipe FaceMesh landmark regressor exported to ONNX (replaces the pip
+# `mediapipe` dependency, which cannot be installed on the target device).
+_LANDMARK_MODEL_PATH: str = os.environ.get(
+    "HAL_FACE_LANDMARK_MODEL_PATH", "/root/local/models/MediaPipeFaceLandmarkDetector.onnx"
+)
+# Face-presence probability above which the ONNX landmarks are trusted for
+# alignment; below it we fall back to the SCRFD keypoints (reproduces the old
+# pip-MediaPipe succeed/fail split). See _OnnxLandmarkAligner.
+_LANDMARK_CONF_THRESHOLD: float = float(
+    os.environ.get("HAL_FACE_LANDMARK_CONF_THRESHOLD", "0.6")
 )
 
 # Per-user data directory (face photos, wellbeing notes, mood history)
@@ -207,130 +226,191 @@ def _v2_warp_and_crop_face(
     return cv2.warpAffine(src_img, tfm, crop_size)
 
 
-def _v2_align_face(frame: np.ndarray, annotations: dict, scale: float = 1.0,
-                   convention: str = "yx") -> np.ndarray:
-    """Align a face from a dict of 5 named landmarks."""
-    required_landmarks = ["reye", "leye", "nose", "mouthright", "mouthleft"]
-    if not set(required_landmarks).issubset(annotations):
-        raise ValueError("Annotations must contain required landmarks.")
-
-    facial5points = [
-        annotations[lm][::-1] if convention == "yx" else annotations[lm]
-        for lm in required_landmarks
-    ]
-    return _v2_warp_and_crop_face(frame, facial5points, scale=scale)
-
-
 def _v2_align_from_kps(frame: np.ndarray, kps) -> np.ndarray:
     """Align a face using 5 detector keypoints (SCRFD/ArcFace order)."""
     src_pts = np.asarray(kps, dtype=np.float32).reshape(5, 2)
     return _v2_warp_and_crop_face(frame, src_pts)
 
 
-def _v2_crop_bbox(frame: np.ndarray, bbox, margin: float = 0.2):
-    """Crop an [x1,y1,x2,y2] region from a frame with a relative margin."""
-    h, w = frame.shape[:2]
+def _v2_landmarks_out_of_bounds(pts5: np.ndarray, bbox, frame_shape) -> bool:
+    """True if any of the 5 alignment points falls outside the bbox or image."""
+    h, w = frame_shape[:2]
     x1, y1, x2, y2 = [float(v) for v in bbox[:4]]
-    mx = margin * (x2 - x1)
-    my = margin * (y2 - y1)
-    x1 = int(max(0, x1 - mx))
-    y1 = int(max(0, y1 - my))
-    x2 = int(min(w, x2 + mx))
-    y2 = int(min(h, y2 + my))
-    if x2 <= x1 or y2 <= y1:
-        return None
-    return frame[y1:y2, x1:x2]
+    x_lo, x_hi = max(0.0, x1), min(float(w), x2)
+    y_lo, y_hi = max(0.0, y1), min(float(h), y2)
+    xs, ys = pts5[:, 0], pts5[:, 1]
+    return bool(
+        np.any(xs < x_lo) or np.any(xs > x_hi)
+        or np.any(ys < y_lo) or np.any(ys > y_hi)
+    )
 
 
-class _MediaPipeAligner:
-    """MediaPipe FaceMesh landmark extraction + alignment.
+# =============================================================================
+# MediaPipe FaceMesh landmark regressor (ONNX) — ported & renamed from
+# temp-updated-for-facerecognizer/mediapipe_landmark_onnx.py
+#
+# The pip `mediapipe` package cannot be installed on the target device, so its
+# FaceMesh landmark stage is served by this ONNX regressor instead. The model is
+# the landmark REGRESSOR only (no internal detector): it expects a square,
+# roughly-upright face ROI, so `detect_in_frame` builds a square ROI centered on
+# the SCRFD bbox (optionally roll-corrected with the eye keypoints), runs the
+# regressor, and maps the landmarks back to full-frame coordinates.
+#
+# Model I/O (verified):
+#   input  'image'     : (1, 3, 192, 192) float32, NCHW, RGB, range [0, 1]
+#   output 'scores'    : (1,)             float32, face-presence logit
+#   output 'landmarks' : (1, 468, 3)      float32, (x, y, z) normalized to [0, 1]
+# =============================================================================
 
-    Instance-scoped (not a module global like the reference) so multiple
-    recognizers don't share a mesh, and guarded by a lock because a single
-    FaceMesh graph is not safe for concurrent inference.
+# FaceMesh landmark indices -> the 5 canonical alignment points (same indices the
+# old pip-MediaPipe path used).
+_V2_LM_NOSE = 1
+_V2_LM_MOUTH_RIGHT = 287
+_V2_LM_MOUTH_LEFT = 57
+_V2_LM_RIGHT_EYE = (362, 263)  # corners -> averaged to the eye center
+_V2_LM_LEFT_EYE = (33, 243)    # corners -> averaged to the eye center
+
+
+class _MediaPipeLandmarkONNX:
+    """ONNX MediaPipe FaceMesh landmark regressor (replaces pip mediapipe)."""
+
+    def __init__(
+        self,
+        model_path: str,
+        input_size=192,
+        conf_thresh: float = 0.6,
+        roi_scale: float = 1.4,
+        roll_align: bool = True,
+        fp16: bool = False,
+        session_options: ort.SessionOptions | None = None,
+    ):
+        """
+        model_path: path to the MediaPipe landmark ONNX model.
+        input_size: model input resolution (int or (w, h)); MediaPipe = 192.
+        conf_thresh: face-presence probability (sigmoid of the raw 'scores'
+            output) above which the landmarks are trusted. ~0.6 mirrors the pip
+            MediaPipe succeed/fail split — clear frontal faces use the dense
+            landmarks; hard/profile faces fall back to the SCRFD keypoints.
+        roi_scale: square ROI side as a multiple of the bbox's longer side. 1.4
+            reproduces the old path (FaceMesh on bbox + 0.2 margin ≈ 1.4x).
+        roll_align: if True and eye keypoints are given, rotate the ROI so the
+            eyes are horizontal before inference (mirrors MediaPipe).
+        fp16: cast the input blob to float16 (use with an fp16 exported model).
+        """
+        sess_opts = session_options or ort.SessionOptions()
+        self.session = ort.InferenceSession(model_path, sess_opts)
+        self.input_name = self.session.get_inputs()[0].name
+        self.output_names = [o.name for o in self.session.get_outputs()]
+
+        self.name = os.path.basename(model_path).rsplit(".", 1)[0]
+        if isinstance(input_size, int):
+            self.input_size = (input_size, input_size)
+        else:
+            self.input_size = input_size
+
+        self.conf_thresh = conf_thresh
+        self.roi_scale = roi_scale
+        self.roll_align = roll_align
+        self.fp16 = fp16
+
+    def _blob(self, bgr_crop: np.ndarray) -> np.ndarray:
+        """BGR uint8 crop -> (1,3,H,W) RGB blob in [0,1] (MediaPipe order)."""
+        img = cv2.resize(bgr_crop, self.input_size)
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
+        blob = np.transpose(img, (2, 0, 1))[None]
+        return blob.astype(np.float16 if self.fp16 else np.float32)
+
+    def _run(self, bgr_crop: np.ndarray):
+        """Run the session on a crop. Returns (xy_in_input_px, score)."""
+        scores, landmarks = self.session.run(
+            self.output_names, {self.input_name: self._blob(bgr_crop)}
+        )
+        score = float(1.0 / (1.0 + np.exp(-float(scores.reshape(-1)[0]))))
+        # normalized [0,1] -> pixels of the (square) model input
+        xy = landmarks[0][:, :2].astype(np.float32) * np.float32(self.input_size)
+        return xy, score
+
+    def _roi_transform(self, bbox, kps=None):
+        """Affine (2x3) mapping the frame into a square input_size ROI centered
+        on the bbox, optionally roll-corrected using the eye keypoints."""
+        x1, y1, x2, y2 = [float(v) for v in bbox[:4]]
+        cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
+        side = max(x2 - x1, y2 - y1) * self.roi_scale
+
+        angle = 0.0
+        if self.roll_align and kps is not None:
+            reye, leye = np.asarray(kps)[0], np.asarray(kps)[1]
+            angle = float(
+                np.degrees(np.arctan2(leye[1] - reye[1], leye[0] - reye[0]))
+            )
+
+        out = self.input_size[0]
+        M = cv2.getRotationMatrix2D((cx, cy), angle, out / side)
+        M[0, 2] += out / 2.0 - cx
+        M[1, 2] += out / 2.0 - cy
+        return M
+
+    def detect_in_frame(self, frame: np.ndarray, bbox, kps=None):
+        """Detect 468 landmarks for one face, in FULL-FRAME pixel coords.
+
+        Returns (landmarks_frame (468,2) float32, score in [0,1]).
+        """
+        M = self._roi_transform(bbox, kps)
+        roi = cv2.warpAffine(frame, M, self.input_size)
+        xy, score = self._run(roi)
+        Minv = cv2.invertAffineTransform(M)
+        pts = np.hstack([xy, np.ones((xy.shape[0], 1), np.float32)])
+        xy_frame = (pts @ Minv.T).astype(np.float32)
+        return xy_frame, score
+
+    @staticmethod
+    def to_5points(landmarks: np.ndarray) -> np.ndarray:
+        """Reduce the 468 dense landmarks to the 5 canonical points in the order
+        the ArcFace template expects: [reye, leye, nose, mouthright, mouthleft]."""
+        lm = np.asarray(landmarks, dtype=np.float32)
+        reye = lm[list(_V2_LM_RIGHT_EYE)].mean(axis=0)
+        leye = lm[list(_V2_LM_LEFT_EYE)].mean(axis=0)
+        return np.stack(
+            [reye, leye, lm[_V2_LM_NOSE], lm[_V2_LM_MOUTH_RIGHT], lm[_V2_LM_MOUTH_LEFT]],
+            axis=0,
+        ).astype(np.float32)
+
+
+class _OnnxLandmarkAligner:
+    """ONNX-landmark alignment (drop-in for the old MediaPipe FaceMesh aligner).
+
+    Control flow mirrors the old pip-MediaPipe path so the aligned crops line up:
+        score >= conf_thresh -> align from the dense ONNX landmarks
+        score <  conf_thresh -> fall back to the SCRFD keypoints (old fallback)
+    The keypoint fallback (``_v2_align_from_kps``) is the identical ArcFace
+    transform the old code used, so those faces reproduce v1 almost exactly.
     """
 
-    _KEY_MAPPING = {
-        1: "nose",
-        287: "mouthright",
-        57: "mouthleft",
-        362: "righteye_left",
-        263: "righteye_right",
-        33: "lefteye_left",
-        243: "lefteye_right",
-    }
-
-    def __init__(self) -> None:
-        self._mesh = mp.solutions.face_mesh.FaceMesh(
-            static_image_mode=True,
-            refine_landmarks=True,
-            min_detection_confidence=0.5,
-        )
-        self._lock = threading.Lock()
-
-    def _extract_landmarks(self, image: np.ndarray) -> dict:
-        img_h, img_w, _ = image.shape
-        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        image_rgb.flags.writeable = False
-
-        with self._lock:
-            results = self._mesh.process(image_rgb)
-
-        fr_landmarks: dict = {}
-        if not results.multi_face_landmarks:
-            return fr_landmarks
-
-        for face_landmarks in results.multi_face_landmarks:
-            for idx, lm in enumerate(face_landmarks.landmark):
-                if idx in self._KEY_MAPPING:
-                    x, y = int(lm.x * img_w), int(lm.y * img_h)
-                    fr_landmarks[self._KEY_MAPPING[idx]] = (x, y)
-
-            if "righteye_left" in fr_landmarks and "righteye_right" in fr_landmarks:
-                fr_landmarks["reye"] = (
-                    (fr_landmarks["righteye_left"][0]
-                     + fr_landmarks["righteye_right"][0]) // 2,
-                    (fr_landmarks["righteye_left"][1]
-                     + fr_landmarks["righteye_right"][1]) // 2,
-                )
-            if "lefteye_left" in fr_landmarks and "lefteye_right" in fr_landmarks:
-                fr_landmarks["leye"] = (
-                    (fr_landmarks["lefteye_left"][0]
-                     + fr_landmarks["lefteye_right"][0]) // 2,
-                    (fr_landmarks["lefteye_left"][1]
-                     + fr_landmarks["lefteye_right"][1]) // 2,
-                )
-
-            for key in ("righteye_left", "righteye_right",
-                        "lefteye_left", "lefteye_right"):
-                fr_landmarks.pop(key, None)
-
-        return fr_landmarks
-
-    def align_crop(self, image: np.ndarray):
-        """Extract + align a face crop from an image region. None on failure."""
-        landmarks = self._extract_landmarks(image)
-        if not landmarks:
-            return None
-        try:
-            return _v2_align_face(image, landmarks, scale=1, convention="xy")
-        except Exception as e:  # noqa: BLE001 — mirror reference behaviour
-            logger.debug("[face-v2] alignment error: %s", e)
-            return None
+    def __init__(self, landmarker: _MediaPipeLandmarkONNX) -> None:
+        self._landmarker = landmarker
 
     def align_crop_from_bbox(self, frame: np.ndarray, bbox, kps=None,
                              margin: float = 0.2):
-        """Aligned 112x112 crop for one detection.
+        """Aligned 112x112 crop for one detection, or None if it cannot align.
 
-        MediaPipe FaceMesh on the (margin-padded) bbox region first; fall back
-        to the detector keypoints when the mesh finds nothing.
+        ``margin`` is accepted for call-site compatibility with the old aligner;
+        the ROI padding is now controlled by the landmarker's ``roi_scale``.
         """
-        region = _v2_crop_bbox(frame, bbox, margin=margin)
-        if region is not None and region.size > 0:
-            aligned = self.align_crop(region)
-            if aligned is not None:
-                return aligned
+        try:
+            landmarks, score = self._landmarker.detect_in_frame(frame, bbox, kps=kps)
+        except Exception as e:  # noqa: BLE001 — mirror reference behaviour
+            logger.debug("[face-v2] landmark inference error: %s", e)
+            landmarks, score = None, 0.0
 
+        if landmarks is not None and score >= self._landmarker.conf_thresh:
+            pts5 = self._landmarker.to_5points(landmarks)
+            if not _v2_landmarks_out_of_bounds(pts5, bbox, frame.shape):
+                try:
+                    return _v2_warp_and_crop_face(frame, pts5)
+                except Exception as e:  # noqa: BLE001
+                    logger.debug("[face-v2] landmark alignment error: %s", e)
+
+        # Low landmark confidence (or alignment failed) -> mirror old fallback.
         if kps is not None:
             try:
                 return _v2_align_from_kps(frame, kps)
@@ -631,7 +711,7 @@ class _EdgeFaceEmbedder:
 
 
 class _EdgeFacePipeline:
-    """SCRFD (detect) -> MediaPipe (align) -> EdgeFace (embed).
+    """SCRFD (detect) -> ONNX landmark (align) -> EdgeFace (embed).
 
     ``get(frame)`` returns one dict per face, drop-in compatible with
     ``insightface.app.FaceAnalysis.get``:
@@ -644,11 +724,16 @@ class _EdgeFacePipeline:
         self,
         scrfd_model_path: str,
         edgeface_model_path: str,
+        landmark_model_path: str,
         det_size=640,
         conf_thresh: float = 0.35,
         nms_thresh: float = 0.4,
         det_fp16: bool = False,
         emb_fp16: bool = False,
+        landmark_fp16: bool = False,
+        landmark_conf_thresh: float = _LANDMARK_CONF_THRESHOLD,
+        roi_scale: float = 1.4,
+        roll_align: bool = True,
         align_margin: float = 0.2,
         l2_normalize: bool = False,
         session_options: ort.SessionOptions | None = None,
@@ -661,7 +746,15 @@ class _EdgeFacePipeline:
             fp16=det_fp16,
             session_options=session_options,
         )
-        self.aligner = _MediaPipeAligner()
+        self.landmarker = _MediaPipeLandmarkONNX(
+            landmark_model_path,
+            conf_thresh=landmark_conf_thresh,
+            roi_scale=roi_scale,
+            roll_align=roll_align,
+            fp16=landmark_fp16,
+            session_options=session_options,
+        )
+        self.aligner = _OnnxLandmarkAligner(self.landmarker)
         self.embedder = _EdgeFaceEmbedder(
             edgeface_model_path,
             fp16=emb_fp16,
@@ -710,6 +803,7 @@ class FaceRecognizer:
         model_name: str = "buffalo_sc",
         scrfd_model_path: str = _SCRFD_MODEL_PATH,
         edgeface_model_path: str = _EDGEFACE_MODEL_PATH,
+        landmark_model_path: str = _LANDMARK_MODEL_PATH,
     ):
         self._area_ratio_threshold: float = area_ratio_threshold
         self._threshold: float = threshold
@@ -720,6 +814,7 @@ class FaceRecognizer:
         self._model_name: str = model_name
         self._scrfd_model_path: str = scrfd_model_path
         self._edgeface_model_path: str = edgeface_model_path
+        self._landmark_model_path: str = landmark_model_path
 
         self._app: _EdgeFacePipeline | None = None
         self._owner_embeddings: npt.NDArray[np.float32] | None = None
@@ -768,6 +863,7 @@ class FaceRecognizer:
         self._app = _EdgeFacePipeline(
             scrfd_model_path=self._scrfd_model_path,
             edgeface_model_path=self._edgeface_model_path,
+            landmark_model_path=self._landmark_model_path,
             l2_normalize=False,
             session_options=sess_opts,
         )
@@ -995,7 +1091,7 @@ class FaceRecognizer:
 
 
 class FacePerception(Perception[cv2.typing.MatLike]):
-    """SCRFD+MediaPipe+EdgeFace face recognizer. Detects friends and strangers, fires presence events."""
+    """SCRFD + ONNX-landmark + EdgeFace face recognizer. Detects friends and strangers, fires presence events."""
 
     FRIEND_PREFIX: str = "friend_"
     STRANGER_PREFIX: str = "stranger_"
