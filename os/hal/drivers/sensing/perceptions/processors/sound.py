@@ -154,6 +154,18 @@ class SoundPerception(Perception[Any]):
         ):
             return
 
+        # Music guard — the speaker's own playback reaches the sensing mic just
+        # like TTS does. Read late from app_state (music service starts after
+        # sensing); `streaming` is True only while audio actually plays.
+        try:
+            import hal.app_state as app_state
+
+            music = app_state.music_service
+            if music is not None and music.streaming:
+                return
+        except Exception:
+            pass
+
         try:
             sample_rate = 44100
             frames = int(sample_rate * config.SOUND_SAMPLE_DURATION_S)
