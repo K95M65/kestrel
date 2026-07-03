@@ -196,7 +196,8 @@ Cards included:
 - **Mic level VU meters** (under the volume slider), fed by the `GET
   /hw/voice/mic-level` SSE stream (~10Hz, via the `/api/hardware` proxy);
   raw RMS is mapped to percent on a dBFS scale (-60dBFS → 0%, 0dBFS → 100%)
-  and each bar carries an amber tick at its trigger threshold:
+  and each bar carries an amber tick at its trigger threshold plus a numeric
+  `live RMS / threshold` readout on the right of its label:
   - **Mic level** — the voice-pipeline (STT) mic; pumps live as the user
     talks into the device. Tick = VAD wake threshold (speech must peak past
     it for the device to start listening). Drops to 0 while TTS/music plays

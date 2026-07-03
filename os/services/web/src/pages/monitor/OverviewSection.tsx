@@ -667,6 +667,9 @@ const NOISE_STALE_S = 60;
 function MicLevelBar({ muted }: { muted: boolean }) {
   const fillRef = useRef<HTMLDivElement>(null);
   const noiseFillRef = useRef<HTMLDivElement>(null);
+  // Numeric readouts (raw RMS) mutated via refs like the fills — no re-render.
+  const levelTextRef = useRef<HTMLSpanElement>(null);
+  const noiseTextRef = useRef<HTMLSpanElement>(null);
   const [threshold, setThreshold] = useState<number | null>(null);
   const [noiseThreshold, setNoiseThreshold] = useState<number | null>(null);
   const [hasNoiseMic, setHasNoiseMic] = useState(false);
@@ -683,6 +686,7 @@ function MicLevelBar({ muted }: { muted: boolean }) {
             sensing_level: number | null; sensing_age_s: number | null; sensing_threshold: number;
           };
           if (fillRef.current) fillRef.current.style.width = `${micRmsToPct(d.level)}%`;
+          if (levelTextRef.current) levelTextRef.current.textContent = String(Math.round(d.level));
           setThreshold((t) => (t === d.threshold ? t : d.threshold));
           const noiseLive = d.sensing_level != null && (d.sensing_age_s ?? Infinity) < NOISE_STALE_S;
           // Render the noise bar as soon as sound perception exists — it sits
@@ -692,6 +696,9 @@ function MicLevelBar({ muted }: { muted: boolean }) {
           setNoiseThreshold((t) => (t === d.sensing_threshold ? t : d.sensing_threshold));
           if (noiseFillRef.current) {
             noiseFillRef.current.style.width = noiseLive ? `${micRmsToPct(d.sensing_level!)}%` : "0%";
+          }
+          if (noiseTextRef.current) {
+            noiseTextRef.current.textContent = noiseLive ? String(Math.round(d.sensing_level!)) : "—";
           }
         } catch { /* malformed frame — skip */ }
       };
@@ -714,8 +721,13 @@ function MicLevelBar({ muted }: { muted: boolean }) {
       <div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
           <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--lm-text-dim)" }}>Mic level</span>
-          {muted && (
+          {muted ? (
             <span style={{ fontSize: 10, color: "var(--lm-text-muted)" }}>muted</span>
+          ) : (
+            <span title="live RMS / VAD threshold (speech must pass it to wake the device)"
+              style={{ fontSize: 11, fontWeight: 700, color: "var(--lm-amber)", fontFamily: "monospace" }}>
+              <span ref={levelTextRef}>0</span>{threshold != null ? ` / ${threshold}` : ""}
+            </span>
           )}
         </div>
         <LevelTrack fillRef={fillRef} dim={muted}
@@ -723,8 +735,12 @@ function MicLevelBar({ muted }: { muted: boolean }) {
       </div>
       {hasNoiseMic && (
         <div>
-          <div style={{ marginBottom: 6 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
             <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--lm-text-dim)" }}>Noise mic</span>
+            <span title="last sample RMS / loud-noise threshold (samples past it startle the device)"
+              style={{ fontSize: 11, fontWeight: 700, color: "var(--lm-amber)", fontFamily: "monospace" }}>
+              <span ref={noiseTextRef}>—</span>{noiseThreshold != null ? ` / ${noiseThreshold}` : ""}
+            </span>
           </div>
           {/* Slow transition: one sample per sensing poll → ease between steps */}
           <LevelTrack fillRef={noiseFillRef} dim={false} slow

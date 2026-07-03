@@ -195,7 +195,8 @@ Gồm các card:
 - **Thanh VU mic level** (ngay dưới slider volume), lấy từ SSE stream `GET
   /hw/voice/mic-level` (~10Hz, qua proxy `/api/hardware`); RMS thô được map
   sang phần trăm theo thang dBFS (-60dBFS → 0%, 0dBFS → 100%), mỗi bar có
-  vạch amber đánh dấu ngưỡng trigger tương ứng:
+  vạch amber đánh dấu ngưỡng trigger tương ứng kèm số `RMS hiện tại /
+  ngưỡng` bên phải label:
   - **Mic level** — mic của voice pipeline (STT); nhảy realtime khi user nói
     vào device. Vạch = ngưỡng VAD (giọng phải vượt vạch thì device mới bắt
     đầu nghe). Rơi về 0 khi TTS/nhạc đang phát (mic đang drain); mờ đi kèm
