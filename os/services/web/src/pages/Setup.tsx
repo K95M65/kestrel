@@ -532,6 +532,7 @@ export default function Setup({ mode = "initial" }: SetupProps = {}) {
 
   useSetupStatusPolling({
     setupWorking, setupLanIP,
+    mdnsHost: deviceMdnsHost,
     setSetupPhase, setSetupLanIP, setSetupErrorMsg,
   });
 
