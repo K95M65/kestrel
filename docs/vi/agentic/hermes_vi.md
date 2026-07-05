@@ -445,8 +445,10 @@ làm 3 việc theo thứ tự:
    - `.approvals.mode = "off"` — tắt hoàn toàn prompt duyệt lệnh của Hermes (card
      tirith / dangerous-command). Thiết bị chạy không giám sát trên kênh voice +
      chat, nơi card duyệt lệnh là ngõ cụt làm kẹt lượt (quyết định sản phẩm).
-     Hardline blocklist của Hermes vẫn áp dụng. Ghi dưới dạng chuỗi có nháy
-     `"off"` — `off` không nháy là boolean YAML.
+     Hardline blocklist của Hermes vẫn áp dụng. Ghi ép-nháy (`style="double"`):
+     yq v4 (YAML 1.2) xuất `off` trần, nhưng Hermes parse config.yaml bằng PyYAML
+     (YAML 1.1) — `off` trần là boolean `False`, mode không bao giờ khớp và prompt
+     âm thầm vẫn bật.
    - Chỉ ghi `.auxiliary.vision`, `.agent.image_input_mode` và `.approvals.mode`;
      **các key khác dưới `.auxiliary`/`.agent`/`.approvals` được giữ nguyên** (mỗi
      node được coerce từ scalar bị reset về map trước, giống `.model`).

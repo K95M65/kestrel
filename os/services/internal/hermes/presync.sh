@@ -109,11 +109,14 @@ yq -i '
 # Required" card is a dead end for a voice user and stalls the turn, so command
 # approval prompts are disabled entirely (product decision). Hermes' hardline
 # blocklist still applies; approvals.mode is the documented master switch for
-# the tirith/dangerous-command prompt flow. Quoted "off" — unquoted off is a
-# YAML boolean and Hermes would not recognize it as the mode string.
+# the tirith/dangerous-command prompt flow. style="double" is REQUIRED: yq v4
+# (YAML 1.2) writes a bare `off`, but Hermes reads config.yaml with PyYAML
+# (YAML 1.1) where unquoted off parses as boolean False — the mode string is
+# never matched and prompts silently stay ON. Verified on-device: bare off →
+# parsed False; "off" → parsed 'off'.
 [ "$(yq '.approvals | tag' "$CONFIG_YAML" 2>/dev/null)" = "!!map" ] || yq -i '.approvals = {}' "$CONFIG_YAML"
 log "ensure config.yaml approvals.mode=off (no command-approval prompts)"
-yq -i '.approvals.mode = "off"' "$CONFIG_YAML"
+yq -i '.approvals.mode = "off" | .approvals.mode style="double"' "$CONFIG_YAML"
 
 # ── 2. DYNAMIC (config.json wins) ──────────────────────────────────────────────
 # NOTE: .model.default is NOT synced from llm_model — that is the OpenClaw primary

@@ -463,8 +463,10 @@ during install) and does three things, in order:
    - `.approvals.mode = "off"` — disables Hermes' command-approval prompts (tirith /
      dangerous-command cards) entirely. The device runs unattended on voice + chat
      channels, where an approval card is a dead end that stalls the turn (product
-     decision). Hermes' hardline blocklist still applies. Written as the quoted
-     string `"off"` — unquoted `off` is a YAML boolean.
+     decision). Hermes' hardline blocklist still applies. Written force-quoted
+     (`style="double"`): yq v4 (YAML 1.2) emits a bare `off`, but Hermes parses
+     config.yaml with PyYAML (YAML 1.1) where bare `off` is boolean `False` — the
+     mode never matches and prompts silently stay on.
    - Only `.auxiliary.vision`, `.agent.image_input_mode`, and `.approvals.mode` are
      written; **other keys under `.auxiliary`/`.agent`/`.approvals` are preserved**
      (each is coerced from a reset-left scalar to a map first, same as `.model`).
