@@ -74,6 +74,14 @@ _QWEN_RATES: dict[str, dict[tuple[str, str], float]] = {
         ("in", "TEXT"): 0.27, ("in", "AUDIO"): 4.44,
         ("out", "TEXT"): 8.89, ("out", "AUDIO"): 8.89,
     },
+    # Flash bills under the SAME cheap line items as turbo (text_input_token /
+    # audio_input_token / multi_output_token — bill-verified 2026-07-06, incl.
+    # search-enabled sessions), NOT the omni_* premium items of plus. That
+    # makes flash's dominant cost (text in) ~2.8x cheaper than Gemini 3.1.
+    "qwen3.5-omni-flash-realtime": {
+        ("in", "TEXT"): 0.27, ("in", "AUDIO"): 4.44,
+        ("out", "TEXT"): 8.89, ("out", "AUDIO"): 8.89,
+    },
     "qwen3.5-omni-plus-realtime": {
         ("in", "TEXT"): 2.10, ("in", "AUDIO"): 16.50,
         ("out", "TEXT"): 62.00, ("out", "AUDIO"): 62.00,
