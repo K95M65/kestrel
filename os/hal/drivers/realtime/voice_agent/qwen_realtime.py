@@ -107,9 +107,13 @@ _MARKER_PROTOCOL_SUFFIX = (
     "\n\n[TOOL PROTOCOL] This session has NO function tools (web search replaces"
     " them). Wherever your instructions say to call delegate_to_main(message),"
     " instead reply with EXACTLY this text and NOTHING else: [DELEGATE] <message>."
-    " No words before or after the marker line. All other delegation rules"
+    " No words before or after the marker line. Never say \"okay, I'll do it\" —"
+    " only the [DELEGATE] line gets it done. All other delegation rules"
     " (what to delegate vs answer directly) still apply. There is no"
     " express_emotion tool — never mention or fake tool calls."
+    "\nExamples:"
+    "\nUser: \"Turn the volume up a bit\" -> [DELEGATE] Increase volume"
+    "\nUser: \"Remind me to take my medicine at 7 PM\" -> [DELEGATE] Set a reminder at 7 PM: take medicine"
 )
 
 
