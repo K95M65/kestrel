@@ -82,16 +82,20 @@ _NO_MATCH = -2.0  # sentinel score used when an embedding bank is empty
 # Model paths (v2). Resolved from env with /root/local/models defaults, mirroring
 # POSE_MOTION_MODEL_PATH in config.py. Kept local to this file so config.py stays
 # untouched.
+_FACE_MODEL_PATH: str = os.environ.get(
+    "HAL_FACE_MODEL_PATH", "/opt/hal/drivers/sensing/perceptions/processors/models/"
+)
+
 _SCRFD_MODEL_PATH: str = os.environ.get(
-    "HAL_FACE_SCRFD_MODEL_PATH", "/root/local/models/scrfd_2.5g_fp32.onnx"
+    "HAL_FACE_SCRFD_MODEL_PATH", os.path.join(_FACE_MODEL_PATH, "scrfd_2.5g_fp32.onnx")
 )
 _EDGEFACE_MODEL_PATH: str = os.environ.get(
-    "HAL_FACE_EDGEFACE_MODEL_PATH", "/root/local/models/edgeface_s_gamma_05_opt.onnx"
+    "HAL_FACE_EDGEFACE_MODEL_PATH", os.path.join(_FACE_MODEL_PATH, "edgeface_s_gamma_05_opt.onnx")
 )
 # MediaPipe FaceMesh landmark regressor exported to ONNX (replaces the pip
 # `mediapipe` dependency, which cannot be installed on the target device).
 _LANDMARK_MODEL_PATH: str = os.environ.get(
-    "HAL_FACE_LANDMARK_MODEL_PATH", "/root/local/models/MediaPipeFaceLandmarkDetector.onnx"
+    "HAL_FACE_LANDMARK_MODEL_PATH", os.path.join(_FACE_MODEL_PATH, "MediaPipeFaceLandmarkDetector.onnx")
 )
 # Face-presence probability above which the ONNX landmarks are trusted for
 # alignment; below it we fall back to the SCRFD keypoints (reproduces the old
