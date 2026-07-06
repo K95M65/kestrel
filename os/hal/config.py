@@ -394,6 +394,7 @@ def _os_cfg_realtime() -> dict:
 _RT: dict = _os_cfg_realtime()
 _RT_GEMINI: dict = _RT.get("gemini") if isinstance(_RT.get("gemini"), dict) else {}
 _RT_OPENAI: dict = _RT.get("openai") if isinstance(_RT.get("openai"), dict) else {}
+_RT_QWEN: dict = _RT.get("qwen") if isinstance(_RT.get("qwen"), dict) else {}
 
 
 def _rt_str(env_key: str, cfg_val, default: str) -> str:
@@ -416,7 +417,7 @@ def _rt_enabled() -> bool:
 
 
 REALTIME_ENABLED: bool = _rt_enabled()
-REALTIME_PROVIDER: str = _rt_str("HAL_REALTIME_PROVIDER", _RT.get("provider"), "gemini")  # none | gemini | openai
+REALTIME_PROVIDER: str = _rt_str("HAL_REALTIME_PROVIDER", _RT.get("provider"), "gemini")  # none | gemini | openai | qwen
 # Max seconds receive() waits for the NEXT output event from the agent's recv
 # queue before giving up on the turn. This is the gap between events, not the
 # whole turn: a streaming reply puts events on the queue sub-second apart and
@@ -628,6 +629,28 @@ REALTIME_OPENAI_MODEL: str = _rt_str("HAL_OPENAI_REALTIME_MODEL", _RT_OPENAI.get
 REALTIME_OPENAI_VOICE: str = _rt_str("HAL_OPENAI_REALTIME_VOICE", _RT_OPENAI.get("voice"), "alloy")
 REALTIME_OPENAI_SAMPLE_RATE: int = 24000
 REALTIME_OPENAI_REASONING_EFFORT: str = _rt_str("HAL_OPENAI_REASONING_EFFORT", _RT_OPENAI.get("reasoning_effort"), "minimal")
+
+# --- Realtime: Qwen Omni Realtime (DashScope / Model Studio intl) ---
+# Unlike gemini/openai there is NO llm_base_url-derived fallback: Qwen realtime
+# talks straight to the Alibaba MaaS host, not through the campaign-api proxy.
+# NOTE: deliberately NO fallback to the shared realtime.api_key/base_url — on
+# devices those hold the campaign-api credentials (gemini/openai path) and
+# would produce a baffling 401 against the Alibaba host. Both values must come
+# from env (device /opt/hal/.env: DASHSCOPE_API_KEY, HAL_QWEN_REALTIME_BASE_URL
+# = wss://<workspace>.ap-southeast-1.maas.aliyuncs.com/api-ws/v1) or from
+# config.json realtime.qwen.{api_key,base_url}; empty → the WS handshake fails
+# loudly in the hal log.
+REALTIME_QWEN_API_KEY: str = (
+    os.environ.get("DASHSCOPE_API_KEY", "")
+    or _RT_QWEN.get("api_key", "")
+)
+REALTIME_QWEN_BASE_URL: str = (
+    os.environ.get("HAL_QWEN_REALTIME_BASE_URL", "")
+    or _RT_QWEN.get("base_url", "")
+)
+REALTIME_QWEN_MODEL: str = _rt_str("HAL_QWEN_REALTIME_MODEL", _RT_QWEN.get("model"), "qwen-omni-turbo-realtime")
+REALTIME_QWEN_VOICE: str = _rt_str("HAL_QWEN_REALTIME_VOICE", _RT_QWEN.get("voice"), "Cherry")
+REALTIME_QWEN_SAMPLE_RATE: int = 16000
 
 # --- Realtime: Context manager ---
 OPENCLAW_WORKSPACE_DIR: str = os.environ.get("HAL_OPENCLAW_WORKSPACE_DIR", "/root/.openclaw/workspace")

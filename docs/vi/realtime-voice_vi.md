@@ -78,7 +78,9 @@ thiết bị smart-home của họ, tin nhắn của họ) cho `delegate_to_main
 Đánh đổi:
 
 - **Chỉ Gemini.** OpenAI Realtime không có tool built-in tương đương, nên prompt
-  của nó (`system_prompt_openai.md`) vẫn delegate mọi lookup bên ngoài.
+  của nó (`system_prompt_openai.md`) vẫn delegate mọi lookup bên ngoài. Qwen Omni
+  Realtime cũng vậy — không có search grounding, prompt của nó
+  (`system_prompt_qwen.md`) delegate mọi câu dữ liệu thời gian thực.
 - **Chi phí.** Grounding tính phí theo mỗi grounded request (cộng thêm token),
   nhưng chỉ phát sinh khi Gemini thực sự quyết định search. Prompt dặn nó *chỉ*
   ground cho dữ kiện công khai/mới thật sự, không ground cho kiến thức chung đã có
@@ -129,7 +131,8 @@ LLM vision, vài giây) bằng một round-trip ngay trong phiên.
   (`_camera_present()`), nên đúng cho mọi đường khởi tạo.
 - **Flag:** `HAL_GEMINI_VISION` / `realtime.gemini.vision` (mặc định **bật**).
 - **Provider:** chỉ Gemini (luồng inject ảnh → tiếp tục turn đã làm + test cho
-  Gemini Live; OpenAI vẫn delegate). System prompt Gemini
+  Gemini Live; OpenAI và Qwen vẫn delegate — Qwen Omni qua đường realtime này
+  chỉ có text+audio, không có vision trong phiên). System prompt Gemini
   (`system_prompt_gemini.md`) mô tả khi nào gọi `look`.
 
 Chi phí: một frame mỗi lần gọi (kích bằng tool, **không** stream video), nên token
@@ -167,13 +170,14 @@ chụp thì không có gì để bàn giao, agent chụp như bình thường.
 
 ## Các provider
 
-Hai backend thay thế cho nhau, chọn bằng `HAL_REALTIME_PROVIDER`
-(`none` | `gemini` | `openai`):
+Ba backend thay thế cho nhau, chọn bằng `HAL_REALTIME_PROVIDER`
+(`none` | `gemini` | `openai` | `qwen`):
 
 | Provider | Class | Mô hình threading | Model mặc định | Sample rate |
 |----------|-------|-------------------|----------------|-------------|
 | Gemini Live | `voice_agent/gemini_live.py` `GeminiLiveAgent` | event loop asyncio riêng trên thread `gemini-io`; thread send/recv submit coroutine qua `run_coroutine_threadsafe` | `gemini-2.5-flash-native-audio-preview-12-2025` | 16000 Hz |
 | OpenAI Realtime | `voice_agent/openai_realtime.py` `OpenAIRealtimeAgent` | thuần đồng bộ; 1 `RealtimeConnection` dùng chung bởi thread send/recv, serialize bằng reentrant lock | `gpt-realtime-2` | 24000 Hz |
+| Qwen Omni Realtime | `voice_agent/qwen_realtime.py` `QwenRealtimeAgent` | thuần đồng bộ; client `websockets.sync.client` thô | `qwen-omni-turbo-realtime` | 16000 Hz |
 
 Gemini Live dùng `google-genai`, nhưng tắt keepalive websocket của SDK
 (`ping_interval=None`, `ping_timeout=None`) để Python client giống browser raw-WS
@@ -183,7 +187,31 @@ recycle Gemini đồng bộ trước khi stream audio nếu lượt trước đ�
 `HAL_GEMINI_PRE_TURN_RECYCLE_S` giây, để câu nói sau khoảng nghỉ không rơi vào
 socket đã chết vì idle ở proxy.
 
-Cả hai kế thừa `voice_agent/base.py` `VoiceAgentBase`, định nghĩa contract dựa
+**Qwen Omni Realtime** (Alibaba DashScope / Model Studio) nói **schema event BETA
+của OpenAI Realtime** (`session.update`, `input_audio_buffer.append/commit`,
+`response.create`, `response.audio.delta`, `response.audio_transcript.delta`,
+`response.done`) qua đường WS của DashScope
+`wss://<workspace-host>/api-ws/v1/realtime?model=...` với header
+`Authorization: Bearer <key>`. Không tái dùng được OpenAI python SDK (SDK nói
+schema GA), nên `qwen_realtime.py` là client `websockets.sync.client` thô. Audio
+input 16 kHz mono pcm16 base64, output 24 kHz mono pcm16. Luồng turn thủ công
+(HAL local VAD): append → commit → `response.create`; `response.create` **bắt
+buộc** kèm `response.modalities ["text","audio"]` tường minh, nếu không server
+trả lời text-only (verify live 2026-07-06). Voice: Cherry (mặc định), Serena,
+Ethan, Chelsie; **không** có knob reasoning/thinking (web ẩn selector Reasoning).
+Function tool (`delegate_to_main`, `express_emotion`) được truyền trong
+`session.update` (format beta phẳng — endpoint live đã nhận) và
+`response.function_call_arguments.done` được xử lý. Mỗi turn, dòng token/cost
+ghi vào file log riêng `qwen_usage.log` (logger `hal.realtime.usage.qwen`, sinh
+đôi với `gemini_usage.log`); bảng giá `_QWEN_RATES` trong `qwen_realtime.py`
+($0.27/1M input, $1.07/1M output — Model Studio quốc tế công bố một mức giá
+blended duy nhất, chưa công bố tách theo modality; bảng vẫn giữ key theo
+modality để drop số tách console-verified vào sau). Audio ≈ 25 token/giây cả
+hai chiều (verify: 5.1s audio out = 128 token); usage payload gồm
+`input_tokens`/`output_tokens` + `input_tokens_details`/`output_tokens_details`
+`{text_tokens, audio_tokens}` + `cached_tokens` top-level.
+
+Cả ba kế thừa `voice_agent/base.py` `VoiceAgentBase`, định nghĩa contract dựa
 trên queue:
 
 - **2 thread mỗi agent**: `_send_loop` rút `_send_queue` → API; `_recv_loop` đọc
@@ -245,7 +273,9 @@ theo agent gateway (`HAL_AGENT_GATEWAY`):
 (`build_instructions`), lưu lượt (`add_turn`), nạp/trim memory, và summarize;
 subclass cài `load_device_context`, `load_device_memory`, `load_skills_catalog`,
 `summarize_device_memory`. Prompt nền nằm ở `resources/` (`system_prompt.md` +
-bản theo provider `system_prompt_openai.md` / `system_prompt_gemini.md`).
+bản theo provider `system_prompt_openai.md` / `system_prompt_gemini.md` /
+`system_prompt_qwen.md`, đăng ký trong `PROVIDER_PROMPT_PATHS` của
+context_manager).
 
 ### Memory & summarization
 
@@ -323,8 +353,15 @@ chỉ-thuộc-os-server.
 
 Model ở Go tại `os/services/server/config/realtime.go`; đọc ở HAL tại
 `os/hal/config.py`. Field chung ở trên; knob theo provider nằm trong sub-object
-`gemini` / `openai`, `provider` chọn cái đang active (`none` hoặc vắng → tắt
-realtime). `api_key` / `base_url` rỗng → fallback `llm_api_key` / `llm_base_url`.
+`gemini` / `openai` / `qwen`, `provider` chọn cái đang active (`none` hoặc vắng →
+tắt realtime). `api_key` / `base_url` rỗng → fallback `llm_api_key` /
+`llm_base_url` — **trừ qwen**: credential của qwen là của riêng nó
+(`realtime.qwen.api_key` / `realtime.qwen.base_url`, Go struct `QwenRealtime`
+còn có `model`/`voice`), **cố tình không** fallback về `realtime.api_key`/
+`base_url` chung hay credential `llm_*` — qwen nói thẳng với host Alibaba MaaS,
+không đi qua proxy `campaign-api`. Set qua `realtime.qwen.*` trong config.json
+hoặc qua env trên device (`DASHSCOPE_API_KEY`, `HAL_QWEN_REALTIME_BASE_URL`
+trong `/opt/hal/.env`); thiếu cả hai thì WS handshake fail rõ ràng trong log hal.
 
 > **Để `base_url` trống trừ khi có endpoint riêng (không qua proxy).** Khi trống,
 > HAL tự suy ra `<llm_base_url>/ws/gemini` (hoặc `/ws/openai`) — đúng suffix WS mà
@@ -332,21 +369,25 @@ realtime). `api_key` / `base_url` rỗng → fallback `llm_api_key` / `llm_base_
 > `/ws/...`), giá trị đó được đưa thẳng vào SDK provider và **404 ngay ở Live
 > handshake**. Vì vậy ô "Base URL" trong web Settings chỉ hiển thị *override tường
 > minh* (`RealtimeBaseURLOverride`, không phải giá trị đã resolve), để "để trống là
-> tự suy ra" luôn trống và mỗi lần Save không vô tình ghi đè URL trần.
+> tự suy ra" luôn trống và mỗi lần Save không vô tình ghi đè URL trần. Quy tắc
+> này KHÔNG áp cho qwen: qwen giữ `base_url` riêng trong sub-object của nó và
+> không bao giờ suy ra từ `llm_base_url`.
 
 ```json
 "realtime": {
   "enabled": true,
   "provider": "gemini",
   "gemini": { "model": "gemini-3.1-flash-live-preview", "voice": "Kore", "thinking_level": "MINIMAL" },
-  "openai": { "model": "gpt-realtime-2", "voice": "alloy", "reasoning_effort": "minimal" }
+  "openai": { "model": "gpt-realtime-2", "voice": "alloy", "reasoning_effort": "minimal" },
+  "qwen": { "api_key": "sk-…", "base_url": "wss://…", "model": "qwen-omni-turbo-realtime", "voice": "Cherry" }
 }
 ```
 
 Knob reasoning (`thinking_level` / `reasoning_effort`) default về mức **rẻ nhất**
 (`MINIMAL` / `minimal`), không phải mức max của provider — muốn reasoning sâu hơn
-thì set tường minh. Các knob KHÔNG có trong block (turn detection, session
-resumption, memory, summarizer) vẫn chỉ theo env/default.
+thì set tường minh. Qwen **không có** knob reasoning/thinking, nên web ẩn
+selector Reasoning khi provider là qwen. Các knob KHÔNG có trong block (turn
+detection, session resumption, memory, summarizer) vẫn chỉ theo env/default.
 
 **Filter chống leak CoT.** Trên `gemini-3.1-flash-live-preview` KHÔNG tắt được
 thinking: `thinking_level=MINIMAL` lẫn `thinking_budget=0` đều được chấp nhận
@@ -370,6 +411,12 @@ answer thật không bị nuốt), draft trong ngoặc kép, mảnh plan vụn, 
 gần-trùng câu đã giữ (CJK token theo từng ký tự). Mỗi câu bị drop đều log
 `CoT leak dropped`.
 
+Đường agent chính (reply openclaw/hermes nói qua os-server) có bản port Go của
+filter này — `os/services/server/agent/delivery/http/cot_leak_filter.go` (thêm
+TRIGGER identifier snake_case cho corpus leak DeepSeek); xem
+`docs/vi/flow-monitor_vi.md` § "CoT-leak filter (đường agent)". Harden bên nào
+thì nhớ sync bên kia.
+
 ### Biến môi trường (`os/hal/config.py`)
 
 Mỗi knob có thể bị `HAL_*` env override (thắng block, và là đường cho dev-box):
@@ -377,7 +424,7 @@ Mỗi knob có thể bị `HAL_*` env override (thắng block, và là đường
 | Biến | Mặc định | Ghi chú |
 |------|----------|---------|
 | `HAL_REALTIME_ENABLED` | `true` | Cổng tổng cho pipeline realtime |
-| `HAL_REALTIME_PROVIDER` | `gemini` | `none` \| `gemini` \| `openai` |
+| `HAL_REALTIME_PROVIDER` | `gemini` | `none` \| `gemini` \| `openai` \| `qwen` |
 | `HAL_REALTIME_TURN_DETECTION` | `off` | `server_vad` \| `semantic_vad` \| `off` (Gemini: off = activity detection thủ công) |
 | `HAL_REALTIME_RECV_QUEUE_TIMEOUT_S` | `8.0` | Số giây tối đa `receive()` chờ output event kế tiếp trước khi kết thúc lượt im lặng (fallback sang main agent) |
 | `HAL_REALTIME_REQUIRE_TRANSCRIPT` | `true` | Không bao giờ commit turn empty-STT lên model. Giọng thật mà nova-3 miss (câu ngắn) vẫn là voiced nên qua hết guard VAD/Silero, commit audio thô khiến model bịa câu trả lời cho khoảng im lặng (lời chào chung chung, thường kèm tên không ai nói). Khi `true`, mọi turn empty-STT bị bỏ bất kể duration/voicing — im còn hơn trả lời sai. Đặt `false` để quay về đường audio-only gated bằng Silero bên dưới. |
@@ -401,6 +448,10 @@ Mỗi knob có thể bị `HAL_*` env override (thắng block, và là đường
 | `HAL_OPENAI_REALTIME_VOICE` | `alloy` | |
 | `HAL_OPENAI_REALTIME_BASE_URL` | `<llm_base_url>/ws/openai` | |
 | `HAL_OPENAI_REASONING_EFFORT` | `minimal` | `minimal` \| `low` \| `medium` \| `high` \| `xhigh` — default rẻ (trước là `xhigh`) |
+| `DASHSCOPE_API_KEY` | — | Key Qwen (DashScope); **không** fallback về `llm_api_key` — chỉ đọc `realtime.qwen.api_key` khi env trống |
+| `HAL_QWEN_REALTIME_BASE_URL` | — | WS host DashScope (`wss://<workspace-host>/api-ws/v1/realtime`); **không** fallback về `llm_base_url` — chỉ đọc `realtime.qwen.base_url` khi env trống |
+| `HAL_QWEN_REALTIME_MODEL` | `qwen-omni-turbo-realtime` | |
+| `HAL_QWEN_REALTIME_VOICE` | `Cherry` | Cherry \| Serena \| Ethan \| Chelsie |
 | `HAL_REALTIME_MEMORY_PATH` | `<workspace>/realtime/memory.jsonl` | |
 | `HAL_REALTIME_MAX_MEMORY_ENTRIES` / `_TRIM_KEEP` | `1000` / `500` | |
 | `HAL_REALTIME_SUMMARIZER_ENABLED` | `true` | |
@@ -414,6 +465,7 @@ Mỗi knob có thể bị `HAL_*` env override (thắng block, và là đường
 | `voice_agent/base.py` | Agent trừu tượng: contract 2-thread/queue, `receive()` |
 | `voice_agent/gemini_live.py` | Provider Gemini Live (IO loop asyncio) |
 | `voice_agent/openai_realtime.py` | Provider OpenAI Realtime (sync, connection serialize bằng lock) |
+| `voice_agent/qwen_realtime.py` | Provider Qwen Omni Realtime (sync, `websockets.sync.client` thô, schema beta OpenAI qua DashScope; bảng giá `_QWEN_RATES` + log `qwen_usage.log`) |
 | `context_manager/{base,openclaw,hermes}.py` | Lắp ráp prompt + memory + skills theo gateway |
 | `summarizer.py` | Summarizer memory dựa trên Anthropic |
 | `config.py` | Model config provider (`GeminiConfig`, `OpenAIConfig`) |
