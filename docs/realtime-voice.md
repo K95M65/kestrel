@@ -145,17 +145,31 @@ sends **at most one image per turn** and **none within `HAL_GEMINI_VISION_MIN_IN
 
 **Frame handoff on delegate / timeout.** When a `look` turn ends up delegating or
 falling back to the main agent (most importantly when Gemini times out *mid*-look),
-the frame `look` already captured is handed to the main agent **by file path** so
-it answers from that exact image instead of taking a fresh snapshot (faster, and
-it answers about the moment the user pointed at). `_handle_look_call` persists the
-frame to `_SNAPSHOT_DIR` and records it in `app_state.realtime_look_frame_path`;
+the frame `look` already captured is handed to the main agent so it answers from
+that exact image instead of taking a fresh snapshot (faster, and it answers about
+the moment the user pointed at). `_handle_look_call` persists the frame to
+`_SNAPSHOT_DIR` and records it in `app_state.realtime_look_frame_path`;
 `turn_dispatch._take_vision_handoff()` consumes it **once per turn** (strictly: a
 handled turn that already used it clears it so a later delegate can't pick up a
 stale image) and, when fresh (`HAL_GEMINI_VISION_HANDOFF_MAX_AGE_S`, default 20s),
-prepends a `[vision-image] <path>` line to the message sent to the agent. The
-`camera` skill reads that path verbatim and skips `/camera/snapshot`. The handoff
-carries the **path**, not the image bytes — HAL and the agent share the
-filesystem, so a path avoids bloating the turn channel. If the timeout happens
+prepends a `[vision-image] <path>` hint line to the message and ships the frame
+as base64 in the sensing POST's `image` field (the path in the hint is
+traceability only — telling the agent to *read* it does not work on a text-only
+main model, whose runtime silently drops tool-read image blocks; that was the
+"describes a PCB while holding a cracker box" hallucination). What os-server
+then does with the image is decided by the **describe-first gate** in
+`internal/vision` (see `server/sensing/delivery/http/handler.go`): when the
+active main model does NOT declare image input in the model catalog (the
+Auto-AI case — a raw attachment 404s at the smart-agent-router with "No
+endpoints found that support image input"), the frame is described by the
+catalog's `default_image_model` (qwen — the same model openclaw's `imageModel`
+uses for Telegram photos) and the agent receives an `[image description] …`
+text line instead; when the catalog says the model takes images, the raw
+attachment is forwarded directly. The gate re-reads the catalog every 30 min,
+so a backend catalog flip migrates devices automatically. The same gate covers
+web-monitor-chat image uploads — both image sources converge on this one
+handler. The `camera` skill instructs the agent to answer from the
+description/attachment and skip `/camera/snapshot`. If the timeout happens
 *before* the frame is captured, there's nothing to hand off and the agent
 snapshots normally.
 

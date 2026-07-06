@@ -141,17 +141,29 @@ thêm vào là không đáng kể so với audio của turn. Frame 768px ≈ và
 
 **Bàn giao frame khi delegate / timeout.** Khi một turn `look` rốt cuộc delegate
 hoặc rớt xuống main agent (quan trọng nhất là khi Gemini timeout *giữa* lúc look),
-frame mà `look` đã chụp được bàn giao cho main agent **bằng đường dẫn file** để nó
-trả lời từ đúng ảnh đó thay vì chụp lại (nhanh hơn, và trả lời đúng khoảnh khắc
-user chỉ vào). `_handle_look_call` lưu frame vào `_SNAPSHOT_DIR` và ghi vào
-`app_state.realtime_look_frame_path`; `turn_dispatch._take_vision_handoff()` tiêu thụ
-nó **một lần mỗi turn** (turn đã handled dùng rồi thì clear luôn để delegate sau
-không nhặt phải ảnh cũ) và, khi còn tươi (`HAL_GEMINI_VISION_HANDOFF_MAX_AGE_S`,
-mặc định 20s), chèn dòng `[vision-image] <path>` vào message gửi cho agent. Skill
-`camera` đọc đúng path đó và bỏ qua `/camera/snapshot`. Handoff mang theo **path**,
-không phải bytes ảnh — HAL và agent chung filesystem nên dùng path để khỏi phình
-kênh turn. Nếu timeout xảy ra *trước khi* kịp chụp thì không có gì để bàn giao,
-agent chụp như bình thường.
+frame mà `look` đã chụp được bàn giao cho main agent để nó trả lời từ đúng ảnh
+đó thay vì chụp lại (nhanh hơn, và trả lời đúng khoảnh khắc user chỉ vào).
+`_handle_look_call` lưu frame vào `_SNAPSHOT_DIR` và ghi vào
+`app_state.realtime_look_frame_path`; `turn_dispatch._take_vision_handoff()`
+tiêu thụ nó **một lần mỗi turn** (turn đã handled dùng rồi thì clear luôn để
+delegate sau không nhặt phải ảnh cũ) và, khi còn tươi
+(`HAL_GEMINI_VISION_HANDOFF_MAX_AGE_S`, mặc định 20s), chèn dòng hint
+`[vision-image] <path>` vào message VÀ gửi frame dạng base64 trong field
+`image` của sensing POST (path trong hint chỉ để truy vết — bảo agent *đọc*
+file không chạy được với main model text-only: runtime drop âm thầm image
+block từ tool read; chính là vụ ảo giác "tả PCB trong khi cầm hộp bánh").
+os-server xử lý ảnh theo **gate describe-first** trong `internal/vision` (xem
+`server/sensing/delivery/http/handler.go`): khi main model đang active KHÔNG
+khai image input trong catalog model (trường hợp Auto-AI — attachment thô sẽ
+404 tại smart-agent-router: "No endpoints found that support image input"),
+frame được `default_image_model` của catalog (qwen — cùng model mà `imageModel`
+của openclaw dùng cho ảnh Telegram) tả thành chữ và agent nhận dòng
+`[image description] …`; còn khi catalog nói model nhận ảnh, attachment thô
+được forward thẳng. Gate đọc lại catalog mỗi 30 phút, nên BE flip catalog là
+fleet tự chuyển. Gate này cũng cover luôn ảnh upload từ web monitor chat — cả
+hai nguồn ảnh hội tụ về một handler. Skill `camera` dặn agent trả lời từ mô
+tả/attachment và bỏ qua `/camera/snapshot`. Nếu timeout xảy ra *trước khi* kịp
+chụp thì không có gì để bàn giao, agent chụp như bình thường.
 
 ## Các provider
 
