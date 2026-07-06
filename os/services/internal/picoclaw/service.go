@@ -93,6 +93,9 @@ type PicoclawService struct {
 	// any inbound frame.
 	sessionUUID atomic.Value // string
 
+	// lastCompressAt is PicoClaw's most recent compress_at_tokens
+	lastCompressAt atomic.Int64
+
 	// Pending sensing events buffered while busy.
 	pendingEventsMu sync.Mutex
 	pendingEvents   []pendingEvent

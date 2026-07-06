@@ -107,11 +107,15 @@ func (s *PicoclawService) CompactSession(sessionKey string) error {
 	return nil
 }
 
-// ShouldRotateSession rotates on real session token count (see
-// domain.AgentGateway). PicoClaw reports the true session size, so the turn
-// count is unused. Mirrors the legacy 150k generic threshold.
+const rotateCompressRatioPercent = 75
+const picoclawFallbackTokenThreshold = 150_000
+
+// ShouldRotateSession rotates on real session token count (see domain.AgentGateway).
 func (s *PicoclawService) ShouldRotateSession(totalTokens, _ int) bool {
-	return totalTokens > 150_000
+	if compressAt := int(s.lastCompressAt.Load()); compressAt > 0 {
+		return totalTokens >= compressAt*rotateCompressRatioPercent/100
+	}
+	return totalTokens > picoclawFallbackTokenThreshold
 }
 
 // NewSession — PicoClaw has no sessions.new RPC. Dropping the local session id
