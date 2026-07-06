@@ -58,28 +58,25 @@ usage_logger = logging.getLogger("hal.realtime.usage.qwen")
 # Qwen realtime pricing, USD per 1M tokens, keyed (direction, modality), PER
 # MODEL — same shape as gemini_live._GEMINI_RATES so the cost lines compare 1:1.
 #
-# Source: Alibaba Cloud Model Studio intl (Singapore). The official pricing
-# table sits behind the console (docs say "see the console for details"), and
-# public mirrors (typingmind/pricepertoken, checked 2026-07-06) list a single
-# blended rate for qwen-omni-turbo-realtime: $0.27/1M input, $1.07/1M output,
-# with NO per-modality split published. Until the console shows a split, both
-# modalities carry the blended rate — if the console bills audio at a premium,
-# bump ("in"/"out", "AUDIO") here and the log history stays reinterpretable
-# from the logged per-modality token counts. Audio→token conversion for this
-# model: 25 tokens per second, both directions (Model Studio omni docs).
+# BILL-VERIFIED 2026-07-06 (consumedetailbill CSV, intl/Singapore list prices).
+# Alibaba publishes none of this on a public page — the widely-mirrored
+# "$0.27 in / $1.07 out" turns out to be only turbo's two CHEAPEST line items
+# (text_input_token / purein_text_output_token); audio carries a large premium.
+# Output on audio-modality turns bills as ONE line item covering text+audio
+# tokens (turbo `multi_output_token` $8.89, 3.5 `omni_audio_output_token`
+# $62.00), so both out cells carry that rate; turbo's $1.07
+# purein_text_output only applies to text-only responses (not our turn shape).
+# Search bills separately: $0.01 per search request (search_count), not
+# modelled here. Audio→token conversion: turbo 25 tok/s both ways; 3.5 ≈7
+# tok/s in, ≈12.5 tok/s out (probe-matched).
 _QWEN_RATES: dict[str, dict[tuple[str, str], float]] = {
     "qwen-omni-turbo-realtime": {
-        ("in", "TEXT"): 0.27, ("in", "AUDIO"): 0.27,
-        ("out", "TEXT"): 1.07, ("out", "AUDIO"): 1.07,
+        ("in", "TEXT"): 0.27, ("in", "AUDIO"): 4.44,
+        ("out", "TEXT"): 8.89, ("out", "AUDIO"): 8.89,
     },
-    # UNVERIFIED — no public per-token rate for 3.5-plus-realtime (console-only,
-    # tiered); seeded with the turbo blended rate so turns resolve explicitly.
-    # Calibrate from the Model Studio console Expenses page against the logged
-    # per-modality token counts, then fix these numbers. Audio→token conversion
-    # differs from turbo: 3.5 input ≈7 tok/s, output ≈12.5 tok/s (probe-matched).
     "qwen3.5-omni-plus-realtime": {
-        ("in", "TEXT"): 0.27, ("in", "AUDIO"): 0.27,
-        ("out", "TEXT"): 1.07, ("out", "AUDIO"): 1.07,
+        ("in", "TEXT"): 2.10, ("in", "AUDIO"): 16.50,
+        ("out", "TEXT"): 62.00, ("out", "AUDIO"): 62.00,
     },
 }
 # Unknown model → most expensive table (cost ceiling, mirrors gemini_live).

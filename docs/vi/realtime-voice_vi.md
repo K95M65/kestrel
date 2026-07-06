@@ -273,8 +273,8 @@ không bao giờ báo thiếu).
 |---|---|---|---|---|---|---|
 | `gemini-2.5-flash-native-audio` | $0.50 | $3.00 | $2.00 | $12.00 | 25 tok/s | ai.google.dev pricing (verify 2026-06-29) |
 | `gemini-3.1-flash-live` | $0.75 | $3.00 | $4.50 | $12.00 | 25 tok/s | ai.google.dev pricing (verify 2026-06-29) |
-| `qwen-omni-turbo-realtime` | $0.27 | $0.27 | $1.07 | $1.07 | 25 tok/s in+out | mirror intl 2026-07-06 — một rate gộp in/out; không công bố tách modality |
-| `qwen3.5-omni-plus-realtime` | $0.27 | $0.27 | $1.07 | $1.07 | ~7 tok/s in, ~12.5 tok/s out | **CHƯA VERIFY** — chỉ có trong console (tiered); seed tạm rate turbo. Calibrate: console Expenses ÷ token trong log, rồi sửa `_QWEN_RATES` |
+| `qwen-omni-turbo-realtime` | $0.27 | $4.44 | $8.89* | $8.89* | 25 tok/s in+out | bill CSV consume-detail (verify 2026-07-06); *output turn có audio bill gộp text+audio (`multi_output_token`); response text-only bill $1.07 (`purein_text_output`) |
+| `qwen3.5-omni-plus-realtime` | $2.10 | $16.50 | $62.00* | $62.00* | ~7 tok/s in, ~12.5 tok/s out | bill CSV consume-detail (verify 2026-07-06); *một line item `omni_audio_output_token` bao cả text+audio của response. Web search tính thêm $0.01/lần search |
 
 Cơ cấu chi phí giống nhau ở mọi provider: `in_text` chiếm áp đảo (system
 prompt ~7-10k token + context session tích lũy bị re-bill mỗi turn, phình dần

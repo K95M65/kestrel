@@ -287,8 +287,8 @@ table (cost ceiling, never an under-report).
 |---|---|---|---|---|---|---|
 | `gemini-2.5-flash-native-audio` | $0.50 | $3.00 | $2.00 | $12.00 | 25 tok/s | ai.google.dev pricing (verified 2026-06-29) |
 | `gemini-3.1-flash-live` | $0.75 | $3.00 | $4.50 | $12.00 | 25 tok/s | ai.google.dev pricing (verified 2026-06-29) |
-| `qwen-omni-turbo-realtime` | $0.27 | $0.27 | $1.07 | $1.07 | 25 tok/s in+out | intl mirrors 2026-07-06 — single blended in/out rate; no modality split published |
-| `qwen3.5-omni-plus-realtime` | $0.27 | $0.27 | $1.07 | $1.07 | ~7 tok/s in, ~12.5 tok/s out | **UNVERIFIED** — console-only (tiered); seeded with the turbo rate. Calibrate: console Expenses ÷ logged token counts, then fix `_QWEN_RATES` |
+| `qwen-omni-turbo-realtime` | $0.27 | $4.44 | $8.89* | $8.89* | 25 tok/s in+out | consume-detail bill CSV (verified 2026-07-06); *audio-modality output bills text+audio together (`multi_output_token`); text-only responses bill $1.07 (`purein_text_output`) |
+| `qwen3.5-omni-plus-realtime` | $2.10 | $16.50 | $62.00* | $62.00* | ~7 tok/s in, ~12.5 tok/s out | consume-detail bill CSV (verified 2026-07-06); *one `omni_audio_output_token` line item covers the response's text+audio. Web search bills $0.01 per search request on top |
 
 Cost anatomy is the same on every provider: `in_text` dominates (the ~7-10k
 token system prompt plus accumulated session context is re-billed every turn
