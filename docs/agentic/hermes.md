@@ -460,9 +460,16 @@ during install) and does three things, in order:
      `model: qwen/qwen3.6-plus`, `timeout: 120`, `download_timeout: 30`, `extra_body: {}`
      — the image-understanding model, routed through the same autonomous provider.
    - `.agent.image_input_mode = "auto"` — lets the agent decide when to attach images.
-   - Only `.auxiliary.vision` and `.agent.image_input_mode` are written; **other keys
-     under `.auxiliary`/`.agent` are preserved** (both are coerced from a reset-left
-     scalar to a map first, same as `.model`).
+   - `.approvals.mode = "off"` — disables Hermes' command-approval prompts (tirith /
+     dangerous-command cards) entirely. The device runs unattended on voice + chat
+     channels, where an approval card is a dead end that stalls the turn (product
+     decision). Hermes' hardline blocklist still applies. Written force-quoted
+     (`style="double"`): yq v4 (YAML 1.2) emits a bare `off`, but Hermes parses
+     config.yaml with PyYAML (YAML 1.1) where bare `off` is boolean `False` — the
+     mode never matches and prompts silently stay on.
+   - Only `.auxiliary.vision`, `.agent.image_input_mode`, and `.approvals.mode` are
+     written; **other keys under `.auxiliary`/`.agent`/`.approvals` are preserved**
+     (each is coerced from a reset-left scalar to a map first, same as `.model`).
 3. **Syncs per-device values** from `config.json` (only non-empty fields, so
    unconfigured channels are untouched):
 
