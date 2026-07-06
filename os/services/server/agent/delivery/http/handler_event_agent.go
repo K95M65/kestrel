@@ -328,6 +328,9 @@ func (h *AgentHandler) handleAgentStreamEvent(evt domain.WSEvent) error {
 						"total_tokens":       fmt.Sprintf("%d", u.TotalTokens),
 					},
 				})
+
+				// Auto-new-session parity with the chat.history branch below.
+				h.maybeAutoNewSession(h.agentGateway.GetSessionKey(), u.TotalTokens, flowRunID)
 			} else {
 				// OpenClaw lifecycle_end does not include usage. Fetch from chat.history instead.
 				capturedFlowRunID := flowRunID
