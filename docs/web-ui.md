@@ -330,7 +330,11 @@ Turn Pipeline grouping behavior:
 
 ### 5.5 Logs Section
 
-- Dedicated runtime log panels for HAL, OS (os-server), and OpenClaw service logs.
+- Dedicated runtime log panels: HAL, OS (os-server), Buddy, plus **Agent** and **Agent Service** (source ids `openclaw` / `openclaw-service`).
+- The **Agent**/**Agent Service** tabs are runtime-aware — the backend (`resolveLogSource` in `server/logs.go`) points them at whichever agentic backend is active:
+  - openclaw: `Agent` → `/var/log/openclaw/agent.log` (falls back to newest `/tmp/openclaw/openclaw-*.log`), `Agent Service` → `journal:openclaw.service`
+  - hermes: `Agent` → `/root/.hermes/logs/agent.log`, `Agent Service` → `journal:hermes-gateway.service`
+  - picoclaw: `Agent` → `/root/.picoclaw/logs/gateway.log`, `Agent Service` → `journal:picoclaw.service`
 - Each panel streams via SSE (`GET /api/logs/stream?source=<source>`) with fallback polling.
 - Supports level filtering (ALL/DEBUG/INFO/WARN/ERROR) and text/regex search.
 

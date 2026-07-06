@@ -326,7 +326,11 @@ Hành vi gom nhóm Turn Pipeline:
 
 ### 5.5 Logs Section
 
-- Tab log runtime cho HAL, OS (os-server), và OpenClaw service logs.
+- Tab log runtime: HAL, OS (os-server), Buddy, cùng **Agent** và **Agent Service** (source id `openclaw` / `openclaw-service`).
+- Tab **Agent**/**Agent Service** là runtime-aware — backend (`resolveLogSource` trong `server/logs.go`) trỏ chúng tới backend agentic nào đang chạy:
+  - openclaw: `Agent` → `/var/log/openclaw/agent.log` (fallback file `/tmp/openclaw/openclaw-*.log` mới nhất), `Agent Service` → `journal:openclaw.service`
+  - hermes: `Agent` → `/root/.hermes/logs/agent.log`, `Agent Service` → `journal:hermes-gateway.service`
+  - picoclaw: `Agent` → `/root/.picoclaw/logs/gateway.log`, `Agent Service` → `journal:picoclaw.service`
 - Mỗi panel stream qua SSE (`GET /api/logs/stream?source=<source>`) với fallback polling.
 - Hỗ trợ filter theo level (ALL/DEBUG/INFO/WARN/ERROR) và tìm kiếm text/regex.
 
