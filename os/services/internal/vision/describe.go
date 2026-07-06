@@ -171,8 +171,9 @@ func Describe(ctx context.Context, cfg *config.Config, imageB64 string, question
 		question = question[:500]
 	}
 
+	model := imageModel()
 	body, err := json.Marshal(map[string]any{
-		"model":      imageModel(),
+		"model":      model,
 		"max_tokens": 500,
 		"messages": []any{
 			map[string]any{
@@ -208,15 +209,15 @@ func Describe(ctx context.Context, cfg *config.Config, imageB64 string, question
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("describe request: %w", err)
+		return "", fmt.Errorf("describe request (model=%s): %w", model, err)
 	}
 	defer resp.Body.Close()
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return "", fmt.Errorf("read describe response: %w", err)
+		return "", fmt.Errorf("read describe response (model=%s): %w", model, err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("describe status %d: %s", resp.StatusCode, truncate(string(respBody), 300))
+		return "", fmt.Errorf("describe status %d (model=%s): %s", resp.StatusCode, model, truncate(string(respBody), 300))
 	}
 
 	var out struct {
