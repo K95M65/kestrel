@@ -45,19 +45,21 @@ const catalogTTL = 30 * time.Minute
 // DescribeTimeout bounds the TOTAL describe budget across all attempts. It
 // runs inline in the sensing handler before the agent forward, so it delays
 // the turn by at most this long. Keep it under HAL's image-turn POST timeout
-// (65s in sensing_sender.py) so the HAL client outlives describe + agent
+// (90s in sensing_sender.py) so the HAL client outlives describe + agent
 // forward.
-const DescribeTimeout = 55 * time.Second
+const DescribeTimeout = 80 * time.Second
 
 // Per-attempt timeouts for DescribeWithRetry; they sum to DescribeTimeout.
-// Sized from device measurements 2026-07-06 (Go client, 768px frame, 5 runs):
-// 12.1–19.6s — the tail sits right AT the old 20s cap, and the old 15s second
-// attempt was below the ~17s median, so once attempt 1 timed out attempt 2
-// was near-guaranteed to fail too (observed 4/4 real-flow failures while the
-// endpoint answered every probe). 30s clears the slow tail with margin; the
-// 25s retry still gets a fresh connection for genuinely hung requests while
-// staying above median latency.
-var describeAttemptTimeouts = [...]time.Duration{30 * time.Second, 25 * time.Second}
+// Sized from device measurements 2026-07-06 (Go client, 768px frame, same
+// endpoint): latency is CONTENT-dependent — scene images answer in 8–20s,
+// but TEXT-DENSE images (the "read this label" use case) take 23–38s because
+// qwen3.6-plus reasons over the text; /no_think and max_tokens caps barely
+// help. The old 20s/15s (and 30s/25s) ladders sat inside that band, so every
+// text-reading turn timed out while probes with scene images passed. 45s
+// clears the measured text-dense tail with margin; the 35s retry still gets
+// a fresh connection for genuinely hung requests while staying above the
+// text-dense floor.
+var describeAttemptTimeouts = [...]time.Duration{45 * time.Second, 35 * time.Second}
 
 // Emphasis on the user's request so the description surfaces what the answer
 // needs (label text, object identity, counts) instead of a generic caption.
