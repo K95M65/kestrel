@@ -49,10 +49,12 @@ type picoToolCall struct {
 
 // picoUsage is PicoClaw's context_usage block (only present on the final frame).
 type picoUsage struct {
-	UsedTokens    int `json:"used_tokens"`
-	TotalTokens   int `json:"total_tokens"`
-	HistoryTokens int `json:"history_tokens"`
-	UsedPercent   int `json:"used_percent"`
+	UsedTokens        int `json:"used_tokens"`
+	TotalTokens       int `json:"total_tokens"`
+	HistoryTokens     int `json:"history_tokens"`
+	CompressAtTokens  int `json:"compress_at_tokens"`
+	SummarizeAtTokens int `json:"summarize_at_tokens"`
+	UsedPercent       int `json:"used_percent"`
 }
 
 func (u *picoUsage) toDomain() *domain.TokenUsage {
@@ -66,8 +68,10 @@ func (u *picoUsage) toDomain() *domain.TokenUsage {
 	// the running context size onto TotalTokens and the carried history onto
 	// InputTokens so the monitor's token gauge has meaningful numbers.
 	return &domain.TokenUsage{
-		InputTokens: u.HistoryTokens,
-		TotalTokens: u.UsedTokens,
+		InputTokens:       u.HistoryTokens,
+		TotalTokens:       u.UsedTokens,
+		CompressAtTokens:  u.CompressAtTokens,
+		SummarizeAtTokens: u.SummarizeAtTokens,
 	}
 }
 
@@ -244,7 +248,12 @@ func (s *PicoclawService) emitFinal(f picoFrame, dispatch func(domain.WSEvent)) 
 		"final", truncRunes(finalText, 500),
 	}
 	if f.Payload.Usage != nil {
-		logArgs = append(logArgs, "usedTokens", f.Payload.Usage.UsedTokens, "usedPercent", f.Payload.Usage.UsedPercent)
+		logArgs = append(logArgs,
+			"usedTokens", f.Payload.Usage.UsedTokens,
+			"compressAt", f.Payload.Usage.CompressAtTokens,
+			"summarizeAt", f.Payload.Usage.SummarizeAtTokens,
+			"usedPercent", f.Payload.Usage.UsedPercent)
+		s.lastCompressAt.Store(int64(f.Payload.Usage.CompressAtTokens))
 	}
 	slog.Info("picoclaw <<< final answer", logArgs...)
 
