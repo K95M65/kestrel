@@ -337,7 +337,12 @@ Hành vi gom nhóm Turn Pipeline:
 Giao diện chat tương tác với agent. Layout: sidebar (danh sách hội thoại) + vùng chat chính.
 
 **Hội thoại**
-- Nhiều hội thoại lưu trong localStorage (tối đa 50, mỗi cái 200 tin nhắn)
+- Nhiều hội thoại lưu trong localStorage (tối đa 50, mỗi cái 200 tin nhắn).
+  Ảnh đính kèm quá lớn so với quota localStorage nên data-URL bị strip lúc
+  save và được lưu riêng trong **IndexedDB** (`lib/chatImageStore.ts`, key
+  theo message id); một effect lúc mount gắn lại ảnh sau reload và prune các
+  entry mà message không còn tồn tại. Xóa hội thoại (hoặc Clear/history-TTL)
+  cũng xóa luôn ảnh đã lưu.
 - Sidebar: tìm kiếm, ghim, đổi tên (double-click), xóa (xác nhận 2 lần), xuất TXT
 - Nhóm theo ngày: Today / Yesterday / This week / Older, ghim lên đầu. Mỗi header nhóm có đường kẻ mảnh và số lượng item.
 - Mỗi dòng hiển thị một chấm avatar màu (hash từ id hội thoại, theo palette), tiêu đề, nhãn thời gian tương đối đã bản địa hóa (`vừa xong` / `5 phút` / `2 giờ` / `hôm qua` / `3 ngày`, ẩn khi hover), và preview tin nhắn cuối. Hội thoại đang mở được đánh dấu bằng thanh dọc amber bên trái.
@@ -347,7 +352,7 @@ Giao diện chat tương tác với agent. Layout: sidebar (danh sách hội tho
 **Nhập tin nhắn**
 - Textarea, Shift+Enter xuống dòng, Enter gửi
 - Đính kèm file/ảnh (tối đa 10 MB): nút, kéo thả, dán từ clipboard
-- Gửi qua `POST /api/sensing/event` với `type: "web_chat"`. Handler mark run qua `MarkWebChatRun(runID)` để reply của agent bị suppress TTS (chỉ hiện trong UI này) và bỏ qua wake greeting / opening filler. Web chat có image attach: lưu vào `/tmp/web-chat-*.jpg` và gắn vào tin nhắn agent qua `[image: <path>]`.
+- Gửi qua `POST /api/sensing/event` với `type: "web_chat"`. Handler mark run qua `MarkWebChatRun(runID)` để reply của agent bị suppress TTS (chỉ hiện trong UI này) và bỏ qua wake greeting / opening filler. Ảnh đính kèm đi trong field `image` của payload (raw base64) và qua gate describe-first trong `internal/vision` (xem `docs/realtime-voice.md`, phần "Bàn giao frame"): main model text-only nhận dòng `[image description]` do vision model của catalog tả, model có vision nhận attachment thô.
 
 **Streaming real-time**
 - **Thinking indicator**: khối tím thu gọn được, hiển thị reasoning tokens của LLM khi stream (`thinking` events). Click mở rộng toàn bộ (max-height 200px, scroll). Tự ẩn khi response hoàn tất.

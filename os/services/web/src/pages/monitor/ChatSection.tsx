@@ -6,6 +6,9 @@ import {
 } from "lucide-react";
 import { API } from "./types";
 import { getDeviceConfig } from "@/lib/api";
+import {
+  putChatImage, getAllChatImages, deleteChatImages, pruneChatImages, clearChatImages,
+} from "@/lib/chatImageStore";
 import { useT, setLanguage } from "@/lib/i18n";
 import type { DisplayEvent, MonitorEvent } from "./types";
 
@@ -370,7 +373,9 @@ interface ChatMessage {
   time: string;
   ts?: number;         // epoch ms — used to age-gate pending-run recovery after reload
   date?: string;       // YYYY-MM-DD for date separators
-  imageUrl?: string;   // data: URL for attached images (not persisted to save space)
+  imageUrl?: string;   // data: URL for attached images — stripped from localStorage
+                       // (quota), persisted separately in IndexedDB (chatImageStore)
+                       // and re-attached by the mount rehydrate effect
   fileName?: string;   // original filename for non-image files
   fileSize?: number;   // bytes
   runId?: string;
@@ -452,7 +457,9 @@ function saveConvos(convos: Conversation[]) {
   try {
     const trimmed = convos.slice(0, MAX_CONVOS).map((c) => ({
       ...c,
-      // Strip large data from localStorage (imageUrl data: URLs are too large)
+      // Strip large data from localStorage (imageUrl data: URLs are too large).
+      // The images themselves live in IndexedDB (chatImageStore) keyed by
+      // message id and are re-attached on mount.
       messages: c.messages.slice(-MAX_MESSAGES).map(({ imageUrl: _, ...m }) => m),
       // fileName/fileSize are kept — they're small strings/numbers
     }));
@@ -469,6 +476,7 @@ function clearLocalChatHistory() {
     localStorage.removeItem(CONVOS_KEY);
     localStorage.removeItem(ACTIVE_KEY);
   } catch {}
+  void clearChatImages();
 }
 
 function loadActiveId(): string | null {
@@ -524,6 +532,32 @@ export function ChatSection({ events, isActive }: Props) {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  // Rehydrate image attachments from IndexedDB — saveConvos() strips
+  // `imageUrl` from localStorage (quota), so after a reload the thumbnails
+  // are gone until this re-attaches them by message id. Also prunes stored
+  // images whose message no longer exists in any conversation (trimmed by
+  // MAX_MESSAGES/MAX_CONVOS, deleted convos, or TTL-dropped history) —
+  // fresh entries are age-guarded inside pruneChatImages, so an image
+  // written moments ago for a not-yet-saved message survives.
+  useEffect(() => {
+    let cancelled = false;
+    getAllChatImages().then((stored) => {
+      if (cancelled) return;
+      // Keep-set from the persisted snapshot (same source the state was
+      // initialized from) — computed outside the updater to keep it pure.
+      const keepIds = new Set(loadConvos().flatMap((c) => c.messages.map((m) => m.id)));
+      void pruneChatImages(keepIds);
+      if (stored.size === 0) return;
+      setConvos((prev) => prev.map((c) => ({
+        ...c,
+        messages: c.messages.map((m) =>
+          !m.imageUrl && stored.has(m.id) ? { ...m, imageUrl: stored.get(m.id) } : m,
+        ),
+      })));
+    });
+    return () => { cancelled = true; };
+  }, []);
   const [editTitle, setEditTitle] = useState("");
   const [search, setSearch] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -1150,7 +1184,11 @@ export function ChatSection({ events, isActive }: Props) {
       setTimeout(() => setConfirmDeleteId((prev) => prev === id ? null : prev), 3000);
       return;
     }
-    setConvos((prev) => prev.filter((c) => c.id !== id));
+    setConvos((prev) => {
+      const gone = prev.find((c) => c.id === id);
+      if (gone) void deleteChatImages(gone.messages.map((m) => m.id));
+      return prev.filter((c) => c.id !== id);
+    });
     if (activeId === id) setActiveId(null);
     setConfirmDeleteId(null);
   };
@@ -1304,6 +1342,9 @@ export function ChatSection({ events, isActive }: Props) {
       fileName: (!fileIsImage && fileName) ? fileName : undefined,
       fileSize: (!fileIsImage && fileSize) ? fileSize : undefined,
     };
+    // Persist the attachment out-of-band: localStorage strips imageUrl on
+    // save, IndexedDB keeps it so the thumbnail survives a reload.
+    if (filePreview) void putChatImage(userMsg.id, filePreview);
 
     setConvos((prev) =>
       prev.map((c) => {
@@ -1656,7 +1697,13 @@ export function ChatSection({ events, isActive }: Props) {
             <button
               onClick={() => {
                 if (confirm(`Delete all ${convos.filter((c) => !c.pinned).length} unpinned conversations?`)) {
-                  setConvos((prev) => prev.filter((c) => c.pinned));
+                  setConvos((prev) => {
+                    const goneIds = prev
+                      .filter((c) => !c.pinned)
+                      .flatMap((c) => c.messages.map((m) => m.id));
+                    void deleteChatImages(goneIds);
+                    return prev.filter((c) => c.pinned);
+                  });
                   setActiveId(null);
                 }
               }}
