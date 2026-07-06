@@ -30,9 +30,10 @@ which brain is active.
 > (`SetupAgent`, `RefreshModelsConfig` …) remain no-ops (§8) because provisioning
 > happens out-of-process in install.sh/presync. The exceptions are `EnsureOnboarding`
 > (`onboarding.go`, keeps the OS-managed blocks in SOUL/AGENTS/HEARTBEAT current),
-> `StartSkillWatcher` (`skill_watcher.go`, CDN skill auto-update), and identity
+> `StartSkillWatcher` (`skill_watcher.go`, CDN skill auto-update), identity
 > (`identity.go`: `WatchIdentity`/`UpdateIdentityName` read/write `IDENTITY.md` like
-> OpenClaw) — all real (§1.1, §8).
+> OpenClaw), and `ResetAgent` (`reset.go`, factory-reset wipe of `/root/.picoclaw` +
+> re-onboard) — all real (§1.1, §8).
 > Remaining gaps (an emotion-acknowledge hook, queue/steer pinning) are tracked
 > against the
 > [`adding-agent-runtime.md`](adding-agent-runtime.md) checklist — consult it before
@@ -272,14 +273,15 @@ switching back to openclaw restores them.
 
 Everything not on the PicoClaw hot path is a no-op so the single
 `domain.AgentGateway` interface is satisfied without inventing features the
-backend does not have: `SetupAgent`, WhatsApp pairing, `ResetAgent`,
+backend does not have: `SetupAgent`, WhatsApp pairing,
 `RefreshModelsConfig`, `FetchChatHistory`, `CompactSession`,
 the model watchers (`StartModelSync`/`StartPrimaryModelWatch`), `UpdatePrimaryModel`.
 (`AddChannel` / `RefreshChannelConfig` are NOT stubs — they return
 `domain.ErrChannelNotSupported` for unsupported channels, see §7; `EnsureOnboarding`
 (§1.1) and `StartSkillWatcher` (skill auto-update, §1.1) are real.) These are also
 real, not stubs: `RestartAgent` (restarts the `picoclaw` systemd unit via
-`restartPicoclawGateway`), `GetConfigJSON` (returns `/root/.picoclaw/config.json` —
+`restartPicoclawGateway`), `ResetAgent` (factory-reset wipe — see §8.2),
+`GetConfigJSON` (returns `/root/.picoclaw/config.json` —
 the structure file; secrets in `.security.yml` are never exposed),
 `WriteMCPEntry` / `RemoveMCPEntry` (MCP connectors — see §8.1), and
 `WatchIdentity` / `UpdateIdentityName` (`identity.go`) — PicoClaw's `IDENTITY.md` is
@@ -318,3 +320,35 @@ the named server (idempotent — `removed=false`, no restart, when absent) and l
 `tools.mcp.enabled` on so other wired servers keep loading. Both paths write
 `config.json` atomically (temp + rename, no chown — PicoClaw runs as root) under
 `mcpMu`, then `restartPicoclawGateway`. Secrets in `.security.yml` are never touched.
+
+### 8.2 Factory reset (`reset.go`)
+
+`ResetAgent` is the PicoClaw factory-reset wipe, called by
+`server/system/factoryreset.go` on the active gateway. Unlike OpenClaw (which keeps
+`identity/` + `device-key.json` and lets `SetupAgent` recreate `openclaw.json`) and
+Hermes (which resets `config.yaml`/`.env` in place and preserves `SOUL.md`),
+**PicoClaw preserves nothing**: its `config.json` + `.security.yml` are regenerated
+from the project `/root/config/config.json` by `presync.sh` on the next switch, so
+the reset wipes `/root/.picoclaw` **wholesale** and re-onboards a clean baseline.
+
+`wipePicoclawState()` runs four steps:
+
+1. **`systemctl stop picoclaw` + verify** — the gateway's systemd unit (written by
+   `install.sh`) sets `WorkingDirectory=/root/.picoclaw` and `Restart=always`, so it
+   holds the data dir open and would recreate files under it. An explicit stop
+   overrides `Restart=always` (it is not a crash), so the gateway stays down while we
+   wipe. `waitForPicoclawStop` polls `is-active` for up to 5s.
+2. **`systemctl disable picoclaw`** — a factory reset also wipes `/root/config/config.json`
+   and reboots into the **default (openclaw)** runtime, so PicoClaw must NOT auto-start.
+   `switch-runtime` re-enables it only when the user switches back.
+3. **`rm -rf /root/.picoclaw`** — config, `.security.yml`, workspace (persona/memory/
+   skills), sessions, and the **`.openclaw-migrated` marker** (so `presync.sh` §0
+   re-migrates persona/memory from OpenClaw on the next switch).
+4. **`picoclaw onboard`** (`HOME=/root`) — recreate a valid baseline (workspace +
+   baseline `config.json`/`.security.yml`). Non-fatal: the config is not correct until
+   `presync.sh` re-asserts the real model/channel wiring on the next switch, and
+   `install.sh` also onboards when `config.json` is absent, so a failure self-heals.
+
+The gateway is left **stopped + disabled** — the post-reboot setup wizard runs the
+default runtime's `SetupAgent`, mirroring how OpenClaw/Hermes disable their own unit
+in `ResetAgent`.
