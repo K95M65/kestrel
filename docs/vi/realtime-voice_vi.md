@@ -203,8 +203,16 @@ giờ gọi function call và lờ `[TURN CONTEXT]` (device-test 2026-07-06) →
 toàn bộ luồng delegate. Voice: Ethan (mặc định) và Serena trên 3.5-plus;
 Cherry/Chelsie chỉ dùng được với turbo (ghép sai → `InvalidParameter` ngay
 response đầu); **không** có knob reasoning/thinking (web ẩn selector Reasoning).
-Function tool (`delegate_to_main`, `express_emotion`) được truyền trong
-`session.update` (format beta phẳng — endpoint live đã nhận) và
+Web search built-in (model 3.5) bật qua session `enable_search: true` (knob
+`realtime.qwen.search` / `HAL_QWEN_SEARCH`, mặc định bật) — bản qwen của Google
+Search grounding bên Gemini. Ràng buộc DashScope: search ("agent mode") KHÔNG
+cho đăng ký function tools cùng session, nên khi search bật, delegate chạy qua
+giao thức text-marker: agent nối suffix `[TOOL PROTOCOL]` vào instructions,
+model trả lời đúng `[DELEGATE] <message>`, recv loop nuốt transcript đó và tổng
+hợp FunctionCallOutput `delegate_to_main` y hệt tool call thật (orchestrator
+không phân biệt được; `express_emotion` không dùng được ở mode này). Khi search
+tắt, function tool (`delegate_to_main`, `express_emotion`) được truyền trong
+`session.update` (format beta phẳng) và
 `response.function_call_arguments.done` được xử lý. Mỗi turn, dòng token/cost
 ghi vào file log riêng `qwen_usage.log` (logger `hal.realtime.usage.qwen`, sinh
 đôi với `gemini_usage.log`); bảng giá `_QWEN_RATES` trong `qwen_realtime.py`
@@ -246,6 +254,33 @@ lock trên một snapshot của connection để send audio không bị starve g
 Reconnect là idempotent (re-check `_connected` trong lock) và `_drop_connection()`
 chỉ null connection nếu nó vẫn là connection hiện tại — nên 2 thread không thể
 tear down / dựng lại connection của nhau.
+
+## Pricing & log usage
+
+Mỗi turn ghi một dòng token/cost vào log riêng theo provider dưới
+`/var/log/hal/` (rotating, 5 MB × 3): `gemini_usage.log` (logger
+`hal.realtime.usage`) và `qwen_usage.log` (logger `hal.realtime.usage.qwen`).
+OpenAI chỉ log dòng usage thường vào `server.log` (`[realtime] OpenAI usage`),
+không ước tính cost. Dòng log mang đủ số token theo từng modality **và** cost
+USD ước tính, nên rate có sai thì sau này vẫn tính lại được từ số token đã ghi.
+
+Bảng rate nằm trong code, key `(direction, modality)` tính USD trên 1M token —
+`_GEMINI_RATES` trong `voice_agent/gemini_live.py`, `_QWEN_RATES` trong
+`voice_agent/qwen_realtime.py`. Model lạ rơi về bảng đắt nhất (cost là trần,
+không bao giờ báo thiếu).
+
+| Model | text in | audio in | text out | audio out | audio↔token | Nguồn |
+|---|---|---|---|---|---|---|
+| `gemini-2.5-flash-native-audio` | $0.50 | $3.00 | $2.00 | $12.00 | 25 tok/s | ai.google.dev pricing (verify 2026-06-29) |
+| `gemini-3.1-flash-live` | $0.75 | $3.00 | $4.50 | $12.00 | 25 tok/s | ai.google.dev pricing (verify 2026-06-29) |
+| `qwen-omni-turbo-realtime` | $0.27 | $0.27 | $1.07 | $1.07 | 25 tok/s in+out | mirror intl 2026-07-06 — một rate gộp in/out; không công bố tách modality |
+| `qwen3.5-omni-plus-realtime` | $0.27 | $0.27 | $1.07 | $1.07 | ~7 tok/s in, ~12.5 tok/s out | **CHƯA VERIFY** — chỉ có trong console (tiered); seed tạm rate turbo. Calibrate: console Expenses ÷ token trong log, rồi sửa `_QWEN_RATES` |
+
+Cơ cấu chi phí giống nhau ở mọi provider: `in_text` chiếm áp đảo (system
+prompt ~7-10k token + context session tích lũy bị re-bill mỗi turn, phình dần
+tới khi session recycle — xem `HAL_REALTIME_SESSION_IDLE_RESET_S` /
+`HAL_REALTIME_SESSION_MAX_TURNS`); token audio chỉ là phần lẻ. Gemini tính
+thêm phí Google Search theo từng request grounded, ngoài token.
 
 ## Orchestrator
 

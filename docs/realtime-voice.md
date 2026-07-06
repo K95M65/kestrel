@@ -206,9 +206,18 @@ with `websockets.sync.client`. Turn flow is the same manual-commit pattern (HAL
 does its own VAD: append → commit → `response.create`); `response.create` MUST
 carry an explicit `response.modalities ["text","audio"]` or the server answers
 text-only (verified live 2026-07-06). Audio is 16 kHz mono pcm16 base64 in,
-24 kHz mono pcm16 out. Function tools (`delegate_to_main`, `express_emotion`)
-are passed in `session.update` (beta flat format) and
-`response.function_call_arguments.done` is handled. The default model is
+24 kHz mono pcm16 out. Built-in web search (3.5 models) is enabled via session
+`enable_search: true` (knob `realtime.qwen.search` / `HAL_QWEN_SEARCH`, default
+on) — the qwen twin of Gemini's Google Search grounding. DashScope constraint:
+search ("agent mode") REJECTS function tools in the same session, so with
+search on, delegation runs over a text-marker protocol instead — the agent
+appends a `[TOOL PROTOCOL]` suffix to the instructions, the model replies
+exactly `[DELEGATE] <message>`, and the recv loop swallows that transcript and
+synthesizes the same `delegate_to_main` FunctionCallOutput a real tool call
+would produce (the orchestrator can't tell the difference; `express_emotion`
+is unavailable in this mode). With search off, function tools
+(`delegate_to_main`, `express_emotion`) are passed in `session.update` (beta
+flat format) and `response.function_call_arguments.done` is handled. The default model is
 `qwen3.5-omni-plus-realtime`: the legacy `qwen-omni-turbo-realtime` never fires
 function calls and ignores `[TURN CONTEXT]` (device-tested 2026-07-06), which
 breaks the delegate flow entirely. Voices: `Ethan` (default) and `Serena` on
@@ -258,6 +267,34 @@ iteration runs **outside** the lock on a connection snapshot so audio sends are
 never starved mid-turn. Reconnect is idempotent (re-checks `_connected` under the
 lock) and `_drop_connection()` only nulls a connection that is still current, so
 the two threads can't tear down or rebuild each other's connection.
+
+## Pricing & usage logs
+
+Every turn writes one token/cost line to a per-provider log under
+`/var/log/hal/` (rotating, 5 MB × 3): `gemini_usage.log` (logger
+`hal.realtime.usage`) and `qwen_usage.log` (logger `hal.realtime.usage.qwen`).
+OpenAI logs a plain usage line into `server.log` (`[realtime] OpenAI usage`),
+no cost estimate. The line carries per-modality token counts **and** an
+estimated USD cost, so a wrong rate can always be re-derived later from the
+logged counts.
+
+Rate tables live in code, keyed `(direction, modality)` in USD per 1M tokens —
+`_GEMINI_RATES` in `voice_agent/gemini_live.py`, `_QWEN_RATES` in
+`voice_agent/qwen_realtime.py`. Unknown models fall back to the most expensive
+table (cost ceiling, never an under-report).
+
+| Model | text in | audio in | text out | audio out | audio↔token | Source |
+|---|---|---|---|---|---|---|
+| `gemini-2.5-flash-native-audio` | $0.50 | $3.00 | $2.00 | $12.00 | 25 tok/s | ai.google.dev pricing (verified 2026-06-29) |
+| `gemini-3.1-flash-live` | $0.75 | $3.00 | $4.50 | $12.00 | 25 tok/s | ai.google.dev pricing (verified 2026-06-29) |
+| `qwen-omni-turbo-realtime` | $0.27 | $0.27 | $1.07 | $1.07 | 25 tok/s in+out | intl mirrors 2026-07-06 — single blended in/out rate; no modality split published |
+| `qwen3.5-omni-plus-realtime` | $0.27 | $0.27 | $1.07 | $1.07 | ~7 tok/s in, ~12.5 tok/s out | **UNVERIFIED** — console-only (tiered); seeded with the turbo rate. Calibrate: console Expenses ÷ logged token counts, then fix `_QWEN_RATES` |
+
+Cost anatomy is the same on every provider: `in_text` dominates (the ~7-10k
+token system prompt plus accumulated session context is re-billed every turn
+and grows until a session recycle — see `HAL_REALTIME_SESSION_IDLE_RESET_S` /
+`HAL_REALTIME_SESSION_MAX_TURNS`); audio tokens are comparatively marginal.
+Gemini additionally bills Google Search per grounded request on top of tokens.
 
 ## Orchestrator
 

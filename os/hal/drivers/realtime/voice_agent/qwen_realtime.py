@@ -97,6 +97,25 @@ def _qwen_rates_for(model: str) -> dict[tuple[str, str], float]:
     return _QWEN_RATES_FALLBACK
 
 
+# DashScope constraint (live-probed 2026-07-06): `enable_search` switches the
+# session into "agent mode", which REJECTS function tools ("Agent mode does not
+# support tools", 400 on first response). So with search on, delegation runs
+# over a TEXT MARKER protocol instead: the model replies exactly
+# "[DELEGATE] <message>", the recv loop swallows that transcript and synthesizes
+# the same FunctionCallOutput a real tool call would have produced — the
+# orchestrator can't tell the difference. The model's own audio (which speaks
+# the marker) is never played: native audio is off, HAL speaks the transcript.
+_DELEGATE_MARKER = "[delegate]"
+_MARKER_PROTOCOL_SUFFIX = (
+    "\n\n[TOOL PROTOCOL] This session has NO function tools (web search replaces"
+    " them). Wherever your instructions say to call delegate_to_main(message),"
+    " instead reply with EXACTLY this text and NOTHING else: [DELEGATE] <message>."
+    " No words before or after the marker line. All other delegation rules"
+    " (what to delegate vs answer directly) still apply. There is no"
+    " express_emotion tool — never mention or fake tool calls."
+)
+
+
 def _realtime_ws_url(base_url: str, model: str) -> str:
     """Build the realtime WS URL from an operator base_url and model.
 
@@ -136,6 +155,9 @@ class QwenRealtimeAgent(VoiceAgentBase):
         # response.create, set again on response.done.
         self._turn_done: threading.Event = threading.Event()
         self._turn_done.set()
+        # True when delegation runs over the [DELEGATE] text-marker protocol
+        # (search on → no function tools). Finalized in _sync_connect.
+        self._marker_delegate: bool = False
 
     @property
     @override
@@ -177,15 +199,22 @@ class QwenRealtimeAgent(VoiceAgentBase):
         if self._config.search_enabled:
             # Built-in web search (3.5 models) — the qwen twin of Gemini's
             # Google Search grounding. Without it the model answers live-data
-            # questions from stale knowledge (probed 2026-07-06).
+            # questions from stale knowledge (probed 2026-07-06). Search and
+            # function tools are mutually exclusive (see _DELEGATE_MARKER), so
+            # delegation switches to the marker protocol.
             session["enable_search"] = True
-        if self._tools:
+            if self._tools:
+                session["instructions"] = (
+                    self._config.instructions + _MARKER_PROTOCOL_SUFFIX
+                )
+        elif self._tools:
             # Beta-style flat tool entries; our registry (DELEGATE_TOOL etc.)
             # is already in this exact shape. If the model rejects tools the
             # server answers with an `error` event — visible in the logs, and
             # the session itself stays usable.
             session["tools"] = self._tools
             session["tool_choice"] = "auto"
+        self._marker_delegate: bool = bool(self._config.search_enabled and self._tools)
 
         self._send_event({"type": "session.update", "session": session})
         logger.info(
@@ -316,6 +345,12 @@ class QwenRealtimeAgent(VoiceAgentBase):
         when the socket closed cleanly without one — the caller fail-fasts the
         turn in that case (same contract as openai_realtime).
         """
+        # Marker-protocol state for THIS turn: transcript deltas are held back
+        # until the head of the reply proves it is / is not a "[DELEGATE] ..."
+        # line (a few chars, sub-100ms). mode: None=undecided, "text"=pass
+        # through, "delegate"=swallow and synthesize a tool call at turn end.
+        tx_mode: str | None = None
+        tx_buf: str = ""
         while True:
             try:
                 raw = conn.recv()
@@ -356,9 +391,23 @@ class QwenRealtimeAgent(VoiceAgentBase):
                     # ["text","audio"] both channels can carry the reply and
                     # emitting both would double it (the gemini part.text /
                     # output_transcription double-reply bug, relearned).
-                    self._recv_queue.put(
-                        OutputEvent(output=TextOutput(text=event.get("delta", "")))
-                    )
+                    delta: str = event.get("delta", "")
+                    if not self._marker_delegate or tx_mode == "text":
+                        self._recv_queue.put(OutputEvent(output=TextOutput(text=delta)))
+                        continue
+                    tx_buf += delta
+                    if tx_mode == "delegate":
+                        continue
+                    head = tx_buf.lstrip().lower()
+                    if len(head) < len(_DELEGATE_MARKER):
+                        if _DELEGATE_MARKER.startswith(head):
+                            continue  # still a possible marker prefix — hold
+                    elif head.startswith(_DELEGATE_MARKER):
+                        tx_mode = "delegate"
+                        continue
+                    # Proven normal text — flush what was held and stream on.
+                    tx_mode = "text"
+                    self._recv_queue.put(OutputEvent(output=TextOutput(text=tx_buf)))
 
                 case "response.function_call_arguments.done":
                     logger.debug(
@@ -377,6 +426,30 @@ class QwenRealtimeAgent(VoiceAgentBase):
 
                 case "response.done":
                     logger.debug("[realtime] Response complete")
+                    if tx_mode == "delegate":
+                        # Synthesize the tool call the marker stands in for —
+                        # downstream (orchestrator DelegateSignal) is identical
+                        # to a real function call.
+                        message = tx_buf.lstrip()[len(_DELEGATE_MARKER):].strip()
+                        logger.info(
+                            "[realtime] Marker delegate → delegate_to_main(%r)",
+                            message,
+                        )
+                        self._recv_queue.put(
+                            OutputEvent(
+                                output=FunctionCallOutput(
+                                    name="delegate_to_main",
+                                    arguments=json.dumps({"message": message}),
+                                    call_id="qwen-marker-delegate",
+                                ),
+                            )
+                        )
+                    elif tx_mode is None and tx_buf.strip():
+                        # Reply shorter than the marker ("OK.") — never resolved;
+                        # flush it so short answers aren't swallowed.
+                        self._recv_queue.put(
+                            OutputEvent(output=TextOutput(text=tx_buf))
+                        )
                     self._log_usage(event.get("response") or {})
                     self._turn_done.set()
                     self._recv_queue.put(TurnDoneEvent())
