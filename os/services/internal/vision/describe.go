@@ -45,7 +45,12 @@ const catalogTTL = 30 * time.Minute
 // DescribeTimeout bounds one describe call. It runs inline in the sensing
 // handler before the agent forward, so it delays the turn by at most this
 // long; on timeout the caller falls back to sending the raw attachment.
-const DescribeTimeout = 20 * time.Second
+// Sized from device measurements: qwen via the campaign-api router answers a
+// 768px frame in 9–13s routinely (connect/TLS are instant — the wait is pure
+// upstream inference), so 20s was cutting off the slow tail. Keep it under
+// HAL's image-turn POST timeout (45s in sensing_sender.py) so the HAL client
+// outlives describe + agent forward.
+const DescribeTimeout = 35 * time.Second
 
 // Emphasis on the user's request so the description surfaces what the answer
 // needs (label text, object identity, counts) instead of a generic caption.

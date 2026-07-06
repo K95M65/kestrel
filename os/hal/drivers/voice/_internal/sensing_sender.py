@@ -74,10 +74,11 @@ class SensingSender:
             "curl -s -X POST %s -H 'Content-Type: application/json' -d '%s'",
             OS_SENSING_URL, _json.dumps(log_payload),
         )
-        # Image turns wait for the os-server-side vision describe (up to ~20s)
-        # before the response comes back — don't let the plain-text timeout
-        # abort them into a spurious "failed to send" warning.
-        timeout_s = 30 if image_b64 else 5
+        # Image turns wait for the os-server-side vision describe (up to 35s,
+        # internal/vision DescribeTimeout — qwen routinely takes 9-13s) before
+        # the response comes back — don't let the plain-text timeout abort
+        # them into a spurious "failed to send" warning.
+        timeout_s = 45 if image_b64 else 5
         max_retries = 3
         for attempt in range(1, max_retries + 1):
             try:
