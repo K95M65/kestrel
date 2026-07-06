@@ -198,7 +198,7 @@ kết bằng một `runID` đang chạy duy nhất thay vì id theo từng frame
 | `message.create/update`, `placeholder:true` | đang nghĩ | *(không có — trạng thái, không phải nội dung)* |
 | `message.create/update`, `kind:"thought"` / `thought:true` | reasoning | *(không có — chỉ là trạng thái)* |
 | `message.create`, `kind:"tool_calls"` / có `tool_calls` | gọi tool | `agent` tool `phase:start` + `phase:end` mỗi call |
-| `message.create/update`, `content` khác rỗng (không dính các mục trên) | **câu trả lời cuối** | `chat` `state:final role:assistant` **+** `agent` lifecycle `phase:end` (kèm usage) — **kết thúc lượt** |
+| `message.create/update`, `content` khác rỗng (không dính các mục trên) | **câu trả lời cuối** | `agent` `stream:assistant` (toàn bộ reply là một delta) **+** `chat` `state:final role:assistant` **+** `agent` lifecycle `phase:end` (kèm usage) — **kết thúc lượt** |
 | `error` | lỗi | `agent` lifecycle `phase:error` — kết thúc lượt |
 | `typing.stop` / `message.delete` / `pong` | — | *(bỏ qua)* |
 
@@ -212,6 +212,14 @@ kết bằng một `runID` đang chạy duy nhất thay vì id theo từng frame
   → message.create kind:"tool_calls" (×N) → message.create (sạch, final)`.
 - PicoClaw không phát frame kết quả tool riêng, nên mỗi tool call phát `tool`
   `phase:start` rồi ngay sau là `phase:end` với result rỗng, chỉ để đóng trace.
+- **Không stream → một assistant delta.** PicoClaw trả toàn bộ reply trong một frame
+  final duy nhất, nhưng consumer dùng chung lại rút TTS + marker phần cứng `[HW:/…]`
+  (và các node `tts_speak` / `hw_*` trên Flow Monitor) từ **stream assistant-delta**,
+  flush ở `lifecycle.end`. Vì vậy câu trả lời cuối được phát dưới dạng `agent`
+  `stream:assistant` — toàn bộ reply (giữ nguyên marker) là **một** delta — **trước**
+  `chat.final` / `lifecycle.end`, chính là trường hợp N=1 của hợp đồng streaming
+  openclaw/hermes. Thiếu nó thì reply vẫn hiện ở web chat nhưng không bao giờ ra loa
+  hay phần cứng. Xem `translator.go` `emitFinal`.
 - `media.create` có trong protocol nhưng server không bao giờ phát — media đi kèm
   trong `message.create` qua `attachments`.
 
