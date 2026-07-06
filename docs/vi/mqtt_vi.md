@@ -276,7 +276,7 @@ probe lỗi sẽ rơi về zero value của nó.
       "os-server": "0.0.35",
       "bootstrap": "0.0.10",
       "hal": "1.2.3",
-      "openclaw": "2026.5.27",
+      "openclaw": "2026.6.11",
       "openclaw_detected": true
     },
     "network": {
@@ -396,7 +396,7 @@ và publish trạng thái kết thúc:
   "kind": "channel.refresh_config",
   "status": "configuring | success | failure",
   "error": "<code>",
-  "data": { "channel": "slack", "runtime": "2026.5.27" }
+  "data": { "channel": "slack", "runtime": "2026.6.11" }
 }
 ```
 
