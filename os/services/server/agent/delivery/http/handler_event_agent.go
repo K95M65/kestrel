@@ -853,6 +853,32 @@ func (h *AgentHandler) handleAgentStreamEvent(evt domain.WSEvent) error {
 				streamedLen = len(text)
 			}
 			remainderText := strings.TrimSpace(text[streamedLen:])
+			// CoT-leak filter (see cot_leak_filter.go): drop DeepSeek-style
+			// planning monologue from the reply before it reaches TTS, the web
+			// chat (full_text), and channel fan-out (DM/broadcast/Slack). The
+			// remainder is filtered with state seeded from the already-streamed
+			// prefix (CoT-mode + fuzzy-dedup continuity); `text` is replaced by
+			// the fresh full-text pass only when something was dropped, so
+			// clean turns keep their original whitespace/newlines.
+			cotLang := h.replyLanguageCode()
+			fullFilter := newCoTLeakFilter(cotLang)
+			if filteredFull := fullFilter.filterText(text); len(fullFilter.dropped) > 0 {
+				rf := newCoTLeakFilter(cotLang)
+				rf.filterText(text[:streamedLen]) // seed only; drops already handled at stream time
+				rf.dropped = nil
+				remainderText = strings.TrimSpace(rf.filterText(remainderText))
+				slog.Warn("CoT leak dropped from agent reply",
+					"component", "agent", "run_id", flowRunID,
+					"dropped", len(fullFilter.dropped),
+					"before_len", len(text), "after_len", len(filteredFull),
+					"preview", cotDroppedPreview(fullFilter.dropped, 200))
+				flow.Log("cot_leak_filtered", map[string]any{
+					"run_id":  flowRunID,
+					"dropped": len(fullFilter.dropped),
+					"preview": cotDroppedPreview(fullFilter.dropped, 500),
+				}, flowRunID)
+				text = filteredFull
+			}
 			if isAgentNoReply(text) {
 				// NO_REPLY in remainder. If streamed > 0 the agent
 				// already spoke sentence 1; can't unspeak it. Log a

@@ -57,7 +57,8 @@ one exception to the model's binary "tool OR speech" rule — the model calls it
    blocking speech;
 2. acknowledges the call with `FunctionCallResultInput(trigger_response=False)`,
    which records the result in history **without** spawning a second model
-   response. For OpenAI this skips `response.create` (`openai_realtime.py`); for
+   response. For OpenAI and Qwen this skips `response.create`
+   (`openai_realtime.py` / `qwen_realtime.py`); for
    Gemini the tool response simply lets the turn continue. Net added latency to
    speech ≈ 0.
 
@@ -81,8 +82,9 @@ data (the user's calendar, their smart-home device states, their messages) to
 
 Trade-offs:
 
-- **Gemini only.** OpenAI Realtime has no equivalent built-in tool, so its prompt
-  (`system_prompt_openai.md`) still delegates all external lookups.
+- **Gemini only.** OpenAI Realtime and Qwen Omni Realtime have no equivalent
+  built-in tool, so their prompts (`system_prompt_openai.md` /
+  `system_prompt_qwen.md`) still delegate all external lookups.
 - **Cost.** Grounding bills per grounded request on top of tokens, but only when
   Gemini actually decides to search. The prompt tells it to ground *only* for
   genuine fresh/public facts, not general knowledge it already holds. Net effect
@@ -134,7 +136,8 @@ Gating (all three required, else visual questions fall back to delegation):
   one signal (`_camera_present()`), so it's correct for every construction path.
 - **Flag:** `HAL_GEMINI_VISION` / `realtime.gemini.vision` (default **on**).
 - **Provider:** Gemini only (the image-inject → continue-turn flow is
-  implemented + tested for Gemini Live; OpenAI keeps delegating). The
+  implemented + tested for Gemini Live; OpenAI and Qwen keep delegating —
+  Qwen's session is text + audio only). The
   Gemini system prompt (`system_prompt_gemini.md`) describes when to call `look`.
 
 Cost: one frame per call (tool-triggered, **not** a video stream), so the added
@@ -145,29 +148,44 @@ sends **at most one image per turn** and **none within `HAL_GEMINI_VISION_MIN_IN
 
 **Frame handoff on delegate / timeout.** When a `look` turn ends up delegating or
 falling back to the main agent (most importantly when Gemini times out *mid*-look),
-the frame `look` already captured is handed to the main agent **by file path** so
-it answers from that exact image instead of taking a fresh snapshot (faster, and
-it answers about the moment the user pointed at). `_handle_look_call` persists the
-frame to `_SNAPSHOT_DIR` and records it in `app_state.realtime_look_frame_path`;
+the frame `look` already captured is handed to the main agent so it answers from
+that exact image instead of taking a fresh snapshot (faster, and it answers about
+the moment the user pointed at). `_handle_look_call` persists the frame to
+`_SNAPSHOT_DIR` and records it in `app_state.realtime_look_frame_path`;
 `turn_dispatch._take_vision_handoff()` consumes it **once per turn** (strictly: a
 handled turn that already used it clears it so a later delegate can't pick up a
 stale image) and, when fresh (`HAL_GEMINI_VISION_HANDOFF_MAX_AGE_S`, default 20s),
-prepends a `[vision-image] <path>` line to the message sent to the agent. The
-`camera` skill reads that path verbatim and skips `/camera/snapshot`. The handoff
-carries the **path**, not the image bytes — HAL and the agent share the
-filesystem, so a path avoids bloating the turn channel. If the timeout happens
+prepends a `[vision-image] <path>` hint line to the message and ships the frame
+as base64 in the sensing POST's `image` field (the path in the hint is
+traceability only — telling the agent to *read* it does not work on a text-only
+main model, whose runtime silently drops tool-read image blocks; that was the
+"describes a PCB while holding a cracker box" hallucination). What os-server
+then does with the image is decided by the **describe-first gate** in
+`internal/vision` (see `server/sensing/delivery/http/handler.go`): when the
+active main model does NOT declare image input in the model catalog (the
+Auto-AI case — a raw attachment 404s at the smart-agent-router with "No
+endpoints found that support image input"), the frame is described by the
+catalog's `default_image_model` (qwen — the same model openclaw's `imageModel`
+uses for Telegram photos) and the agent receives an `[image description] …`
+text line instead; when the catalog says the model takes images, the raw
+attachment is forwarded directly. The gate re-reads the catalog every 30 min,
+so a backend catalog flip migrates devices automatically. The same gate covers
+web-monitor-chat image uploads — both image sources converge on this one
+handler. The `camera` skill instructs the agent to answer from the
+description/attachment and skip `/camera/snapshot`. If the timeout happens
 *before* the frame is captured, there's nothing to hand off and the agent
 snapshots normally.
 
 ## Providers
 
-Two interchangeable backends, selected by `HAL_REALTIME_PROVIDER`
-(`none` | `gemini` | `openai`):
+Three interchangeable backends, selected by `HAL_REALTIME_PROVIDER` /
+`realtime.provider` (`none` | `gemini` | `openai` | `qwen`):
 
 | Provider | Class | Threading model | Default model | Sample rate |
 |----------|-------|-----------------|---------------|-------------|
 | Gemini Live | `voice_agent/gemini_live.py` `GeminiLiveAgent` | private asyncio loop on a `gemini-io` thread; send/recv threads submit coroutines via `run_coroutine_threadsafe` | `gemini-2.5-flash-native-audio-preview-12-2025` | 16000 Hz |
 | OpenAI Realtime | `voice_agent/openai_realtime.py` `OpenAIRealtimeAgent` | fully synchronous; one `RealtimeConnection` shared by send/recv threads, serialized by a reentrant lock | `gpt-realtime-2` | 24000 Hz |
+| Qwen Omni Realtime | `voice_agent/qwen_realtime.py` `QwenRealtimeAgent` | fully synchronous; raw `websockets.sync.client` socket shared by send/recv threads, reusing the openai_realtime thread/queue skeleton | `qwen3.5-omni-plus-realtime` | 16000 Hz in / 24000 Hz out |
 
 Gemini Live uses `google-genai`, but the SDK websocket keepalive is disabled
 (`ping_interval=None`, `ping_timeout=None`) so the Python client behaves like the
@@ -177,15 +195,55 @@ with WS 1011. HAL also recycles Gemini synchronously before streaming audio when
 the previous turn ended more than `HAL_GEMINI_PRE_TURN_RECYCLE_S` seconds ago, so
 post-idle speech does not land on a proxy-dropped session.
 
-Both subclass `voice_agent/base.py` `VoiceAgentBase`, which defines the
+Qwen Omni Realtime (Alibaba DashScope / Model Studio) speaks the **OpenAI
+Realtime beta event schema** (`session.update`, `input_audio_buffer.append` /
+`commit`, `response.create`, `response.audio.delta`,
+`response.audio_transcript.delta`, `response.done`) over DashScope's own WS
+path `wss://<workspace-host>/api-ws/v1/realtime?model=...` with
+`Authorization: Bearer <key>`. The OpenAI python SDK cannot be reused (it
+emits/parses the GA schema), so `qwen_realtime.py` drives the socket directly
+with `websockets.sync.client`. Turn flow is the same manual-commit pattern (HAL
+does its own VAD: append → commit → `response.create`); `response.create` MUST
+carry an explicit `response.modalities ["text","audio"]` or the server answers
+text-only (verified live 2026-07-06). Audio is 16 kHz mono pcm16 base64 in,
+24 kHz mono pcm16 out. Built-in web search (3.5 models) is enabled via session
+`enable_search: true` (knob `realtime.qwen.search` / `HAL_QWEN_SEARCH`, default
+on) — the qwen twin of Gemini's Google Search grounding. DashScope constraint:
+search ("agent mode") REJECTS function tools in the same session, so with
+search on, delegation runs over a text-marker protocol instead — the agent
+appends a `[TOOL PROTOCOL]` suffix to the instructions, the model replies
+exactly `[DELEGATE] <message>`, and the recv loop swallows that transcript and
+synthesizes the same `delegate_to_main` FunctionCallOutput a real tool call
+would produce (the orchestrator can't tell the difference; `express_emotion`
+is unavailable in this mode). With search off, function tools
+(`delegate_to_main`, `express_emotion`) are passed in `session.update` (beta
+flat format) and `response.function_call_arguments.done` is handled. The default model is
+`qwen3.5-omni-plus-realtime`: the legacy `qwen-omni-turbo-realtime` never fires
+function calls and ignores `[TURN CONTEXT]` (device-tested 2026-07-06), which
+breaks the delegate flow entirely. Voices: `Ethan` (default) and `Serena` on
+3.5-plus; `Cherry`/`Chelsie` are turbo-only (a wrong pairing fails with
+`InvalidParameter` on the first response). There is **no reasoning/thinking
+knob** (the web Settings page hides the Reasoning selector for qwen). Capability-wise qwen has
+**no Google Search grounding and no in-session vision/`look`** (text + audio
+only) — live-data and visual questions are delegated to the main agent.
+Per-turn token/cost lines go to their own log file `qwen_usage.log` (logger
+`hal.realtime.usage.qwen`, the twin of `gemini_usage.log`); the `_QWEN_RATES`
+table in `qwen_realtime.py` holds $0.27/1M input, $1.07/1M output (Model Studio
+intl publishes a single blended rate; the table keeps per-modality keys so a
+console-verified split can be dropped in). Audio ≈ 25 tokens/second in both
+directions (verified: 5.1 s audio out = 128 tokens); the usage payload carries
+`input_tokens`/`output_tokens`, `input_tokens_details`/`output_tokens_details`
+(`text_tokens`, `audio_tokens`) and a top-level `cached_tokens`.
+
+All subclass `voice_agent/base.py` `VoiceAgentBase`, which defines the
 queue-based contract:
 
 - **Two threads per agent**: `_send_loop` drains `_send_queue` → API;
   `_recv_loop` reads API → `_recv_queue`. Both reconnect on error.
-- **Fail-fast on backend error** (both drivers): when `_recv_loop` hits a real
+- **Fail-fast on backend error** (all drivers): when `_recv_loop` hits a real
   error (Gemini Live: proxy `go_away`, quota / resource-exhausted, unexpected WS
-  close — anything that is **not** a benign idle close `1000`; OpenAI: a Realtime
-  API `error` event or dropped socket), it pushes a `TurnDoneEvent` immediately
+  close — anything that is **not** a benign idle close `1000`; OpenAI/Qwen: a
+  Realtime API `error` event or dropped socket), it pushes a `TurnDoneEvent` immediately
   (`_fail_fast_turn`) so `receive()` unblocks now and the turn falls back to the
   main agent **without** waiting out the full `HAL_REALTIME_RECV_QUEUE_TIMEOUT_S`.
   Benign idle closes still reconnect quietly (Gemini code `1000`; OpenAI ends the
@@ -209,6 +267,34 @@ iteration runs **outside** the lock on a connection snapshot so audio sends are
 never starved mid-turn. Reconnect is idempotent (re-checks `_connected` under the
 lock) and `_drop_connection()` only nulls a connection that is still current, so
 the two threads can't tear down or rebuild each other's connection.
+
+## Pricing & usage logs
+
+Every turn writes one token/cost line to a per-provider log under
+`/var/log/hal/` (rotating, 5 MB × 3): `gemini_usage.log` (logger
+`hal.realtime.usage`) and `qwen_usage.log` (logger `hal.realtime.usage.qwen`).
+OpenAI logs a plain usage line into `server.log` (`[realtime] OpenAI usage`),
+no cost estimate. The line carries per-modality token counts **and** an
+estimated USD cost, so a wrong rate can always be re-derived later from the
+logged counts.
+
+Rate tables live in code, keyed `(direction, modality)` in USD per 1M tokens —
+`_GEMINI_RATES` in `voice_agent/gemini_live.py`, `_QWEN_RATES` in
+`voice_agent/qwen_realtime.py`. Unknown models fall back to the most expensive
+table (cost ceiling, never an under-report).
+
+| Model | text in | audio in | text out | audio out | audio↔token | Source |
+|---|---|---|---|---|---|---|
+| `gemini-2.5-flash-native-audio` | $0.50 | $3.00 | $2.00 | $12.00 | 25 tok/s | ai.google.dev pricing (verified 2026-06-29) |
+| `gemini-3.1-flash-live` | $0.75 | $3.00 | $4.50 | $12.00 | 25 tok/s | ai.google.dev pricing (verified 2026-06-29) |
+| `qwen-omni-turbo-realtime` | $0.27 | $4.44 | $8.89* | $8.89* | 25 tok/s in+out | consume-detail bill CSV (verified 2026-07-06); *audio-modality output bills text+audio together (`multi_output_token`); text-only responses bill $1.07 (`purein_text_output`) |
+| `qwen3.5-omni-plus-realtime` | $2.10 | $16.50 | $62.00* | $62.00* | ~7 tok/s in, ~12.5 tok/s out | consume-detail bill CSV (verified 2026-07-06); *one `omni_audio_output_token` line item covers the response's text+audio. Web search bills $0.01 per search request on top |
+
+Cost anatomy is the same on every provider: `in_text` dominates (the ~7-10k
+token system prompt plus accumulated session context is re-billed every turn
+and grows until a session recycle — see `HAL_REALTIME_SESSION_IDLE_RESET_S` /
+`HAL_REALTIME_SESSION_MAX_TURNS`); audio tokens are comparatively marginal.
+Gemini additionally bills Google Search per grounded request on top of tokens.
 
 ## Orchestrator
 
@@ -241,7 +327,8 @@ assembled per agent gateway (`HAL_AGENT_GATEWAY`):
 and summarization; subclasses implement `load_device_context`,
 `load_device_memory`, `load_skills_catalog`, and `summarize_device_memory`.
 Base prompts live in `resources/` (`system_prompt.md` plus per-provider
-`system_prompt_openai.md` / `system_prompt_gemini.md`).
+`system_prompt_openai.md` / `system_prompt_gemini.md` / `system_prompt_qwen.md`,
+registered in the context manager's `PROVIDER_PROMPT_PATHS` map).
 
 ### Memory & summarization
 
@@ -322,11 +409,19 @@ spurious HAL restart on the next boot after an os-server-only field changes.
 
 Modelled in Go at `os/services/server/config/realtime.go`; read in HAL at
 `os/hal/config.py`. Shared fields sit at the top; per-provider knobs live in
-`gemini` / `openai` sub-objects, with `provider` selecting the active one
-(`none` or absent → realtime off). Empty `api_key` / `base_url` fall back to
-`llm_api_key` / `llm_base_url`.
+`gemini` / `openai` / `qwen` sub-objects, with `provider` selecting the active
+one (`none` or absent → realtime off). Empty `api_key` / `base_url` fall back to
+`llm_api_key` / `llm_base_url` — **except qwen**: its credentials are its own
+(`realtime.qwen.api_key` / `realtime.qwen.base_url`, Go struct `QwenRealtime`),
+with deliberately **no fallback** to the shared `realtime.api_key`/`base_url` or
+`llm_*` credentials, because qwen talks straight to the Alibaba MaaS host, not
+through the `campaign-api` proxy. Set them via `realtime.qwen.*` in config.json
+or via env on the device (`DASHSCOPE_API_KEY`, `HAL_QWEN_REALTIME_BASE_URL` in
+`/opt/hal/.env`); with neither set the WS handshake fails loudly in the hal log.
 
-> **Leave `base_url` blank unless you have a non-proxy endpoint.** When empty, HAL
+> **Leave `base_url` blank unless you have a non-proxy endpoint.** (Applies to
+> gemini/openai; qwen never derives from `llm_base_url` — it uses its own
+> `realtime.qwen.base_url`.) When empty, HAL
 > derives `<llm_base_url>/ws/gemini` (or `/ws/openai`) — the WS suffix the
 > `campaign-api` proxy routes on. A `base_url` set to the bare `llm_base_url`
 > (no `/ws/...`) is handed verbatim to the provider SDK and **404s at the Live
@@ -339,13 +434,16 @@ Modelled in Go at `os/services/server/config/realtime.go`; read in HAL at
   "enabled": true,
   "provider": "gemini",
   "gemini": { "model": "gemini-3.1-flash-live-preview", "voice": "Kore", "thinking_level": "MINIMAL" },
-  "openai": { "model": "gpt-realtime-2", "voice": "alloy", "reasoning_effort": "minimal" }
+  "openai": { "model": "gpt-realtime-2", "voice": "alloy", "reasoning_effort": "minimal" },
+  "qwen": { "model": "qwen3.5-omni-plus-realtime", "voice": "Ethan", "api_key": "sk-…", "base_url": "wss://…" }
 }
 ```
 
 The reasoning knobs (`thinking_level` / `reasoning_effort`) default to the
 **cheapest** tier (`MINIMAL` / `minimal`), not the providers' max — raise them
-explicitly for deeper reasoning. Knobs NOT in the block (turn detection, session
+explicitly for deeper reasoning. Qwen has no reasoning/thinking knob at all, so
+the web Settings page hides the Reasoning selector when qwen is the provider.
+Knobs NOT in the block (turn detection, session
 resumption, memory, summarizer) stay env/default-only.
 
 **CoT-leak filter.** On `gemini-3.1-flash-live-preview` thinking cannot actually
@@ -371,6 +469,12 @@ words so the real answer survives), quoted drafts, plan runts, and fuzzy
 near-duplicates (CJK tokenized per character) drop too. Every dropped sentence
 is logged as `CoT leak dropped`.
 
+The main-agent path (openclaw/hermes replies spoken via os-server) has a Go
+port of this filter — `os/services/server/agent/delivery/http/cot_leak_filter.go`
+(adds a snake_case-identifier TRIGGER for the DeepSeek leak corpus); see
+`docs/flow-monitor.md` § "CoT-leak filter (agent path)". Keep the two in sync
+when hardening either side.
+
 ### Environment variables (`os/hal/config.py`)
 
 Each knob's `HAL_*` env var overrides the block (and is the dev-box path):
@@ -378,7 +482,7 @@ Each knob's `HAL_*` env var overrides the block (and is the dev-box path):
 | Variable | Default | Notes |
 |----------|---------|-------|
 | `HAL_REALTIME_ENABLED` | `true` | Master gate for the realtime pipeline |
-| `HAL_REALTIME_PROVIDER` | `gemini` | `none` \| `gemini` \| `openai` |
+| `HAL_REALTIME_PROVIDER` | `gemini` | `none` \| `gemini` \| `openai` \| `qwen` |
 | `HAL_REALTIME_TURN_DETECTION` | `off` | `server_vad` \| `semantic_vad` \| `off` (Gemini: off = manual activity detection) |
 | `HAL_REALTIME_RECV_QUEUE_TIMEOUT_S` | `8.0` | Max seconds `receive()` waits for the next output event before ending a silent turn (fallback to main agent) |
 | `HAL_REALTIME_REQUIRE_TRANSCRIPT` | `true` | Never commit an empty-STT turn to the model. Real speech that nova-3 missed (short utterances) is voiced and passes the VAD/Silero guards, so committing its raw audio makes the model invent a reply to silence (a generic greeting, often with a name nobody said). When `true`, any empty-STT turn is dropped regardless of duration/voicing — silence beats a wrong reply. Set `false` to fall back to the Silero-gated audio-only path below. |
@@ -402,6 +506,10 @@ Each knob's `HAL_*` env var overrides the block (and is the dev-box path):
 | `HAL_OPENAI_REALTIME_VOICE` | `alloy` | |
 | `HAL_OPENAI_REALTIME_BASE_URL` | `<llm_base_url>/ws/openai` | |
 | `HAL_OPENAI_REASONING_EFFORT` | `minimal` | `minimal` \| `low` \| `medium` \| `high` \| `xhigh` — cost-lean default (was `xhigh`) |
+| `DASHSCOPE_API_KEY` | — | Qwen key; overrides `realtime.qwen.api_key`. **No fallback** to `llm_api_key` / the shared `realtime.api_key` |
+| `HAL_QWEN_REALTIME_BASE_URL` | — | DashScope workspace WS host; overrides `realtime.qwen.base_url`. Never derived from `llm_base_url` |
+| `HAL_QWEN_REALTIME_MODEL` | `qwen3.5-omni-plus-realtime` | turbo is legacy: no function calls, ignores turn context |
+| `HAL_QWEN_REALTIME_VOICE` | `Ethan` | 3.5-plus: also `Serena`; turbo-only: `Cherry` \| `Chelsie` |
 | `HAL_REALTIME_MEMORY_PATH` | `<workspace>/realtime/memory.jsonl` | |
 | `HAL_REALTIME_MAX_MEMORY_ENTRIES` / `_TRIM_KEEP` | `1000` / `500` | |
 | `HAL_REALTIME_SUMMARIZER_ENABLED` | `true` | |
@@ -415,9 +523,10 @@ Each knob's `HAL_*` env var overrides the block (and is the dev-box path):
 | `voice_agent/base.py` | Abstract agent: two-thread queue contract, `receive()` |
 | `voice_agent/gemini_live.py` | Gemini Live provider (asyncio IO loop) |
 | `voice_agent/openai_realtime.py` | OpenAI Realtime provider (sync, lock-serialized connection) |
+| `voice_agent/qwen_realtime.py` | Qwen Omni Realtime provider (sync, raw WS, OpenAI beta schema; `_QWEN_RATES` cost table → `qwen_usage.log`) |
 | `context_manager/{base,openclaw,hermes}.py` | Prompt + memory + skills assembly per gateway |
 | `summarizer.py` | Anthropic-based memory summarizer |
-| `config.py` | Provider config models (`GeminiConfig`, `OpenAIConfig`) |
+| `config.py` | Provider config models (`GeminiConfig`, `OpenAIConfig`, `QwenConfig`) |
 | `models/`, `enums/` | Input/output/event types, provider + gateway enums |
 | `resources/` | System prompts (shared + per-provider) |
 | `../voice/voice_service.py` | Integration: streams mic audio, consumes output, routes delegate/handled |
