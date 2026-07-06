@@ -30,9 +30,10 @@ não nào đang chạy.
 > (`SetupAgent`, `RefreshModelsConfig` …) vẫn no-op (§8) vì provisioning xảy ra ngoài
 > tiến trình trong install.sh/presync. Ngoại lệ là `EnsureOnboarding` (`onboarding.go`,
 > giữ khối OS-managed trong SOUL/AGENTS/HEARTBEAT cập nhật), `StartSkillWatcher`
-> (`skill_watcher.go`, auto-update skill từ CDN), và identity (`identity.go`:
-> `WatchIdentity`/`UpdateIdentityName` đọc/ghi `IDENTITY.md` như OpenClaw) — đều là
-> thật (§1.1, §8).
+> (`skill_watcher.go`, auto-update skill từ CDN), identity (`identity.go`:
+> `WatchIdentity`/`UpdateIdentityName` đọc/ghi `IDENTITY.md` như OpenClaw), và
+> `ResetAgent` (`reset.go`, factory-reset xoá sạch `/root/.picoclaw` + onboard lại) —
+> đều là thật (§1.1, §8).
 > Các gap còn lại (hook emotion-acknowledge, pin queue/steer) được theo dõi theo checklist
 > [`adding-agent-runtime_vi.md`](adding-agent-runtime_vi.md) — xem đó trước khi nâng
 > PicoClaw lên parity đầy đủ.
@@ -266,13 +267,14 @@ switch ngược lại openclaw sẽ khôi phục chúng.
 
 Mọi thứ không nằm trên hot path của PicoClaw đều là no-op để thỏa interface
 `domain.AgentGateway` mà không bịa ra tính năng backend không có: `SetupAgent`,
-pairing WhatsApp, `ResetAgent`, `RefreshModelsConfig`, `FetchChatHistory`,
+pairing WhatsApp, `RefreshModelsConfig`, `FetchChatHistory`,
 `CompactSession`, watcher model
 (`StartModelSync`/`StartPrimaryModelWatch`), `UpdatePrimaryModel`. (`AddChannel` /
 `RefreshChannelConfig` KHÔNG phải stub — trả `domain.ErrChannelNotSupported` cho kênh
 không hỗ trợ, xem §7; `EnsureOnboarding` (§1.1) và `StartSkillWatcher` (auto-update
 skill, §1.1) là thật.) Các hàm sau cũng là **thật**, không phải stub: `RestartAgent`
-(restart systemd unit `picoclaw` qua `restartPicoclawGateway`), `GetConfigJSON` (trả
+(restart systemd unit `picoclaw` qua `restartPicoclawGateway`), `ResetAgent`
+(factory-reset wipe — xem §8.2), `GetConfigJSON` (trả
 `/root/.picoclaw/config.json` — file structure; secrets ở `.security.yml` không bao
 giờ lộ), `WriteMCPEntry` / `RemoveMCPEntry` (connector MCP — xem §8.1), và
 `WatchIdentity` / `UpdateIdentityName` (`identity.go`) — `IDENTITY.md` của
@@ -310,3 +312,34 @@ suy luận empty-type→`sse` của PicoClaw. `RemoveMCPEntry` xóa server theo 
 bật để các server khác vẫn nạp. Cả hai đường ghi `config.json` atomic (temp + rename,
 không chown — PicoClaw chạy root) dưới `mcpMu`, rồi `restartPicoclawGateway`. Secrets ở
 `.security.yml` không bao giờ bị đụng tới.
+
+### 8.2 Factory reset (`reset.go`)
+
+`ResetAgent` là factory-reset wipe của PicoClaw, được `server/system/factoryreset.go`
+gọi trên gateway đang active. Khác OpenClaw (giữ `identity/` + `device-key.json`, để
+`SetupAgent` tạo lại `openclaw.json`) và Hermes (reset `config.yaml`/`.env` tại chỗ,
+giữ `SOUL.md`), **PicoClaw không giữ gì cả**: `config.json` + `.security.yml` của nó
+được `presync.sh` tái tạo từ project `/root/config/config.json` ở lần switch kế tiếp,
+nên reset **xóa sạch** `/root/.picoclaw` rồi onboard lại một baseline sạch.
+
+`wipePicoclawState()` chạy 4 bước:
+
+1. **`systemctl stop picoclaw` + verify** — systemd unit của gateway (do `install.sh`
+   ghi) đặt `WorkingDirectory=/root/.picoclaw` và `Restart=always`, nên nó giữ mở data
+   dir và sẽ tái tạo file dưới đó. Stop chủ động ghi đè `Restart=always` (không phải
+   crash) nên gateway nằm yên trong lúc wipe. `waitForPicoclawStop` poll `is-active`
+   tối đa 5s.
+2. **`systemctl disable picoclaw`** — factory reset cũng xóa `/root/config/config.json`
+   và reboot về runtime **mặc định (openclaw)**, nên PicoClaw KHÔNG được auto-start.
+   `switch-runtime` chỉ re-enable khi user switch trở lại.
+3. **`rm -rf /root/.picoclaw`** — config, `.security.yml`, workspace (persona/memory/
+   skills), sessions, và **marker `.openclaw-migrated`** (để `presync.sh` §0 migrate
+   lại persona/memory từ OpenClaw ở lần switch kế).
+4. **`picoclaw onboard`** (`HOME=/root`) — tạo lại baseline hợp lệ (workspace +
+   `config.json`/`.security.yml` cơ bản). Không-tử-vong: config chưa đúng cho tới khi
+   `presync.sh` khẳng định lại model/channel thật ở lần switch kế, và `install.sh` cũng
+   onboard khi thiếu `config.json`, nên lỗi ở đây tự lành.
+
+Gateway được để **stopped + disabled** — wizard setup sau reboot chạy `SetupAgent` của
+runtime mặc định, giống cách OpenClaw/Hermes disable unit của chính mình trong
+`ResetAgent`.
