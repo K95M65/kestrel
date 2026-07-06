@@ -288,6 +288,7 @@ table (cost ceiling, never an under-report).
 | `gemini-2.5-flash-native-audio` | $0.50 | $3.00 | $2.00 | $12.00 | 25 tok/s | ai.google.dev pricing (verified 2026-06-29) |
 | `gemini-3.1-flash-live` | $0.75 | $3.00 | $4.50 | $12.00 | 25 tok/s | ai.google.dev pricing (verified 2026-06-29) |
 | `qwen-omni-turbo-realtime` | $0.27 | $4.44 | $8.89* | $8.89* | 25 tok/s in+out | consume-detail bill CSV (verified 2026-07-06); *audio-modality output bills text+audio together (`multi_output_token`); text-only responses bill $1.07 (`purein_text_output`) |
+| `qwen3.5-omni-flash-realtime` | $0.27 | $4.44 | $8.89* | $8.89* | ~7 tok/s in, ~12.5 tok/s out | bill CSV (verified 2026-07-06): flash bills under the SAME cheap line items as turbo, incl. search-enabled sessions — dominant text-in cost ~2.8x cheaper than Gemini 3.1. Search +$0.01/request |
 | `qwen3.5-omni-plus-realtime` | $2.10 | $16.50 | $62.00* | $62.00* | ~7 tok/s in, ~12.5 tok/s out | consume-detail bill CSV (verified 2026-07-06); *one `omni_audio_output_token` line item covers the response's text+audio. Web search bills $0.01 per search request on top |
 
 Cost anatomy is the same on every provider: `in_text` dominates (the ~7-10k

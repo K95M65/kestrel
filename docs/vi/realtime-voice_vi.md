@@ -274,6 +274,7 @@ không bao giờ báo thiếu).
 | `gemini-2.5-flash-native-audio` | $0.50 | $3.00 | $2.00 | $12.00 | 25 tok/s | ai.google.dev pricing (verify 2026-06-29) |
 | `gemini-3.1-flash-live` | $0.75 | $3.00 | $4.50 | $12.00 | 25 tok/s | ai.google.dev pricing (verify 2026-06-29) |
 | `qwen-omni-turbo-realtime` | $0.27 | $4.44 | $8.89* | $8.89* | 25 tok/s in+out | bill CSV consume-detail (verify 2026-07-06); *output turn có audio bill gộp text+audio (`multi_output_token`); response text-only bill $1.07 (`purein_text_output`) |
+| `qwen3.5-omni-flash-realtime` | $0.27 | $4.44 | $8.89* | $8.89* | ~7 tok/s in, ~12.5 tok/s out | bill CSV (verify 2026-07-06): flash bill CÙNG line item rẻ như turbo, kể cả phiên bật search — text-in (phần nặng nhất) rẻ hơn Gemini 3.1 ~2.8x. Search +$0.01/request |
 | `qwen3.5-omni-plus-realtime` | $2.10 | $16.50 | $62.00* | $62.00* | ~7 tok/s in, ~12.5 tok/s out | bill CSV consume-detail (verify 2026-07-06); *một line item `omni_audio_output_token` bao cả text+audio của response. Web search tính thêm $0.01/lần search |
 
 Cơ cấu chi phí giống nhau ở mọi provider: `in_text` chiếm áp đảo (system
