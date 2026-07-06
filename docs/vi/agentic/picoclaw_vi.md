@@ -267,14 +267,15 @@ switch ngược lại openclaw sẽ khôi phục chúng.
 Mọi thứ không nằm trên hot path của PicoClaw đều là no-op để thỏa interface
 `domain.AgentGateway` mà không bịa ra tính năng backend không có: `SetupAgent`,
 pairing WhatsApp, `ResetAgent`, `RefreshModelsConfig`, `FetchChatHistory`,
-`CompactSession`, ghi MCP entry, watcher model
+`CompactSession`, watcher model
 (`StartModelSync`/`StartPrimaryModelWatch`), `UpdatePrimaryModel`. (`AddChannel` /
 `RefreshChannelConfig` KHÔNG phải stub — trả `domain.ErrChannelNotSupported` cho kênh
 không hỗ trợ, xem §7; `EnsureOnboarding` (§1.1) và `StartSkillWatcher` (auto-update
 skill, §1.1) là thật.) Các hàm sau cũng là **thật**, không phải stub: `RestartAgent`
 (restart systemd unit `picoclaw` qua `restartPicoclawGateway`), `GetConfigJSON` (trả
 `/root/.picoclaw/config.json` — file structure; secrets ở `.security.yml` không bao
-giờ lộ), và `WatchIdentity` / `UpdateIdentityName` (`identity.go`) — `IDENTITY.md` của
+giờ lộ), `WriteMCPEntry` / `RemoveMCPEntry` (connector MCP — xem §8.1), và
+`WatchIdentity` / `UpdateIdentityName` (`identity.go`) — `IDENTITY.md` của
 PicoClaw copy 1-1 từ OpenClaw nên dòng card `**Name:**` được watch (→ wake words) và
 ghi lại y hệt OpenClaw. HAL TTS/voice, fan-out
 Telegram, hàng đợi/drain sensing-event, và các helper run-marker (guard / broadcast /
@@ -286,3 +287,26 @@ in-process. Cài đặt, cấu hình model/channel, và migrate persona đều d
 script đó trong luồng `switch-runtime`. Ngoại lệ duy nhất là **`EnsureOnboarding`**
 (`onboarding.go`) — nó là thật: inject khối OS-managed vào `workspace/AGENTS.md` lúc
 boot/config-change (§1.1), đúng hợp đồng như openclaw.
+
+### 8.1 Connector MCP (`mcp.go`)
+
+`WriteMCPEntry` / `RemoveMCPEntry` nối các connector remote-MCP (luồng MQTT
+`connector.set` — Notion, Asana, Linear, GitHub, Ahrefs, Figma) vào `config.json` của
+PicoClaw. Đây là cùng các caller dùng chung mà OpenClaw/Hermes gọi; chỉ khác hình dạng
+trên đĩa, và của PicoClaw khác ở hai điểm mà `mcp.go` xử lý:
+
+1. **Lồng.** Server của PicoClaw nằm ở **`tools.mcp.servers.<name>`**, KHÔNG phải map
+   top-level `mcp.servers` (OpenClaw) hay `mcp_servers` (Hermes). `applyMCPServerWrite`
+   tạo chuỗi `tools` → `mcp` → `servers` nếu chưa có.
+2. **Gate toàn cục.** `tools.mcp.enabled` mặc định **`false`** — server ghi dưới khối
+   đang tắt sẽ bị bỏ qua âm thầm. `WriteMCPEntry` bật nó lên `true`.
+
+Entry OpenClaw-shape đầu vào (`{type:"http", url, headers}` cho MCP hosted,
+`{command, args, env}` cho stdio) được truyền qua kèm khẳng định **`enabled: true`**
+(cờ per-server của PicoClaw). Key `type` được **giữ nguyên** — các giá trị transport
+của PicoClaw (`stdio` / `sse` / `http`) đã khớp sẵn, và `type:"http"` tường minh tránh
+suy luận empty-type→`sse` của PicoClaw. `RemoveMCPEntry` xóa server theo tên
+(idempotent — `removed=false`, không restart, khi vắng mặt) và để `tools.mcp.enabled`
+bật để các server khác vẫn nạp. Cả hai đường ghi `config.json` atomic (temp + rename,
+không chown — PicoClaw chạy root) dưới `mcpMu`, rồi `restartPicoclawGateway`. Secrets ở
+`.security.yml` không bao giờ bị đụng tới.
