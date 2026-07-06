@@ -156,10 +156,7 @@ the moment the user pointed at). `_handle_look_call` persists the frame to
 handled turn that already used it clears it so a later delegate can't pick up a
 stale image) and, when fresh (`HAL_GEMINI_VISION_HANDOFF_MAX_AGE_S`, default 20s),
 prepends a `[vision-image] <path>` hint line to the message and ships the frame
-as base64 in the sensing POST's `image` field (the path in the hint is
-traceability only — telling the agent to *read* it does not work on a text-only
-main model, whose runtime silently drops tool-read image blocks; that was the
-"describes a PCB while holding a cracker box" hallucination). What os-server
+as base64 in the sensing POST's `image` field. What os-server
 then does with the image is decided by the **describe-first gate** in
 `internal/vision` (see `server/sensing/delivery/http/handler.go`): when the
 active main model does NOT declare image input in the model catalog (the
@@ -167,8 +164,21 @@ Auto-AI case — a raw attachment 404s at the smart-agent-router with "No
 endpoints found that support image input"), the frame is described by the
 catalog's `default_image_model` (qwen — the same model openclaw's `imageModel`
 uses for Telegram photos) and the agent receives an `[image description] …`
-text line instead; when the catalog says the model takes images, the raw
-attachment is forwarded directly. The gate re-reads the catalog every 30 min,
+text line instead — and the `[vision-image]` hint is rewritten to drop the
+file path, plus the snapshot file itself is deleted (best-effort). Neither
+may survive alongside a description: the snapshot lives inside the agent's
+media allow-list, so any path the agent gets hold of — the hint, an old hint
+in session history, an `ls` of the dir — can be `read` into an image block
+that sticks in the session history and 404s every later turn the router
+sends to a text-only model (even fully-text turns). The describe call gets
+two attempts (20s + 15s, 35s total — a hung upstream request is retried on a
+fresh connection); if both fail the image is **dropped**, the snapshot file
+still deleted, and the hint rewritten to have the agent tell the user it
+couldn't see the photo — never sent as a raw attachment, because when the
+router lands on a text-only model that attachment poisons the whole session,
+which costs far more than one degraded turn. When the catalog says
+the model takes images, the raw attachment is forwarded directly and the
+hint keeps the path. The gate re-reads the catalog every 30 min,
 so a backend catalog flip migrates devices automatically. The same gate covers
 web-monitor-chat image uploads — both image sources converge on this one
 handler. The `camera` skill instructs the agent to answer from the
@@ -288,6 +298,7 @@ table (cost ceiling, never an under-report).
 | `gemini-2.5-flash-native-audio` | $0.50 | $3.00 | $2.00 | $12.00 | 25 tok/s | ai.google.dev pricing (verified 2026-06-29) |
 | `gemini-3.1-flash-live` | $0.75 | $3.00 | $4.50 | $12.00 | 25 tok/s | ai.google.dev pricing (verified 2026-06-29) |
 | `qwen-omni-turbo-realtime` | $0.27 | $4.44 | $8.89* | $8.89* | 25 tok/s in+out | consume-detail bill CSV (verified 2026-07-06); *audio-modality output bills text+audio together (`multi_output_token`); text-only responses bill $1.07 (`purein_text_output`) |
+| `qwen3.5-omni-flash-realtime` | $0.27 | $4.44 | $8.89* | $8.89* | ~7 tok/s in, ~12.5 tok/s out | bill CSV (verified 2026-07-06): flash bills under the SAME cheap line items as turbo, incl. search-enabled sessions — dominant text-in cost ~2.8x cheaper than Gemini 3.1. Search +$0.01/request |
 | `qwen3.5-omni-plus-realtime` | $2.10 | $16.50 | $62.00* | $62.00* | ~7 tok/s in, ~12.5 tok/s out | consume-detail bill CSV (verified 2026-07-06); *one `omni_audio_output_token` line item covers the response's text+audio. Web search bills $0.01 per search request on top |
 
 Cost anatomy is the same on every provider: `in_text` dominates (the ~7-10k

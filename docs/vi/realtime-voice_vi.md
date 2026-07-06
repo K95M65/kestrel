@@ -152,17 +152,26 @@ tiêu thụ nó **một lần mỗi turn** (turn đã handled dùng rồi thì c
 delegate sau không nhặt phải ảnh cũ) và, khi còn tươi
 (`HAL_GEMINI_VISION_HANDOFF_MAX_AGE_S`, mặc định 20s), chèn dòng hint
 `[vision-image] <path>` vào message VÀ gửi frame dạng base64 trong field
-`image` của sensing POST (path trong hint chỉ để truy vết — bảo agent *đọc*
-file không chạy được với main model text-only: runtime drop âm thầm image
-block từ tool read; chính là vụ ảo giác "tả PCB trong khi cầm hộp bánh").
+`image` của sensing POST.
 os-server xử lý ảnh theo **gate describe-first** trong `internal/vision` (xem
 `server/sensing/delivery/http/handler.go`): khi main model đang active KHÔNG
 khai image input trong catalog model (trường hợp Auto-AI — attachment thô sẽ
 404 tại smart-agent-router: "No endpoints found that support image input"),
 frame được `default_image_model` của catalog (qwen — cùng model mà `imageModel`
 của openclaw dùng cho ảnh Telegram) tả thành chữ và agent nhận dòng
-`[image description] …`; còn khi catalog nói model nhận ảnh, attachment thô
-được forward thẳng. Gate đọc lại catalog mỗi 30 phút, nên BE flip catalog là
+`[image description] …` — đồng thời hint `[vision-image]` được viết lại để
+**bỏ path file**, và **file snapshot cũng bị xoá luôn** (best-effort). Cả
+path lẫn file đều không được sống chung với description: snapshot nằm trong
+media allow-list của agent nên bất kỳ path nào agent vớ được — hint, hint cũ
+trong session history, `ls` thư mục — đều có thể bị `read` thành image block
+nằm lì trong session history, làm 404 mọi turn sau mà router rơi vào model
+text-only (kể cả turn thuần chữ). Describe được thử 2 lần (20s + 15s, tổng
+35s — request treo được retry trên kết nối mới); fail cả hai thì ảnh bị
+**bỏ luôn**, file snapshot vẫn bị xoá, và hint được viết lại để agent nói
+với user là lần này không nhìn được — tuyệt đối không gửi raw attachment,
+vì khi router rơi vào model text-only thì attachment đó đầu độc cả session,
+đắt hơn nhiều so với hỏng một turn. Còn khi catalog nói model nhận ảnh,
+attachment thô được forward thẳng và hint giữ nguyên path. Gate đọc lại catalog mỗi 30 phút, nên BE flip catalog là
 fleet tự chuyển. Gate này cũng cover luôn ảnh upload từ web monitor chat — cả
 hai nguồn ảnh hội tụ về một handler. Skill `camera` dặn agent trả lời từ mô
 tả/attachment và bỏ qua `/camera/snapshot`. Nếu timeout xảy ra *trước khi* kịp
@@ -274,6 +283,7 @@ không bao giờ báo thiếu).
 | `gemini-2.5-flash-native-audio` | $0.50 | $3.00 | $2.00 | $12.00 | 25 tok/s | ai.google.dev pricing (verify 2026-06-29) |
 | `gemini-3.1-flash-live` | $0.75 | $3.00 | $4.50 | $12.00 | 25 tok/s | ai.google.dev pricing (verify 2026-06-29) |
 | `qwen-omni-turbo-realtime` | $0.27 | $4.44 | $8.89* | $8.89* | 25 tok/s in+out | bill CSV consume-detail (verify 2026-07-06); *output turn có audio bill gộp text+audio (`multi_output_token`); response text-only bill $1.07 (`purein_text_output`) |
+| `qwen3.5-omni-flash-realtime` | $0.27 | $4.44 | $8.89* | $8.89* | ~7 tok/s in, ~12.5 tok/s out | bill CSV (verify 2026-07-06): flash bill CÙNG line item rẻ như turbo, kể cả phiên bật search — text-in (phần nặng nhất) rẻ hơn Gemini 3.1 ~2.8x. Search +$0.01/request |
 | `qwen3.5-omni-plus-realtime` | $2.10 | $16.50 | $62.00* | $62.00* | ~7 tok/s in, ~12.5 tok/s out | bill CSV consume-detail (verify 2026-07-06); *một line item `omni_audio_output_token` bao cả text+audio của response. Web search tính thêm $0.01/lần search |
 
 Cơ cấu chi phí giống nhau ở mọi provider: `in_text` chiếm áp đảo (system

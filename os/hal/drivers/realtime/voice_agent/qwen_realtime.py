@@ -74,6 +74,14 @@ _QWEN_RATES: dict[str, dict[tuple[str, str], float]] = {
         ("in", "TEXT"): 0.27, ("in", "AUDIO"): 4.44,
         ("out", "TEXT"): 8.89, ("out", "AUDIO"): 8.89,
     },
+    # Flash bills under the SAME cheap line items as turbo (text_input_token /
+    # audio_input_token / multi_output_token — bill-verified 2026-07-06, incl.
+    # search-enabled sessions), NOT the omni_* premium items of plus. That
+    # makes flash's dominant cost (text in) ~2.8x cheaper than Gemini 3.1.
+    "qwen3.5-omni-flash-realtime": {
+        ("in", "TEXT"): 0.27, ("in", "AUDIO"): 4.44,
+        ("out", "TEXT"): 8.89, ("out", "AUDIO"): 8.89,
+    },
     "qwen3.5-omni-plus-realtime": {
         ("in", "TEXT"): 2.10, ("in", "AUDIO"): 16.50,
         ("out", "TEXT"): 62.00, ("out", "AUDIO"): 62.00,
@@ -107,9 +115,13 @@ _MARKER_PROTOCOL_SUFFIX = (
     "\n\n[TOOL PROTOCOL] This session has NO function tools (web search replaces"
     " them). Wherever your instructions say to call delegate_to_main(message),"
     " instead reply with EXACTLY this text and NOTHING else: [DELEGATE] <message>."
-    " No words before or after the marker line. All other delegation rules"
+    " No words before or after the marker line. Never say \"okay, I'll do it\" —"
+    " only the [DELEGATE] line gets it done. All other delegation rules"
     " (what to delegate vs answer directly) still apply. There is no"
     " express_emotion tool — never mention or fake tool calls."
+    "\nExamples:"
+    "\nUser: \"Turn the volume up a bit\" -> [DELEGATE] Increase volume"
+    "\nUser: \"Remind me to take my medicine at 7 PM\" -> [DELEGATE] Set a reminder at 7 PM: take medicine"
 )
 
 
