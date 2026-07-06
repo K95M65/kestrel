@@ -31,7 +31,6 @@ dependencies = [
     "scipy>=1.8",
     "sounddevice",
     "insightface>=0.7.3; sys_platform != 'darwin' or platform_machine != 'x86_64'",
-    "mediapipe==0.10.21",
     "onnxruntime>=1.23.2",
     "insightface>=0.7.3",
     "anthropic>=0.40.0",
