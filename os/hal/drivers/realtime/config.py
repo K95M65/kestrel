@@ -83,6 +83,7 @@ class QwenConfig(BaseModel):
     instructions: str = ""
     sample_rate: int = app_config.REALTIME_QWEN_SAMPLE_RATE
     language: str | None = _load_language()
+    search_enabled: bool = app_config.REALTIME_QWEN_SEARCH
     max_retries: int = 3
     reconnect_delay_s: float = 2.0
 

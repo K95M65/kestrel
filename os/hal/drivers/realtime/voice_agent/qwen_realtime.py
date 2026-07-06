@@ -72,6 +72,15 @@ _QWEN_RATES: dict[str, dict[tuple[str, str], float]] = {
         ("in", "TEXT"): 0.27, ("in", "AUDIO"): 0.27,
         ("out", "TEXT"): 1.07, ("out", "AUDIO"): 1.07,
     },
+    # UNVERIFIED — no public per-token rate for 3.5-plus-realtime (console-only,
+    # tiered); seeded with the turbo blended rate so turns resolve explicitly.
+    # Calibrate from the Model Studio console Expenses page against the logged
+    # per-modality token counts, then fix these numbers. Audio→token conversion
+    # differs from turbo: 3.5 input ≈7 tok/s, output ≈12.5 tok/s (probe-matched).
+    "qwen3.5-omni-plus-realtime": {
+        ("in", "TEXT"): 0.27, ("in", "AUDIO"): 0.27,
+        ("out", "TEXT"): 1.07, ("out", "AUDIO"): 1.07,
+    },
 }
 # Unknown model → most expensive table (cost ceiling, mirrors gemini_live).
 _QWEN_RATES_FALLBACK: dict[tuple[str, str], float] = max(
@@ -165,6 +174,11 @@ class QwenRealtimeAgent(VoiceAgentBase):
             # so server turn detection stays off — mirrors the other providers.
             "turn_detection": None,
         }
+        if self._config.search_enabled:
+            # Built-in web search (3.5 models) — the qwen twin of Gemini's
+            # Google Search grounding. Without it the model answers live-data
+            # questions from stale knowledge (probed 2026-07-06).
+            session["enable_search"] = True
         if self._tools:
             # Beta-style flat tool entries; our registry (DELEGATE_TOOL etc.)
             # is already in this exact shape. If the model rejects tools the

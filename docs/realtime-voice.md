@@ -185,7 +185,7 @@ Three interchangeable backends, selected by `HAL_REALTIME_PROVIDER` /
 |----------|-------|-----------------|---------------|-------------|
 | Gemini Live | `voice_agent/gemini_live.py` `GeminiLiveAgent` | private asyncio loop on a `gemini-io` thread; send/recv threads submit coroutines via `run_coroutine_threadsafe` | `gemini-2.5-flash-native-audio-preview-12-2025` | 16000 Hz |
 | OpenAI Realtime | `voice_agent/openai_realtime.py` `OpenAIRealtimeAgent` | fully synchronous; one `RealtimeConnection` shared by send/recv threads, serialized by a reentrant lock | `gpt-realtime-2` | 24000 Hz |
-| Qwen Omni Realtime | `voice_agent/qwen_realtime.py` `QwenRealtimeAgent` | fully synchronous; raw `websockets.sync.client` socket shared by send/recv threads, reusing the openai_realtime thread/queue skeleton | `qwen-omni-turbo-realtime` | 16000 Hz in / 24000 Hz out |
+| Qwen Omni Realtime | `voice_agent/qwen_realtime.py` `QwenRealtimeAgent` | fully synchronous; raw `websockets.sync.client` socket shared by send/recv threads, reusing the openai_realtime thread/queue skeleton | `qwen3.5-omni-plus-realtime` | 16000 Hz in / 24000 Hz out |
 
 Gemini Live uses `google-genai`, but the SDK websocket keepalive is disabled
 (`ping_interval=None`, `ping_timeout=None`) so the Python client behaves like the
@@ -208,9 +208,13 @@ carry an explicit `response.modalities ["text","audio"]` or the server answers
 text-only (verified live 2026-07-06). Audio is 16 kHz mono pcm16 base64 in,
 24 kHz mono pcm16 out. Function tools (`delegate_to_main`, `express_emotion`)
 are passed in `session.update` (beta flat format) and
-`response.function_call_arguments.done` is handled. Voices: `Cherry` (default),
-`Serena`, `Ethan`, `Chelsie`; there is **no reasoning/thinking knob** (the web
-Settings page hides the Reasoning selector for qwen). Capability-wise qwen has
+`response.function_call_arguments.done` is handled. The default model is
+`qwen3.5-omni-plus-realtime`: the legacy `qwen-omni-turbo-realtime` never fires
+function calls and ignores `[TURN CONTEXT]` (device-tested 2026-07-06), which
+breaks the delegate flow entirely. Voices: `Ethan` (default) and `Serena` on
+3.5-plus; `Cherry`/`Chelsie` are turbo-only (a wrong pairing fails with
+`InvalidParameter` on the first response). There is **no reasoning/thinking
+knob** (the web Settings page hides the Reasoning selector for qwen). Capability-wise qwen has
 **no Google Search grounding and no in-session vision/`look`** (text + audio
 only) — live-data and visual questions are delegated to the main agent.
 Per-turn token/cost lines go to their own log file `qwen_usage.log` (logger
@@ -394,7 +398,7 @@ or via env on the device (`DASHSCOPE_API_KEY`, `HAL_QWEN_REALTIME_BASE_URL` in
   "provider": "gemini",
   "gemini": { "model": "gemini-3.1-flash-live-preview", "voice": "Kore", "thinking_level": "MINIMAL" },
   "openai": { "model": "gpt-realtime-2", "voice": "alloy", "reasoning_effort": "minimal" },
-  "qwen": { "model": "qwen-omni-turbo-realtime", "voice": "Cherry", "api_key": "sk-…", "base_url": "wss://…" }
+  "qwen": { "model": "qwen3.5-omni-plus-realtime", "voice": "Ethan", "api_key": "sk-…", "base_url": "wss://…" }
 }
 ```
 
@@ -467,8 +471,8 @@ Each knob's `HAL_*` env var overrides the block (and is the dev-box path):
 | `HAL_OPENAI_REASONING_EFFORT` | `minimal` | `minimal` \| `low` \| `medium` \| `high` \| `xhigh` — cost-lean default (was `xhigh`) |
 | `DASHSCOPE_API_KEY` | — | Qwen key; overrides `realtime.qwen.api_key`. **No fallback** to `llm_api_key` / the shared `realtime.api_key` |
 | `HAL_QWEN_REALTIME_BASE_URL` | — | DashScope workspace WS host; overrides `realtime.qwen.base_url`. Never derived from `llm_base_url` |
-| `HAL_QWEN_REALTIME_MODEL` | `qwen-omni-turbo-realtime` | |
-| `HAL_QWEN_REALTIME_VOICE` | `Cherry` | Also `Serena` \| `Ethan` \| `Chelsie` |
+| `HAL_QWEN_REALTIME_MODEL` | `qwen3.5-omni-plus-realtime` | turbo is legacy: no function calls, ignores turn context |
+| `HAL_QWEN_REALTIME_VOICE` | `Ethan` | 3.5-plus: also `Serena`; turbo-only: `Cherry` \| `Chelsie` |
 | `HAL_REALTIME_MEMORY_PATH` | `<workspace>/realtime/memory.jsonl` | |
 | `HAL_REALTIME_MAX_MEMORY_ENTRIES` / `_TRIM_KEEP` | `1000` / `500` | |
 | `HAL_REALTIME_SUMMARIZER_ENABLED` | `true` | |
