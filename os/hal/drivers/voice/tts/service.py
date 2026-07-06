@@ -243,13 +243,19 @@ class TTSService:
             self._stream = None
             self._stream_rate = None
 
-        stream = self._sd.OutputStream(
-            samplerate=dst_rate,
-            channels=TTS_CHANNELS,
-            dtype="float32",
-            device=self._output_device,
-        )
-        stream.start()
+        # Guarded open: refuses (RuntimeError) while a PortAudio re-init is in
+        # flight — a stream that comes alive right before Pa_Terminate() aborts
+        # the whole process. One failed write is recoverable; SIGABRT is not.
+        from hal.drivers.audio_route import stream_open_guard
+
+        with stream_open_guard():
+            stream = self._sd.OutputStream(
+                samplerate=dst_rate,
+                channels=TTS_CHANNELS,
+                dtype="float32",
+                device=self._output_device,
+            )
+            stream.start()
         self._stream = _WatchedStream(stream, self)
         self._stream_rate = dst_rate
         logger.info("Persistent OutputStream opened at %d Hz", dst_rate)
@@ -408,8 +414,12 @@ class TTSService:
             try:
                 # Write only ~5ms of silence -- enough to verify the rate opens
                 # without forcing a multi-second snd_pcm_drain on close (OrangePi).
+                # Guarded like _ensure_stream: a probe stream alive during a
+                # PortAudio re-init aborts the process just the same.
+                from hal.drivers.audio_route import stream_open_guard
+
                 probe_frames = max(1, int(rate * 0.005))
-                with self._sd.OutputStream(
+                with stream_open_guard(), self._sd.OutputStream(
                     device=self._output_device,
                     samplerate=rate,
                     channels=TTS_CHANNELS,
