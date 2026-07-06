@@ -170,7 +170,13 @@ may survive alongside a description: the snapshot lives inside the agent's
 media allow-list, so any path the agent gets hold of — the hint, an old hint
 in session history, an `ls` of the dir — can be `read` into an image block
 that sticks in the session history and 404s every later turn the router
-sends to a text-only model (even fully-text turns). When the catalog says
+sends to a text-only model (even fully-text turns). The describe call gets
+two attempts (20s + 15s, 35s total — a hung upstream request is retried on a
+fresh connection); if both fail the image is **dropped**, the snapshot file
+still deleted, and the hint rewritten to have the agent tell the user it
+couldn't see the photo — never sent as a raw attachment, because when the
+router lands on a text-only model that attachment poisons the whole session,
+which costs far more than one degraded turn. When the catalog says
 the model takes images, the raw attachment is forwarded directly and the
 hint keeps the path. The gate re-reads the catalog every 30 min,
 so a backend catalog flip migrates devices automatically. The same gate covers

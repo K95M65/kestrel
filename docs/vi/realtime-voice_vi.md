@@ -165,7 +165,12 @@ path lẫn file đều không được sống chung với description: snapshot 
 media allow-list của agent nên bất kỳ path nào agent vớ được — hint, hint cũ
 trong session history, `ls` thư mục — đều có thể bị `read` thành image block
 nằm lì trong session history, làm 404 mọi turn sau mà router rơi vào model
-text-only (kể cả turn thuần chữ). Còn khi catalog nói model nhận ảnh,
+text-only (kể cả turn thuần chữ). Describe được thử 2 lần (20s + 15s, tổng
+35s — request treo được retry trên kết nối mới); fail cả hai thì ảnh bị
+**bỏ luôn**, file snapshot vẫn bị xoá, và hint được viết lại để agent nói
+với user là lần này không nhìn được — tuyệt đối không gửi raw attachment,
+vì khi router rơi vào model text-only thì attachment đó đầu độc cả session,
+đắt hơn nhiều so với hỏng một turn. Còn khi catalog nói model nhận ảnh,
 attachment thô được forward thẳng và hint giữ nguyên path. Gate đọc lại catalog mỗi 30 phút, nên BE flip catalog là
 fleet tự chuyển. Gate này cũng cover luôn ảnh upload từ web monitor chat — cả
 hai nguồn ảnh hội tụ về một handler. Skill `camera` dặn agent trả lời từ mô

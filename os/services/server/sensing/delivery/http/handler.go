@@ -2,7 +2,6 @@ package http
 
 import (
 	"bytes"
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -249,37 +248,33 @@ func (h *SensingHandler) PostEvent(c *gin.Context) {
 	// convert image→text here once and every downstream path — queued or
 	// direct, any runtime — forwards text the model can use. Vision-capable
 	// main models (per the catalog) skip this and get the raw attachment.
-	// On describe failure the image is kept and rides as a raw attachment —
-	// degraded, but it starts working the moment the router is modality-aware.
-	// Slash commands keep the raw attachment; motion.activity images never
-	// reach the agent at all.
-	// Uses context.Background(): the description must complete even if the
-	// HAL client gives up on this HTTP request early (its POST timeout can be
-	// shorter than a slow describe — qwen routinely takes 9-13s).
+	// On describe failure (after retry) the image is DROPPED, not attached:
+	// a raw attachment sometimes works (router lands on a vision model) but
+	// when it doesn't, the image block sticks in the session history and 404s
+	// every later turn routed to a text-only model — one bad turn is cheaper
+	// than a poisoned conversation. Slash commands keep the raw attachment;
+	// motion.activity images never reach the agent at all.
 	if req.Image != "" && req.Type != "motion.activity" &&
 		!(req.Type == "web_chat" && strings.HasPrefix(strings.TrimSpace(req.Message), "/")) &&
 		!vision.ModelSupportsVision(h.config) {
-		dctx, cancel := context.WithTimeout(context.Background(), vision.DescribeTimeout)
-		desc, derr := vision.Describe(dctx, h.config, req.Image, req.Message)
-		cancel()
+		desc, derr := vision.DescribeWithRetry(h.config, req.Image, req.Message)
+		// Either way the snapshot file must go: it sits inside the agent's
+		// media allow-list, so any path the agent digs up later (old hints in
+		// session history, an exec `ls` of the dir) could still be `read`
+		// into an image block. Described → nothing needs it; describe failed
+		// → it must never reach the LLM. Best-effort; the hint rewrite is
+		// the primary guard.
+		removeVisionSnapshot(req.Message)
 		if derr != nil {
-			slog.Warn("vision describe failed — image will go as raw attachment",
+			slog.Warn("vision describe failed after retry — dropping image (text-only main model)",
 				"component", "sensing", "type", req.Type, "error", derr)
-		} else {
-			// Delete the snapshot file itself, not just the path from the
-			// hint: the file sits inside the agent's media allow-list, so any
-			// path the agent digs up later (old hints in session history, an
-			// exec `ls` of the dir) could still be `read` into an image block.
-			// With the description in hand nothing needs the file. Best-effort
-			// — the hint rewrite below is the primary guard. Prefix-gated so a
-			// crafted message can't make us delete arbitrary files.
-			if m := reVisionImagePath.FindStringSubmatch(req.Message); m != nil &&
-				strings.Contains(m[1], "/media/hal-snapshots/") {
-				if rerr := os.Remove(m[1]); rerr != nil && !os.IsNotExist(rerr) {
-					slog.Warn("vision snapshot cleanup failed",
-						"component", "sensing", "path", m[1], "error", rerr)
-				}
+			if reVisionImageHint.MatchString(req.Message) {
+				req.Message = reVisionImageHint.ReplaceAllString(req.Message,
+					"[vision-image] (a photo was captured but could not be processed — tell the user you couldn't see it this time; do NOT guess what was in it, do NOT take a new snapshot, do NOT read any image file)")
+			} else {
+				req.Message += "\n[image unavailable] the attached photo could not be processed — tell the user you couldn't see it this time; do NOT guess what was in it"
 			}
+		} else {
 			// Drop the snapshot path from the [vision-image] hint — with a
 			// description below, the agent must not read the image file (an
 			// image tool result poisons the session history for text-only
@@ -287,8 +282,8 @@ func (h *SensingHandler) PostEvent(c *gin.Context) {
 			req.Message = reVisionImageHint.ReplaceAllString(req.Message,
 				"[vision-image] (a photo was just captured for this request; answer the visual question from the [image description] below — do NOT take a new snapshot, do NOT read any image file)")
 			req.Message += "\n[image description] " + desc
-			req.Image = "" // text-only from here on; nothing downstream needs the blob
 		}
+		req.Image = "" // text-only from here on; nothing downstream gets the blob
 	}
 
 	// When agent is busy:
@@ -917,6 +912,21 @@ var rePoseWorstMarker = regexp.MustCompile(`\[pose_worst:\s*([^\]]+)\]\n?`)
 // history that 404s every later turn on a text-only routed model.
 var reVisionImageHint = regexp.MustCompile(`\[vision-image\][^\n]*`)
 var reVisionImagePath = regexp.MustCompile(`\[vision-image\]\s+(/[^\s)]+)`)
+
+// removeVisionSnapshot deletes the snapshot file referenced by the message's
+// [vision-image] hint, if any. Prefix-gated to the HAL snapshot dir so a
+// crafted message can't make the server delete arbitrary files. Best-effort:
+// failure is logged, never fails the turn.
+func removeVisionSnapshot(message string) {
+	m := reVisionImagePath.FindStringSubmatch(message)
+	if m == nil || !strings.Contains(m[1], "/media/hal-snapshots/") {
+		return
+	}
+	if err := os.Remove(m[1]); err != nil && !os.IsNotExist(err) {
+		slog.Warn("vision snapshot cleanup failed",
+			"component", "sensing", "path", m[1], "error", err)
+	}
+}
 
 // extractSnapshotPath extracts the snapshot file path from a sensing message.
 func extractSnapshotPath(message string) string {

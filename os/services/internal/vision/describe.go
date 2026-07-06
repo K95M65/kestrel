@@ -42,15 +42,20 @@ const DefaultImageModel = "qwen/qwen3.6-plus"
 // catalog flip propagates on the same cadence as the rest of the device.
 const catalogTTL = 30 * time.Minute
 
-// DescribeTimeout bounds one describe call. It runs inline in the sensing
-// handler before the agent forward, so it delays the turn by at most this
-// long; on timeout the caller falls back to sending the raw attachment.
+// DescribeTimeout bounds the TOTAL describe budget across all attempts. It
+// runs inline in the sensing handler before the agent forward, so it delays
+// the turn by at most this long. Keep it under HAL's image-turn POST timeout
+// (45s in sensing_sender.py) so the HAL client outlives describe + agent
+// forward.
+const DescribeTimeout = 35 * time.Second
+
+// Per-attempt timeouts for DescribeWithRetry; they sum to DescribeTimeout.
 // Sized from device measurements: qwen via the campaign-api router answers a
 // 768px frame in 9–13s routinely (connect/TLS are instant — the wait is pure
-// upstream inference), so 20s was cutting off the slow tail. Keep it under
-// HAL's image-turn POST timeout (45s in sensing_sender.py) so the HAL client
-// outlives describe + agent forward.
-const DescribeTimeout = 35 * time.Second
+// upstream inference), so 20s covers the slow tail of a healthy upstream and
+// a hung request gets a fresh connection instead of eating the whole budget
+// (the 2026-07-06 failure was a single 35s hang, likely rescueable by retry).
+var describeAttemptTimeouts = [...]time.Duration{20 * time.Second, 15 * time.Second}
 
 // Emphasis on the user's request so the description surfaces what the answer
 // needs (label text, object identity, counts) instead of a generic caption.
@@ -130,6 +135,25 @@ func imageModel() string {
 		return c.DefaultImageModel
 	}
 	return DefaultImageModel
+}
+
+// DescribeWithRetry runs Describe once per describeAttemptTimeouts entry,
+// returning the first success. Uses context.Background() on purpose: the
+// description must complete even if the HAL client gives up on the sensing
+// HTTP request early (its POST timeout can be shorter than a slow describe).
+// On total failure the error carries every attempt's failure.
+func DescribeWithRetry(cfg *config.Config, imageB64 string, question string) (string, error) {
+	var errs []string
+	for i, timeout := range describeAttemptTimeouts {
+		dctx, cancel := context.WithTimeout(context.Background(), timeout)
+		desc, err := Describe(dctx, cfg, imageB64, question)
+		cancel()
+		if err == nil {
+			return desc, nil
+		}
+		errs = append(errs, fmt.Sprintf("attempt %d (%s): %v", i+1, timeout, err))
+	}
+	return "", fmt.Errorf("%s", strings.Join(errs, "; "))
 }
 
 // Describe sends the base64 JPEG to the vision model via the anthropic-messages
