@@ -29,10 +29,8 @@ func (s *PicoclawService) PairWhatsapp(_ context.Context) <-chan domain.PairingE
 	return ch
 }
 
-func (s *PicoclawService) ResetAgent() error {
-	slog.Info("ResetAgent: no-op (picoclaw backend)", "component", "picoclaw")
-	return nil
-}
+// ResetAgent lives in reset.go — PicoClaw's factory-reset wipe (stop+disable
+// gateway → rm -rf /root/.picoclaw → picoclaw onboard), so it does real work.
 
 // RestartAgent restarts the picoclaw gateway via systemctl so callers that need a
 // full gateway reload (config/workspace re-read) get it. Delegates to
