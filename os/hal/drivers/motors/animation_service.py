@@ -108,6 +108,14 @@ class AnimationService:
         # presets (focus/reading) that want the lamp to stay put while still
         # letting scene-change emotions (greeting/sleepy/stretching) play.
         self._hold_mode = False
+        # True only when the hold came from an EXPLICIT /servo/hold (agent
+        # command like "face the wall and stay there"). Then even scene-change
+        # emotions must not move the servo — a trailing [HW:/emotion:greeting]
+        # in the same reply used to play its animation right after aim+hold
+        # and park the arm at the greeting pose instead of the commanded one.
+        # Scene-preset holds keep the scene-change exemption (greeting/sleepy/
+        # stretching legitimately transition a focus/reading scene).
+        self._hold_explicit = False
 
         # Tracking lock — stricter than hold_mode: absolutely no servo writes
         # from the animation loop, and in-progress recordings are dropped so
