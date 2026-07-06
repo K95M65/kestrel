@@ -203,7 +203,7 @@ in this priority order (`translator.go` `categorize`):
 | `message.create/update`, `placeholder:true` | thinking | *(none — status, not content)* |
 | `message.create/update`, `kind:"thought"` / `thought:true` | reasoning | *(none — rendered as status only)* |
 | `message.create`, `kind:"tool_calls"` / has `tool_calls` | tool call | `agent` tool `phase:start` + `phase:end` per call |
-| `message.create/update`, non-empty `content` (none of the above) | **final answer** | `chat` `state:final role:assistant` **+** `agent` lifecycle `phase:end` (with usage) — **ends the turn** |
+| `message.create/update`, non-empty `content` (none of the above) | **final answer** | `agent` `stream:assistant` (whole reply as one delta) **+** `chat` `state:final role:assistant` **+** `agent` lifecycle `phase:end` (with usage) — **ends the turn** |
 | `error` | error | `agent` lifecycle `phase:error` — ends the turn |
 | `typing.stop` / `message.delete` / `pong` | — | *(ignored)* |
 
@@ -218,6 +218,14 @@ in this priority order (`translator.go` `categorize`):
 - PicoClaw does not emit a separate tool-result frame, so each tool call emits a
   `tool` `phase:start` immediately followed by a `phase:end` with an empty result,
   purely to close the trace.
+- **Non-streaming → one assistant delta.** PicoClaw delivers the whole reply in a
+  single final frame, but the shared consumer derives TTS + `[HW:/…]` hardware
+  markers (and the Flow Monitor `tts_speak` / `hw_*` nodes) from the **assistant-delta
+  stream**, flushed at `lifecycle.end`. So the final answer is surfaced as `agent`
+  `stream:assistant` — the whole reply (markers intact) as **one** delta — **before**
+  `chat.final` / `lifecycle.end`, the N=1 case of the openclaw/hermes streaming
+  contract. Without it the reply renders in web chat but never reaches the speaker or
+  hardware. `translator.go` `emitFinal`.
 - `media.create` is defined in the protocol but the server never emits it — media
   rides inside `message.create` as `attachments`.
 

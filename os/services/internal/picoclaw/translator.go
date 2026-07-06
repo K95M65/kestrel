@@ -227,9 +227,14 @@ func (s *PicoclawService) emitToolCalls(f picoFrame, dispatch func(domain.WSEven
 	}
 }
 
-// emitFinal emits (a) the final chat message and (b) lifecycle.end with usage,
-// then closes the turn. Order matches OpenClaw/Hermes so handler_events.go sees
-// chat.final before lifecycle.end → idle.
+// emitFinal emits, in order: (a) the whole reply as a single assistant delta,
+// (b) the final chat message, (c) lifecycle.end with usage — then closes the
+// turn. Order matches OpenClaw/Hermes (assistant deltas → chat.final →
+// lifecycle.end → idle). PicoClaw does not stream tokens, so (a) is the N=1
+// case of that streaming contract: it is what lets the shared consumer flush
+// TTS + [HW:/…] hardware markers (and light the Flow Monitor tts_speak / hw_*
+// nodes) at lifecycle.end exactly as it does for the streaming backends —
+// without it the reply renders in web chat but never reaches the speaker or HW.
 //
 // The turn ids are reset BEFORE dispatch: the consumer (handler_event_chat.go /
 // handler_event_agent.go) calls SetBusy(false) on chat.final and lifecycle.end,
@@ -259,6 +264,20 @@ func (s *PicoclawService) emitFinal(f picoFrame, dispatch func(domain.WSEvent)) 
 
 	s.currentRunID.Store("")
 	s.pendingRunID.Store("")
+
+	// Surface the full reply as a single assistant delta BEFORE chat.final /
+	// lifecycle.end so the consumer's assistant buffer (accumulateAssistantDelta)
+	// is populated before it flushes at lifecycle.end — see this func's doc.
+	// finalText carries the raw [HW:/…] markers so extractHWCalls can parse them.
+	if finalText != "" {
+		deltaPayload, _ := json.Marshal(map[string]any{
+			"runId":      runID,
+			"sessionKey": s.GetSessionKey(),
+			"stream":     "assistant",
+			"data":       map[string]any{"delta": finalText},
+		})
+		dispatch(domain.WSEvent{Type: "evt", Event: "agent", Payload: deltaPayload})
+	}
 
 	chatMsg, _ := json.Marshal(map[string]any{
 		"runId":      runID,
