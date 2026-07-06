@@ -428,6 +428,14 @@ REALTIME_PROVIDER: str = _rt_str("HAL_REALTIME_PROVIDER", _RT.get("provider"), "
 REALTIME_RECV_QUEUE_TIMEOUT_S: float = float(
     os.environ.get("HAL_REALTIME_RECV_QUEUE_TIMEOUT_S", "8.0")
 )
+# Silent-turn watchdog for turns where a `look` fired. Gemini 3.1's forced
+# thinking over a text-dense frame ("read this label") stays silent >8s with
+# zero output events — the default watchdog killed such turns seconds before
+# the answer (device-observed 2026-07-06). Applies per-turn via
+# agent.extend_recv_timeout(); normal turns keep the tight default above.
+REALTIME_LOOK_RECV_TIMEOUT_S: float = float(
+    os.environ.get("HAL_REALTIME_LOOK_RECV_TIMEOUT_S", "20.0")
+)
 # Zombie-session guard. A long-lived Gemini Live session can stop responding
 # (the campaign-api proxy doesn't always relay Gemini's go_away/close, so the
 # WS stays "connected", accepts audio, but never replies — every turn hits the
