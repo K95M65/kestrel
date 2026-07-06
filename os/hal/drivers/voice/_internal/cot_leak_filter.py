@@ -59,8 +59,15 @@ _TRIGGER = re.compile(
 _SECONDARY = re.compile(
     r"(?i)(?:\bpersonas?\b|\bsystem prompts?\b|language lock|\baudio tags?\b"
     r"|\bemotion tool\b|via tool call"
-    r"|\bmy search results?\b|\bsearch results? (?:show|suggest|indicate)\b)"
+    r"|\bmy search results?\b|\bsearch results? (?:show|suggest|indicate)\b"
+    r"|\b\d+ (?:sentences?|words)\b)"
 )
+
+# All-ASCII label sentence ending in a colon ("Vietnamese Translation:",
+# "Length Check:", "Context:") — planning scaffolding from the leak corpus.
+# Only meaningful when the reply language is NOT English: a real non-English
+# reply never yields a pure-ASCII colon-terminated sentence.
+_LABEL = re.compile(r"^[\x20-\x7e]{1,40}:$")
 
 # Sentence-initial planning openers ("User wants...", "I need to...",
 # "Looking at the latest image..."). Only meaningful when the reply language is
@@ -74,8 +81,14 @@ _OPENER = re.compile(
 # --- Text mechanics ---------------------------------------------------------
 
 # Sentence enders (ASCII + fullwidth) and newlines; colons split so planning
-# labels ("Phrasing draft: ...") separate from their payload.
-_SENTENCE_SPLIT = re.compile(r"(?<=[.!?。！？：；:])\s+|\n+")
+# labels ("Phrasing draft: ...") separate from their payload. Also split when
+# an ender is glued straight onto the next sentence ("Finalize response.Khả
+# năng...") — the leak omits the space, and without the split the label drags
+# the real answer down with it. Uppercase/non-ASCII lookahead keeps decimals
+# ("3.5") and lowercase glue ("Node.js") intact.
+_SENTENCE_SPLIT = re.compile(
+    r"(?<=[.!?。！？：；:])\s+|\n+|(?<=[.!?])(?=[A-Z]|[^\x00-\x7f])"
+)
 
 _QUOTES = "\"'“”‘’«»「」『』【】＂＇"
 
@@ -146,6 +159,9 @@ class CoTLeakFilter:
         if self._non_english and _OPENER.match(s):
             self._cot_mode = True
             return True
+        if self._non_english and _LABEL.match(s):
+            self._cot_mode = True
+            return True
         if not self._cot_mode:
             return False
         if _SECONDARY.search(s):
@@ -158,11 +174,13 @@ class CoTLeakFilter:
         # part of it) or the answer is spoken twice.
         if s[0] in _QUOTES or s[-1] in _QUOTES:
             return True
-        # Bare plan fragments ("1.", "4.", "Stop.", "thinking.") — ASCII runts
-        # that survived the label drops around them. Pure audio tags
-        # ("[confused]") are exempt: they steer TTS delivery, not content.
+        # Bare plan fragments ("1.", "Stop.", "Finalize response.", "Length
+        # Check:") — ASCII runts up to two tokens that survived the label drops
+        # around them; the English gate needs three words so two-word labels
+        # slip between the two checks otherwise. Pure audio tags ("[confused]")
+        # are exempt: they steer TTS delivery, not content.
         bare = _LEADING_TAGS.sub("", s).strip()
-        if bare and not _NON_ASCII_LETTER.search(bare) and len(_word_set(bare)) <= 1:
+        if bare and not _NON_ASCII_LETTER.search(bare) and len(_word_set(bare)) <= 2:
             return True
         # Fuzzy near-duplicate of a sentence already kept this turn — drafts
         # differ from the final answer by a word or two, so exact dedup misses.
