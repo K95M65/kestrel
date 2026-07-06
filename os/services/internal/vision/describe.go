@@ -45,17 +45,19 @@ const catalogTTL = 30 * time.Minute
 // DescribeTimeout bounds the TOTAL describe budget across all attempts. It
 // runs inline in the sensing handler before the agent forward, so it delays
 // the turn by at most this long. Keep it under HAL's image-turn POST timeout
-// (45s in sensing_sender.py) so the HAL client outlives describe + agent
+// (65s in sensing_sender.py) so the HAL client outlives describe + agent
 // forward.
-const DescribeTimeout = 35 * time.Second
+const DescribeTimeout = 55 * time.Second
 
 // Per-attempt timeouts for DescribeWithRetry; they sum to DescribeTimeout.
-// Sized from device measurements: qwen via the campaign-api router answers a
-// 768px frame in 9–13s routinely (connect/TLS are instant — the wait is pure
-// upstream inference), so 20s covers the slow tail of a healthy upstream and
-// a hung request gets a fresh connection instead of eating the whole budget
-// (the 2026-07-06 failure was a single 35s hang, likely rescueable by retry).
-var describeAttemptTimeouts = [...]time.Duration{20 * time.Second, 15 * time.Second}
+// Sized from device measurements 2026-07-06 (Go client, 768px frame, 5 runs):
+// 12.1–19.6s — the tail sits right AT the old 20s cap, and the old 15s second
+// attempt was below the ~17s median, so once attempt 1 timed out attempt 2
+// was near-guaranteed to fail too (observed 4/4 real-flow failures while the
+// endpoint answered every probe). 30s clears the slow tail with margin; the
+// 25s retry still gets a fresh connection for genuinely hung requests while
+// staying above median latency.
+var describeAttemptTimeouts = [...]time.Duration{30 * time.Second, 25 * time.Second}
 
 // Emphasis on the user's request so the description surfaces what the answer
 // needs (label text, object identity, counts) instead of a generic caption.
