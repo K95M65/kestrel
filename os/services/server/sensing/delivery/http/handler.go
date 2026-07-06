@@ -2,6 +2,7 @@ package http
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -23,6 +24,7 @@ import (
 	"go.autonomous.ai/os/internal/intent"
 	"go.autonomous.ai/os/internal/monitor"
 	"go.autonomous.ai/os/internal/statusled"
+	"go.autonomous.ai/os/internal/vision"
 	"go.autonomous.ai/os/lib/flow"
 	"go.autonomous.ai/os/lib/hal"
 	"go.autonomous.ai/os/lib/i18n"
@@ -226,6 +228,49 @@ func (h *SensingHandler) PostEvent(c *gin.Context) {
 		}()
 	}
 
+	// Web chat with image: save to temp file so agent can reference the path
+	// (e.g. for face enrollment — tools read the file directly, no LLM vision
+	// needed). Tag uses [image:] not [snapshot:] to avoid the strip below.
+	// Done here, BEFORE the busy fork, so a queued turn carries the tag too.
+	if req.Type == "web_chat" && req.Image != "" {
+		if imgData, derr := base64.StdEncoding.DecodeString(req.Image); derr == nil {
+			tmpPath := fmt.Sprintf("/tmp/web-chat-%d.jpg", time.Now().UnixMilli())
+			if werr := os.WriteFile(tmpPath, imgData, 0644); werr == nil {
+				req.Message += "\n[image: " + tmpPath + "]"
+			}
+		}
+	}
+
+	// Describe-first gate — must also run BEFORE the busy fork: a queued event
+	// replays through the runtime drain paths (openclaw service_events.go and
+	// friends), which send raw attachments with no gate of their own. A raw
+	// attachment 404s at the smart-agent-router when the text-only main model
+	// (Auto-AI) is active ("No endpoints found that support image input"), so
+	// convert image→text here once and every downstream path — queued or
+	// direct, any runtime — forwards text the model can use. Vision-capable
+	// main models (per the catalog) skip this and get the raw attachment.
+	// On describe failure the image is kept and rides as a raw attachment —
+	// degraded, but it starts working the moment the router is modality-aware.
+	// Slash commands keep the raw attachment; motion.activity images never
+	// reach the agent at all.
+	// Uses context.Background(): the description must complete even if the
+	// HAL client gives up on this HTTP request early (its POST timeout can be
+	// shorter than a slow describe — qwen routinely takes 9-13s).
+	if req.Image != "" && req.Type != "motion.activity" &&
+		!(req.Type == "web_chat" && strings.HasPrefix(strings.TrimSpace(req.Message), "/")) &&
+		!vision.ModelSupportsVision(h.config) {
+		dctx, cancel := context.WithTimeout(context.Background(), vision.DescribeTimeout)
+		desc, derr := vision.Describe(dctx, h.config, req.Image, req.Message)
+		cancel()
+		if derr != nil {
+			slog.Warn("vision describe failed — image will go as raw attachment",
+				"component", "sensing", "type", req.Type, "error", derr)
+		} else {
+			req.Message += "\n[image description] " + desc
+			req.Image = "" // text-only from here on; nothing downstream needs the blob
+		}
+	}
+
 	// When agent is busy:
 	// - voice_command (wake word confirmed) always passes through immediately.
 	// - voice (ambient STT), presence.enter/leave are queued and replayed when agent becomes idle.
@@ -382,17 +427,6 @@ func (h *SensingHandler) PostEvent(c *gin.Context) {
 	msg = strings.ReplaceAll(msg, "\n\n\n", "\n\n")
 	msg = strings.TrimSpace(msg)
 
-	// Web chat with image: save to temp file so agent can reference the path
-	// (e.g. for face enrollment). Tag uses [image:] not [snapshot:] to avoid strip.
-	if isWebChat && req.Image != "" {
-		if imgData, err := base64.StdEncoding.DecodeString(req.Image); err == nil {
-			tmpPath := fmt.Sprintf("/tmp/web-chat-%d.jpg", time.Now().UnixMilli())
-			if err := os.WriteFile(tmpPath, imgData, 0644); err == nil {
-				msg += "\n[image: " + tmpPath + "]"
-			}
-		}
-	}
-
 	// Mark voice turns so the SSE handler can re-arm a Continuation filler
 	// at each tool.end. Done before forwarding so the lifecycle.start
 	// event can never race ahead of the mark.
@@ -443,6 +477,11 @@ func (h *SensingHandler) PostEvent(c *gin.Context) {
 		"msgLen", len(msg),
 		"message", msg)
 
+	// Note: when the describe-first gate above converted the image to an
+	// [image description] line, req.Image is empty and this turn goes down
+	// the plain-text path. An image here means either a vision-capable main
+	// model (raw attachment is correct) or a describe failure (degraded
+	// fallback).
 	if hasImage {
 		if isSlashCommand {
 			_, err = h.agentGateway.SendSlashCommandWithImageAndRun(msg, req.Image, reqID, runID)

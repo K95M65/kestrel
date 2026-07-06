@@ -301,6 +301,14 @@ class GeminiLiveAgent(VoiceAgentBase):
             _: bool
             buf: npt.NDArray[np.uint8]
             _, buf = cv2.imencode(".jpg", input.image)
+            # NOTE (device-verified 2026-07-02): a frame sent here MID-TURN
+            # (look tool flow) is queued by the Live API for the NEXT turn —
+            # the model answers from the PREVIOUS look's image (one-image lag).
+            # Neither delaying the tool ack (0.5s/2s tried; 2s just pushed look
+            # turns over the 8s no-output timeout) nor send_client_content with
+            # inline_data (leaves a user turn open → model generates nothing)
+            # fixes it. The frame must be sent BEFORE the audio commit to
+            # belong to the current turn.
             await self._session.send_realtime_input(
                 video=types.Blob(data=buf.tobytes(), mime_type="image/jpeg")
             )

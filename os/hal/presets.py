@@ -175,7 +175,7 @@ AIM_PRESETS = {
     AIM_RIGHT:  {"base_yaw.pos": 90.0,  "base_pitch.pos": -30.0, "elbow_pitch.pos": 57.0, "wrist_roll.pos": 0.0, "wrist_pitch.pos": 18.0},
     AIM_UP:     {"base_yaw.pos": 3.0,   "base_pitch.pos": 10.0,  "elbow_pitch.pos": 70.0,  "wrist_roll.pos": 0.0, "wrist_pitch.pos": 10.0},
     AIM_DOWN:   {"base_yaw.pos": 3.0,   "base_pitch.pos": -61.93, "elbow_pitch.pos": -71, "wrist_roll.pos": 0.0, "wrist_pitch.pos": -61},
-    AIM_USER:   {"base_yaw.pos": 0.0,   "base_pitch.pos": 0.0,   "elbow_pitch.pos": 0.0,  "wrist_roll.pos": 0.0, "wrist_pitch.pos": -45.0},
+    AIM_USER:   {"base_yaw.pos": 0.0,   "base_pitch.pos": 0.0,   "elbow_pitch.pos": 0.0,  "wrist_roll.pos": 0.0, "wrist_pitch.pos": -85.0},
 }
 
 # System status LED presets — the color/effect/speed the device shows for each
@@ -190,6 +190,7 @@ STATUS_LED_PRESETS = {
     "error":        {"effect": FX_BREATHING,          "color": [255, 0, 0],     "speed": 3.0},  # red — system error
     "booting":      {"effect": FX_BREATHING,          "color": [0, 80, 255],    "speed": 3.0},  # blue — starting up
     "connectivity": {"effect": FX_BREATHING,          "color": [255, 80, 0],    "speed": 3.0},  # orange — no internet
+    "wifi_connecting": {"effect": FX_BLINK,           "color": [0, 135, 255],   "speed": 0.5},  # blue blink — associating with Wi-Fi during POST /api/device/setup
     "hal_down":     {"effect": FX_BREATHING,          "color": [180, 0, 255],   "speed": 3.0},  # purple — HAL unreachable
     "agent_down":   {"effect": FX_BREATHING,          "color": [0, 200, 200],   "speed": 3.0},  # cyan — agent disconnected
     "hardware":     {"effect": FX_BREATHING,          "color": [255, 255, 0],   "speed": 3.0},  # yellow — hardware fault

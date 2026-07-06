@@ -99,6 +99,10 @@ class AnimationService:
         # Freeze flag — when set, _continue_playback() skips servo writes so camera can capture a stable frame
         self._frozen = threading.Event()
 
+        # Last move_to_raw write time (raw register writes bypass
+        # robot.send_action, so they need their own stamp — see last_servo_write)
+        self._raw_write_monotonic = 0.0
+
         # Hold mode — suppresses idle/ambient animations but allows emotion dispatch.
         # Set by /servo/hold, cleared by /servo/resume. Also set by scene
         # presets (focus/reading) that want the lamp to stay put while still
@@ -313,6 +317,49 @@ class AnimationService:
     def unfreeze(self):
         """Resume servo writes after camera capture."""
         self._frozen.clear()
+
+    @property
+    def is_frozen(self) -> bool:
+        """True while a camera consumer wants the servos still. Honored by the
+        animation loop AND by the tracker's servo worker (tracker_service)."""
+        return self._frozen.is_set()
+
+    # Recordings whose movement is gentle enough to be inaudible on the
+    # sensing mic — exempt from is_actively_moving. Idle breathing is exempt
+    # implicitly (via _idle_settled); extend this set through
+    # HAL_QUIET_RECORDINGS (comma-separated names) as more are measured.
+    _QUIET_RECORDINGS: frozenset = frozenset(
+        r.strip()
+        for r in os.environ.get("HAL_QUIET_RECORDINGS", "").split(",")
+        if r.strip()
+    )
+
+    @property
+    def is_actively_moving(self) -> bool:
+        """True while the arm makes AUDIBLE movement: the vision tracker owns
+        the servos, or a recording is playing and hasn't settled into the
+        idle loop yet (covers emotion/scanning plays and the swing back to
+        idle). Two exemptions: idle breathing (settled — writes servo
+        positions continuously but is acoustically silent, ~11 RMS measured
+        vs 500+ for real animations) and recordings listed in
+        HAL_QUIET_RECORDINGS. Used by SoundPerception so the lamp doesn't
+        startle at its own joints."""
+        if self._tracking_active:
+            return True
+        rec = self._current_recording
+        if rec is None or self._idle_settled:
+            return False
+        return rec not in self._QUIET_RECORDINGS
+
+    @property
+    def last_servo_write(self) -> float:
+        """Monotonic timestamp of the last servo motion command, across ALL
+        write paths: robot.send_action (animation loop, tracker worker,
+        move_to, motors_service) and move_to_raw (direct register writes).
+        0.0 when nothing has moved yet. Used by capture_still to wait for a
+        frame taken after the arm went quiet."""
+        via_action = getattr(self.robot, "last_write_monotonic", 0.0) if self.robot else 0.0
+        return max(via_action, self._raw_write_monotonic)
 
     def _continue_playback(self):
         """Continue current playback - called every frame"""
@@ -624,6 +671,7 @@ class AnimationService:
                     motor_obj = self.robot.bus.motors.get(motor_name)
                     if motor_obj:
                         pk.write2ByteTxRx(ph, motor_obj.id, GOAL_POSITION_REG, raw)
+            self._raw_write_monotonic = time.monotonic()
 
             dt = time.perf_counter() - t0
             sleep_time = (1.0 / self.fps) - dt
@@ -636,6 +684,7 @@ class AnimationService:
                 motor_obj = self.robot.bus.motors.get(motor_name)
                 if motor_obj:
                     pk.write2ByteTxRx(ph, motor_obj.id, GOAL_POSITION_REG, raw)
+        self._raw_write_monotonic = time.monotonic()
 
         try:
             with self.bus_lock:

@@ -73,6 +73,19 @@ chuyển runtime — vd chuyển `openclaw` → `picoclaw` (chỉ telegram) khi�
 `discord` đã cấu hình thành không hỗ trợ. Danh sách lấy từ
 `config.channels_unsupported`, được `ChannelReconcile` ghi lại mỗi lần chuyển runtime.
 
+**HTTP backend ping mirror các field này.** Cú ping do device chủ động gửi
+(`POST {llm_base}/ping`, build bởi `internal/device.buildPingPayload`, gửi qua
+`internal/beclient`) mang cùng bộ field trạng thái thiết bị như uplink `info`
+này — `local_ip`, `device`, `device_id`, `timezone`, `tts_provider`,
+`tts_voice`, `stt_language`, `hal_version`, `unsupported_channels` — cộng thêm
+`agent_runtime` và `agent_runtime_version`. Khác với `info` (báo version của
+mọi backend đã cài cạnh nhau), ping chỉ gửi **version của runtime đang
+active**. Ping bắn ở: (1) ngay sau khi join WiFi lúc setup (status
+`setting_up`, fire-and-forget — publish `local_ip` trước bước setup agent tốn
+tới ~2 phút, để đường cứu popup Setup mô tả trong `docs/setup-flow.md` hoạt
+động được), (2) một lần khi setup xong (status `working`), và (3) định kỳ từ
+status reporter. Field nào backend không xài thì đơn giản là bị bỏ qua.
+
 ### `add_channel` — Thêm messaging channel
 
 **Nhận:**

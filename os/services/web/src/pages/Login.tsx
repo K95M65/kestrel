@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { login, safeSearch } from "@/lib/api";
 import { useTheme } from "@/lib/useTheme";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
-import { C, Field } from "@/components/setup/shared";
+import { C, PasswordField } from "@/components/setup/shared";
 
 // Login page — single password field that POSTs /api/login. On success the
 // server sets the os_session cookie (httpOnly + SameSite=Strict), and we
@@ -69,6 +69,10 @@ export default function Login() {
         </div>
         <div style={{ fontSize: 12, color: C.textDim, marginBottom: 18, lineHeight: 1.5 }}>
           Enter the admin password you set during device setup.
+          <div style={{ marginTop: 6 }}>
+            If you haven't set one, the default is the 4 characters after the
+            dash on the sticker at the bottom of your device.
+          </div>
         </div>
 
         {error && (
@@ -81,14 +85,12 @@ export default function Login() {
         )}
 
         <form onSubmit={submit}>
-          <Field
+          <PasswordField
             label="Admin Password"
             id="login-password"
-            type="password"
             value={password}
             onChange={setPassword}
             placeholder="••••••••"
-            required
           />
           <button
             type="submit"
