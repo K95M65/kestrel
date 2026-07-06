@@ -266,6 +266,26 @@ func (h *SensingHandler) PostEvent(c *gin.Context) {
 			slog.Warn("vision describe failed — image will go as raw attachment",
 				"component", "sensing", "type", req.Type, "error", derr)
 		} else {
+			// Delete the snapshot file itself, not just the path from the
+			// hint: the file sits inside the agent's media allow-list, so any
+			// path the agent digs up later (old hints in session history, an
+			// exec `ls` of the dir) could still be `read` into an image block.
+			// With the description in hand nothing needs the file. Best-effort
+			// — the hint rewrite below is the primary guard. Prefix-gated so a
+			// crafted message can't make us delete arbitrary files.
+			if m := reVisionImagePath.FindStringSubmatch(req.Message); m != nil &&
+				strings.Contains(m[1], "/media/hal-snapshots/") {
+				if rerr := os.Remove(m[1]); rerr != nil && !os.IsNotExist(rerr) {
+					slog.Warn("vision snapshot cleanup failed",
+						"component", "sensing", "path", m[1], "error", rerr)
+				}
+			}
+			// Drop the snapshot path from the [vision-image] hint — with a
+			// description below, the agent must not read the image file (an
+			// image tool result poisons the session history for text-only
+			// routed models; see reVisionImageHint).
+			req.Message = reVisionImageHint.ReplaceAllString(req.Message,
+				"[vision-image] (a photo was just captured for this request; answer the visual question from the [image description] below — do NOT take a new snapshot, do NOT read any image file)")
 			req.Message += "\n[image description] " + desc
 			req.Image = "" // text-only from here on; nothing downstream needs the blob
 		}
@@ -888,6 +908,15 @@ var reSnapshotPath = regexp.MustCompile(`\[snapshot:\s*([^\]]+)\]\n?`)
 // payload, so they're cheap to keep in the JSONL.
 var rePoseBucketMarker = regexp.MustCompile(`\[pose_bucket:\s*([^\]]+)\]\n?`)
 var rePoseWorstMarker = regexp.MustCompile(`\[pose_worst:\s*([^\]]+)\]\n?`)
+
+// Vision handoff hint from HAL turn_dispatch: `[vision-image] <path> (a photo
+// was JUST captured ...)`. The path points inside the agent's media allow-list
+// on purpose (image-tool access when the main model has vision). Once the
+// describe gate converts the image to text, that path must NOT survive: the
+// agent will happily `read` it, injecting an image block into the session
+// history that 404s every later turn on a text-only routed model.
+var reVisionImageHint = regexp.MustCompile(`\[vision-image\][^\n]*`)
+var reVisionImagePath = regexp.MustCompile(`\[vision-image\]\s+(/[^\s)]+)`)
 
 // extractSnapshotPath extracts the snapshot file path from a sensing message.
 func extractSnapshotPath(message string) string {

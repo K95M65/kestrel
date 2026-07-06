@@ -152,17 +152,21 @@ tiêu thụ nó **một lần mỗi turn** (turn đã handled dùng rồi thì c
 delegate sau không nhặt phải ảnh cũ) và, khi còn tươi
 (`HAL_GEMINI_VISION_HANDOFF_MAX_AGE_S`, mặc định 20s), chèn dòng hint
 `[vision-image] <path>` vào message VÀ gửi frame dạng base64 trong field
-`image` của sensing POST (path trong hint chỉ để truy vết — bảo agent *đọc*
-file không chạy được với main model text-only: runtime drop âm thầm image
-block từ tool read; chính là vụ ảo giác "tả PCB trong khi cầm hộp bánh").
+`image` của sensing POST.
 os-server xử lý ảnh theo **gate describe-first** trong `internal/vision` (xem
 `server/sensing/delivery/http/handler.go`): khi main model đang active KHÔNG
 khai image input trong catalog model (trường hợp Auto-AI — attachment thô sẽ
 404 tại smart-agent-router: "No endpoints found that support image input"),
 frame được `default_image_model` của catalog (qwen — cùng model mà `imageModel`
 của openclaw dùng cho ảnh Telegram) tả thành chữ và agent nhận dòng
-`[image description] …`; còn khi catalog nói model nhận ảnh, attachment thô
-được forward thẳng. Gate đọc lại catalog mỗi 30 phút, nên BE flip catalog là
+`[image description] …` — đồng thời hint `[vision-image]` được viết lại để
+**bỏ path file**, và **file snapshot cũng bị xoá luôn** (best-effort). Cả
+path lẫn file đều không được sống chung với description: snapshot nằm trong
+media allow-list của agent nên bất kỳ path nào agent vớ được — hint, hint cũ
+trong session history, `ls` thư mục — đều có thể bị `read` thành image block
+nằm lì trong session history, làm 404 mọi turn sau mà router rơi vào model
+text-only (kể cả turn thuần chữ). Còn khi catalog nói model nhận ảnh,
+attachment thô được forward thẳng và hint giữ nguyên path. Gate đọc lại catalog mỗi 30 phút, nên BE flip catalog là
 fleet tự chuyển. Gate này cũng cover luôn ảnh upload từ web monitor chat — cả
 hai nguồn ảnh hội tụ về một handler. Skill `camera` dặn agent trả lời từ mô
 tả/attachment và bỏ qua `/camera/snapshot`. Nếu timeout xảy ra *trước khi* kịp

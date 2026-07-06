@@ -156,10 +156,7 @@ the moment the user pointed at). `_handle_look_call` persists the frame to
 handled turn that already used it clears it so a later delegate can't pick up a
 stale image) and, when fresh (`HAL_GEMINI_VISION_HANDOFF_MAX_AGE_S`, default 20s),
 prepends a `[vision-image] <path>` hint line to the message and ships the frame
-as base64 in the sensing POST's `image` field (the path in the hint is
-traceability only — telling the agent to *read* it does not work on a text-only
-main model, whose runtime silently drops tool-read image blocks; that was the
-"describes a PCB while holding a cracker box" hallucination). What os-server
+as base64 in the sensing POST's `image` field. What os-server
 then does with the image is decided by the **describe-first gate** in
 `internal/vision` (see `server/sensing/delivery/http/handler.go`): when the
 active main model does NOT declare image input in the model catalog (the
@@ -167,8 +164,15 @@ Auto-AI case — a raw attachment 404s at the smart-agent-router with "No
 endpoints found that support image input"), the frame is described by the
 catalog's `default_image_model` (qwen — the same model openclaw's `imageModel`
 uses for Telegram photos) and the agent receives an `[image description] …`
-text line instead; when the catalog says the model takes images, the raw
-attachment is forwarded directly. The gate re-reads the catalog every 30 min,
+text line instead — and the `[vision-image]` hint is rewritten to drop the
+file path, plus the snapshot file itself is deleted (best-effort). Neither
+may survive alongside a description: the snapshot lives inside the agent's
+media allow-list, so any path the agent gets hold of — the hint, an old hint
+in session history, an `ls` of the dir — can be `read` into an image block
+that sticks in the session history and 404s every later turn the router
+sends to a text-only model (even fully-text turns). When the catalog says
+the model takes images, the raw attachment is forwarded directly and the
+hint keeps the path. The gate re-reads the catalog every 30 min,
 so a backend catalog flip migrates devices automatically. The same gate covers
 web-monitor-chat image uploads — both image sources converge on this one
 handler. The `camera` skill instructs the agent to answer from the
