@@ -123,6 +123,16 @@ Chi tiết:
 - **Heartbeat**: Cron 30 phút cũng trigger `lifecycle_start` — last user message sẽ là system prompt, không phải user thật.
 - **Token usage**: `chat.history` cũng được gọi lúc `lifecycle_end` để lấy token usage. OpenClaw `lifecycle_end` không có field `usage`. Token nằm trong last `role:"assistant"` message của history response: `usage: {input, output, totalTokens, cacheRead, cacheWrite}`. Emit thành `token_usage` flow event với `source: "chat_history"`.
 
+### CoT-leak filter (đường agent)
+
+Một số model chạy sau openclaw/hermes (điển hình DeepSeek) xả nguyên đoạn suy luận tiếng Anh thành assistant text trước câu trả lời thật ("The `[emotion_context]` shows … Route = **music**. I need to log the signal … [nhẹ nhàng] Có vẻ hơi trầm …"). `server/agent/delivery/http/cot_leak_filter.go` — bản port Go của `drivers/voice/_internal/cot_leak_filter.py` bên HAL (bản Python chỉ chặn đường transcript Gemini Live) — cắt các câu đó trước khi text tới TTS, web chat (`full_text`) và channel fan-out (Telegram DM/broadcast, Slack reply cuối). Giữ nguyên 3 tier như bản Python (TRIGGER marker → bật CoT mode + drop; SECONDARY chỉ drop khi CoT mode đã bật; CoT-mode continuation drop câu tiếng Anh trên thiết bị non-English, draft trong ngoặc kép, mẩu plan cụt, câu trùng mờ), cộng thêm 1 TRIGGER riêng phía Go: identifier snake_case (`emotion_context`, `telegram_id`, …) — corpus DeepSeek mở đầu bằng kiểu này. Ngôn ngữ reply lấy từ `stt_language` trong `config.json`; chưa set → chế độ English (chỉ áp marker tier). Áp ở 3 điểm:
+
+- **First-sentence stream** (`tryFirstSentenceFlush`): candidate được lọc với state mới mỗi lần thử; nếu toàn bộ là CoT thì hoãn flush (KHÔNG đánh dấu streamed offset) để câu sạch tới sau vẫn được stream sớm.
+- **lifecycle:end**: full text lọc với state mới (nuôi `full_text`, DM/broadcast, Slack reply); phần remainder cho TTS lọc bằng instance thứ 2 được seed bằng prefix đã stream để CoT mode + bộ nhớ dedup nối liền qua ranh giới. Chỉ thay `text` khi có câu bị drop, turn sạch giữ nguyên whitespace gốc.
+- **Channel-turn finalize** (đường `session.message`): channel turn không TTS, nhưng text vẫn lên web chat / Flow Monitor qua `chat_response` và `tts_suppressed` — lọc luôn ở đó.
+
+Khi có câu bị drop, lifecycle:end emit event `cot_leak_filtered` (`data.dropped` = số câu, `data.preview` = preview giới hạn). Raw delta trong `agent_last_token` giữ nguyên không lọc để debug. Slack streaming giữa turn (`chat.appendStream`) không lọc (diff append-only không rút lại text được); reply Slack cuối thì có.
+
 ### NO_REPLY suppression
 
 OpenClaw agent trả `NO_REPLY` (hoặc dạng cắt ngắn `NO`, `NO_RE`, `NO_...`) khi quyết định không cần trả lời — thường cho passive sensing events (sound, motion). `isAgentNoReply()` trong `handler.go` suppress: không phát TTS, không hiện output. Match: `"NO"` chính xác, hoặc bắt đầu bằng `"NO_"` / `"NO_RE"` (case-insensitive).

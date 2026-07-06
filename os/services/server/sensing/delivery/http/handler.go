@@ -2,6 +2,7 @@ package http
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -23,6 +24,7 @@ import (
 	"go.autonomous.ai/os/internal/intent"
 	"go.autonomous.ai/os/internal/monitor"
 	"go.autonomous.ai/os/internal/statusled"
+	"go.autonomous.ai/os/internal/vision"
 	"go.autonomous.ai/os/lib/flow"
 	"go.autonomous.ai/os/lib/hal"
 	"go.autonomous.ai/os/lib/i18n"
@@ -444,9 +446,37 @@ func (h *SensingHandler) PostEvent(c *gin.Context) {
 		"message", msg)
 
 	if hasImage {
-		if isSlashCommand {
+		// Describe-first: the main model (Auto-AI) is text-only, so a raw
+		// attachment 404s at the smart-agent-router when it picks a no-vision
+		// backend ("No endpoints found that support image input"). Turn the
+		// image into text with the vision model (same one openclaw's
+		// imageModel uses for Telegram photos) and forward text only. On
+		// describe failure fall back to the raw attachment — degraded, but
+		// it starts working the moment the router becomes modality-aware.
+		// Catalog-gated: a main model that declares image input gets the raw
+		// attachment directly (full pixels, no extra hop, no qwen cost).
+		// Uses context.Background(): the description must complete even if
+		// the HAL client gives up on this HTTP request early (its POST
+		// timeout is shorter than a slow describe).
+		described := false
+		if !isSlashCommand && !vision.ModelSupportsVision(h.config) {
+			dctx, cancel := context.WithTimeout(context.Background(), vision.DescribeTimeout)
+			desc, derr := vision.Describe(dctx, h.config, req.Image, msg)
+			cancel()
+			if derr != nil {
+				slog.Warn("vision describe failed — falling back to raw attachment",
+					"component", "sensing", "runId", runID, "error", derr)
+			} else {
+				msg = msg + "\n[image description] " + desc
+				described = true
+			}
+		}
+		switch {
+		case described:
+			_, err = h.agentGateway.SendChatMessageWithRun(msg, reqID, runID)
+		case isSlashCommand:
 			_, err = h.agentGateway.SendSlashCommandWithImageAndRun(msg, req.Image, reqID, runID)
-		} else {
+		default:
 			_, err = h.agentGateway.SendChatMessageWithImageAndRun(msg, req.Image, reqID, runID)
 		}
 	} else {

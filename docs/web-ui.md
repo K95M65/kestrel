@@ -341,7 +341,13 @@ Turn Pipeline grouping behavior:
 Interactive chat interface for communicating with the agent. Layout: sidebar (conversation list) + main chat area.
 
 **Conversations**
-- Multiple conversations stored in localStorage (max 50, 200 messages each)
+- Multiple conversations stored in localStorage (max 50, 200 messages each).
+  Image attachments are too large for the localStorage quota, so their
+  data-URLs are stripped on save and persisted separately in **IndexedDB**
+  (`lib/chatImageStore.ts`, keyed by message id); a mount effect re-attaches
+  them after reload and prunes entries whose message no longer exists.
+  Deleting a conversation (or Clear/history-TTL) also deletes its stored
+  images.
 - Sidebar with search, pin, rename (double-click), delete (double-click confirm), export as TXT
 - Grouped by date: Today / Yesterday / This week / Older, pinned at top. Each group header shows a hairline divider and an item count.
 - Each row shows a deterministic on-palette avatar dot (hashed from the conversation id), the title, a localized relative timestamp (`now` / `5m` / `2h` / `yesterday` / `3d`, hidden on hover), and a last-message preview. The active conversation is marked with an amber left rail.
@@ -351,7 +357,7 @@ Interactive chat interface for communicating with the agent. Layout: sidebar (co
 **Message Input**
 - Textarea with Shift+Enter for multi-line, Enter to send
 - File/image attachment (max 10 MB): button, drag-drop, clipboard paste
-- Messages sent via `POST /api/sensing/event` with `type: "web_chat"`. The handler tags the run via `MarkWebChatRun(runID)` so the agent reply is suppressed at TTS (rendered in this UI only) and skips the physical wake greeting / opening filler. Web chat with image attachment is saved to `/tmp/web-chat-*.jpg` and surfaced to the agent via `[image: <path>]`.
+- Messages sent via `POST /api/sensing/event` with `type: "web_chat"`. The handler tags the run via `MarkWebChatRun(runID)` so the agent reply is suppressed at TTS (rendered in this UI only) and skips the physical wake greeting / opening filler. An image attachment rides the payload's `image` field (raw base64) and goes through the describe-first gate in `internal/vision` (see `docs/realtime-voice.md`, "Frame handoff"): a text-only main model receives an `[image description]` line produced by the catalog's vision model, a vision-capable one receives the raw attachment.
 
 **Real-time Streaming**
 - **Thinking indicator**: collapsible purple block showing LLM reasoning tokens as they stream in (`thinking` events). Click to expand full text (max-height 200px scrollable). Auto-hides on response completion.
