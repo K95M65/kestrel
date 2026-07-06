@@ -69,7 +69,11 @@ type QwenRealtime struct {
 	APIKey  string `json:"api_key,omitempty" yaml:"apiKey"`
 	BaseURL string `json:"base_url,omitempty" yaml:"baseURL"` // e.g. wss://<workspace>.ap-southeast-1.maas.aliyuncs.com/api-ws/v1
 	Model   string `json:"model,omitempty" yaml:"model"`
-	Voice   string `json:"voice,omitempty" yaml:"voice"` // Qwen voice set (e.g. Cherry)
+	Voice   string `json:"voice,omitempty" yaml:"voice"` // Qwen voice set (3.5-plus: Ethan|Serena)
+	// Search toggles built-in web search (3.5 models; session `enable_search`) —
+	// the qwen twin of Gemini's GoogleSearch. nil → HAL default (on). Kept here
+	// so an operator's explicit override survives config re-saves.
+	Search *bool `json:"search,omitempty" yaml:"search"`
 }
 
 // Realtime per-provider defaults — what os-server resolves (and pushes) when the
@@ -91,8 +95,11 @@ const (
 	defaultRealtimeOpenAIModel     = "gpt-realtime-2"
 	defaultRealtimeOpenAIVoice     = "alloy"
 	defaultRealtimeOpenAIReasoning = "minimal"
-	defaultRealtimeQwenModel       = "qwen-omni-turbo-realtime"
-	defaultRealtimeQwenVoice       = "Cherry"
+	// 3.5-plus over turbo: turbo (legacy) never fires function calls and
+	// ignores turn context (device-tested), breaking the delegate flow.
+	// Voice: 3.5-plus accepts only Serena/Ethan of the qwen voice set.
+	defaultRealtimeQwenModel       = "qwen3.5-omni-plus-realtime"
+	defaultRealtimeQwenVoice       = "Ethan"
 )
 
 // DefaultRealtimeConfig returns the realtime block os-server seeds into

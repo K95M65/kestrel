@@ -648,8 +648,26 @@ REALTIME_QWEN_BASE_URL: str = (
     os.environ.get("HAL_QWEN_REALTIME_BASE_URL", "")
     or _RT_QWEN.get("base_url", "")
 )
-REALTIME_QWEN_MODEL: str = _rt_str("HAL_QWEN_REALTIME_MODEL", _RT_QWEN.get("model"), "qwen-omni-turbo-realtime")
-REALTIME_QWEN_VOICE: str = _rt_str("HAL_QWEN_REALTIME_VOICE", _RT_QWEN.get("voice"), "Cherry")
+# Default 3.5-plus: turbo (legacy) NEVER fires function calls and ignores
+# [TURN CONTEXT] (device-tested 2026-07-06 — no delegate, no time answers),
+# which breaks the whole delegate flow; 3.5-plus delegates cleanly, reads turn
+# context, and has built-in web search. Voice: 3.5-plus accepts only
+# Serena/Ethan of the QwenVoice set (Cherry/Chelsie are turbo-only, rejected
+# with InvalidParameter at first response).
+REALTIME_QWEN_MODEL: str = _rt_str("HAL_QWEN_REALTIME_MODEL", _RT_QWEN.get("model"), "qwen3.5-omni-plus-realtime")
+REALTIME_QWEN_VOICE: str = _rt_str("HAL_QWEN_REALTIME_VOICE", _RT_QWEN.get("voice"), "Ethan")
+# Built-in web search (3.5 models): session.update `enable_search: true`. The
+# qwen twin of Gemini's Google Search grounding — public live-data questions
+# (news, scores, weather) get answered IN-SESSION with fresh facts instead of
+# delegating. Without the flag the model answers from stale knowledge
+# (probed 2026-07-06: "no match today" vs the real 2-1 result with it on).
+REALTIME_QWEN_SEARCH: bool = (
+    os.environ.get(
+        "HAL_QWEN_SEARCH",
+        str(_RT_QWEN.get("search", True)),
+    ).lower()
+    in ("1", "true", "yes")
+)
 REALTIME_QWEN_SAMPLE_RATE: int = 16000
 
 # --- Realtime: Context manager ---

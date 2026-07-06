@@ -177,7 +177,7 @@ Ba backend thay thế cho nhau, chọn bằng `HAL_REALTIME_PROVIDER`
 |----------|-------|-------------------|----------------|-------------|
 | Gemini Live | `voice_agent/gemini_live.py` `GeminiLiveAgent` | event loop asyncio riêng trên thread `gemini-io`; thread send/recv submit coroutine qua `run_coroutine_threadsafe` | `gemini-2.5-flash-native-audio-preview-12-2025` | 16000 Hz |
 | OpenAI Realtime | `voice_agent/openai_realtime.py` `OpenAIRealtimeAgent` | thuần đồng bộ; 1 `RealtimeConnection` dùng chung bởi thread send/recv, serialize bằng reentrant lock | `gpt-realtime-2` | 24000 Hz |
-| Qwen Omni Realtime | `voice_agent/qwen_realtime.py` `QwenRealtimeAgent` | thuần đồng bộ; client `websockets.sync.client` thô | `qwen-omni-turbo-realtime` | 16000 Hz |
+| Qwen Omni Realtime | `voice_agent/qwen_realtime.py` `QwenRealtimeAgent` | thuần đồng bộ; client `websockets.sync.client` thô | `qwen3.5-omni-plus-realtime` | 16000 Hz |
 
 Gemini Live dùng `google-genai`, nhưng tắt keepalive websocket của SDK
 (`ping_interval=None`, `ping_timeout=None`) để Python client giống browser raw-WS
@@ -197,8 +197,12 @@ schema GA), nên `qwen_realtime.py` là client `websockets.sync.client` thô. Au
 input 16 kHz mono pcm16 base64, output 24 kHz mono pcm16. Luồng turn thủ công
 (HAL local VAD): append → commit → `response.create`; `response.create` **bắt
 buộc** kèm `response.modalities ["text","audio"]` tường minh, nếu không server
-trả lời text-only (verify live 2026-07-06). Voice: Cherry (mặc định), Serena,
-Ethan, Chelsie; **không** có knob reasoning/thinking (web ẩn selector Reasoning).
+trả lời text-only (verify live 2026-07-06). Model mặc định
+`qwen3.5-omni-plus-realtime`: bản legacy `qwen-omni-turbo-realtime` KHÔNG bao
+giờ gọi function call và lờ `[TURN CONTEXT]` (device-test 2026-07-06) → hỏng
+toàn bộ luồng delegate. Voice: Ethan (mặc định) và Serena trên 3.5-plus;
+Cherry/Chelsie chỉ dùng được với turbo (ghép sai → `InvalidParameter` ngay
+response đầu); **không** có knob reasoning/thinking (web ẩn selector Reasoning).
 Function tool (`delegate_to_main`, `express_emotion`) được truyền trong
 `session.update` (format beta phẳng — endpoint live đã nhận) và
 `response.function_call_arguments.done` được xử lý. Mỗi turn, dòng token/cost
@@ -379,7 +383,7 @@ trong `/opt/hal/.env`); thiếu cả hai thì WS handshake fail rõ ràng trong 
   "provider": "gemini",
   "gemini": { "model": "gemini-3.1-flash-live-preview", "voice": "Kore", "thinking_level": "MINIMAL" },
   "openai": { "model": "gpt-realtime-2", "voice": "alloy", "reasoning_effort": "minimal" },
-  "qwen": { "api_key": "sk-…", "base_url": "wss://…", "model": "qwen-omni-turbo-realtime", "voice": "Cherry" }
+  "qwen": { "api_key": "sk-…", "base_url": "wss://…", "model": "qwen3.5-omni-plus-realtime", "voice": "Ethan" }
 }
 ```
 
@@ -450,8 +454,8 @@ Mỗi knob có thể bị `HAL_*` env override (thắng block, và là đường
 | `HAL_OPENAI_REASONING_EFFORT` | `minimal` | `minimal` \| `low` \| `medium` \| `high` \| `xhigh` — default rẻ (trước là `xhigh`) |
 | `DASHSCOPE_API_KEY` | — | Key Qwen (DashScope); **không** fallback về `llm_api_key` — chỉ đọc `realtime.qwen.api_key` khi env trống |
 | `HAL_QWEN_REALTIME_BASE_URL` | — | WS host DashScope (`wss://<workspace-host>/api-ws/v1/realtime`); **không** fallback về `llm_base_url` — chỉ đọc `realtime.qwen.base_url` khi env trống |
-| `HAL_QWEN_REALTIME_MODEL` | `qwen-omni-turbo-realtime` | |
-| `HAL_QWEN_REALTIME_VOICE` | `Cherry` | Cherry \| Serena \| Ethan \| Chelsie |
+| `HAL_QWEN_REALTIME_MODEL` | `qwen3.5-omni-plus-realtime` | turbo legacy: không gọi function call, lờ turn context |
+| `HAL_QWEN_REALTIME_VOICE` | `Ethan` | 3.5-plus: thêm Serena; chỉ-turbo: Cherry \| Chelsie |
 | `HAL_REALTIME_MEMORY_PATH` | `<workspace>/realtime/memory.jsonl` | |
 | `HAL_REALTIME_MAX_MEMORY_ENTRIES` / `_TRIM_KEEP` | `1000` / `500` | |
 | `HAL_REALTIME_SUMMARIZER_ENABLED` | `true` | |
