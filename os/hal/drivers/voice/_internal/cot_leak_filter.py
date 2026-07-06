@@ -34,6 +34,11 @@ For Latin-script languages (French, German, Indonesian, ...) that signal would
 eat the real answer, so English detection additionally requires English
 function words. On English devices only the marker tiers apply — a legitimate
 English reply is never at risk from the heuristics.
+
+NOTE: the main-agent path (openclaw/hermes replies spoken via os-server) has a
+Go port of this filter in
+os/services/server/agent/delivery/http/cot_leak_filter.go — keep the two in
+sync when hardening either side.
 """
 
 import logging
