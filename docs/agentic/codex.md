@@ -264,11 +264,61 @@ errored via `handleError` — capped at `telegramTypingLifetime` = 10 minutes so
 a wedged turn cannot leave the chat "typing…" forever. Sends are best-effort
 (errors logged at debug and ignored).
 
-`SupportedChannels()` returns `["telegram"]`. `AddChannel(telegram)` is an
-honest no-op success — the creds the caller just persisted to config.json are
-all the loop needs — and `RefreshChannelConfig(telegram)` returns `("", nil)`
-for the same reason. Slack / discord / whatsapp have no receive loop and
-return `domain.ErrChannelNotSupported`. See also
+### Slack (HTTP-mode proxy path)
+
+Slack is also **device-owned**, via the HTTP-mode proxy path (modeled on the
+hermes bridge, `internal/hermes/slack.go`): the public bff-campaign-service
+proxy receives Slack Events API deliveries and fans them out over MQTT to the
+device's `slack_event` handler
+(`server/device/delivery/mqtt/slack_event_handler.go`), which dedups by
+`event_id` (in-memory LRU, 5 min TTL) and type-asserts the active gateway to
+`domain.SlackBridge`. `CodexService` implements that bridge
+(`internal/codex/slack.go`), so events route here **only while codex is the
+active runtime** — no server-side dispatch code changes, same wiring as
+hermes. Socket Mode is not involved; the device never opens a Slack WebSocket.
+
+Event handling mirrors hermes: `url_verification` echoes the challenge; only
+`message` / `app_mention` events from a real user pass (bot messages, subtyped
+events and empty-user events are ignored — loop guard); a leading bot mention
+is stripped; and when `config.SlackUserID` is set, only that user may drive
+turns (empty = open, the workspace/app already scopes access). The reply goes
+to the existing thread when the message was threaded, else it threads under
+the user's message (`thread_ts` fallback = message `ts`).
+
+An accepted message is injected asynchronously (goroutine): it waits for the
+agent to go idle (`IsBusy`, 500 ms poll, capped at 2 min — past the cap the
+message is dropped, since the MQTT handler already acked and Slack will not
+retry), then goes through `sendChat` with flow source `slack` and the
+sender-metadata prefix
+`[slack] Message from <@U…> [channel:C…]:\n<text>`. The run is marked
+**silent** (no TTS) and tracked in `slackRuns` (runID → channel/thread_ts/
+message ts); receipt is acknowledged with an **eyes reaction** on the user's
+message (best-effort). At `turn.completed`, `emitFinal` consumes the tracker
+and posts the reply — `stripForChannel`-cleaned, like telegram — back to the
+channel/thread via `chat.postMessage` (`config.SlackBotToken`), clearing the
+eyes reaction; on `turn.failed` the tracker is consumed and only the reaction
+is cleared (no reply). Unlike hermes there is **no progressive streaming**
+(`chat.startStream`/`appendStream`) and no assistant "…is typing" status —
+codex exec emits the reply whole, so `StreamSlackDelta` is a no-op and the
+final text is posted once; `DeliverSlackReply` (called by the shared agent
+handler) is a consume-if-present safety net that is normally a no-op because
+`emitFinal` consumes the tracker synchronously before dispatching lifecycle
+events.
+
+Requirements (config.json): `slack_bot_token` (`chat.postMessage` +
+reactions) and optionally `slack_user_id` (allowlist + proactive `Broadcast`
+target for the `SlackSender` channel sender). The HTTP-mode
+`slack_signing_secret` is consumed by the public proxy, not on the device —
+codex, like the hermes bridge, trusts the authenticated MQTT path.
+
+### Channel API
+
+`SupportedChannels()` returns `["telegram", "slack"]`. `AddChannel` /
+`RefreshChannelConfig` for both are honest no-op successes — every consumer
+reads the creds fresh from config.json on each use (the telegram loop per
+iteration, the Slack bridge per event / Web API call), so there is nothing
+agent-side to write and no restart needed. Discord / whatsapp have no receive
+path and return `domain.ErrChannelNotSupported`. See also
 [`adding-agent-runtime.md`](adding-agent-runtime.md).
 
 ## 6. Hooks
