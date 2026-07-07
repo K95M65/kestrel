@@ -41,6 +41,10 @@ func (s *CodexService) StartWS(ctx context.Context, handler domain.AgentEventHan
 	// only runs while codex is the ACTIVE runtime, which is what guarantees no
 	// getUpdates conflict with other runtimes' pollers. See telegram_poll.go.
 	go s.startTelegramPoll(ctx)
+	// Device-owned Discord inbound: same lifecycle rule as the telegram loop —
+	// the gateway bot session runs only while codex is the ACTIVE runtime and
+	// dies with the gateway ctx. See discord.go.
+	go s.startDiscordBot(ctx)
 	for {
 		select {
 		case <-ctx.Done():

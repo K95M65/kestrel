@@ -27,6 +27,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/bwmarrin/discordgo"
 	"github.com/gorilla/websocket"
 
 	"go.autonomous.ai/os/domain"
@@ -137,6 +138,16 @@ type CodexService struct {
 	slackRunsMu sync.Mutex
 	slackRuns   map[string]slackRun
 
+	// discordRuns maps a Discord-originated runID → originating channel id so
+	// emitFinal posts the reply back (see discord.go / translator.go).
+	discordRunsMu sync.Mutex
+	discordRuns   map[string]string
+
+	// discordSession is the live gateway session handle (discord.go), guarded
+	// so the reply sender works outside the handler goroutine.
+	discordMu      sync.Mutex
+	discordSession *discordgo.Session
+
 	poseBucketRunsMu sync.Mutex
 	poseBucketRuns   map[string]poseBucketInfo
 
@@ -157,6 +168,12 @@ type CodexService struct {
 	// the production defaults: slack.com/api and the real sendChat-backed send step.
 	slackAPIBase  string
 	slackSendTurn func(text, reqID, runID string) error
+
+	// Discord inbound test seams (discord.go). Zero values select the
+	// production defaults: the real sendChat-backed send step and the live
+	// discordgo session's ChannelMessageSend.
+	discordSendTurn    func(text, reqID, runID string) error
+	discordSendMessage func(channelID, text string) error
 
 	// ackHookEnabled mirrors OpenClaw's emotion-acknowledge hook: when the device
 	// declares the `expression` capability, every visible turn flashes a "thinking"
@@ -206,6 +223,7 @@ func ProvideService(cfg *config.Config, bus *monitor.Bus, sled *statusled.Servic
 		silentRuns:     make(map[string]bool),
 		telegramRuns:   make(map[string]string),
 		slackRuns:      make(map[string]slackRun),
+		discordRuns:    make(map[string]string),
 		poseBucketRuns: make(map[string]poseBucketInfo),
 	}
 	s.channels = []domain.ChannelSender{
