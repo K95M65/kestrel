@@ -10,7 +10,8 @@ protocol, layout và các quirk đặc thù claudecode.
 > transport bridge WebSocket, adapter migrate persona/memory bằng Go (lossless
 > với layout OpenClaw), skills (restore từ CDN + watcher, `.claude/skills`
 > native), watch/rename identity, MCP thật (`.mcp.json`), factory reset,
-> Telegram + Discord qua **channel plugin native** của Claude Code
+> Telegram do device sở hữu (loop getUpdates của os-server, `telegram_poll.go`),
+> Discord qua **channel plugin native** của Claude Code
 > ([code.claude.com/docs/en/channels](https://code.claude.com/docs/en/channels)),
 > **Slack inbound do device sở hữu** (HTTP mode, `domain.SlackBridge`),
 > và flow **claude.ai OAuth login** (§7b) thay thế cho API key trong
@@ -28,7 +29,8 @@ Code: `os/services/internal/claudecode/`.
 | Skills | `workspace/.claude/skills/<name>/` (skill Claude Code native) |
 | MCP connector | `workspace/.mcp.json` |
 | State resume session | `/root/.claudecode/session.json` |
-| Config kênh (telegram / discord) | `/root/.claude/channels/<ch>/{.env,access.json}` |
+| Config kênh (plugin discord) | `/root/.claude/channels/discord/{.env,access.json}` |
+| Offset poll Telegram (loop device sở hữu) | `/root/.claudecode/telegram_offset.json` |
 | Credentials claude.ai OAuth (flow login) | `config.json` `claude_code_oauth_token` + `/root/.claude/.credentials.json` |
 | Transcript hội thoại | `/root/.claude/projects/` (nội bộ Claude) |
 
@@ -47,9 +49,10 @@ resolve backend trong `internal/agent/factory.go`. Switch vào/ra đi qua flow
    (`curl -fsSL https://claude.ai/install.sh | bash` → `~/.local/bin/claude`,
    binary standalone, linux arm64/amd64, không cần Node.js), symlink sang
    `/usr/local/bin/claude`;
-3. **bun** + **channel plugin telegram + discord** (best-effort):
+3. **bun** + **channel plugin discord** (best-effort):
    `claude plugin marketplace add anthropics/claude-plugins-official` +
-   `claude plugin install {telegram,discord}@claude-plugins-official`. Channel
+   `claude plugin install discord@claude-plugins-official` (plugin telegram cố
+   ý KHÔNG cài — telegram do device sở hữu, §7). Channel
    plugin là script bun; lỗi ở bước này chỉ vô hiệu các receive loop của
    channel (⚠️ §11);
 4. chạy hook presync một lần (bridge + env + sync channel);
@@ -66,7 +69,7 @@ resolve backend trong `internal/agent/factory.go`. Switch vào/ra đi qua flow
 `/usr/local/bin/runtime-claudecode-presync` mỗi lần switch, được switch-runtime
 chạy trước khi start, install.sh chạy một lần, và `EnsureOnboarding` chạy trên
 **mỗi lần os-server boot / config đổi** — pattern của hermes, nên thiết bị boot
-thẳng vào claudecode hoặc sửa `llm_*`/telegram khi đang active sẽ tự lành mà
+thẳng vào claudecode hoặc sửa `llm_*`/discord khi đang active sẽ tự lành mà
 không cần switch):
 
 - bản thân bridge **không còn được materialize ở đây** — nó nằm trong binary
@@ -249,8 +252,9 @@ nó, nên một rotation do os-server điều khiển chỉ tổ vứt context �
 - Outbound `Broadcast`/`SendToUser` (nudge chủ động) đi thẳng tới Telegram Bot
   API (`telegram_sender.go`); `SlackSender` post message chủ động tới kênh
   `slack_user_id` đã cấu hình khi đủ cả hai creds slack. Target store dùng chung
-  (`/root/.lumi/telegram_targets.json`) không được plugin populate, nên
-  `GetTelegramTargets` fallback về owner id đã cấu hình (`telegram.go`).
+  (`/root/.lumi/telegram_targets.json`) được receive loop populate
+  (`upsertTelegramTarget`) trên mỗi DM được chấp nhận; `GetTelegramTargets`
+  fallback về owner id đã cấu hình khi store còn rỗng (`telegram.go`).
 
 ## 7b. Auth — claude.ai OAuth login (thay thế cho API key)
 

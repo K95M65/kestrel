@@ -7,7 +7,7 @@
 // (the Go gatewayd in internal/claudecode/gatewayd, launched as
 // `os-server claudecode-gatewayd`) that holds ONE headless
 // Claude process (`claude --print --input-format stream-json --output-format
-// stream-json`, plus `--channels plugin:telegram@...` when configured) and
+// stream-json`, plus `--channels plugin:discord@...` when configured) and
 // exposes the socket at WSURL. os-server only acts as a client: it sends user
 // turns as `message.send`, and translates the forwarded Claude stream-json
 // events (system / assistant / user / result) into the same domain.WSEvent
