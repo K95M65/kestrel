@@ -163,7 +163,7 @@ tiêu thụ:
 | `assistant` — block `text` | — (cất làm final text dự phòng) |
 | `assistant` — block `tool_use` | `lifecycle.start` (một lần) + `tool.start` |
 | `user` — block `tool_result` | `tool.end` (text kết quả, match theo `tool_use_id`) |
-| `result` subtype `success` | `chat.final` + `lifecycle.end` (+ `usage` theo lượt) |
+| `result` subtype `success` | assistant delta (nguyên reply, N=1) + `chat.final` + `lifecycle.end` (+ `usage` theo lượt) — delta là thứ consumer chung tích lũy rồi flush TTS/`tts_send` lúc `lifecycle.end` |
 | `result` subtype `error*` / `is_error` | `lifecycle.error` |
 | `bridge.error` | `lifecycle.error` |
 | `stream_event` / `pong` / `bridge.status` | bỏ qua |

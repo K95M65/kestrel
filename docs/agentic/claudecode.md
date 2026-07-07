@@ -164,7 +164,7 @@ handler consumes:
 | `assistant` — `text` block | — (stashed as fallback final text) |
 | `assistant` — `tool_use` block | `lifecycle.start` (once) + `tool.start` |
 | `user` — `tool_result` block | `tool.end` (result text, matched by `tool_use_id`) |
-| `result` subtype `success` | `chat.final` + `lifecycle.end` (+ per-turn `usage`) |
+| `result` subtype `success` | assistant delta (whole reply, N=1) + `chat.final` + `lifecycle.end` (+ per-turn `usage`) — the delta is what the shared consumer accumulates and flushes to TTS/`tts_send` at `lifecycle.end` |
 | `result` subtype `error*` / `is_error` | `lifecycle.error` |
 | `bridge.error` | `lifecycle.error` |
 | `stream_event` / `pong` / `bridge.status` | ignored |
