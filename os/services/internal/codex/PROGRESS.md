@@ -129,6 +129,23 @@ stub convention). This file is the running history for whoever picks the task up
 - [x] Telegram inbound polish (2026-07-07): telegramTypingKeeper (sendChatAction typing
       immediately + every 4s until run consumed, capped at telegramTypingLifetime=10min) +
       sender-metadata prefix on injected turns via tgUser.label(). Device-verified 2026-07-07.
+- [x] Slack inbound, HTTP mode (2026-07-07): CodexService implements domain.SlackBridge
+      (slack.go, modeled on internal/hermes/slack.go), so the existing bff-proxy → MQTT
+      slack_event dispatch (slack_event_handler.go type-assert at :151) routes events to
+      codex with zero server-side diff. Parse/allowlist (config.SlackUserID)/thread
+      fallback/eyes-ack mirror hermes; injection async (IsBusy poll 500ms, 2min cap),
+      prefix "[slack] Message from <@U..> [channel:C..]:", run silent + tracked in
+      slackRuns → emitFinal posts stripForChannel'd reply via chat.postMessage + clears
+      the ack (slack_sender.go, config.SlackBotToken read per call); handleError consumes
+      (no reply). SKIPPED vs hermes (intentional): progressive streaming (codex has no
+      deltas — StreamSlackDelta no-op, post once on final) + assistant "…is typing" status;
+      DeliverSlackReply = consume-if-present safety net (emitFinal consumes sync before
+      dispatch → no double post). SlackSender registered for Broadcast (SlackUserID target).
+      Channel API: SupportedChannels=[telegram, slack]; AddChannel/Refresh(slack) honest
+      no-op (signing secret is consumed by the public proxy, not on device). Hermetic tests
+      in slack_test.go (parse table, run-map round trip, inbound → injected turn + silent +
+      eyes ack via slackSendTurn/slackAPIBase seams, emitFinal reply routing with marker
+      strip, error cleanup). NOT device-verified.
 - [ ] Device verify remainder (switch flow, rotation, MCP write) — first turn + resume done
       via subscription mode; api-key path still blocked on the /responses backend work above
 - [ ] Device verify: persona inline block in AGENTS.md (pre-fix, codex introduced itself as "Codex" instead of the device persona name)
