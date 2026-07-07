@@ -218,6 +218,8 @@ by that method.
 
 ## 5. Channels
 
+### Telegram (device-owned receive loop)
+
 Telegram is **device-owned** under Codex. The Codex CLI has no channel layer
 of its own (unlike PicoClaw, whose runtime binary polls the Telegram Bot API
 itself — its presync enables `channel_list.telegram` in PicoClaw's own
