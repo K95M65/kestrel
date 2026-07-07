@@ -333,7 +333,7 @@ Two things differ from Hermes and are owned by `internal/picoclaw/hooks.go`:
      "enabled": true,
      "transport": "stdio",
      "command": ["python3", "/root/.picoclaw/hooks/os-server-observer/observer.py"],
-     "env": { "OS_SERVER_TURN_URL": "http://127.0.0.1:<HttpPort>/api/agent/channel-turn" },
+     "env": { "OS_SERVER_TURN_URL": "http://127.0.0.1:<HttpPort>/api/agent/channel-turn", "OBSERVER_DEBUG": "1" },
      "observe": ["turn_start", "turn_end"]
    } } }
    ```

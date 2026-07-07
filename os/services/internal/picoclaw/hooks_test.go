@@ -42,6 +42,11 @@ func TestApplyObserverHook(t *testing.T) {
 	if !ok || env["OS_SERVER_TURN_URL"] != url {
 		t.Errorf("env.OS_SERVER_TURN_URL = %v, want %s", env["OS_SERVER_TURN_URL"], url)
 	}
+	// OBSERVER_DEBUG must be written so it survives an os-server restart's config
+	// rewrite (a hand-added key is wiped because the whole entry map is replaced).
+	if env["OBSERVER_DEBUG"] != "1" {
+		t.Errorf("env.OBSERVER_DEBUG = %v, want \"1\"", env["OBSERVER_DEBUG"])
+	}
 	if obs, ok := entry["observe"].([]any); !ok || len(obs) != 2 {
 		t.Errorf("observe = %v, want [turn_start turn_end]", entry["observe"])
 	}

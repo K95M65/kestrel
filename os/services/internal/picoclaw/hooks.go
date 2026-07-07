@@ -115,8 +115,11 @@ func applyObserverHook(cfg map[string]any, scriptPath, url string) {
 		"enabled":   true,
 		"transport": "stdio",
 		"command":   []any{"python3", scriptPath},
-		"env":       map[string]any{"OS_SERVER_TURN_URL": url},
-		"observe":   []any{"turn_start", "turn_end"},
+		"env": map[string]any{
+			"OS_SERVER_TURN_URL": url,
+			"OBSERVER_DEBUG":     "1",
+		},
+		"observe": []any{"turn_start", "turn_end"},
 	}
 }
 
