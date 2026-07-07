@@ -136,17 +136,20 @@ if [ -n "$OAUTH_TOKEN" ] || [ -s "$CLAUDE_HOME/.credentials.json" ]; then
   } >"$ENV_FILE.tmp"
 else
   LLM_BASE_URL="$(dev llm_base_url)"; [ -n "$LLM_BASE_URL" ] || LLM_BASE_URL="$DEFAULT_BASE_URL"
+  # llm_base_url is the OpenAI-convention base (ends in /v1); Claude Code
+  # appends /v1/messages itself, so keep the base /v1-less or the proxy sees
+  # /v1/v1/messages → 404 (device-verified on campaign-api).
+  LLM_BASE_URL="${LLM_BASE_URL%/v1}"
   LLM_API_KEY="$(dev llm_api_key)"
   LLM_MODEL="$(dev llm_model)"; [ -n "$LLM_MODEL" ] || LLM_MODEL="$DEFAULT_MODEL"
   log "write $ENV_FILE (auth=api-key, base_url=$LLM_BASE_URL model=$LLM_MODEL key=$( [ -n "$LLM_API_KEY" ] && echo set || echo EMPTY ))"
   cat >"$ENV_FILE.tmp" <<ENV
 # Managed by runtime-claudecode-presync — do not edit (synced from /root/config/config.json).
 ANTHROPIC_BASE_URL=$LLM_BASE_URL
-# Both auth vars carry llm_api_key: claude sends x-api-key from ANTHROPIC_API_KEY
-# and Authorization: Bearer from ANTHROPIC_AUTH_TOKEN — campaign-api accepts the
-# bearer form; setting both keeps either proxy convention working.
+# x-api-key ONLY: campaign-api 401s the Authorization: Bearer form, and claude
+# prefers ANTHROPIC_AUTH_TOKEN (bearer) over ANTHROPIC_API_KEY when both are
+# set — so the bearer var must stay unset (device-verified).
 ANTHROPIC_API_KEY=$LLM_API_KEY
-ANTHROPIC_AUTH_TOKEN=$LLM_API_KEY
 ANTHROPIC_MODEL=$LLM_MODEL
 ANTHROPIC_SMALL_FAST_MODEL=$LLM_MODEL
 DISABLE_AUTOUPDATER=1

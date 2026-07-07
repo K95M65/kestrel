@@ -82,13 +82,14 @@ without a switch):
       **omit every `ANTHROPIC_*` var** — API-key vars outrank OAuth in Claude
       Code's credential precedence, so leaving them set would silently keep the
       device on the API-key path;
-    - *api-key* (default): `ANTHROPIC_BASE_URL` ← `llm_base_url` (default
-      `https://campaign-api.autonomous.ai/api/v1/ai`, **no trailing `/v1`** —
-      Claude calls `{base}/v1/messages`, the same anthropic-messages endpoint
-      hermes uses), `ANTHROPIC_API_KEY` **and** `ANTHROPIC_AUTH_TOKEN` ←
-      `llm_api_key` (x-api-key and Bearer conventions both covered),
-      `ANTHROPIC_MODEL` / `ANTHROPIC_SMALL_FAST_MODEL` ← `llm_model` (default
-      `Auto-AI`).
+    - *api-key* (default): `ANTHROPIC_BASE_URL` ← `llm_base_url` **with a
+      trailing `/v1` stripped** (llm_base_url is OpenAI-convention and ends in
+      `/v1`; Claude appends `/v1/messages` itself, so an unstripped base hits
+      `/v1/v1/messages` → 404), `ANTHROPIC_API_KEY` ← `llm_api_key`
+      (**x-api-key only** — campaign-api 401s the `Authorization: Bearer` form,
+      and claude prefers `ANTHROPIC_AUTH_TOKEN` over `ANTHROPIC_API_KEY` when
+      both are set, so the bearer var must stay unset), `ANTHROPIC_MODEL` /
+      `ANTHROPIC_SMALL_FAST_MODEL` ← `llm_model` (default `Auto-AI`).
 
   Both modes add `DISABLE_AUTOUPDATER=1`,
   `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`, and the `CLAUDECODE_CHANNELS`

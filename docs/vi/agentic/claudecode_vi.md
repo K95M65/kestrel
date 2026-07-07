@@ -82,12 +82,15 @@ không cần switch):
       và **bỏ toàn bộ biến `ANTHROPIC_*`** — biến API-key đứng trên OAuth trong
       thứ tự ưu tiên credential của Claude Code, nên để chúng lại sẽ âm thầm giữ
       thiết bị trên đường API-key;
-    - *api-key* (mặc định): `ANTHROPIC_BASE_URL` ← `llm_base_url` (mặc định
-      `https://campaign-api.autonomous.ai/api/v1/ai`, **không có `/v1` ở cuối** —
-      Claude gọi `{base}/v1/messages`, cùng endpoint anthropic-messages mà hermes
-      dùng), `ANTHROPIC_API_KEY` **và** `ANTHROPIC_AUTH_TOKEN` ← `llm_api_key`
-      (phủ cả hai convention x-api-key và Bearer), `ANTHROPIC_MODEL` /
-      `ANTHROPIC_SMALL_FAST_MODEL` ← `llm_model` (mặc định `Auto-AI`).
+    - *api-key* (mặc định): `ANTHROPIC_BASE_URL` ← `llm_base_url` **đã cắt
+      `/v1` ở cuối** (llm_base_url theo convention OpenAI nên kết thúc bằng
+      `/v1`; Claude tự nối `/v1/messages`, không cắt thì proxy nhận
+      `/v1/v1/messages` → 404), `ANTHROPIC_API_KEY` ← `llm_api_key`
+      (**chỉ x-api-key** — campaign-api trả 401 với dạng `Authorization:
+      Bearer`, mà claude ưu tiên `ANTHROPIC_AUTH_TOKEN` hơn
+      `ANTHROPIC_API_KEY` khi set cả hai, nên biến bearer phải để trống),
+      `ANTHROPIC_MODEL` / `ANTHROPIC_SMALL_FAST_MODEL` ← `llm_model` (mặc định
+      `Auto-AI`).
 
   Cả hai mode đều thêm `DISABLE_AUTOUPDATER=1`,
   `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`, và các cờ khởi chạy
