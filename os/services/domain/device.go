@@ -512,7 +512,10 @@ type MQTTInfoResponse struct {
 	// (e.g. "0.17.0"), empty when hermes isn't installed. agent_runtime says which
 	// one is actually active.
 	HermesVersion string `json:"hermes_version,omitempty"`
-	AgentRuntime  string `json:"agent_runtime,omitempty"`
+	// CodexVersion mirrors hermes_version for the Codex backend: the installed
+	// Codex CLI version (e.g. "0.142.5"), empty when codex isn't installed.
+	CodexVersion string `json:"codex_version,omitempty"`
+	AgentRuntime string `json:"agent_runtime,omitempty"`
 	LocalIP       string `json:"local_ip,omitempty"`
 	// UnsupportedChannels lists channels configured in config.json that the active
 	// runtime cannot run (populated by ChannelReconcile after a runtime switch — e.g.
