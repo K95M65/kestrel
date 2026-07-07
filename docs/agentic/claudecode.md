@@ -20,7 +20,7 @@ Code: `os/services/internal/claudecode/`.
 | What | Where on device |
 |------|-----------------|
 | Claude Code CLI | `/usr/local/bin/claude` (symlink → `/root/.local/bin/claude`) |
-| Bridge (systemd `claudecode.service`) | `/root/.claudecode/bridge.py` (presync-materialized) |
+| Bridge (systemd `claudecode.service`) | `os-server claudecode-gatewayd` subcommand (compiled into `/usr/local/bin/os-server`; code `os/services/internal/claudecode/gatewayd/`) |
 | Launch env (`ANTHROPIC_*`, channel flags) | `/root/.claudecode/.env` (presync-owned) |
 | Workspace (Claude's cwd) | `/root/.claudecode/workspace/` |
 | Persona / memory | `workspace/{CLAUDE,SOUL,IDENTITY,USER,MEMORY,KNOWLEDGE}.md`, `workspace/memory/*.md` |
@@ -41,8 +41,7 @@ backend in `internal/agent/factory.go`. Switching in/out goes through the generi
 
 **`install.sh`** (embedded, runs once on first switch / failed verify):
 
-1. prerequisites: `jq curl git python3` + the python `websockets` library
-   (`python3-websockets`, pip fallback with `--break-system-packages`);
+1. prerequisites: `jq curl`;
 2. Claude Code CLI via the official native installer
    (`curl -fsSL https://claude.ai/install.sh | bash` → `~/.local/bin/claude`,
    standalone binary, linux arm64/amd64, no Node.js), symlinked to
@@ -54,11 +53,13 @@ backend in `internal/agent/factory.go`. Switching in/out goes through the generi
    loops (⚠️ §11);
 4. runs the presync hook once (bridge + env + channel sync);
 5. writes + starts **`claudecode.service`** (unit name == runtime name — no
-   service declaration file). The unit runs `python3 /root/.claudecode/bridge.py`.
-   The unit body is duplicated in `gateway_unit.go` (`EnsureOnboarding`
-   self-heal) — **keep the two in sync**;
+   service declaration file). The unit runs `os-server claudecode-gatewayd`
+   (with `EnvironmentFile=-/root/.claudecode/.env`). The unit body is duplicated
+   in `gateway_unit.go` (`EnsureOnboarding` self-heal) — **keep the two in
+   sync**;
 6. verify hook `/usr/local/lib/os-runtimes/claudecode/verify` =
-   `command -v claude` (cheap, CLI-only — presync heals everything else).
+   `command -v claude` + an executable `/usr/local/bin/os-server` (the gatewayd
+   ships inside it; presync heals everything else).
 
 **`presync.sh`** (embedded; materialized to
 `/usr/local/bin/runtime-claudecode-presync` on every switch, run by
@@ -67,25 +68,26 @@ switch-runtime before start, by install.sh once, and by `EnsureOnboarding` on
 boots straight into claudecode or edits `llm_*`/telegram while active self-heals
 without a switch):
 
-- **§0 BRIDGE** — heredoc-writes `bridge.py` (always overwritten → a plain
-  os-server OTA refreshes the bridge; nothing reset-fragile lives in install.sh);
+- the bridge itself is **no longer materialized here** — it ships inside the
+  os-server binary as the `claudecode-gatewayd` subcommand, so a plain
+  os-server OTA updates it;
 - **§1 SEEDS** — `~/.claude.json` gets `hasCompletedOnboarding` +
   `bypassPermissionsModeAccepted` (no TTY to answer interactive prompts);
   `workspace/.claude/settings.json` gets `enableAllProjectMcpServers: true`
   (trust `.mcp.json` entries written by os-server);
 - **§2 ENV** — `/root/.claudecode/.env`, in one of two **auth modes** (§7b):
-  - *subscription* (`claude_code_oauth_token` set in config.json, or
-    `~/.claude/.credentials.json` on disk): inject `CLAUDE_CODE_OAUTH_TOKEN` and
-    **omit every `ANTHROPIC_*` var** — API-key vars outrank OAuth in Claude
-    Code's credential precedence, so leaving them set would silently keep the
-    device on the API-key path;
-  - *api-key* (default): `ANTHROPIC_BASE_URL` ← `llm_base_url` (default
-    `https://campaign-api.autonomous.ai/api/v1/ai`, **no trailing `/v1`** —
-    Claude calls `{base}/v1/messages`, the same anthropic-messages endpoint
-    hermes uses), `ANTHROPIC_API_KEY` **and** `ANTHROPIC_AUTH_TOKEN` ←
-    `llm_api_key` (x-api-key and Bearer conventions both covered),
-    `ANTHROPIC_MODEL` / `ANTHROPIC_SMALL_FAST_MODEL` ← `llm_model` (default
-    `Auto-AI`).
+    - *subscription* (`claude_code_oauth_token` set in config.json, or
+      `~/.claude/.credentials.json` on disk): inject `CLAUDE_CODE_OAUTH_TOKEN` and
+      **omit every `ANTHROPIC_*` var** — API-key vars outrank OAuth in Claude
+      Code's credential precedence, so leaving them set would silently keep the
+      device on the API-key path;
+    - *api-key* (default): `ANTHROPIC_BASE_URL` ← `llm_base_url` (default
+      `https://campaign-api.autonomous.ai/api/v1/ai`, **no trailing `/v1`** —
+      Claude calls `{base}/v1/messages`, the same anthropic-messages endpoint
+      hermes uses), `ANTHROPIC_API_KEY` **and** `ANTHROPIC_AUTH_TOKEN` ←
+      `llm_api_key` (x-api-key and Bearer conventions both covered),
+      `ANTHROPIC_MODEL` / `ANTHROPIC_SMALL_FAST_MODEL` ← `llm_model` (default
+      `Auto-AI`).
 
   Both modes add `DISABLE_AUTOUPDATER=1`,
   `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`, and the `CLAUDECODE_CHANNELS`
@@ -97,13 +99,14 @@ without a switch):
 | Constant | Value | Meaning |
 |---|---|---|
 | `WSURL` | `ws://127.0.0.1:18791/claude/ws/` | bridge WebSocket endpoint |
-| `Token` | `autonomous_claudecode_token` | bearer token on connect; baked into bridge.py by presync — the two MUST match |
+| `Token` | `autonomous_claudecode_token` | bearer token on connect; the gatewayd defaults to the same constant (compiled into os-server) — the two MUST match |
 | `Conversation` | `device-main` | label only; Claude owns the real session ids |
 
-## 3. The bridge (`bridge.py`)
+## 3. The bridge (`os-server claudecode-gatewayd`)
 
-Claude Code has no server mode, so the systemd unit runs a ~270-line asyncio
-bridge that:
+Claude Code has no server mode, so the systemd unit runs a small Go gatewayd
+(`internal/claudecode/gatewayd/`, structurally mirroring the codex gatewayd —
+no python3/websockets dependency) that:
 
 - holds **one persistent headless Claude process**:
   `claude --print --verbose --input-format stream-json --output-format
@@ -111,10 +114,11 @@ bridge that:
   `.env`; `--resume <session_id>` on respawn (session continuity across bridge
   restarts, state in `session.json`); `--channels <CLAUDECODE_CHANNELS>` when
   presync configured a channel plugin;
-- serves the WebSocket (`websockets` lib, v10/v12 API-tolerant), bearer-token
-  gated;
-- forwards Claude's stdout stream-json events **verbatim** to all connected
-  clients, converts `message.send` frames into stream-json `user` messages on
+- serves the WebSocket (gorilla/websocket), bearer-token gated (close code
+  `4401` on a bad token); a single client at a time — a new connection replaces
+  the old one;
+- forwards Claude's stdout stream-json events **verbatim** to the connected
+  client, converts `message.send` frames into stream-json `user` messages on
   stdin (data-URL image attachments → base64 `image` content blocks), answers
   `ping` with `pong`;
 - restarts the child on exit (5 s backoff); when a turn was in flight it emits
@@ -122,6 +126,12 @@ bridge that:
   TTL; `session.new` restarts the child **without** `--resume`;
 - queues `message.send` frames that arrive while the child is down and flushes
   them on respawn.
+
+Paths, port and token are overridable via `CLAUDECODE_*` env vars
+(`CLAUDECODE_WS_TOKEN`, `CLAUDECODE_PORT`, `CLAUDECODE_HOME`,
+`CLAUDECODE_WORKSPACE`, `CLAUDECODE_ENV_FILE`, `CLAUDECODE_SESSION_FILE`,
+`CLAUDECODE_BIN`, `CLAUDECODE_RESTART_BACKOFF_S`); the defaults match the
+device layout above, so existing `/root/.claudecode` deployments run unchanged.
 
 ## 4. Sending a turn (`chat.go`)
 
@@ -173,9 +183,9 @@ Turn-lifecycle gotchas:
 Claude owns the session: the id is captured from any event carrying
 `session_id` and persisted by the bridge (`session.json`) for `--resume`.
 `NewSession` sends `{"type":"session.new"}` (fresh session, no resume).
-`ShouldRotateSession` is **always false** and `CompactSession` is a no-op —
-Claude Code auto-compacts its own context, so an os-server-driven rotation
-would only throw context away.
+`ShouldRotateSession` is **always false** and `CompactSession` returns
+`domain.ErrNotSupportedByRuntime` — Claude Code auto-compacts its own context,
+so an os-server-driven rotation would only throw context away.
 
 ## 7. Channels — Telegram + Discord via the native channel plugins
 
@@ -276,11 +286,13 @@ workspace blocks + skills restore + unit self-heal, hash-diff restart),
 surface (`StartClaudeLogin`/`SubmitClaudeLoginCode` — §7b).
 
 No-op with reasons: `HasWhatsappSession`/`PairWhatsapp` (Baileys is
-OpenClaw-only), `RefreshModelsConfig` (model = `ANTHROPIC_MODEL`,
-presync-owned), `FetchChatHistory` (`TODO(claudecode-history)` — session JSONL
-has no stable read API), `StartModelSync`/`UpdatePrimaryModel`/
-`StartPrimaryModelWatch` (fixed model via env), `CompactSession` +
-`ShouldRotateSession=false` (auto-compaction, §6).
+OpenClaw-only), `FetchChatHistory` (`TODO(claudecode-history)` — session JSONL
+has no stable read API), `StartModelSync`/`StartPrimaryModelWatch` (fixed
+model via env). `RefreshModelsConfig`/`UpdatePrimaryModel` (model =
+`ANTHROPIC_MODEL`, presync-owned) and `CompactSession` (auto-compaction, §6)
+return `domain.ErrNotSupportedByRuntime` so the caller falls back to
+`EnsureOnboarding`, whose presync applies model changes;
+`ShouldRotateSession=false`.
 
 ## 10. Factory reset (`reset.go`)
 
@@ -289,8 +301,8 @@ Stop + verify `claudecode.service`, disable it, then wipe **user data + creds**:
 `~/.claude/channels`, `~/.claude/todos`, `~/.claude/history.jsonl`, and
 `~/.claude/.credentials.json` (the claude.ai login — its config.json half,
 `claude_code_oauth_token`, is wiped with the config). **Kept** (installed
-software): the claude CLI, bun, `~/.claude/plugins`, `~/.claude.json`,
-`bridge.py`. Everything wiped has a restore path that runs after the reset
+software): the claude CLI, bun, `~/.claude/plugins`, `~/.claude.json` (the
+bridge itself ships inside the os-server binary). Everything wiped has a restore path that runs after the reset
 (presync/EnsureOnboarding rebuild env + channels from the re-entered
 config.json; `ensureSkills` re-downloads skills; the login flow re-runs for
 subscription auth).
