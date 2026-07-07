@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -37,6 +38,47 @@ var targetsFileMu sync.Mutex
 // agent-side config to consult under Claude Code.
 func (s *ClaudeCodeService) GetTelegramBotToken() string {
 	return s.config.TelegramBotToken
+}
+
+// upsertTelegramTarget records chatID in the targets store so outbound
+// Broadcast reaches the chat the user wrote from. Called by the inbound poll
+// loop (telegram_poll.go) on every accepted message; idempotent, atomic write.
+func (s *ClaudeCodeService) upsertTelegramTarget(chatID, chatType string) {
+	if chatID == "" {
+		return
+	}
+	targetsFileMu.Lock()
+	defer targetsFileMu.Unlock()
+	var content telegramTargetsFileContent
+	if data, err := os.ReadFile(telegramTargetsFile); err == nil {
+		// Corrupt file → rewrite from scratch with just this target.
+		_ = json.Unmarshal(data, &content)
+	}
+	for _, t := range content.Targets {
+		if t.ChatID == chatID {
+			return // already known
+		}
+	}
+	content.Targets = append(content.Targets, telegramTargetEntry{ChatID: chatID, Type: chatType})
+	data, err := json.Marshal(content)
+	if err != nil {
+		slog.Warn("telegram targets marshal failed", "component", "claudecode", "error", err)
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(telegramTargetsFile), 0o755); err != nil {
+		slog.Warn("telegram targets dir create failed", "component", "claudecode", "error", err)
+		return
+	}
+	tmp := telegramTargetsFile + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		slog.Warn("telegram targets write failed", "component", "claudecode", "error", err)
+		return
+	}
+	if err := os.Rename(tmp, telegramTargetsFile); err != nil {
+		slog.Warn("telegram targets rename failed", "component", "claudecode", "error", err)
+		return
+	}
+	slog.Info("telegram target upserted", "component", "claudecode", "chatID", chatID, "type", chatType)
 }
 
 // GetTelegramTargets reads the Device-owned target store, falling back to the
