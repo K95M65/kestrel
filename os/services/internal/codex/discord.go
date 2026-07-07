@@ -150,6 +150,11 @@ func chunkDiscordMessage(text string, limit int) []string {
 			out = append(out, c)
 		}
 		runes = runes[cut:]
+		// The boundary newline(s) already separate the chunks — drop them from
+		// the head of the remainder.
+		for len(runes) > 0 && runes[0] == '\n' {
+			runes = runes[1:]
+		}
 	}
 	return out
 }
