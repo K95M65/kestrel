@@ -363,6 +363,9 @@ sớm ("hello") ngay sau khi restart sẽ rớt xuống main agent.
    `commit_audio()`.
 5. **Tiêu thụ.** `for output in stream_output()`:
    - `TextOutput` → các câu được flush sang TTS (`speak` / `speak_queue`).
+     Nếu `speak` báo busy (TTS khác đang giữ loa non-interruptible, ví dụ
+     nudge ambient), câu sẽ fallback sang `speak_queue` để phát sau đó thay
+     vì bị mất luôn.
    - `DelegateSignal` → dừng; chuyển `[voice-instruction] …` + transcript tới OS
      server với `event_type` gốc.
    - Ngược lại lượt đã được xử lý cục bộ → báo OS server `voice_agent_handled`

@@ -378,6 +378,9 @@ turn ("hello") right after a restart would leak to the main agent.
    `commit_audio()` fires.
 5. **Consume.** `for output in stream_output()`:
    - `TextOutput` → sentences are flushed to TTS (`speak` / `speak_queue`).
+     If `speak` returns busy (another non-interruptible TTS holds the
+     speaker, e.g. an ambient nudge), the sentence falls back to
+     `speak_queue` so the reply plays after it instead of being lost.
    - `DelegateSignal` → stop; forward `[voice-instruction] …` + transcript to the
      OS server with the original `event_type`.
    - Otherwise the turn was handled locally → the OS server is told
