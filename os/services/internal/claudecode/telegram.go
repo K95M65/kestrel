@@ -40,6 +40,14 @@ func (s *ClaudeCodeService) GetTelegramBotToken() string {
 	return s.config.TelegramBotToken
 }
 
+// telegramTargetsFilePath returns the targets store path (test override).
+func (s *ClaudeCodeService) telegramTargetsFilePath() string {
+	if s.telegramTargetsPath != "" {
+		return s.telegramTargetsPath
+	}
+	return telegramTargetsFile
+}
+
 // upsertTelegramTarget records chatID in the targets store so outbound
 // Broadcast reaches the chat the user wrote from. Called by the inbound poll
 // loop (telegram_poll.go) on every accepted message; idempotent, atomic write.
@@ -49,8 +57,9 @@ func (s *ClaudeCodeService) upsertTelegramTarget(chatID, chatType string) {
 	}
 	targetsFileMu.Lock()
 	defer targetsFileMu.Unlock()
+	path := s.telegramTargetsFilePath()
 	var content telegramTargetsFileContent
-	if data, err := os.ReadFile(telegramTargetsFile); err == nil {
+	if data, err := os.ReadFile(path); err == nil {
 		// Corrupt file → rewrite from scratch with just this target.
 		_ = json.Unmarshal(data, &content)
 	}
@@ -65,16 +74,16 @@ func (s *ClaudeCodeService) upsertTelegramTarget(chatID, chatType string) {
 		slog.Warn("telegram targets marshal failed", "component", "claudecode", "error", err)
 		return
 	}
-	if err := os.MkdirAll(filepath.Dir(telegramTargetsFile), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		slog.Warn("telegram targets dir create failed", "component", "claudecode", "error", err)
 		return
 	}
-	tmp := telegramTargetsFile + ".tmp"
+	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o600); err != nil {
 		slog.Warn("telegram targets write failed", "component", "claudecode", "error", err)
 		return
 	}
-	if err := os.Rename(tmp, telegramTargetsFile); err != nil {
+	if err := os.Rename(tmp, path); err != nil {
 		slog.Warn("telegram targets rename failed", "component", "claudecode", "error", err)
 		return
 	}
@@ -87,7 +96,7 @@ func (s *ClaudeCodeService) upsertTelegramTarget(chatID, chatType string) {
 // telegramTargetsFile).
 func (s *ClaudeCodeService) GetTelegramTargets() ([]domain.TelegramTarget, error) {
 	targetsFileMu.Lock()
-	data, err := os.ReadFile(telegramTargetsFile)
+	data, err := os.ReadFile(s.telegramTargetsFilePath())
 	targetsFileMu.Unlock()
 	if err != nil {
 		if os.IsNotExist(err) {

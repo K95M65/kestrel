@@ -132,9 +132,10 @@ type ClaudeCodeService struct {
 	// Telegram inbound test seams (telegram_poll.go). Zero values select the
 	// production defaults: api.telegram.org, the on-disk offset file and the
 	// real sendChat-backed send step.
-	telegramAPIBase    string
-	telegramOffsetPath string
-	telegramSendTurn   func(text, reqID, runID string) error
+	telegramAPIBase     string
+	telegramOffsetPath  string
+	telegramTargetsPath string
+	telegramSendTurn    func(text, reqID, runID string) error
 
 	// slackRuns maps a Slack-originated runID → its origin channel/thread so
 	// emitFinal posts the reply back (see slack.go / translator.go).
