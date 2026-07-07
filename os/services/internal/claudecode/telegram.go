@@ -11,12 +11,12 @@ import (
 	"go.autonomous.ai/os/domain"
 )
 
-// telegramTargetsFile is the Device-owned store of known Telegram chats used by
-// the OTHER runtimes' receive loops. Under Claude Code the inbound loop lives in
-// the Claude channels plugin (which keeps its own state), so this file is
-// usually absent — GetTelegramTargets then falls back to the configured owner id
-// (config.TelegramUserID), which is the one DM target the device provably knows,
-// so proactive Broadcast/SendToUser still reach the owner.
+// telegramTargetsFile is the Device-owned store of known Telegram chats,
+// populated by the device-owned receive loop (telegram_poll.go →
+// upsertTelegramTarget) on every accepted DM. GetTelegramTargets falls back to
+// the configured owner id (config.TelegramUserID) while the store is still
+// absent/empty (before the first accepted DM), so proactive
+// Broadcast/SendToUser reach the owner from boot.
 //
 // Schema: {"targets":[{"chat_id":"...","type":"private|group"}, ...]}
 const telegramTargetsFile = "/root/.lumi/telegram_targets.json"
