@@ -329,6 +329,23 @@ func (s *ClaudeCodeService) emitFinal(f claudeEvent, dispatch func(domain.WSEven
 		go s.finishSlackTurn(o, stripForChannel(finalText))
 	}
 
+	// The whole reply as a single assistant delta BEFORE chat.final — the
+	// shared consumer only flushes TTS + [HW:/…] markers (and logs tts_send,
+	// which the web chat reads) from accumulated deltas at lifecycle.end;
+	// without this the reply reaches the chat stream but is never spoken nor
+	// shown in Flow Monitor. Claude Code --print does not stream tokens, so
+	// this is the N=1 case of the delta contract (mirrors the codex
+	// translator).
+	if finalText != "" {
+		deltaPayload, _ := json.Marshal(map[string]any{
+			"runId":      runID,
+			"sessionKey": s.GetSessionKey(),
+			"stream":     "assistant",
+			"data":       map[string]any{"delta": finalText},
+		})
+		dispatch(domain.WSEvent{Type: "evt", Event: "agent", Payload: deltaPayload})
+	}
+
 	chatMsg, _ := json.Marshal(map[string]any{
 		"runId":      runID,
 		"sessionKey": s.GetSessionKey(),
