@@ -148,6 +148,10 @@ class CoTLeakFilter:
 
     def _looks_english(self, sentence: str) -> bool:
         s = _LEADING_TAGS.sub("", sentence).strip()
+        # Judge the sentence by its own voice, not by what it quotes (see
+        # _QUOTED_SPAN): quoted reply-language text inside an English planning
+        # sentence must not rescue it.
+        s = _QUOTED_SPAN.sub(" ", s)
         letters = re.findall(r"[^\W\d_]", s)
         if not letters:
             return False
