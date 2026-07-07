@@ -146,6 +146,23 @@ stub convention). This file is the running history for whoever picks the task up
       in slack_test.go (parse table, run-map round trip, inbound → injected turn + silent +
       eyes ack via slackSendTurn/slackAPIBase seams, emitFinal reply routing with marker
       strip, error cleanup). NOT device-verified.
+- [x] Discord inbound (2026-07-07): device-owned Gateway WS bot session via
+      github.com/bwmarrin/discordgo v0.29.0 (discord.go), started from StartWS like the
+      telegram loop → active-runtime-only lifecycle, token read fresh per connect attempt
+      (empty → 30s recheck, open error → 15s backoff), session closed on ctx.Done. Accept
+      filter (pure func acceptDiscordMessage): non-bot author + sender == DiscordUserID
+      (allowlist REQUIRED — empty rejects all) + DM, or guild == DiscordGuildID with
+      bot @mention (mention stripped). Inject mirrors telegram: busy-wait 500ms, prefix
+      "[discord] Message from <Username> [id:<id>]:", run silent + tracked in discordRuns
+      → emitFinal posts stripForChannel'd reply via ChannelMessageSend chunked at 2000
+      chars (newline-preferring chunker), handleError consumes (no reply, no leak); native
+      typing keeper (ChannelTyping immediate + 8s, 10min cap). Session handle mutex-guarded
+      on the service (nil → log + drop). Channel API: SupportedChannels=[telegram, slack,
+      discord]; AddChannel(discord) validates DiscordBotToken+DiscordUserID, whatsapp stays
+      ErrChannelNotSupported. Hermetic tests in discord_test.go (accept table, prefix,
+      chunker boundaries/newline/runes, run-map round trip, inject + emitFinal routing +
+      chunked reply + error cleanup via discordSendTurn/discordSendMessage seams). NOT
+      device-verified.
 - [ ] Device verify remainder (switch flow, rotation, MCP write) — first turn + resume done
       via subscription mode; api-key path still blocked on the /responses backend work above
 - [ ] Device verify: persona inline block in AGENTS.md (pre-fix, codex introduced itself as "Codex" instead of the device persona name)

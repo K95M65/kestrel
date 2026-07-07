@@ -460,7 +460,10 @@ bị vẫn an toàn; trong cot-mode drop thêm câu planning tiếng Anh (chỉ 
 không nói tiếng Anh — chữ viết không-Latin như tiếng Việt/Trung/Nhật dùng check
 tỉ lệ ASCII, chữ Latin như Pháp/Indo yêu cầu thêm function word tiếng Anh để
 answer thật không bị nuốt), draft trong ngoặc kép, mảnh plan vụn, và câu
-gần-trùng câu đã giữ (CJK token theo từng ký tự). Mỗi câu bị drop đều log
+gần-trùng câu đã giữ (CJK token theo từng ký tự). Check ngôn ngữ bỏ qua các
+đoạn nằm trong ngoặc, nên câu planning tiếng Anh nhúng text ngôn-ngữ-trả-lời
+trong ngoặc ("The search query 'cách dùng…' didn't yield…") vẫn bị bắt, còn
+câu ngôn-ngữ-trả-lời trích dẫn tiếng Anh thì không. Mỗi câu bị drop đều log
 `CoT leak dropped`.
 
 Đường agent chính (reply openclaw/hermes nói qua os-server) có bản port Go của
