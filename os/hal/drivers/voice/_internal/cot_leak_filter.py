@@ -65,6 +65,7 @@ _SECONDARY = re.compile(
     r"(?i)(?:\bpersonas?\b|\bsystem prompts?\b|language lock|\baudio tags?\b"
     r"|\bemotion tool\b|via tool call"
     r"|\bmy search results?\b|\bsearch results? (?:show|suggest|indicate)\b"
+    r"|\bsearch quer(?:y|ies)\b"
     r"|\b\d+ (?:sentences?|words)\b)"
 )
 
@@ -96,6 +97,17 @@ _SENTENCE_SPLIT = re.compile(
 )
 
 _QUOTES = "\"'“”‘’«»「」『』【】＂＇"
+
+# Quoted spans inside a sentence don't decide its language: the leak corpus
+# has English planning sentences that embed the reply language in quotes
+# ("The search query 'cách dùng select trong itron os' didn't yield...") —
+# with the quoted Vietnamese counted, the non-ASCII ratio calls the whole
+# sentence non-English and the CoT line is spoken. Straight single quotes
+# need the word-boundary guards so contractions ("didn't") can't open a span.
+_QUOTED_SPAN = re.compile(
+    r"\"[^\"]*\"|“[^”]*”|‘[^’]*’|«[^»]*»|「[^」]*」|『[^』]*』"
+    r"|(?<!\w)'[^']*'(?!\w)"
+)
 
 _NON_ASCII_LETTER = re.compile(r"[^\x00-\x7f]")
 # Leading audio/emotion tags like "[caring] " don't decide the language.
