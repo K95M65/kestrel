@@ -70,7 +70,7 @@ func (s *ClaudeCodeService) RefreshChannelConfig(_ context.Context, req domain.R
 	if !domain.ChannelSupported(s, req.Channel) {
 		return "", fmt.Errorf("claudecode: channel %q: %w", req.Channel, domain.ErrChannelNotSupported)
 	}
-	if req.Channel == domain.ChannelSlack {
+	if req.Channel == domain.ChannelTelegram || req.Channel == domain.ChannelSlack {
 		return "", nil // nothing to refresh — creds are consumed live (see AddChannel)
 	}
 	slog.Info("RefreshChannelConfig: re-syncing channel config", "component", "claudecode", "channel", req.Channel)
