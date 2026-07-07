@@ -151,9 +151,10 @@ func (s *Server) buildArgv(env map[string]string) []string {
 	return argv
 }
 
-// loadChildEnv is the process env with HOME asserted and the KEY=VALUE pairs
-// from the env file merged on top (blank/#/no-"=" lines skipped, keys/values
-// space-trimmed, surrounding double quotes stripped from values).
+// loadChildEnv is the process env with HOME + IS_SANDBOX asserted and the
+// KEY=VALUE pairs from the env file merged on top (blank/#/no-"=" lines
+// skipped, keys/values space-trimmed, surrounding double quotes stripped from
+// values).
 func (s *Server) loadChildEnv() map[string]string {
 	env := map[string]string{}
 	for _, kv := range os.Environ() {
@@ -162,6 +163,11 @@ func (s *Server) loadChildEnv() map[string]string {
 		}
 	}
 	env["HOME"] = s.cfg.Home
+	// The device runs the bridge as root; claude refuses
+	// --dangerously-skip-permissions under uid 0 unless IS_SANDBOX=1 (the
+	// containerized-root escape hatch). The device is a dedicated appliance,
+	// which is exactly that case.
+	env["IS_SANDBOX"] = "1"
 	data, err := os.ReadFile(s.cfg.EnvFile)
 	if err != nil {
 		return env // missing env file is fine (bridge.py behavior)

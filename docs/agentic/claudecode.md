@@ -112,7 +112,10 @@ no python3/websockets dependency) that:
 - holds **one persistent headless Claude process**:
   `claude --print --verbose --input-format stream-json --output-format
   stream-json --dangerously-skip-permissions`, cwd = the workspace, env from
-  `.env`; `--resume <session_id>` on respawn (session continuity across bridge
+  `.env` plus asserted `HOME` and `IS_SANDBOX=1` (the device runs as root, and
+  claude refuses `--dangerously-skip-permissions` under uid 0 without the
+  containerized-root escape hatch); `--resume <session_id>` on respawn
+  (session continuity across bridge
   restarts, state in `session.json`); `--channels <CLAUDECODE_CHANNELS>` when
   presync configured a channel plugin;
 - serves the WebSocket (gorilla/websocket), bearer-token gated (close code

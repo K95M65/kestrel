@@ -110,8 +110,11 @@ còn phụ thuộc python3/websockets), gatewayd này:
 
 - giữ **một process Claude headless bền**:
   `claude --print --verbose --input-format stream-json --output-format
-  stream-json --dangerously-skip-permissions`, cwd = workspace, env từ `.env`;
-  `--resume <session_id>` khi respawn (session liên tục qua các lần bridge
+  stream-json --dangerously-skip-permissions`, cwd = workspace, env từ `.env`
+  cộng `HOME` và `IS_SANDBOX=1` được assert sẵn (device chạy root, claude từ
+  chối `--dangerously-skip-permissions` dưới uid 0 nếu thiếu escape hatch
+  containerized-root này); `--resume <session_id>` khi respawn (session liên
+  tục qua các lần bridge
   restart, state trong `session.json`); `--channels <CLAUDECODE_CHANNELS>` khi
   presync đã cấu hình một channel plugin;
 - serve WebSocket (gorilla/websocket), gate bằng bearer token (close code
