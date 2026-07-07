@@ -26,6 +26,13 @@ func TestTelegramPollLoop(t *testing.T) {
 	var calls atomic.Int64
 	var firstOffset atomic.Value // string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// The typing keeper fires sendChatAction while the (stubbed) turn is
+		// pending — acknowledge and ignore.
+		if r.URL.Path == "/botTESTTOKEN/sendChatAction" {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"ok":true}`))
+			return
+		}
 		if r.URL.Path != "/botTESTTOKEN/getUpdates" {
 			t.Errorf("unexpected path %q", r.URL.Path)
 		}
