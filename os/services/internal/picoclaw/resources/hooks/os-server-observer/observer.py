@@ -26,11 +26,17 @@ ignored to avoid double-counting — the analogue of the Hermes hook's skipPlatf
 __OS_SERVER_TURN_URL__ is substituted with the real loopback URL at materialize
 time by ensureObserverHook (internal/picoclaw/hooks.go).
 
+Besides POSTing each forwarded turn to os-server, every forwarded payload is also
+appended as one JSON line (JSONL) to OBSERVER_LOG (default
+/root/.picoclaw/logs/messages_hooks.log) — a local, os-server-independent audit
+trail of the Telegram↔PicoClaw turns this hook saw.
+
 Set OBSERVER_DEBUG=1 to dump every raw stdin line to stderr — PicoClaw surfaces
 subprocess stderr in its gateway log. Because each kind's `payload` is `any`, use
 that dump to VERIFY the exact field names on-device, then tighten the extractors.
 """
 
+import datetime
 import json
 import os
 import sys
@@ -38,6 +44,7 @@ import urllib.request
 
 OS_SERVER_TURN_URL = "__OS_SERVER_TURN_URL__"
 DEBUG = os.environ.get("OBSERVER_DEBUG") == "1"
+HOOK_LOG = os.environ.get("OBSERVER_LOG", "/root/.picoclaw/logs/messages_hooks.log")
 FORWARD_CHANNELS = {
     c.strip().lower()
     for c in os.environ.get("OBSERVER_CHANNELS", "telegram").split(",")
@@ -54,15 +61,28 @@ def _debug(*a):
         print("[os-server-observer]", *a, file=sys.stderr, flush=True)
 
 
-def _post(event, ctx):
-    body = json.dumps({"event": event, "context": ctx}).encode("utf-8")
-    req = urllib.request.Request(
-        OS_SERVER_TURN_URL,
-        data=body,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
+def _log_json(record):
+    """Append one JSON line to HOOK_LOG. Best-effort + independent of the POST, so
+    the local audit trail survives even when os-server is down."""
     try:
+        os.makedirs(os.path.dirname(HOOK_LOG), exist_ok=True)
+        with open(HOOK_LOG, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except Exception as e:  # noqa: BLE001
+        _debug("log write failed:", e)
+
+
+def _post(event, ctx):
+    payload = {"event": event, "context": ctx}
+    # Local audit copy first, so it is written regardless of the POST outcome.
+    _log_json({"ts": datetime.datetime.now(datetime.timezone.utc).isoformat(), **payload})
+    try:
+        req = urllib.request.Request(
+            OS_SERVER_TURN_URL,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
         urllib.request.urlopen(req, timeout=3).close()
     except Exception as e:  # noqa: BLE001 — best-effort; os-server down must not affect the turn
         _debug("post failed:", e)
