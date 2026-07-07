@@ -127,12 +127,26 @@ type CodexService struct {
 	silentRunsMu sync.Mutex
 	silentRuns   map[string]bool
 
+	// telegramRuns maps a Telegram-originated runID → originating chat id so
+	// emitFinal DMs the reply back (see telegram_poll.go / translator.go).
+	telegramRunsMu sync.Mutex
+	telegramRuns   map[string]string
+
 	poseBucketRunsMu sync.Mutex
 	poseBucketRuns   map[string]poseBucketInfo
 
-	// Outbound-only channel senders (Telegram Bot API for proactive alerts).
-	// Codex has no inbound channel — see TODO(codex-telegram) in channels.go.
+	// Channel senders (Telegram Bot API): proactive alerts + reply DMs for
+	// Telegram-originated turns. The inbound counterpart is the device-owned
+	// getUpdates poll loop started from StartWS — see telegram_poll.go.
 	channels []domain.ChannelSender
+
+	// Telegram inbound test seams (telegram_poll.go). Zero values select the
+	// production defaults: api.telegram.org, the /root/.codex state files, and
+	// the real sendChat-backed send step.
+	telegramAPIBase     string
+	telegramOffsetPath  string
+	telegramTargetsPath string
+	telegramSendTurn    func(text, reqID, runID string) error
 
 	// ackHookEnabled mirrors OpenClaw's emotion-acknowledge hook: when the device
 	// declares the `expression` capability, every visible turn flashes a "thinking"
@@ -180,6 +194,7 @@ func ProvideService(cfg *config.Config, bus *monitor.Bus, sled *statusled.Servic
 		broadcastRuns:  make(map[string]bool),
 		webChatRuns:    make(map[string]bool),
 		silentRuns:     make(map[string]bool),
+		telegramRuns:   make(map[string]string),
 		poseBucketRuns: make(map[string]poseBucketInfo),
 	}
 	s.channels = []domain.ChannelSender{
