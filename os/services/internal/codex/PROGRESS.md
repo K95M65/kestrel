@@ -17,7 +17,7 @@ stub convention). This file is the running history for whoever picks the task up
 | CLI install | Pinned GitHub release `rust-v0.142.5`, `codex-aarch64-unknown-linux-musl.tar.gz` → /usr/local/bin/codex | picoclaw's pinned-binary pattern; musl static, no runtime deps |
 | Permissions | `--dangerously-bypass-approvals-and-sandbox` + config `approval_policy="never"`, `sandbox_mode="danger-full-access"` | Appliance running as root; must never block on approval (user requirement: must never block on approval prompts) |
 | Instructions file | `AGENTS.md` in workspace — codex reads it natively; OS-managed block reused from picoclaw's (openclaw-derived) | Zero-translation persona slot |
-| Channels | **None inbound** (SupportedChannels=[], all AddChannel → ErrChannelNotSupported). The original "telegram device-owned (picoclaw model)" copy was FALSE: picoclaw's inbound lives in the picoclaw binary itself (its presync enables channel_list.telegram), and os-server has no getUpdates loop — so codex had zero inbound and fake AddChannel success. Fixed 2026-07-07. Outbound TelegramSender kept (explicit-ID DMs + operator-seeded /root/.codex/telegram_targets.json broadcast). Inbound = TODO(codex-telegram) | Codex CLI has no channel layer |
+| Channels | **Telegram device-owned inbound** (2026-07-07): os-server runs the getUpdates receive loop itself (`telegram_poll.go`), started from StartWS so it exists only while codex is the active runtime (no 409 poller conflicts — the hermes lesson). SupportedChannels=[telegram], AddChannel(telegram)=honest no-op success (creds in config.json drive the loop), slack/discord → ErrChannelNotSupported. History: the original "telegram device-owned (picoclaw model)" copy was FALSE (picoclaw's inbound lives in its own binary) → corrected to none-inbound earlier on 2026-07-07 → real device-owned loop built the same day, closing TODO(codex-telegram) | Codex CLI has no channel layer, so the OS owns the receive loop |
 | Stubs | Return `domain.ErrNotSupportedByRuntime` (never bare nil) | Main's new convention (docs/agentic/adding-agent-runtime.md §4 "No fake success") |
 | MCP | `WriteMCPEntry` edits `/root/.codex/config.toml [mcp_servers.<name>]` via go-toml/v2; presync regenerates the config head but preserves the `[mcp_servers` tail | codex config.toml is the only MCP slot; supports streamable HTTP + headers |
 
@@ -113,6 +113,19 @@ stub convention). This file is the running history for whoever picks the task up
       omitted from .env (key outranks/conflicts with ChatGPT auth); absent → api-key mode
       unchanged. Delete auth.json to fall back; presync re-runs every boot so the flip is
       automatic.
+- [x] Device-owned Telegram inbound (`telegram_poll.go`, 2026-07-07): getUpdates long-poll
+      (50s window; token + allowed user id re-read from config.json every iteration; only
+      private-chat text from TelegramUserID accepted, rest skipped at debug with offset
+      advanced), offset persisted atomically to /root/.codex/telegram_offset.json, accepted
+      chat ids upserted into telegram_targets.json (Broadcast now has real targets), turns
+      injected via sendChat with flow source "telegram" after an IsBusy wait, run marked
+      silent + tracked in telegramRuns → emitFinal DMs the reply back with [HW:/...] markers
+      and TTS audio tags stripped (stripForChannel, hal.go; mirrors handler_hw.go hwMarkerRe
+      + HAL's audio-tag whitelist); handleError consumes the tracker (no leak). Channel API
+      updated: SupportedChannels=[telegram], AddChannel(telegram) no-op success,
+      RefreshChannelConfig(telegram)=("", nil). Hermetic httptest coverage in
+      telegram_poll_test.go (offset persistence, allowlist rejects, single injection,
+      run/silent marking). TODO(codex-telegram) closed. NOT device-verified.
 - [ ] Device verify remainder (switch flow, rotation, MCP write) — first turn + resume done
       via subscription mode; api-key path still blocked on the /responses backend work above
 - [ ] Device verify: persona inline block in AGENTS.md (pre-fix, codex introduced itself as "Codex" instead of the device persona name)

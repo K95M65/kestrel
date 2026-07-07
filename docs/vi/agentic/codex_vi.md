@@ -215,23 +215,42 @@ method đó.
 
 ## 5. Kênh
 
-Codex **không hỗ trợ kênh inbound nào**. Codex CLI không có channel layer riêng
+Telegram dưới Codex là **device-owned**. Codex CLI không có channel layer riêng
 (khác PicoClaw: binary runtime của PicoClaw tự poll Telegram Bot API — presync
-của nó bật `channel_list.telegram` trong config riêng của PicoClaw), và
-os-server cũng không chạy receive loop Telegram nào. Vì vậy
-`SupportedChannels()` trả danh sách rỗng, còn `AddChannel` /
-`RefreshChannelConfig` trả `domain.ErrChannelNotSupported` cho **mọi** kênh, kể
-cả telegram — no-op success sẽ là giả (không có gì lắng nghe cả). Sau khi
-switch, `ChannelReconcile` báo các kênh đã cấu hình trong `unsupported_channels`
-của MQTT info uplink và credential vẫn nằm trong config.json (switch về
-openclaw thì khôi phục).
+của nó bật `channel_list.telegram` trong config riêng của PicoClaw), nên
+os-server tự chạy receive loop inbound: `internal/codex/telegram_poll.go`, một
+goroutine khởi động từ `StartWS` (nằm ngoài vòng reconnect nên sống qua các lần
+WS rớt). Vì loop nằm trong lifecycle của service codex, nó chỉ chạy **khi codex
+là runtime đang active** — không bao giờ tranh `getUpdates` với poller của
+openclaw/hermes (Telegram trả 409 khi có poller song song).
 
-Chiều outbound vẫn hoạt động: `TelegramSender` gửi cảnh báo chủ động
-(sensing/guard) qua Bot API khi có `config.TelegramBotToken`. `SendToUser*`
-nhận chat ID tường minh; `Broadcast` fan-out theo
-`/root/.codex/telegram_targets.json` — file do operator tự seed, không có gì tự
-ghi vào. Inbound là TODO(codex-telegram) còn mở — xem
-`internal/codex/channels.go`. Xem thêm
+Loop long-poll `getUpdates` (cửa sổ 50 s, client timeout 70 s) và đọc
+`config.TelegramBotToken` / `TelegramUserID` **mới ở mỗi vòng lặp** — lưu hay
+xoay credential không cần restart; khi token rỗng thì kiểm tra lại mỗi 30 s,
+lỗi HTTP/mạng thì backoff 5 s. Một tin nhắn chỉ được chấp nhận khi là tin
+**text** không rỗng, trong chat **private**, và `from.id` bằng
+`TelegramUserID` (so sánh chuỗi sau `strconv`); mọi thứ khác bị bỏ qua ở mức
+debug nhưng offset vẫn tiến (không re-deliver). Offset kế tiếp được ghi
+nguyên tử (temp + rename) vào `/root/.codex/telegram_offset.json`, và chat id
+của mỗi tin được chấp nhận được upsert vào
+`/root/.codex/telegram_targets.json` để chiều outbound `Broadcast` (cảnh báo
+chủ động sensing/guard) tới đúng chat.
+
+Mỗi tin được chấp nhận chờ agent rảnh (`IsBusy`, poll 500 ms, tôn trọng ctx)
+rồi được inject qua `sendChat` với flow source `telegram`, nên `chat_input` /
+`chat_send` phát như bình thường và Flow Monitor thấy rõ nguồn gốc. Run được
+đánh dấu **silent** (reply không được đọc qua TTS) và theo dõi trong
+`telegramRuns`; tại `turn.completed`, `emitFinal` consume tracker và DM văn
+bản cuối về đúng chat gốc, sau khi strip marker phần cứng `[HW:/...]` và audio
+tag TTS (`[laugh]`, `[sigh]`, …) — `stripForChannel` trong `hal.go`, mirror
+`hwMarkerRe` phía downstream và whitelist audio-tag của HAL. Khi `turn.failed`,
+tracker được consume mà không DM để map không leak.
+
+`SupportedChannels()` trả `["telegram"]`. `AddChannel(telegram)` là no-op
+success trung thực — credential mà caller vừa lưu vào config.json là tất cả
+những gì loop cần — và `RefreshChannelConfig(telegram)` trả `("", nil)` cùng lý
+do. Slack / discord / whatsapp không có receive loop và trả
+`domain.ErrChannelNotSupported`. Xem thêm
 [`adding-agent-runtime_vi.md`](adding-agent-runtime_vi.md).
 
 ## 6. Hooks

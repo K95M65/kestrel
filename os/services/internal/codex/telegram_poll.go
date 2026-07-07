@@ -76,7 +76,26 @@ type tgChat struct {
 }
 
 type tgUser struct {
-	ID int64 `json:"id"`
+	ID        int64  `json:"id"`
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
+	Username  string `json:"username"`
+}
+
+// label renders the sender for the turn header, mirroring how openclaw's
+// telegram plugin surfaces who is talking (name + @username + numeric id).
+func (u *tgUser) label() string {
+	if u == nil {
+		return "unknown"
+	}
+	name := strings.TrimSpace(u.FirstName + " " + u.LastName)
+	if name == "" {
+		name = "unknown"
+	}
+	if u.Username != "" {
+		name += " (@" + u.Username + ")"
+	}
+	return fmt.Sprintf("%s [id:%d]", name, u.ID)
 }
 
 type tgGetUpdatesResp struct {
@@ -171,7 +190,11 @@ func (s *CodexService) handleTelegramUpdate(ctx context.Context, u tgUpdate, all
 	chatID := strconv.FormatInt(msg.Chat.ID, 10)
 	// Remember the chat so outbound Broadcast (proactive alerts) reaches it.
 	s.upsertTelegramTarget(chatID, msg.Chat.Type)
-	s.injectTelegramTurn(ctx, msg.Text, chatID)
+	// Prefix sender metadata so the agent knows who is talking and on which
+	// channel (openclaw's telegram plugin does the same) — the persona can
+	// address the sender by name and keep the reply channel-appropriate.
+	turnText := fmt.Sprintf("[telegram] Message from %s:\n%s", msg.From.label(), msg.Text)
+	s.injectTelegramTurn(ctx, turnText, chatID)
 }
 
 // injectTelegramTurn waits for the agent to go idle, then sends the message as
@@ -203,7 +226,56 @@ func (s *CodexService) injectTelegramTurn(ctx context.Context, text, chatID stri
 		s.ConsumeSilentRun(runID)
 		slog.Error("telegram turn injection failed",
 			"component", "codex", "runID", runID, "chatID", chatID, "error", err)
+		return
 	}
+	// Keep Telegram's "typing…" indicator alive while the turn runs (openclaw/
+	// hermes channel plugins do the same). Stops when emitFinal/handleError
+	// consumes the run (reply sent) or after the safety cap.
+	go s.telegramTypingKeeper(ctx, chatID, runID)
+}
+
+// telegramTypingLifetime caps a typing keeper — matches the gatewayd turn
+// timeout so a wedged turn cannot leave the chat "typing…" forever.
+const telegramTypingLifetime = 10 * time.Minute
+
+// telegramTypingKeeper fires sendChatAction(typing) immediately and then every
+// 4s (the indicator expires after ~5s) until the run is consumed by emitFinal
+// or handleError. Best-effort: send errors are logged at debug and ignored.
+func (s *CodexService) telegramTypingKeeper(ctx context.Context, chatID, runID string) {
+	deadline := time.Now().Add(telegramTypingLifetime)
+	for {
+		if !s.hasTelegramRun(runID) || time.Now().After(deadline) {
+			return
+		}
+		s.sendTelegramTyping(ctx, chatID)
+		if !sleepCtx(ctx, 4*time.Second) {
+			return
+		}
+	}
+}
+
+// sendTelegramTyping posts one sendChatAction "typing" for chatID.
+func (s *CodexService) sendTelegramTyping(ctx context.Context, chatID string) {
+	token := s.config.TelegramBotToken
+	if token == "" {
+		return
+	}
+	base := s.telegramAPIBase
+	if base == "" {
+		base = telegramAPIBaseDefault
+	}
+	url := fmt.Sprintf("%s/bot%s/sendChatAction?chat_id=%s&action=typing", base, token, chatID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return
+	}
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		slog.Debug("telegram sendChatAction failed", "component", "codex", "error", err)
+		return
+	}
+	_ = resp.Body.Close()
 }
 
 // fetchTelegramUpdates performs one getUpdates long-poll.

@@ -168,6 +168,15 @@ func (s *CodexService) markTelegramRun(runID string, chatID string) {
 	slog.Info("telegram run marked — reply will be DMed", "component", "codex", "runID", runID, "chatID", chatID)
 }
 
+// hasTelegramRun reports (non-consuming) whether a Telegram-originated run is
+// still awaiting its reply — the typing keeper polls this to know when to stop.
+func (s *CodexService) hasTelegramRun(runID string) bool {
+	s.telegramRunsMu.Lock()
+	_, ok := s.telegramRuns[runID]
+	s.telegramRunsMu.Unlock()
+	return ok
+}
+
 // consumeTelegramRun is one-shot: returns the chat id for a Telegram-originated
 // run and removes the entry, or "" when the run did not come from Telegram.
 // Called by emitFinal (reply routing) and handleError (leak prevention).
