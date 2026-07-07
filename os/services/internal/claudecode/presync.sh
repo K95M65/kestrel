@@ -72,13 +72,20 @@ mkdir -p "$WS_DIR/.claude"
 jq_edit "$SETTINGS" '.enableAllProjectMcpServers = true'
 
 # ── §3 CHANNELS (computed before §2 so the .env write includes the launch flags)
-# Claude Code runs telegram + discord natively via its channel plugins: the
-# bridge launches `claude --channels <plugins>`, each plugin polls its Bot API
-# with the token in ~/.claude/channels/<ch>/.env, and access.json gates senders.
-# We seed dmPolicy=allowlist with the configured owner id — the interactive
-# pairing flow (/telegram:access pair, /discord:access pair) needs a terminal
-# this device does not have. Both plugins share the same access.json schema.
+# discord runs natively via Claude Code's channel plugin: the bridge launches
+# `claude --channels <plugins>`, the plugin polls its Bot API with the token in
+# ~/.claude/channels/<ch>/.env, and access.json gates senders. We seed
+# dmPolicy=allowlist with the configured owner id — the interactive pairing
+# flow (/discord:access pair) needs a terminal this device does not have.
+#
+# telegram is DEVICE-OWNED (telegram_poll.go — os-server long-polls getUpdates
+# and injects turns, mirroring codex): the native plugin proved undebuggable
+# in the field (bun child, no journal logs, silent allowlist drops, silent
+# death on restart races). It must NOT ride --channels, or plugin and
+# os-server would compete for getUpdates (Telegram 409s concurrent pollers) —
+# stale plugin state from older presyncs is removed below.
 CHANNELS=""
+rm -rf "$CLAUDE_HOME/channels/telegram"
 
 # sync_channel <name> <token-env-var> <token> <owner-id> — writes the plugin's
 # .env + allowlist and appends the plugin to the --channels launch list.
@@ -109,8 +116,7 @@ sync_channel() {
   CHANNELS="${CHANNELS:+$CHANNELS }plugin:${ch}@claude-plugins-official"
 }
 
-sync_channel telegram TELEGRAM_BOT_TOKEN "$(dev telegram_bot_token)" "$(dev telegram_user_id)"
-sync_channel discord  DISCORD_BOT_TOKEN  "$(dev discord_bot_token)"  "$(dev discord_user_id)"
+sync_channel discord DISCORD_BOT_TOKEN "$(dev discord_bot_token)" "$(dev discord_user_id)"
 
 # ── §2 ENV (config.json wins) ───────────────────────────────────────────────────
 # Two auth modes, decided by the claude login flow (internal/claudecode/login.go):
