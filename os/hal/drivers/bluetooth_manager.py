@@ -508,14 +508,43 @@ class BluetoothManager:
         return None
 
     def pulse_sd_index(self, sd_module) -> Optional[int]:
-        """Find the PortAudio index of the generic `pulse` device, forcing
-        re-enumeration first so a freshly-started PulseAudio server is seen."""
+        """Find the PortAudio index of the generic `pulse` device.
+
+        Enumerates FIRST and only falls back to a Pa_Terminate()+Pa_Initialize()
+        re-enumeration when `pulse` is missing (PortAudio snapshotted its device
+        list before PulseAudio came up). The re-init is the dangerous part: any
+        sounddevice stream alive at Pa_Terminate() aborts the process (SIGABRT,
+        killed hal.service twice on 2026-07-06), so it runs inside the
+        audio_route re-init window — openers are refused, a fresh quiesce closes
+        anything that slipped in after the caller's quiesce, and the lock
+        excludes in-flight opens. PA outlives hal restarts, so in practice the
+        first enumeration hits and the re-init never runs."""
+
+        def _find() -> Optional[int]:
+            for i, dev in enumerate(sd_module.query_devices()):
+                if dev.get("name", "").lower() == "pulse":
+                    return i
+            return None
+
+        idx = _find()
+        if idx is not None:
+            return idx
+
+        from hal.drivers import audio_route
+
+        audio_route.pa_reinit_event.set()
         try:
-            sd_module._terminate()
-            sd_module._initialize()
-        except Exception:
-            logger.exception("PortAudio reinit failed during pulse lookup")
-        for i, dev in enumerate(sd_module.query_devices()):
-            if dev.get("name", "").lower() == "pulse":
-                return i
-        return None
+            # Close streams opened since the caller's quiesce (TTS speak can
+            # fire from an agent turn at any moment). Must run BEFORE taking
+            # pa_reinit_lock: it grabs the openers' own locks and an opener
+            # blocked on pa_reinit_lock while holding its lock would deadlock.
+            audio_route.quiesce_portaudio_users()
+            with audio_route.pa_reinit_lock:
+                try:
+                    sd_module._terminate()
+                    sd_module._initialize()
+                except Exception:
+                    logger.exception("PortAudio reinit failed during pulse lookup")
+        finally:
+            audio_route.pa_reinit_event.clear()
+        return _find()

@@ -428,6 +428,14 @@ REALTIME_PROVIDER: str = _rt_str("HAL_REALTIME_PROVIDER", _RT.get("provider"), "
 REALTIME_RECV_QUEUE_TIMEOUT_S: float = float(
     os.environ.get("HAL_REALTIME_RECV_QUEUE_TIMEOUT_S", "8.0")
 )
+# Silent-turn watchdog for turns where a `look` fired. Gemini 3.1's forced
+# thinking over a text-dense frame ("read this label") stays silent >8s with
+# zero output events — the default watchdog killed such turns seconds before
+# the answer (device-observed 2026-07-06). Applies per-turn via
+# agent.extend_recv_timeout(); normal turns keep the tight default above.
+REALTIME_LOOK_RECV_TIMEOUT_S: float = float(
+    os.environ.get("HAL_REALTIME_LOOK_RECV_TIMEOUT_S", "20.0")
+)
 # Zombie-session guard. A long-lived Gemini Live session can stop responding
 # (the campaign-api proxy doesn't always relay Gemini's go_away/close, so the
 # WS stays "connected", accepts audio, but never replies — every turn hits the
@@ -673,6 +681,9 @@ REALTIME_QWEN_SAMPLE_RATE: int = 16000
 # --- Realtime: Context manager ---
 OPENCLAW_WORKSPACE_DIR: str = os.environ.get("HAL_OPENCLAW_WORKSPACE_DIR", "/root/.openclaw/workspace")
 HERMES_WORKSPACE_DIR: str = os.environ.get("HAL_HERMES_WORKSPACE_DIR", "/root/.hermes")
+# PicoClaw/Codex workspaces mirror OpenClaw's layout (see orchestrator.py maps).
+PICOCLAW_WORKSPACE_DIR: str = os.environ.get("HAL_PICOCLAW_WORKSPACE_DIR", "/root/.picoclaw/workspace")
+CODEX_WORKSPACE_DIR: str = os.environ.get("HAL_CODEX_WORKSPACE_DIR", "/root/.codex/workspace")
 
 # Camera snapshot dir. MUST sit under the ACTIVE agent runtime's media root — the
 # agent's image tool only reads files under its allow-list, else it returns "not
@@ -683,6 +694,8 @@ HERMES_WORKSPACE_DIR: str = os.environ.get("HAL_HERMES_WORKSPACE_DIR", "/root/.h
 _AGENT_CONFIG_DIRS: dict[str, str] = {
     "openclaw": "/root/.openclaw",
     "hermes": "/root/.hermes",
+    "picoclaw": "/root/.picoclaw",
+    "codex": "/root/.codex",
 }
 SNAPSHOT_DIR: str = os.environ.get("HAL_SNAPSHOT_DIR") or (
     _AGENT_CONFIG_DIRS.get(AGENT_GATEWAY, _AGENT_CONFIG_DIRS["openclaw"])

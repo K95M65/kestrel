@@ -29,10 +29,8 @@ func (s *PicoclawService) PairWhatsapp(_ context.Context) <-chan domain.PairingE
 	return ch
 }
 
-func (s *PicoclawService) ResetAgent() error {
-	slog.Info("ResetAgent: no-op (picoclaw backend)", "component", "picoclaw")
-	return nil
-}
+// ResetAgent lives in reset.go — PicoClaw's factory-reset wipe (stop+disable
+// gateway → rm -rf /root/.picoclaw → picoclaw onboard), so it does real work.
 
 // RestartAgent restarts the picoclaw gateway via systemctl so callers that need a
 // full gateway reload (config/workspace re-read) get it. Delegates to
@@ -43,9 +41,10 @@ func (s *PicoclawService) RestartAgent() error {
 	return restartPicoclawGateway()
 }
 
-// RefreshModelsConfig — PicoClaw config is owned externally; we don't patch it.
+// RefreshModelsConfig — PicoClaw model config is owned by install.sh/presync.sh
+// (switch-runtime flow); we don't patch it from Device.
 func (s *PicoclawService) RefreshModelsConfig() error {
-	return nil
+	return domain.ErrNotSupportedByRuntime
 }
 
 // EnsureOnboarding lives in onboarding.go — it keeps the OS-managed block in the
@@ -83,8 +82,10 @@ func (s *PicoclawService) StartModelSync(ctx context.Context) {
 	<-ctx.Done()
 }
 
+// UpdatePrimaryModel — the PicoClaw model registry (config.json model_list) is
+// owned by the runtime's own provisioning, not device-selectable.
 func (s *PicoclawService) UpdatePrimaryModel(_ string) error {
-	return nil
+	return domain.ErrNotSupportedByRuntime
 }
 
 // StartPrimaryModelWatch — no agent-side config file to watch.
@@ -101,10 +102,11 @@ func (s *PicoclawService) GetConfiguredChannel() string {
 	return "channel"
 }
 
-// CompactSession — PicoClaw does not expose a compact API. No-op.
+// CompactSession — PicoClaw does not expose a compact API; rotate via
+// NewSession instead.
 func (s *PicoclawService) CompactSession(sessionKey string) error {
-	slog.Info("CompactSession: no-op (picoclaw backend)", "component", "picoclaw", "session", sessionKey)
-	return nil
+	slog.Info("CompactSession: not supported (picoclaw backend)", "component", "picoclaw", "session", sessionKey)
+	return domain.ErrNotSupportedByRuntime
 }
 
 const rotateCompressRatioPercent = 75

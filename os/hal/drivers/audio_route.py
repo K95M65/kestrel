@@ -17,6 +17,7 @@ on its own captured device pointer and is untouched.
 
 import logging
 import threading
+from contextlib import contextmanager
 from typing import Optional
 
 import hal.app_state as state
@@ -31,6 +32,41 @@ _lock = threading.Lock()
 # SIGABRT in the C layer (observed killing hal.service twice). Every caller
 # that touches pulse_sd_index()/route_to_* must hold this for its whole flow.
 route_op_lock = threading.RLock()
+
+# PortAudio re-init vs stream-open exclusion. route_op_lock serializes route
+# flows against EACH OTHER, but not against threads that open sounddevice
+# streams on their own clock — above all TTS, whose speak() fires from agent
+# turns at any moment. quiesce_portaudio_users() closes the streams that exist
+# but nothing STOPPED a new one from opening in the window before
+# Pa_Terminate() — that exact race SIGABRT'd hal.service twice on 2026-07-06
+# (BT route flow re-init vs a concurrent stream open). Protocol:
+#   * pa_reinit_event is set for the whole quiesce→terminate→init span;
+#   * pa_reinit_lock is held around Pa_Terminate()+Pa_Initialize() itself;
+#   * every sounddevice stream OPEN goes through stream_open_guard(), which
+#     takes the lock and refuses (RuntimeError) while the event is set — one
+#     failed TTS write beats a dead process, and the write-watchdog/fallback
+#     already handles TTS write failures.
+# Lock-order note: stream openers hold their own locks (e.g. TTS _stream_lock)
+# BEFORE taking pa_reinit_lock; the re-init path must therefore never grab an
+# opener's lock while holding pa_reinit_lock (it quiesces BEFORE locking).
+pa_reinit_lock = threading.RLock()
+pa_reinit_event = threading.Event()
+
+
+@contextmanager
+def stream_open_guard():
+    """Guard a sounddevice stream open against a concurrent PortAudio re-init.
+
+    Raises RuntimeError instead of opening while a re-init window is active:
+    a stream that comes alive between quiesce and Pa_Terminate() aborts the
+    whole process, and the caller can always retry the open on its next write.
+    """
+    with pa_reinit_lock:
+        if pa_reinit_event.is_set():
+            raise RuntimeError(
+                "PortAudio re-init in progress — stream open rejected"
+            )
+        yield
 
 _BUILTIN_OUT_IDX: Optional[int] = None
 _BUILTIN_IN_IDX: Optional[int] = None

@@ -30,9 +30,10 @@ não nào đang chạy.
 > (`SetupAgent`, `RefreshModelsConfig` …) vẫn no-op (§8) vì provisioning xảy ra ngoài
 > tiến trình trong install.sh/presync. Ngoại lệ là `EnsureOnboarding` (`onboarding.go`,
 > giữ khối OS-managed trong SOUL/AGENTS/HEARTBEAT cập nhật), `StartSkillWatcher`
-> (`skill_watcher.go`, auto-update skill từ CDN), và identity (`identity.go`:
-> `WatchIdentity`/`UpdateIdentityName` đọc/ghi `IDENTITY.md` như OpenClaw) — đều là
-> thật (§1.1, §8).
+> (`skill_watcher.go`, auto-update skill từ CDN), identity (`identity.go`:
+> `WatchIdentity`/`UpdateIdentityName` đọc/ghi `IDENTITY.md` như OpenClaw), và
+> `ResetAgent` (`reset.go`, factory-reset xoá sạch `/root/.picoclaw` + onboard lại) —
+> đều là thật (§1.1, §8).
 > Các gap còn lại (hook emotion-acknowledge, pin queue/steer) được theo dõi theo checklist
 > [`adding-agent-runtime_vi.md`](adding-agent-runtime_vi.md) — xem đó trước khi nâng
 > PicoClaw lên parity đầy đủ.
@@ -197,7 +198,7 @@ kết bằng một `runID` đang chạy duy nhất thay vì id theo từng frame
 | `message.create/update`, `placeholder:true` | đang nghĩ | *(không có — trạng thái, không phải nội dung)* |
 | `message.create/update`, `kind:"thought"` / `thought:true` | reasoning | *(không có — chỉ là trạng thái)* |
 | `message.create`, `kind:"tool_calls"` / có `tool_calls` | gọi tool | `agent` tool `phase:start` + `phase:end` mỗi call |
-| `message.create/update`, `content` khác rỗng (không dính các mục trên) | **câu trả lời cuối** | `chat` `state:final role:assistant` **+** `agent` lifecycle `phase:end` (kèm usage) — **kết thúc lượt** |
+| `message.create/update`, `content` khác rỗng (không dính các mục trên) | **câu trả lời cuối** | `agent` `stream:assistant` (toàn bộ reply là một delta) **+** `chat` `state:final role:assistant` **+** `agent` lifecycle `phase:end` (kèm usage) — **kết thúc lượt** |
 | `error` | lỗi | `agent` lifecycle `phase:error` — kết thúc lượt |
 | `typing.stop` / `message.delete` / `pong` | — | *(bỏ qua)* |
 
@@ -211,6 +212,14 @@ kết bằng một `runID` đang chạy duy nhất thay vì id theo từng frame
   → message.create kind:"tool_calls" (×N) → message.create (sạch, final)`.
 - PicoClaw không phát frame kết quả tool riêng, nên mỗi tool call phát `tool`
   `phase:start` rồi ngay sau là `phase:end` với result rỗng, chỉ để đóng trace.
+- **Không stream → một assistant delta.** PicoClaw trả toàn bộ reply trong một frame
+  final duy nhất, nhưng consumer dùng chung lại rút TTS + marker phần cứng `[HW:/…]`
+  (và các node `tts_speak` / `hw_*` trên Flow Monitor) từ **stream assistant-delta**,
+  flush ở `lifecycle.end`. Vì vậy câu trả lời cuối được phát dưới dạng `agent`
+  `stream:assistant` — toàn bộ reply (giữ nguyên marker) là **một** delta — **trước**
+  `chat.final` / `lifecycle.end`, chính là trường hợp N=1 của hợp đồng streaming
+  openclaw/hermes. Thiếu nó thì reply vẫn hiện ở web chat nhưng không bao giờ ra loa
+  hay phần cứng. Xem `translator.go` `emitFinal`.
 - `media.create` có trong protocol nhưng server không bao giờ phát — media đi kèm
   trong `message.create` qua `attachments`.
 
@@ -234,7 +243,8 @@ TotalTokens: used_tokens }`.
 PicoClaw sở hữu session: `session_id` do server cấp được bắt từ frame đến bất kỳ
 và lưu lại (`SetSessionKey`) để `message.send` kế tiếp gửi kèm. `NewSession` chỉ
 xóa id cục bộ để lượt kế tiếp bắt đầu session server mới. Không có RPC compact nên
-`CompactSession` là no-op.
+`CompactSession` trả `domain.ErrNotSupportedByRuntime` (caller log lại và xoay
+session qua `NewSession` thay thế).
 
 ## 7. Khả năng kênh (channel capability)
 
@@ -262,17 +272,82 @@ báo cáo chúng trong trường `unsupported_channels` của uplink MQTT info
 (`domain.MQTTInfoResponse`), và creds của chúng **vẫn nằm trong `config.json`** —
 switch ngược lại openclaw sẽ khôi phục chúng.
 
+## 7.1 Lượt kênh trên Flow Monitor (observer hook)
+
+Một lượt Telegram được xử lý hoàn toàn bên trong gateway PicoClaw (gateway sở hữu
+I/O kênh) và **không** đi qua WebSocket, nên — y hệt Hermes — os-server sẽ không
+thấy nó. Parity được khôi phục bằng một **observer hook**, tương tự trực tiếp hook
+`os-server-observer` của Hermes: os-server ship một subprocess nhỏ mà gateway chạy
+trên pipeline agent dùng chung, subprocess đó forward mỗi lượt về endpoint loopback
+`POST /api/agent/channel-turn` mà handler `ChannelTurn` dùng chung đã phục vụ
+(`handler_channel_turn.go`). Không đổi consumer/UI — text user vào làm sáng node
+IN, và mọi marker `[HW:/…]` trong reply điều khiển phần cứng cục bộ, giống Hermes.
+
+Hai điểm khác Hermes, do `internal/picoclaw/hooks.go` sở hữu:
+
+1. **Transport.** Process hook của PicoClaw là một **subprocess nói NDJSON JSON-RPC
+   qua stdio** (`resources/hooks/os-server-observer/observer.py`), không phải hàm
+   `handle()` in-process được phát hiện bằng quét thư mục. PicoClaw gửi cho subprocess
+   (đã verify trên device, picoclaw 0.2.9):
+   - `hook.hello` — một REQUEST (có `id` JSON-RPC); script trả `{"action":"continue"}`.
+     Mọi request (có `id`) đều được đáp ngay để không chặn lượt.
+   - `hook.runtime_event` — một NOTIFICATION mà `params` là envelope sự kiện
+     `{kind, scope{channel,chat_id,sender_id,session_key,turn_id}, payload}`. Script
+     chỉ xử lý hai kind, bỏ phần còn lại (`agent.tool.*`, `agent.llm.*`):
+     - `agent.turn.start` → `agent:start`, message = **`payload.UserMessage`**.
+     - `agent.turn.end`   → `agent:end`, response = **`payload.FinalContent`** (reply,
+       KÈM marker `[HW:/…]` — `agent.turn.end` mang cả user message lẫn reply cuối, nên
+       **chỉ observe là đủ; không cần intercept**).
+   - lọc theo `scope.channel` (allow-list `telegram`) VÀ bỏ sender nội bộ
+     (`sender_id == heartbeat`) — lượt cục bộ `pico` đã được `sendChat` log; tương tự
+     `skipPlatform(api_server/cli)` của Hermes.
+   - map `scope` → payload `ChannelTurn` (`platform=channel`, `chat_id`,
+     `sender_id`→`user_id`, `session_key`→`session_id`). PicoClaw ghép 2 forward thành
+     một lượt Flow theo `session_key`.
+   - POST chạy trên daemon thread (audit log vẫn đồng bộ) nên os-server chậm không làm
+     nghẽn event kế (`observer_timeout_ms` chỉ 500ms).
+   - `OBSERVER_DEBUG=1` dump mỗi dòng stdin thô ra stderr (hiện trong log gateway dạng
+     `Process hook stderr hook=os-server-observer`) — dùng để xác minh tên field trên.
+
+2. **Đăng ký.** PicoClaw **không** quét thư mục hook; hook được đăng ký bằng một mục
+   `config.json` dưới `hooks.processes.<name>`, gate bởi CẢ `hooks.enabled` toàn cục
+   LẪN **`enabled` per-process** (đều mặc định false — cùng dạng gate toàn cục +
+   per-server của `tools.mcp`; thiếu `enabled` per-process thì PicoClaw lặng lẽ KHÔNG
+   spawn subprocess). Nên `ensureObserverHook()` (gọi từ `EnsureOnboarding`) làm hai
+   việc ghi: materialize `observer.py` ra `/root/.picoclaw/hooks/os-server-observer/`
+   (thay placeholder `__OS_SERVER_TURN_URL__`), và upsert:
+
+   ```json
+   "hooks": { "enabled": true, "processes": { "os-server-observer": {
+     "enabled": true,
+     "transport": "stdio",
+     "command": ["python3", "/root/.picoclaw/hooks/os-server-observer/observer.py"],
+     "env": { "OS_SERVER_TURN_URL": "http://127.0.0.1:<HttpPort>/api/agent/channel-turn", "OBSERVER_DEBUG": "1" },
+     "observe": ["turn_start", "turn_end"]
+   } } }
+   ```
+
+   Nó idempotent (so diff script + diff marshal config) và trả `changed`;
+   `EnsureOnboarding` chỉ restart gateway khi có thay đổi, vì gateway chỉ nạp hook
+   lúc khởi động. Việc ghi config được serialize dưới cùng `mcpMu` bảo vệ
+   `config.json` (xem `mcp.go`).
+
 ## 8. Những phần để stub
 
 Mọi thứ không nằm trên hot path của PicoClaw đều là no-op để thỏa interface
 `domain.AgentGateway` mà không bịa ra tính năng backend không có: `SetupAgent`,
-pairing WhatsApp, `ResetAgent`, `RefreshModelsConfig`, `FetchChatHistory`,
+pairing WhatsApp, `RefreshModelsConfig`, `FetchChatHistory`,
 `CompactSession`, watcher model
-(`StartModelSync`/`StartPrimaryModelWatch`), `UpdatePrimaryModel`. (`AddChannel` /
+(`StartModelSync`/`StartPrimaryModelWatch`), `UpdatePrimaryModel`.
+Các stub có trả error (`RefreshModelsConfig`, `UpdatePrimaryModel`,
+`CompactSession`) trả `domain.ErrNotSupportedByRuntime` — không bao giờ `nil` —
+để caller phân biệt "không có gì để áp dụng" với "đã áp dụng" (xem
+[`adding-agent-runtime_vi.md`](adding-agent-runtime_vi.md) §4 "Không thành công giả"). (`AddChannel` /
 `RefreshChannelConfig` KHÔNG phải stub — trả `domain.ErrChannelNotSupported` cho kênh
 không hỗ trợ, xem §7; `EnsureOnboarding` (§1.1) và `StartSkillWatcher` (auto-update
 skill, §1.1) là thật.) Các hàm sau cũng là **thật**, không phải stub: `RestartAgent`
-(restart systemd unit `picoclaw` qua `restartPicoclawGateway`), `GetConfigJSON` (trả
+(restart systemd unit `picoclaw` qua `restartPicoclawGateway`), `ResetAgent`
+(factory-reset wipe — xem §8.2), `GetConfigJSON` (trả
 `/root/.picoclaw/config.json` — file structure; secrets ở `.security.yml` không bao
 giờ lộ), `WriteMCPEntry` / `RemoveMCPEntry` (connector MCP — xem §8.1), và
 `WatchIdentity` / `UpdateIdentityName` (`identity.go`) — `IDENTITY.md` của
@@ -310,3 +385,34 @@ suy luận empty-type→`sse` của PicoClaw. `RemoveMCPEntry` xóa server theo 
 bật để các server khác vẫn nạp. Cả hai đường ghi `config.json` atomic (temp + rename,
 không chown — PicoClaw chạy root) dưới `mcpMu`, rồi `restartPicoclawGateway`. Secrets ở
 `.security.yml` không bao giờ bị đụng tới.
+
+### 8.2 Factory reset (`reset.go`)
+
+`ResetAgent` là factory-reset wipe của PicoClaw, được `server/system/factoryreset.go`
+gọi trên gateway đang active. Khác OpenClaw (giữ `identity/` + `device-key.json`, để
+`SetupAgent` tạo lại `openclaw.json`) và Hermes (reset `config.yaml`/`.env` tại chỗ,
+giữ `SOUL.md`), **PicoClaw không giữ gì cả**: `config.json` + `.security.yml` của nó
+được `presync.sh` tái tạo từ project `/root/config/config.json` ở lần switch kế tiếp,
+nên reset **xóa sạch** `/root/.picoclaw` rồi onboard lại một baseline sạch.
+
+`wipePicoclawState()` chạy 4 bước:
+
+1. **`systemctl stop picoclaw` + verify** — systemd unit của gateway (do `install.sh`
+   ghi) đặt `WorkingDirectory=/root/.picoclaw` và `Restart=always`, nên nó giữ mở data
+   dir và sẽ tái tạo file dưới đó. Stop chủ động ghi đè `Restart=always` (không phải
+   crash) nên gateway nằm yên trong lúc wipe. `waitForPicoclawStop` poll `is-active`
+   tối đa 5s.
+2. **`systemctl disable picoclaw`** — factory reset cũng xóa `/root/config/config.json`
+   và reboot về runtime **mặc định (openclaw)**, nên PicoClaw KHÔNG được auto-start.
+   `switch-runtime` chỉ re-enable khi user switch trở lại.
+3. **`rm -rf /root/.picoclaw`** — config, `.security.yml`, workspace (persona/memory/
+   skills), sessions, và **marker `.openclaw-migrated`** (để `presync.sh` §0 migrate
+   lại persona/memory từ OpenClaw ở lần switch kế).
+4. **`picoclaw onboard`** (`HOME=/root`) — tạo lại baseline hợp lệ (workspace +
+   `config.json`/`.security.yml` cơ bản). Không-tử-vong: config chưa đúng cho tới khi
+   `presync.sh` khẳng định lại model/channel thật ở lần switch kế, và `install.sh` cũng
+   onboard khi thiếu `config.json`, nên lỗi ở đây tự lành.
+
+Gateway được để **stopped + disabled** — wizard setup sau reboot chạy `SetupAgent` của
+runtime mặc định, giống cách OpenClaw/Hermes disable unit của chính mình trong
+`ResetAgent`.

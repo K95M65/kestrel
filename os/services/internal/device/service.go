@@ -3,6 +3,7 @@ package device
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os/exec"
@@ -494,6 +495,32 @@ func (s *Service) PairWhatsapp(ctx context.Context) <-chan domain.PairingEvent {
 	return s.agentGateway.PairWhatsapp(ctx)
 }
 
+// StartClaudeLogin starts the claude.ai OAuth login flow when the active
+// gateway supports it (claudecode — domain.ClaudeLoginPairer is an optional
+// interface, like SlackBridge). Other runtimes get a one-shot failure event so
+// the MQTT drain loop exits cleanly. Used by the claudecode_login MQTT command.
+func (s *Service) StartClaudeLogin(ctx context.Context) <-chan domain.PairingEvent {
+	if p, ok := s.agentGateway.(domain.ClaudeLoginPairer); ok {
+		return p.StartClaudeLogin(ctx)
+	}
+	ch := make(chan domain.PairingEvent, 1)
+	ch <- domain.PairingEvent{
+		Status: domain.PairingStatusFailure,
+		Error:  "claude login not supported on " + s.agentGateway.Name() + " backend",
+	}
+	close(ch)
+	return ch
+}
+
+// SubmitClaudeLoginCode feeds the browser authorization code back into the
+// waiting login flow. Used by the claudecode_login_code MQTT command.
+func (s *Service) SubmitClaudeLoginCode(code string) error {
+	if p, ok := s.agentGateway.(domain.ClaudeLoginPairer); ok {
+		return p.SubmitClaudeLoginCode(code)
+	}
+	return fmt.Errorf("claude login not supported on %s backend", s.agentGateway.Name())
+}
+
 // StartStatusReporter periodically pings the autonomous backend.
 // Uses LLMAPIKey as Bearer token. Exits when ctx is cancelled.
 // If the backend response contains MQTT config, it saves to config (triggers config notify).
@@ -875,14 +902,34 @@ func (s *Service) UpdateConfig(data domain.UpdateConfigRequest) error {
 	// avoid a redundant gateway restart.
 	if modelChanged && !thinkingChanged && !baseURLChanged && s.agentGateway != nil {
 		if err := s.agentGateway.UpdatePrimaryModel(newModel); err != nil {
-			slog.Warn("update openclaw primary model failed", "component", "device", "error", err)
+			if errors.Is(err, domain.ErrNotSupportedByRuntime) {
+				// hermes/picoclaw: the device model is not what the runtime runs
+				// on, so there is nothing to apply — informational, not a failure.
+				slog.Info("primary model sync not supported by runtime", "component", "device", "backend", s.agentGateway.Name())
+			} else {
+				slog.Warn("update primary model failed", "component", "device", "error", err)
+			}
 		}
 	}
 	if (thinkingChanged || baseURLChanged) && s.agentGateway != nil {
 		// RefreshModelsConfig syncs agents.defaults.model.primary, per-model
 		// reasoning, and providers.autonomous.baseUrl in one write + restart.
 		if err := s.agentGateway.RefreshModelsConfig(); err != nil {
-			slog.Error("refresh models config failed", "component", "device", "error", err)
+			if errors.Is(err, domain.ErrNotSupportedByRuntime) {
+				// hermes/picoclaw can't be patched directly, but hermes's
+				// EnsureOnboarding presync re-reads llm_base_url/llm_api_key from
+				// the config.json we just saved — run it so a baseURL/key change
+				// applies now instead of at the next boot. Idempotent on both
+				// backends; restarts the gateway only when the config changed.
+				slog.Info("models config not device-patchable, running onboarding self-heal", "component", "device", "backend", s.agentGateway.Name())
+				go func() {
+					if err := s.agentGateway.EnsureOnboarding(); err != nil {
+						slog.Warn("onboarding self-heal after llm config change failed", "component", "device", "error", err)
+					}
+				}()
+			} else {
+				slog.Error("refresh models config failed", "component", "device", "error", err)
+			}
 		}
 	}
 	// When the operator switches stt_language explicitly, drop the in-session

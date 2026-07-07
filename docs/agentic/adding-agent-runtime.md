@@ -17,8 +17,10 @@ wire the switch, install, migration, skills, hooks, and reset.
 
 > **Agentic-backend docs:** this file (generic contract + how to add one) ·
 > [`hermes.md`](hermes.md) (Hermes, a full backend) · [`picoclaw.md`](picoclaw.md)
-> (PicoClaw, client-only gateway with install/presync scripts). Per-backend protocol/quirks live in those;
-> the generic mechanics + checklist live here.
+> (PicoClaw, client-only gateway with install/presync scripts) ·
+> [`claudecode.md`](claudecode.md) (Claude Code behind a local bridge, native
+> channel plugins for Telegram/Discord, claude.ai OAuth login). Per-backend
+> protocol/quirks live in those; the generic mechanics + checklist live here.
 
 ---
 
@@ -67,6 +69,17 @@ were **functional gaps**, not N/A — they shipped as no-ops and we only noticed
 skills went stale / rename did nothing / config broke after a reset. Audit every
 stub: write `// no-op because <reason>` or `// TODO(<backend>-<feature>)`, never a
 bare empty body.
+
+**No fake success.** A legitimately-N/A method that returns an error **must
+return `domain.ErrNotSupportedByRuntime`** (domain/agent.go), never `nil` —
+`nil` tells the caller the change was applied when nothing happened. Callers
+branch on `errors.Is`: the LLM model/baseURL save path
+(`internal/device/service.go`) logs it as informational and falls back to
+`EnsureOnboarding` (whose presync re-reads `llm_*` from config.json), and the
+gw-config endpoint reports "no device-side config file" instead of `{}`.
+Current sentinel-returning stubs: `UpdatePrimaryModel`, `RefreshModelsConfig`,
+`CompactSession` (hermes + picoclaw), `GetConfigJSON` (hermes only — picoclaw
+has a real config.json). Mirrors the `ErrChannelNotSupported` rule in §9.
 
 ---
 
@@ -156,10 +169,10 @@ bundle) and ONE **write** adapter (bundle → its layout), in
 **one adapter file** that interoperates with every existing runtime in both
 directions — file count is **linear (2 per runtime)**, not the quadratic N×(N-1)
 a per-pair migrator needs. Register the adapter in the `adapters` map in
-`migrator.go`; nothing else changes (no new `Direction` enum). openclaw, hermes, and
-picoclaw all have adapters, so any pair migrates both ways. A runtime with no
-registered adapter is skipped by `CanMigrate` — the boot-time reconciler doesn't
-migrate to/from it.
+`migrator.go`; nothing else changes (no new `Direction` enum). openclaw, hermes,
+picoclaw, and claudecode all have adapters, so any pair migrates both ways. A
+runtime with no registered adapter is skipped by `CanMigrate` — the boot-time
+reconciler doesn't migrate to/from it.
 
 PicoClaw's adapter (`runtime_picoclaw.go`) mirrors openclaw's layout but reads/writes
 `memory/MEMORY.md` (picoclaw keeps it under `memory/`, not at the workspace root).
@@ -335,6 +348,10 @@ runtime changes.
   - openclaw → `[telegram, slack, discord, whatsapp]` (`internal/openclaw/channels.go`)
   - hermes → `[telegram, slack, discord]` (`internal/hermes/channels.go`)
   - picoclaw → `[telegram]` (`internal/picoclaw/channels.go`)
+  - claudecode → `[telegram, discord]` (`internal/claudecode/channels.go` —
+    Claude Code's native channel plugins run the receive loops; presync lands
+    each token + allowlist under `~/.claude/channels/<ch>/`. No slack: Claude
+    Code has no slack channel plugin)
 - Helper `domain.ChannelSupported(gw, channel) bool` (`domain/channel.go`) — the
   one place callers test membership.
 - Shared sentinels in package `domain` (`domain/channel.go`):
@@ -402,6 +419,10 @@ re-syncs `.env` before the gateway starts, so the re-apply is an idempotent no-o
 - **Telegram is device-owned** on hermes/picoclaw: the receive loop is driven by
   `config.TelegramBotToken`, so the runtime needs no write — an honest success
   no-op inside `AddChannel`/`RefreshChannelConfig` (still gated on the list).
+  On claudecode the loops are **runtime-owned** (Claude Code's channel
+  plugins): `AddChannel` re-runs the embedded presync, which writes the token +
+  allowlist into `~/.claude/channels/<ch>/` and restarts the bridge only on a
+  hash-diff (see `docs/agentic/claudecode.md` §7).
 
 ---
 
@@ -409,6 +430,8 @@ re-syncs `.env` before the gateway starts, so the re-apply is an idempotent no-o
 
 - [ ] `internal/<name>/` package; `*Service` implements **all** of `AgentGateway`.
 - [ ] Every stub is `// no-op because …` or `// TODO(<name>-…)` — no bare bodies.
+- [ ] N/A stubs that return an error return `domain.ErrNotSupportedByRuntime`,
+      never `nil` (§4 "No fake success").
 - [ ] `domain.AgentRuntime<Name>` + `AgentRuntimes` entry; `factory.go` case.
 - [ ] `install.sh` + `install.go` (`//go:embed` + `runtimereg.Register`).
 - [ ] **Stateful setup → `presync.sh`** (`//go:embed` + `runtimereg.RegisterPresync`),
@@ -432,7 +455,8 @@ re-syncs `.env` before the gateway starts, so the re-apply is an idempotent no-o
 - [ ] **Channels (§9):** `SupportedChannels()` declares real capability;
       `AddChannel`/`RefreshChannelConfig` return `domain.ErrChannelNotSupported`
       for channels not on the list (no silent no-op). Telegram is device-owned on
-      hermes/picoclaw (success no-op, no runtime write).
+      hermes/picoclaw (success no-op, no runtime write); runtime-owned on
+      claudecode (presync re-sync + hash-diff restart).
 - [ ] Notify the agent on skill change via `SendSystemChatMessage`.
 - [ ] Docs: update `docs/agentic/hermes.md`-style backend doc + this checklist if the
       contract changed.
@@ -453,4 +477,6 @@ sources (deferred YAGNI — §6), `CompactSession`,
 `FetchChatHistory`, and the model-sync group (`StartModelSync`,
 `UpdatePrimaryModel`, `StartPrimaryModelWatch`, `RefreshModelsConfig` — largely
 N/A because os-server sends a fixed request model to the campaign-api custom
-provider).
+provider). The error-returning ones (`CompactSession`, `UpdatePrimaryModel`,
+`RefreshModelsConfig`, `GetConfigJSON`) return
+`domain.ErrNotSupportedByRuntime` rather than fake success (§4).

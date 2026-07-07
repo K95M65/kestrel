@@ -445,8 +445,31 @@ func (h *AgentHandler) handleAgentStreamEvent(evt domain.WSEvent) error {
 			}
 		}
 
+		// OpenClaw 2026.6.x "incomplete turn" misfire: the gateway surfaces
+		// "couldn't generate a response" even though the model replied
+		// (streamed deltas or session history; payloads=0 counting bug,
+		// openclaw#68076/#67855 family). Salvage the reply BEFORE emitting
+		// the lifecycle event so the turn renders as recovered, not failed.
+		// Runs sync on the WS worker — the chat-stream error for the same
+		// run arrives after this returns, so wasErrorRecovered is reliable.
+		errorRecovered := false
+		if payload.Data.Phase == "error" {
+			errorRecovered = h.tryRecoverIncompleteTurn(payload.RunID, flowRunID, payload.SessionKey)
+			if errorRecovered {
+				h.markErrorRecovered(flowRunID)
+			}
+		}
 		shortErr := shortError(payload.Data.Error)
-		flow.Log("lifecycle_"+payload.Data.Phase, map[string]any{"run_id": flowRunID, "error": payload.Data.Error}, flowRunID)
+		lcData := map[string]any{"run_id": flowRunID, "error": payload.Data.Error}
+		if errorRecovered {
+			// Blank the error field so the flow monitor doesn't render an
+			// error node over the recovered reply; keep the original for
+			// observability.
+			lcData["error"] = ""
+			lcData["recovered"] = true
+			lcData["original_error"] = payload.Data.Error
+		}
+		flow.Log("lifecycle_"+payload.Data.Phase, lcData, flowRunID)
 		monEvt := domain.MonitorEvent{
 			Type:    "lifecycle",
 			Summary: fmt.Sprintf("Agent %s", payload.Data.Phase),
@@ -455,7 +478,12 @@ func (h *AgentHandler) handleAgentStreamEvent(evt domain.WSEvent) error {
 			Error:   shortErr,
 		}
 		if payload.Data.Phase == "error" && shortErr != "" {
-			monEvt.Summary = "❌ " + shortErr
+			if errorRecovered {
+				monEvt.Error = ""
+				monEvt.Summary = "Agent error — reply recovered"
+			} else {
+				monEvt.Summary = "❌ " + shortErr
+			}
 		}
 		if payload.Data.Phase == "end" && payload.Data.Usage != nil {
 			u := payload.Data.Usage

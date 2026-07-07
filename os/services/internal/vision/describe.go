@@ -42,15 +42,24 @@ const DefaultImageModel = "qwen/qwen3.6-plus"
 // catalog flip propagates on the same cadence as the rest of the device.
 const catalogTTL = 30 * time.Minute
 
-// DescribeTimeout bounds one describe call. It runs inline in the sensing
-// handler before the agent forward, so it delays the turn by at most this
-// long; on timeout the caller falls back to sending the raw attachment.
-// Sized from device measurements: qwen via the campaign-api router answers a
-// 768px frame in 9–13s routinely (connect/TLS are instant — the wait is pure
-// upstream inference), so 20s was cutting off the slow tail. Keep it under
-// HAL's image-turn POST timeout (45s in sensing_sender.py) so the HAL client
-// outlives describe + agent forward.
-const DescribeTimeout = 35 * time.Second
+// DescribeTimeout bounds the TOTAL describe budget across all attempts. It
+// runs inline in the sensing handler before the agent forward, so it delays
+// the turn by at most this long. Keep it under HAL's image-turn POST timeout
+// (90s in sensing_sender.py) so the HAL client outlives describe + agent
+// forward.
+const DescribeTimeout = 80 * time.Second
+
+// Per-attempt timeouts for DescribeWithRetry; they sum to DescribeTimeout.
+// Sized from device measurements 2026-07-06 (Go client, 768px frame, same
+// endpoint): latency is CONTENT-dependent — scene images answer in 8–20s,
+// but TEXT-DENSE images (the "read this label" use case) take 23–38s because
+// qwen3.6-plus reasons over the text; /no_think and max_tokens caps barely
+// help. The old 20s/15s (and 30s/25s) ladders sat inside that band, so every
+// text-reading turn timed out while probes with scene images passed. 45s
+// clears the measured text-dense tail with margin; the 35s retry still gets
+// a fresh connection for genuinely hung requests while staying above the
+// text-dense floor.
+var describeAttemptTimeouts = [...]time.Duration{45 * time.Second, 35 * time.Second}
 
 // Emphasis on the user's request so the description surfaces what the answer
 // needs (label text, object identity, counts) instead of a generic caption.
@@ -132,6 +141,25 @@ func imageModel() string {
 	return DefaultImageModel
 }
 
+// DescribeWithRetry runs Describe once per describeAttemptTimeouts entry,
+// returning the first success. Uses context.Background() on purpose: the
+// description must complete even if the HAL client gives up on the sensing
+// HTTP request early (its POST timeout can be shorter than a slow describe).
+// On total failure the error carries every attempt's failure.
+func DescribeWithRetry(cfg *config.Config, imageB64 string, question string) (string, error) {
+	var errs []string
+	for i, timeout := range describeAttemptTimeouts {
+		dctx, cancel := context.WithTimeout(context.Background(), timeout)
+		desc, err := Describe(dctx, cfg, imageB64, question)
+		cancel()
+		if err == nil {
+			return desc, nil
+		}
+		errs = append(errs, fmt.Sprintf("attempt %d (%s): %v", i+1, timeout, err))
+	}
+	return "", fmt.Errorf("%s", strings.Join(errs, "; "))
+}
+
 // Describe sends the base64 JPEG to the vision model via the anthropic-messages
 // endpoint derived from the device's LLM config and returns the description.
 // The request shape matches what the Anthropic SDK produces (HAL's summarizer
@@ -147,8 +175,9 @@ func Describe(ctx context.Context, cfg *config.Config, imageB64 string, question
 		question = question[:500]
 	}
 
+	model := imageModel()
 	body, err := json.Marshal(map[string]any{
-		"model":      imageModel(),
+		"model":      model,
 		"max_tokens": 500,
 		"messages": []any{
 			map[string]any{
@@ -184,15 +213,15 @@ func Describe(ctx context.Context, cfg *config.Config, imageB64 string, question
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("describe request: %w", err)
+		return "", fmt.Errorf("describe request (model=%s): %w", model, err)
 	}
 	defer resp.Body.Close()
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return "", fmt.Errorf("read describe response: %w", err)
+		return "", fmt.Errorf("read describe response (model=%s): %w", model, err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("describe status %d: %s", resp.StatusCode, truncate(string(respBody), 300))
+		return "", fmt.Errorf("describe status %d (model=%s): %s", resp.StatusCode, model, truncate(string(respBody), 300))
 	}
 
 	var out struct {

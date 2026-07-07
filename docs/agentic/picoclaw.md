@@ -30,9 +30,10 @@ which brain is active.
 > (`SetupAgent`, `RefreshModelsConfig` …) remain no-ops (§8) because provisioning
 > happens out-of-process in install.sh/presync. The exceptions are `EnsureOnboarding`
 > (`onboarding.go`, keeps the OS-managed blocks in SOUL/AGENTS/HEARTBEAT current),
-> `StartSkillWatcher` (`skill_watcher.go`, CDN skill auto-update), and identity
+> `StartSkillWatcher` (`skill_watcher.go`, CDN skill auto-update), identity
 > (`identity.go`: `WatchIdentity`/`UpdateIdentityName` read/write `IDENTITY.md` like
-> OpenClaw) — all real (§1.1, §8).
+> OpenClaw), and `ResetAgent` (`reset.go`, factory-reset wipe of `/root/.picoclaw` +
+> re-onboard) — all real (§1.1, §8).
 > Remaining gaps (an emotion-acknowledge hook, queue/steer pinning) are tracked
 > against the
 > [`adding-agent-runtime.md`](adding-agent-runtime.md) checklist — consult it before
@@ -202,7 +203,7 @@ in this priority order (`translator.go` `categorize`):
 | `message.create/update`, `placeholder:true` | thinking | *(none — status, not content)* |
 | `message.create/update`, `kind:"thought"` / `thought:true` | reasoning | *(none — rendered as status only)* |
 | `message.create`, `kind:"tool_calls"` / has `tool_calls` | tool call | `agent` tool `phase:start` + `phase:end` per call |
-| `message.create/update`, non-empty `content` (none of the above) | **final answer** | `chat` `state:final role:assistant` **+** `agent` lifecycle `phase:end` (with usage) — **ends the turn** |
+| `message.create/update`, non-empty `content` (none of the above) | **final answer** | `agent` `stream:assistant` (whole reply as one delta) **+** `chat` `state:final role:assistant` **+** `agent` lifecycle `phase:end` (with usage) — **ends the turn** |
 | `error` | error | `agent` lifecycle `phase:error` — ends the turn |
 | `typing.stop` / `message.delete` / `pong` | — | *(ignored)* |
 
@@ -217,6 +218,14 @@ in this priority order (`translator.go` `categorize`):
 - PicoClaw does not emit a separate tool-result frame, so each tool call emits a
   `tool` `phase:start` immediately followed by a `phase:end` with an empty result,
   purely to close the trace.
+- **Non-streaming → one assistant delta.** PicoClaw delivers the whole reply in a
+  single final frame, but the shared consumer derives TTS + `[HW:/…]` hardware
+  markers (and the Flow Monitor `tts_speak` / `hw_*` nodes) from the **assistant-delta
+  stream**, flushed at `lifecycle.end`. So the final answer is surfaced as `agent`
+  `stream:assistant` — the whole reply (markers intact) as **one** delta — **before**
+  `chat.final` / `lifecycle.end`, the N=1 case of the openclaw/hermes streaming
+  contract. Without it the reply renders in web chat but never reaches the speaker or
+  hardware. `translator.go` `emitFinal`.
 - `media.create` is defined in the protocol but the server never emits it — media
   rides inside `message.create` as `attachments`.
 
@@ -240,7 +249,9 @@ TotalTokens: used_tokens }`.
 PicoClaw owns the session: the server-assigned `session_id` is captured from any
 inbound frame and stored (`SetSessionKey`) so the next `message.send` echoes it.
 `NewSession` just clears the local id so the next turn starts a fresh server
-session. There is no compact RPC, so `CompactSession` is a no-op.
+session. There is no compact RPC, so `CompactSession` returns
+`domain.ErrNotSupportedByRuntime` (the caller logs and rotates via `NewSession`
+instead).
 
 ## 7. Channel capability
 
@@ -268,18 +279,87 @@ those channels become unsupported under PicoClaw. After the switch
 field (`domain.MQTTInfoResponse`), and their creds **stay in `config.json`** —
 switching back to openclaw restores them.
 
+## 7.1 Channel turns in Flow Monitor (observer hook)
+
+A Telegram turn is handled entirely inside the PicoClaw gateway (it owns the
+channel I/O) and never crosses the WebSocket, so — exactly like Hermes — os-server
+would be blind to it. Parity is restored with an **observer hook**, the direct
+analogue of the Hermes `os-server-observer` hook: os-server ships a small
+subprocess that the gateway runs on its shared agent pipeline, and that subprocess
+forwards each turn to the loopback `POST /api/agent/channel-turn` endpoint the
+shared `ChannelTurn` handler already serves (`handler_channel_turn.go`). No
+consumer/UI change — the inbound user text lights up the IN node, and any
+`[HW:/…]` markers in the reply drive the local hardware, same as Hermes.
+
+Two things differ from Hermes and are owned by `internal/picoclaw/hooks.go`:
+
+1. **Transport.** PicoClaw process hooks are a **subprocess speaking NDJSON
+   JSON-RPC over stdio** (`resources/hooks/os-server-observer/observer.py`), not an
+   in-process Python `handle()` discovered by directory scan. PicoClaw sends the
+   subprocess (verified on-device, picoclaw 0.2.9):
+   - `hook.hello` — a REQUEST (has JSON-RPC `id`); the script replies
+     `{"action":"continue"}`. Any request (has `id`) is answered immediately so the
+     turn is never blocked.
+   - `hook.runtime_event` — a NOTIFICATION whose `params` is the event envelope
+     `{kind, scope{channel,chat_id,sender_id,session_key,turn_id}, payload}`. The
+     script acts on two kinds and ignores the rest (`agent.tool.*`, `agent.llm.*`):
+     - `agent.turn.start` → `agent:start`, message = **`payload.UserMessage`**.
+     - `agent.turn.end`   → `agent:end`, response = **`payload.FinalContent`** (the
+       reply, WITH any `[HW:/…]` markers — `agent.turn.end` carries both the user
+       message and the final reply, so **observe alone suffices; no intercept**).
+   - filters on `scope.channel` (allow-list `telegram`) AND drops internal senders
+     (`sender_id == heartbeat`) — device-local `pico` turns are already logged by
+     `sendChat`; the analogue of the Hermes hook's `skipPlatform(api_server/cli)`.
+   - maps `scope` → the `ChannelTurn` payload (`platform=channel`, `chat_id`,
+     `sender_id`→`user_id`, `session_key`→`session_id`). PicoClaw pairs the two
+     forwards into one Flow turn by `session_key`.
+   - the POST fires on a daemon thread (audit log stays synchronous) so a slow
+     os-server never stalls the next event (`observer_timeout_ms` is 500ms).
+   - `OBSERVER_DEBUG=1` dumps every raw stdin line to stderr (surfaced in the
+     gateway log as `Process hook stderr hook=os-server-observer`) — used to verify
+     the field names above.
+
+2. **Registration.** PicoClaw does **not** scan a hooks dir; a hook is registered
+   by a `config.json` entry under `hooks.processes.<name>`, gated by BOTH the global
+   `hooks.enabled` AND the **per-process `enabled`** (both default false — same shape
+   as the `tools.mcp` global + per-server gate; without the per-process `enabled`
+   PicoClaw silently never spawns the subprocess). So `ensureObserverHook()` (called
+   from `EnsureOnboarding`) does two writes: materializes `observer.py` to
+   `/root/.picoclaw/hooks/os-server-observer/` with the `__OS_SERVER_TURN_URL__`
+   placeholder substituted, and upserts:
+
+   ```json
+   "hooks": { "enabled": true, "processes": { "os-server-observer": {
+     "enabled": true,
+     "transport": "stdio",
+     "command": ["python3", "/root/.picoclaw/hooks/os-server-observer/observer.py"],
+     "env": { "OS_SERVER_TURN_URL": "http://127.0.0.1:<HttpPort>/api/agent/channel-turn", "OBSERVER_DEBUG": "1" },
+     "observe": ["turn_start", "turn_end"]
+   } } }
+   ```
+
+   It is idempotent (script diff + config-marshal diff) and returns `changed`;
+   `EnsureOnboarding` restarts the gateway only when something changed, since the
+   gateway loads hooks only at start. The config write is serialized under the same
+   `mcpMu` that guards `config.json` (see `mcp.go`).
+
 ## 8. What is stubbed
 
 Everything not on the PicoClaw hot path is a no-op so the single
 `domain.AgentGateway` interface is satisfied without inventing features the
-backend does not have: `SetupAgent`, WhatsApp pairing, `ResetAgent`,
+backend does not have: `SetupAgent`, WhatsApp pairing,
 `RefreshModelsConfig`, `FetchChatHistory`, `CompactSession`,
 the model watchers (`StartModelSync`/`StartPrimaryModelWatch`), `UpdatePrimaryModel`.
+The error-returning stubs (`RefreshModelsConfig`, `UpdatePrimaryModel`,
+`CompactSession`) return `domain.ErrNotSupportedByRuntime` — never `nil` — so
+callers can tell "nothing to apply" from "applied" (see
+[`adding-agent-runtime.md`](adding-agent-runtime.md) §4 "No fake success").
 (`AddChannel` / `RefreshChannelConfig` are NOT stubs — they return
 `domain.ErrChannelNotSupported` for unsupported channels, see §7; `EnsureOnboarding`
 (§1.1) and `StartSkillWatcher` (skill auto-update, §1.1) are real.) These are also
 real, not stubs: `RestartAgent` (restarts the `picoclaw` systemd unit via
-`restartPicoclawGateway`), `GetConfigJSON` (returns `/root/.picoclaw/config.json` —
+`restartPicoclawGateway`), `ResetAgent` (factory-reset wipe — see §8.2),
+`GetConfigJSON` (returns `/root/.picoclaw/config.json` —
 the structure file; secrets in `.security.yml` are never exposed),
 `WriteMCPEntry` / `RemoveMCPEntry` (MCP connectors — see §8.1), and
 `WatchIdentity` / `UpdateIdentityName` (`identity.go`) — PicoClaw's `IDENTITY.md` is
@@ -318,3 +398,35 @@ the named server (idempotent — `removed=false`, no restart, when absent) and l
 `tools.mcp.enabled` on so other wired servers keep loading. Both paths write
 `config.json` atomically (temp + rename, no chown — PicoClaw runs as root) under
 `mcpMu`, then `restartPicoclawGateway`. Secrets in `.security.yml` are never touched.
+
+### 8.2 Factory reset (`reset.go`)
+
+`ResetAgent` is the PicoClaw factory-reset wipe, called by
+`server/system/factoryreset.go` on the active gateway. Unlike OpenClaw (which keeps
+`identity/` + `device-key.json` and lets `SetupAgent` recreate `openclaw.json`) and
+Hermes (which resets `config.yaml`/`.env` in place and preserves `SOUL.md`),
+**PicoClaw preserves nothing**: its `config.json` + `.security.yml` are regenerated
+from the project `/root/config/config.json` by `presync.sh` on the next switch, so
+the reset wipes `/root/.picoclaw` **wholesale** and re-onboards a clean baseline.
+
+`wipePicoclawState()` runs four steps:
+
+1. **`systemctl stop picoclaw` + verify** — the gateway's systemd unit (written by
+   `install.sh`) sets `WorkingDirectory=/root/.picoclaw` and `Restart=always`, so it
+   holds the data dir open and would recreate files under it. An explicit stop
+   overrides `Restart=always` (it is not a crash), so the gateway stays down while we
+   wipe. `waitForPicoclawStop` polls `is-active` for up to 5s.
+2. **`systemctl disable picoclaw`** — a factory reset also wipes `/root/config/config.json`
+   and reboots into the **default (openclaw)** runtime, so PicoClaw must NOT auto-start.
+   `switch-runtime` re-enables it only when the user switches back.
+3. **`rm -rf /root/.picoclaw`** — config, `.security.yml`, workspace (persona/memory/
+   skills), sessions, and the **`.openclaw-migrated` marker** (so `presync.sh` §0
+   re-migrates persona/memory from OpenClaw on the next switch).
+4. **`picoclaw onboard`** (`HOME=/root`) — recreate a valid baseline (workspace +
+   baseline `config.json`/`.security.yml`). Non-fatal: the config is not correct until
+   `presync.sh` re-asserts the real model/channel wiring on the next switch, and
+   `install.sh` also onboards when `config.json` is absent, so a failure self-heals.
+
+The gateway is left **stopped + disabled** — the post-reboot setup wizard runs the
+default runtime's `SetupAgent`, mirroring how OpenClaw/Hermes disable their own unit
+in `ResetAgent`.

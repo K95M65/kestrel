@@ -156,10 +156,7 @@ the moment the user pointed at). `_handle_look_call` persists the frame to
 handled turn that already used it clears it so a later delegate can't pick up a
 stale image) and, when fresh (`HAL_GEMINI_VISION_HANDOFF_MAX_AGE_S`, default 20s),
 prepends a `[vision-image] <path>` hint line to the message and ships the frame
-as base64 in the sensing POST's `image` field (the path in the hint is
-traceability only — telling the agent to *read* it does not work on a text-only
-main model, whose runtime silently drops tool-read image blocks; that was the
-"describes a PCB while holding a cracker box" hallucination). What os-server
+as base64 in the sensing POST's `image` field. What os-server
 then does with the image is decided by the **describe-first gate** in
 `internal/vision` (see `server/sensing/delivery/http/handler.go`): when the
 active main model does NOT declare image input in the model catalog (the
@@ -167,8 +164,21 @@ Auto-AI case — a raw attachment 404s at the smart-agent-router with "No
 endpoints found that support image input"), the frame is described by the
 catalog's `default_image_model` (qwen — the same model openclaw's `imageModel`
 uses for Telegram photos) and the agent receives an `[image description] …`
-text line instead; when the catalog says the model takes images, the raw
-attachment is forwarded directly. The gate re-reads the catalog every 30 min,
+text line instead — and the `[vision-image]` hint is rewritten to drop the
+file path, plus the snapshot file itself is deleted (best-effort). Neither
+may survive alongside a description: the snapshot lives inside the agent's
+media allow-list, so any path the agent gets hold of — the hint, an old hint
+in session history, an `ls` of the dir — can be `read` into an image block
+that sticks in the session history and 404s every later turn the router
+sends to a text-only model (even fully-text turns). The describe call gets
+two attempts (20s + 15s, 35s total — a hung upstream request is retried on a
+fresh connection); if both fail the image is **dropped**, the snapshot file
+still deleted, and the hint rewritten to have the agent tell the user it
+couldn't see the photo — never sent as a raw attachment, because when the
+router lands on a text-only model that attachment poisons the whole session,
+which costs far more than one degraded turn. When the catalog says
+the model takes images, the raw attachment is forwarded directly and the
+hint keeps the path. The gate re-reads the catalog every 30 min,
 so a backend catalog flip migrates devices automatically. The same gate covers
 web-monitor-chat image uploads — both image sources converge on this one
 handler. The `camera` skill instructs the agent to answer from the
@@ -288,6 +298,7 @@ table (cost ceiling, never an under-report).
 | `gemini-2.5-flash-native-audio` | $0.50 | $3.00 | $2.00 | $12.00 | 25 tok/s | ai.google.dev pricing (verified 2026-06-29) |
 | `gemini-3.1-flash-live` | $0.75 | $3.00 | $4.50 | $12.00 | 25 tok/s | ai.google.dev pricing (verified 2026-06-29) |
 | `qwen-omni-turbo-realtime` | $0.27 | $4.44 | $8.89* | $8.89* | 25 tok/s in+out | consume-detail bill CSV (verified 2026-07-06); *audio-modality output bills text+audio together (`multi_output_token`); text-only responses bill $1.07 (`purein_text_output`) |
+| `qwen3.5-omni-flash-realtime` | $0.27 | $4.44 | $8.89* | $8.89* | ~7 tok/s in, ~12.5 tok/s out | bill CSV (verified 2026-07-06): flash bills under the SAME cheap line items as turbo, incl. search-enabled sessions — dominant text-in cost ~2.8x cheaper than Gemini 3.1. Search +$0.01/request |
 | `qwen3.5-omni-plus-realtime` | $2.10 | $16.50 | $62.00* | $62.00* | ~7 tok/s in, ~12.5 tok/s out | consume-detail bill CSV (verified 2026-07-06); *one `omni_audio_output_token` line item covers the response's text+audio. Web search bills $0.01 per search request on top |
 
 Cost anatomy is the same on every provider: `in_text` dominates (the ~7-10k
@@ -367,6 +378,9 @@ turn ("hello") right after a restart would leak to the main agent.
    `commit_audio()` fires.
 5. **Consume.** `for output in stream_output()`:
    - `TextOutput` → sentences are flushed to TTS (`speak` / `speak_queue`).
+     If `speak` returns busy (another non-interruptible TTS holds the
+     speaker, e.g. an ambient nudge), the sentence falls back to
+     `speak_queue` so the reply plays after it instead of being lost.
    - `DelegateSignal` → stop; forward `[voice-instruction] …` + transcript to the
      OS server with the original `event_type`.
    - Otherwise the turn was handled locally → the OS server is told
@@ -466,8 +480,11 @@ safe; in CoT mode, English planning sentences (non-English devices only —
 non-Latin scripts like Vietnamese/Chinese/Japanese use an ASCII-ratio check,
 Latin scripts like French/Indonesian additionally require English function
 words so the real answer survives), quoted drafts, plan runts, and fuzzy
-near-duplicates (CJK tokenized per character) drop too. Every dropped sentence
-is logged as `CoT leak dropped`.
+near-duplicates (CJK tokenized per character) drop too. The language check
+ignores quoted spans, so an English planning sentence that embeds
+reply-language text in quotes ("The search query 'cách dùng…' didn't yield…")
+is still caught, while a reply-language sentence quoting English is not.
+Every dropped sentence is logged as `CoT leak dropped`.
 
 The main-agent path (openclaw/hermes replies spoken via os-server) has a Go
 port of this filter — `os/services/server/agent/delivery/http/cot_leak_filter.go`
@@ -485,6 +502,7 @@ Each knob's `HAL_*` env var overrides the block (and is the dev-box path):
 | `HAL_REALTIME_PROVIDER` | `gemini` | `none` \| `gemini` \| `openai` \| `qwen` |
 | `HAL_REALTIME_TURN_DETECTION` | `off` | `server_vad` \| `semantic_vad` \| `off` (Gemini: off = manual activity detection) |
 | `HAL_REALTIME_RECV_QUEUE_TIMEOUT_S` | `8.0` | Max seconds `receive()` waits for the next output event before ending a silent turn (fallback to main agent) |
+| `HAL_REALTIME_LOOK_RECV_TIMEOUT_S` | `20.0` | Silent-turn watchdog used instead of the default for turns where a `look` fired (per-turn, via `extend_recv_timeout()`). Gemini's forced thinking over a text-dense frame can stay silent >8 s right before the answer — the default watchdog was killing those turns |
 | `HAL_REALTIME_REQUIRE_TRANSCRIPT` | `true` | Never commit an empty-STT turn to the model. Real speech that nova-3 missed (short utterances) is voiced and passes the VAD/Silero guards, so committing its raw audio makes the model invent a reply to silence (a generic greeting, often with a name nobody said). When `true`, any empty-STT turn is dropped regardless of duration/voicing — silence beats a wrong reply. Set `false` to fall back to the Silero-gated audio-only path below. |
 | `HAL_REALTIME_MIN_COMMIT_DURATION_S` | `0.8` | Sessions shorter than this with no STT transcript are treated as VAD noise and not committed to the model. Only consulted when `HAL_REALTIME_REQUIRE_TRANSCRIPT=false`. |
 | `HAL_REALTIME_SESSION_IDLE_RESET_S` | `240` | Cost control: when a turn arrives after this many seconds of silence, recycle (rebuild) the session **after** that turn so the next turn drops the per-turn context the provider re-bills on a long-lived session. A post-pause turn is effectively a new conversation; long-term continuity survives via the reloaded `summary.md`. `0` disables. Reuses the zombie-recovery rebuild path. |
