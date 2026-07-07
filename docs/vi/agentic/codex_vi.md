@@ -238,13 +238,26 @@ chủ động sensing/guard) tới đúng chat.
 
 Mỗi tin được chấp nhận chờ agent rảnh (`IsBusy`, poll 500 ms, tôn trọng ctx)
 rồi được inject qua `sendChat` với flow source `telegram`, nên `chat_input` /
-`chat_send` phát như bình thường và Flow Monitor thấy rõ nguồn gốc. Run được
+`chat_send` phát như bình thường và Flow Monitor thấy rõ nguồn gốc. Văn bản
+turn được inject có prefix metadata người gửi — format chính xác
+`[telegram] Message from <FirstName LastName> (@username) [id:<numeric>]:\n<text>`,
+do `tgUser.label()` dựng (phần `(@username)` bị bỏ khi không có, tên fallback
+về `unknown`) — để agent biết ai đang nói và trên kênh nào, mirror hành vi
+telegram plugin của openclaw. Run được
 đánh dấu **silent** (reply không được đọc qua TTS) và theo dõi trong
 `telegramRuns`; tại `turn.completed`, `emitFinal` consume tracker và DM văn
 bản cuối về đúng chat gốc, sau khi strip marker phần cứng `[HW:/...]` và audio
 tag TTS (`[laugh]`, `[sigh]`, …) — `stripForChannel` trong `hal.go`, mirror
 `hwMarkerRe` phía downstream và whitelist audio-tag của HAL. Khi `turn.failed`,
 tracker được consume mà không DM để map không leak.
+
+Trong lúc turn chạy, một goroutine `telegramTypingKeeper` giữ chỉ báo
+"đang nhập…" của Telegram: ngay sau khi turn được inject, nó bắn Bot API
+`sendChatAction(typing)` lập tức rồi lặp lại mỗi 4 s (chỉ báo tự hết hạn sau
+~5 s) cho tới khi run được consume — reply đã DM qua `emitFinal` hoặc turn
+lỗi qua `handleError` — và bị chặn trần bởi `telegramTypingLifetime` = 10 phút
+để một turn kẹt không thể làm chat "đang nhập…" mãi mãi. Việc gửi là
+best-effort (lỗi chỉ log ở mức debug rồi bỏ qua).
 
 `SupportedChannels()` trả `["telegram"]`. `AddChannel(telegram)` là no-op
 success trung thực — credential mà caller vừa lưu vào config.json là tất cả

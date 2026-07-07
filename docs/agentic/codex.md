@@ -243,6 +243,11 @@ id is upserted into `/root/.codex/telegram_targets.json` so outbound
 Each accepted message waits for the agent to go idle (`IsBusy`, 500 ms poll,
 ctx-aware), then is injected via `sendChat` with flow source `telegram`, so
 `chat_input` / `chat_send` fire as usual and Flow Monitor shows the origin.
+The injected turn text is prefixed with sender metadata — exact format
+`[telegram] Message from <FirstName LastName> (@username) [id:<numeric>]:\n<text>`,
+built by `tgUser.label()` (the `(@username)` part is omitted when absent, the
+name falls back to `unknown`) — so the agent knows who is talking and on which
+channel, mirroring openclaw's telegram plugin behavior.
 The run is marked **silent** (the reply must not hit TTS) and tracked in
 `telegramRuns`; at `turn.completed`, `emitFinal` consumes the tracker and DMs
 the final text back to the originating chat with `[HW:/...]` hardware markers
@@ -250,6 +255,14 @@ and TTS audio tags (`[laugh]`, `[sigh]`, …) stripped (`stripForChannel` in
 `hal.go`, mirroring the downstream `hwMarkerRe` and HAL's audio-tag
 whitelist). On `turn.failed` the tracker is consumed without a DM so the map
 cannot leak.
+
+While the turn runs, a `telegramTypingKeeper` goroutine keeps Telegram's
+"typing…" indicator alive: after the turn is injected it fires Bot API
+`sendChatAction(typing)` immediately and then every 4 s (the indicator expires
+after ~5 s) until the run is consumed — reply DMed by `emitFinal` or the turn
+errored via `handleError` — capped at `telegramTypingLifetime` = 10 minutes so
+a wedged turn cannot leave the chat "typing…" forever. Sends are best-effort
+(errors logged at debug and ignored).
 
 `SupportedChannels()` returns `["telegram"]`. `AddChannel(telegram)` is an
 honest no-op success — the creds the caller just persisted to config.json are

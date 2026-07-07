@@ -126,6 +126,9 @@ stub convention). This file is the running history for whoever picks the task up
       RefreshChannelConfig(telegram)=("", nil). Hermetic httptest coverage in
       telegram_poll_test.go (offset persistence, allowlist rejects, single injection,
       run/silent marking). TODO(codex-telegram) closed. NOT device-verified.
+- [x] Telegram inbound polish (2026-07-07): telegramTypingKeeper (sendChatAction typing
+      immediately + every 4s until run consumed, capped at telegramTypingLifetime=10min) +
+      sender-metadata prefix on injected turns via tgUser.label(). Device-verified 2026-07-07.
 - [ ] Device verify remainder (switch flow, rotation, MCP write) — first turn + resume done
       via subscription mode; api-key path still blocked on the /responses backend work above
 - [ ] Device verify: persona inline block in AGENTS.md (pre-fix, codex introduced itself as "Codex" instead of the device persona name)
