@@ -76,8 +76,8 @@ func TestTelegramPollLoop(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("no turn injected within 5s")
 	}
-	if got.text != "hello lamp" {
-		t.Errorf("injected text = %q, want %q", got.text, "hello lamp")
+	if got.text != "[telegram] Message from unknown [id:777]:\nhello lamp" {
+		t.Errorf("injected text = %q, want %q", got.text, "[telegram] Message from unknown [id:777]:\nhello lamp")
 	}
 
 	// The offset is persisted after the batch, before the second poll — once
