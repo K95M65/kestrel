@@ -477,8 +477,11 @@ safe; in CoT mode, English planning sentences (non-English devices only —
 non-Latin scripts like Vietnamese/Chinese/Japanese use an ASCII-ratio check,
 Latin scripts like French/Indonesian additionally require English function
 words so the real answer survives), quoted drafts, plan runts, and fuzzy
-near-duplicates (CJK tokenized per character) drop too. Every dropped sentence
-is logged as `CoT leak dropped`.
+near-duplicates (CJK tokenized per character) drop too. The language check
+ignores quoted spans, so an English planning sentence that embeds
+reply-language text in quotes ("The search query 'cách dùng…' didn't yield…")
+is still caught, while a reply-language sentence quoting English is not.
+Every dropped sentence is logged as `CoT leak dropped`.
 
 The main-agent path (openclaw/hermes replies spoken via os-server) has a Go
 port of this filter — `os/services/server/agent/delivery/http/cot_leak_filter.go`
