@@ -132,6 +132,11 @@ type CodexService struct {
 	telegramRunsMu sync.Mutex
 	telegramRuns   map[string]string
 
+	// slackRuns maps a Slack-originated runID → its origin channel/thread so
+	// emitFinal posts the reply back (see slack.go / translator.go).
+	slackRunsMu sync.Mutex
+	slackRuns   map[string]slackRun
+
 	poseBucketRunsMu sync.Mutex
 	poseBucketRuns   map[string]poseBucketInfo
 
@@ -147,6 +152,11 @@ type CodexService struct {
 	telegramOffsetPath  string
 	telegramTargetsPath string
 	telegramSendTurn    func(text, reqID, runID string) error
+
+	// Slack inbound test seams (slack.go / slack_sender.go). Zero values select
+	// the production defaults: slack.com/api and the real sendChat-backed send step.
+	slackAPIBase  string
+	slackSendTurn func(text, reqID, runID string) error
 
 	// ackHookEnabled mirrors OpenClaw's emotion-acknowledge hook: when the device
 	// declares the `expression` capability, every visible turn flashes a "thinking"
@@ -195,10 +205,12 @@ func ProvideService(cfg *config.Config, bus *monitor.Bus, sled *statusled.Servic
 		webChatRuns:    make(map[string]bool),
 		silentRuns:     make(map[string]bool),
 		telegramRuns:   make(map[string]string),
+		slackRuns:      make(map[string]slackRun),
 		poseBucketRuns: make(map[string]poseBucketInfo),
 	}
 	s.channels = []domain.ChannelSender{
 		&TelegramSender{svc: s},
+		&SlackSender{svc: s},
 	}
 	s.ackHookEnabled = ackEmotionEnabled(cfg.DeviceTypeOrDefault())
 	return s

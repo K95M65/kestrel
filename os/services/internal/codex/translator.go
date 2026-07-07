@@ -363,6 +363,16 @@ func (s *CodexService) emitFinal(f codexFrame, dispatch func(domain.WSEvent)) {
 		}
 	}
 
+	// Slack-originated turn (slack.go): post the reply back to the originating
+	// channel/thread (chat.postMessage) and clear the eyes ack reaction. TTS
+	// was suppressed at injection (MarkSilentRun); markers are stripped like
+	// the telegram path. Consumed here — synchronously, before dispatch — so
+	// the shared handler's DeliverSlackReply safety net stays a no-op.
+	// Best-effort in a goroutine: the read loop must not block on the Web API.
+	if o, ok := s.consumeSlackRun(runID); ok {
+		go s.finishSlackTurn(o, stripForChannel(finalText))
+	}
+
 	if finalText != "" {
 		deltaPayload, _ := json.Marshal(map[string]any{
 			"runId":      runID,
@@ -420,6 +430,14 @@ func (s *CodexService) handleError(msg string, dispatch func(domain.WSEvent)) {
 	if chatID := s.consumeTelegramRun(runID); chatID != "" {
 		slog.Warn("telegram-originated turn failed — reply dropped",
 			"component", "codex", "runID", runID, "chatID", chatID)
+	}
+
+	// Slack-originated turn: consume the tracker (no reply for a failed turn)
+	// and clear the eyes ack reaction so the message isn't left marked.
+	if o, ok := s.consumeSlackRun(runID); ok {
+		slog.Warn("slack-originated turn failed — reply dropped",
+			"component", "codex", "runID", runID, "channel", o.channel)
+		go s.finishSlackTurn(o, "")
 	}
 
 	payload, _ := json.Marshal(map[string]any{
