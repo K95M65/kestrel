@@ -40,6 +40,7 @@ import datetime
 import json
 import os
 import sys
+import threading
 import urllib.request
 
 OS_SERVER_TURN_URL = "__OS_SERVER_TURN_URL__"
@@ -72,10 +73,7 @@ def _log_json(record):
         _debug("log write failed:", e)
 
 
-def _post(event, ctx):
-    payload = {"event": event, "context": ctx}
-    # Local audit copy first, so it is written regardless of the POST outcome.
-    _log_json({"ts": datetime.datetime.now(datetime.timezone.utc).isoformat(), **payload})
+def _send(payload):
     try:
         req = urllib.request.Request(
             OS_SERVER_TURN_URL,
@@ -86,6 +84,17 @@ def _post(event, ctx):
         urllib.request.urlopen(req, timeout=3).close()
     except Exception as e:  # noqa: BLE001 — best-effort; os-server down must not affect the turn
         _debug("post failed:", e)
+
+
+def _post(event, ctx):
+    payload = {"event": event, "context": ctx}
+    # Local audit copy first (synchronous, fast, keeps event order) so it is written
+    # regardless of the POST outcome.
+    _log_json({"ts": datetime.datetime.now(datetime.timezone.utc).isoformat(), **payload})
+    # Fire the network POST OFF the stdin loop: a slow/hung os-server must never delay
+    # our reply to an after_llm intercept (interceptor_timeout_ms=5000) nor stall the
+    # next event (observer_timeout_ms is only 500ms). Best-effort daemon thread.
+    threading.Thread(target=_send, args=(payload,), daemon=True).start()
 
 
 def _text(v):
