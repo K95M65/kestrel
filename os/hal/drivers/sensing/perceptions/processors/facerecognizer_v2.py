@@ -407,11 +407,11 @@ class _OnnxLandmarkAligner:
             pts5 = self._landmarker.to_5points(landmarks)
             if not _v2_landmarks_out_of_bounds(pts5, bbox, frame.shape):
                 try:
-                    return _v2_warp_and_crop_face(frame, pts5)
+                    return _v2_warp_and_crop_face(frame, pts5), pts5
                 except Exception as e:  # noqa: BLE001
                     logger.debug("[face-v2] landmark alignment error: %s", e)
 
-        return None
+        return None, None
 
 
 # =============================================================================
@@ -762,7 +762,7 @@ class _EdgeFacePipeline:
             bbox = det["bbox"]
             kps = det["kps"]
 
-            aligned = self.aligner.align_crop_from_bbox(frame, bbox, kps=kps)
+            aligned, kps = self.aligner.align_crop_from_bbox(frame, bbox, kps=kps)
             if aligned is None:
                 continue
 
