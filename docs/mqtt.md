@@ -58,13 +58,13 @@ The OS server uses MQTT to communicate with the backend server (status reporting
 ```
 
 `agent_runtime` is the **effective** agentic backend currently running
-(`openclaw` | `hermes` | `picoclaw`) — resolved as `config.agent_runtime`, else
+(`openclaw` | `hermes` | `picoclaw` | `codex`) — resolved as `config.agent_runtime`, else
 the device's `DEVICE.md` `gateway.default`, else `openclaw`. The response also
 carries these optional fields when known: `hal_version`, `openclaw_version`,
-`hermes_version`, `local_ip`, `tts_provider`, `tts_voice`, `stt_language`,
+`hermes_version`, `codex_version`, `local_ip`, `tts_provider`, `tts_voice`, `stt_language`,
 `timezone`, `unsupported_channels`. `timezone` is the device's **live** IANA zone
 (e.g. `Asia/Ho_Chi_Minh`), read fresh from `/etc/timezone` (falling back to config),
-not just the config record. `openclaw_version` and `hermes_version` are both probed at
+not just the config record. `openclaw_version`, `hermes_version` and `codex_version` are all probed at
 startup (each from its own `--version`) and reported side by side; `agent_runtime`
 names the active one.
 

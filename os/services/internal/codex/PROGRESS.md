@@ -115,6 +115,7 @@ stub convention). This file is the running history for whoever picks the task up
       automatic.
 - [ ] Device verify remainder (switch flow, rotation, MCP write) — first turn + resume done
       via subscription mode; api-key path still blocked on the /responses backend work above
+- [ ] Device verify: persona inline block in AGENTS.md (pre-fix codex answered "Tôi là Codex" on "bạn tên gì" — reading SOUL.md/IDENTITY.md was voluntary; now inlined via ensurePersonaInlineBlock)
 - [x] Device prepped for full switch test (2026-07-07): manual codex binary REMOVED
       (install.sh must install it), auth.json KEPT (root:root). ⚠️ USER DECISION:
       auth.json is TEST-ONLY — production mode is api-key via campaign-api once the

@@ -126,7 +126,25 @@ Trên nền lần chạy presync, `EnsureOnboarding` (`onboarding.go`) làm cùn
 reconcile workspace như các backend khác: seed `KNOWLEDGE.md` từ template nhúng
 chỉ khi chưa có, inject các khối OS-managed `<!-- OS DO NOT REMOVE -->` vào
 `SOUL.md` / `AGENTS.md` / `HEARTBEAT.md` (gốc OpenClaw, lược phần
-chỉ-OpenClaw), capability-gate skills, và restart gateway khi có khối thay đổi.
+chỉ-OpenClaw), và capability-gate skills. Thay đổi chỉ-markdown không bao giờ
+restart gateway — mỗi `codex exec` đọc lại workspace; chỉ presync đổi config
+hoặc self-heal unit mới restart.
+
+**Khối persona inline (AGENTS.md).** Codex chỉ tự nạp DUY NHẤT `AGENTS.md` vào
+context; chỉ dẫn "Session Startup" bảo đọc `SOUL.md`/`IDENTITY.md` là tự
+nguyện, và với turn ngắn model bỏ qua (đã xác minh trên thiết bị: "bạn tên gì"
+→ "Tôi là Codex"). OpenClaw/Hermes inject soul vào system prompt ở tầng
+runtime; codex không có tầng đó, nên `ensurePersonaInlineBlock` inline persona
+THẲNG VÀO `AGENTS.md`: khối
+`<!-- OS PERSONA INLINE — DO NOT EDIT (generated from SOUL.md + IDENTITY.md) -->`
+… `<!-- /OS PERSONA INLINE -->` được upsert idempotent ở NGAY ĐẦU file (trên
+khối OS mandatory), gồm phần mở đầu "Who you are" bắt buộc, tên agent parse từ
+`IDENTITY.md` (`- **Name:** …`), và nguyên văn `SOUL.md` vừa được reconcile
+(cắt tối đa 20 000 byte kèm ghi chú truncate để `AGENTS.md` nằm dưới trần
+32 KiB project-doc của codex). Khối được dựng lại sau `ensureSoulMDBlock` mỗi
+lần `EnsureOnboarding` và ngay sau khi đổi tên (`UpdateIdentityName`), nên
+turn kế tiếp thấy tên mới luôn; `SOUL.md` biến mất thì khối bị gỡ. Ghi atomic
+(tmp+rename), và chỉ ghi khi byte thực sự khác.
 
 ## 2. Transport & gửi một turn
 

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"go.autonomous.ai/os/domain"
 	"go.autonomous.ai/os/internal/device"
@@ -48,6 +49,17 @@ const (
 	// osMandatoryMarker delimits the OS-managed block so it can be stripped +
 	// re-injected cleanly on update. MUST match the marker used in the block below.
 	osMandatoryMarker = "<!-- OS DO NOT REMOVE -->"
+
+	// personaInlineStart/personaInlineEnd delimit the persona block inlined at the
+	// very top of workspace/AGENTS.md (see ensurePersonaInlineBlock for why the
+	// persona must live inside AGENTS.md for codex).
+	personaInlineStart = "<!-- OS PERSONA INLINE — DO NOT EDIT (generated from SOUL.md + IDENTITY.md) -->"
+	personaInlineEnd   = "<!-- /OS PERSONA INLINE -->"
+
+	// personaInlineSoulCap caps the inlined SOUL.md bytes so AGENTS.md stays
+	// under codex's 32KiB project-doc cap (AGENTS.md is the only file codex
+	// auto-loads, and it truncates past that limit).
+	personaInlineSoulCap = 20_000
 
 	// codexWorkspaceDir is Codex's workspace (HOME=/root → ~/.codex).
 	// TODO(codex-config-dir): there is no CodexConfigDir in server/config yet
@@ -132,15 +144,23 @@ func (s *CodexService) EnsureOnboarding() error {
 	// disk, so no gateway reload is needed.
 	s.pruneUnsupportedSkills()
 
-	// OS-managed markdown blocks. Refreshing them never requires a gateway
-	// restart: the gatewayd spawns a fresh `codex exec --cd <workspace>` per
-	// turn, which re-reads AGENTS.md (and, via its instructions, SOUL.md /
-	// HEARTBEAT.md / KNOWLEDGE.md) from disk — the next turn sees the new blocks.
+	// OS-managed markdown blocks (incl. the persona inline block below).
+	// Refreshing them never requires a gateway restart: the gatewayd spawns a
+	// fresh `codex exec --cd <workspace>` per turn, which re-reads AGENTS.md
+	// (and, via its instructions, HEARTBEAT.md / KNOWLEDGE.md) from disk — the
+	// next turn sees the new blocks.
 	if _, err := s.ensureSoulMDBlock(); err != nil {
 		slog.Error("ensure SOUL.md block failed", "component", "codex-onboarding", "error", err)
 	}
 	if _, err := s.ensureAgentsMDBlock(); err != nil {
 		slog.Error("ensure AGENTS.md block failed", "component", "codex-onboarding", "error", err)
+	}
+	// Persona inline: AFTER ensureSoulMDBlock (so the freshly-reconciled soul is
+	// what gets inlined) and AFTER ensureAgentsMDBlock (so the persona block ends
+	// up above a just-prepended OS mandatory block). Never a restart signal —
+	// codex re-reads AGENTS.md per turn, same as the blocks above.
+	if _, err := s.ensurePersonaInlineBlock(); err != nil {
+		slog.Error("ensure persona inline block failed", "component", "codex-onboarding", "error", err)
 	}
 	if _, err := s.ensureHeartbeatMDBlock(); err != nil {
 		slog.Error("ensure HEARTBEAT.md block failed", "component", "codex-onboarding", "error", err)
@@ -248,6 +268,152 @@ func (s *CodexService) ensureAgentsMDBlock() (bool, error) {
 	}
 	slog.Info("injected mandatory block into AGENTS.md", "component", "codex-onboarding", "path", agentsFile)
 	return true, nil
+}
+
+// ensurePersonaInlineBlock inlines the persona (SOUL.md + the IDENTITY.md name) at
+// the very top of workspace/AGENTS.md. Codex auto-loads ONLY AGENTS.md into context;
+// the AGENTS.md "Session Startup" instruction to read SOUL.md/IDENTITY.md is
+// voluntary, and on short turns the model skips it (device-verified: "bạn tên gì"
+// → "Tôi là Codex"). OpenClaw/Hermes inject the soul into the system prompt at the
+// runtime layer; codex has no such layer, so the persona must live inside the one
+// file codex is guaranteed to read. Returns true if AGENTS.md was modified.
+func (s *CodexService) ensurePersonaInlineBlock() (bool, error) {
+	return ensurePersonaInlineBlockIn(codexWorkspaceDir)
+}
+
+// ensurePersonaInlineBlockIn is the workspace-parameterized body of
+// ensurePersonaInlineBlock (codexWorkspaceDir is a hardcoded const — the parameter
+// exists so tests can point it at a temp dir). Upsert is idempotent: any existing
+// start..end region is stripped, the freshly-built block is prepended, and the file
+// is rewritten (atomically, tmp+rename like UpdateIdentityName) only when the bytes
+// actually differ. A missing SOUL.md removes the block instead.
+func ensurePersonaInlineBlockIn(workspaceDir string) (bool, error) {
+	agentsFile := filepath.Join(workspaceDir, "AGENTS.md")
+	agentsRaw, err := os.ReadFile(agentsFile)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// Same skip as ensureAgentsMDBlock: a codex-only device without the
+			// openclaw migration has no AGENTS.md to inline into.
+			slog.Warn("AGENTS.md missing — skipping persona inline",
+				"component", "codex-onboarding", "path", agentsFile)
+			return false, nil
+		}
+		return false, fmt.Errorf("read AGENTS.md: %w", err)
+	}
+	text := string(agentsRaw)
+
+	soulRaw, err := os.ReadFile(filepath.Join(workspaceDir, "SOUL.md"))
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return false, fmt.Errorf("read SOUL.md: %w", err)
+		}
+		// No soul → nothing to inline; drop a stale block if one is present.
+		stripped := stripPersonaInlineBlock(text)
+		if stripped == text {
+			return false, nil
+		}
+		if err := atomicWriteFile(agentsFile, []byte(stripped)); err != nil {
+			return false, fmt.Errorf("write AGENTS.md: %w", err)
+		}
+		slog.Info("removed persona inline block (SOUL.md gone)",
+			"component", "codex-onboarding", "path", agentsFile)
+		return true, nil
+	}
+
+	// Agent name from IDENTITY.md (best-effort — the block is still useful
+	// without it; parseIdentityName is the same helper WatchIdentity uses).
+	name := ""
+	if idRaw, rerr := os.ReadFile(filepath.Join(workspaceDir, "IDENTITY.md")); rerr == nil {
+		name = parseIdentityName(string(idRaw))
+	}
+
+	output := buildPersonaInlineBlock(string(soulRaw), name) + "\n\n" + stripPersonaInlineBlock(text)
+	if output == text {
+		return false, nil
+	}
+	if err := atomicWriteFile(agentsFile, []byte(output)); err != nil {
+		return false, fmt.Errorf("write AGENTS.md: %w", err)
+	}
+	slog.Info("inlined persona block into AGENTS.md",
+		"component", "codex-onboarding", "path", agentsFile, "name", name)
+	return true, nil
+}
+
+// buildPersonaInlineBlock composes the marker-delimited persona block from the soul
+// text and the agent name. The soul is inlined verbatim, capped at
+// personaInlineSoulCap bytes (rune-safe cut + truncation note) so AGENTS.md stays
+// under codex's 32KiB project-doc cap.
+func buildPersonaInlineBlock(soul, name string) string {
+	soul = strings.TrimSpace(soul)
+	if len(soul) > personaInlineSoulCap {
+		cut := personaInlineSoulCap
+		for cut > 0 && !utf8.RuneStart(soul[cut]) {
+			cut--
+		}
+		soul = soul[:cut] + "\n\n_(persona truncated at 20000 bytes — the full text lives in SOUL.md)_"
+	}
+	var b strings.Builder
+	b.WriteString(personaInlineStart)
+	b.WriteString("\n# Who you are (MANDATORY)\n\nEmbody this persona in EVERY reply, on every channel. This is your identity — never introduce yourself as \"Codex\".\n")
+	if name != "" {
+		b.WriteString("\nYour name is **" + name + "**.\n")
+	}
+	b.WriteString("\n")
+	b.WriteString(soul)
+	b.WriteString("\n")
+	b.WriteString(personaInlineEnd)
+	return b.String()
+}
+
+// stripPersonaInlineBlock removes the personaInlineStart..personaInlineEnd region
+// plus the blank padding around it. An unterminated block (hand-deleted end marker)
+// only loses the start-marker line — never trailing user content.
+func stripPersonaInlineBlock(text string) string {
+	start := strings.Index(text, personaInlineStart)
+	if start < 0 {
+		return text
+	}
+	rest := text[start+len(personaInlineStart):]
+	endRel := strings.Index(rest, personaInlineEnd)
+	if endRel < 0 {
+		return text[:start] + strings.TrimLeft(rest, "\r\n")
+	}
+	after := strings.TrimLeft(rest[endRel+len(personaInlineEnd):], "\r\n")
+	before := strings.TrimRight(text[:start], "\r\n")
+	if before == "" {
+		return after
+	}
+	return before + "\n\n" + after
+}
+
+// atomicWriteFile writes data to path via tmp+rename in the same directory (the
+// pattern UpdateIdentityName uses) so a mid-write crash cannot leave a truncated
+// AGENTS.md — codex re-reads it on every turn.
+func atomicWriteFile(path string, data []byte) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".*.tmp")
+	if err != nil {
+		return fmt.Errorf("create tmp: %w", err)
+	}
+	tmpPath := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		os.Remove(tmpPath)
+		return fmt.Errorf("write tmp: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("close tmp: %w", err)
+	}
+	if err := os.Chmod(tmpPath, 0o644); err != nil { // CreateTemp defaults to 0600
+		os.Remove(tmpPath)
+		return fmt.Errorf("chmod tmp: %w", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("rename: %w", err)
+	}
+	return nil
 }
 
 // ensureSoulMDBlock wraps this device's soul as a marker-delimited core block at the

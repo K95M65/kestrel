@@ -126,8 +126,27 @@ On top of the presync run, `EnsureOnboarding` (`onboarding.go`) does the same
 workspace reconcile the other backends get: seeds `KNOWLEDGE.md` from the
 embedded template only if absent, injects the OS-managed
 `<!-- OS DO NOT REMOVE -->` blocks into `SOUL.md` / `AGENTS.md` /
-`HEARTBEAT.md` (OpenClaw-derived, stripped of OpenClaw-only bits),
-capability-gates skills, and restarts the gateway when a block changed.
+`HEARTBEAT.md` (OpenClaw-derived, stripped of OpenClaw-only bits), and
+capability-gates skills. Markdown-only changes never restart the gateway —
+each `codex exec` re-reads the workspace; only a presync config change or a
+unit self-heal restarts it.
+
+**Persona inline block (AGENTS.md).** Codex auto-loads ONLY `AGENTS.md` into
+context; the "Session Startup" instruction to read `SOUL.md`/`IDENTITY.md` is
+voluntary, and on short turns the model skips it (device-verified: "bạn tên
+gì" → "Tôi là Codex"). OpenClaw/Hermes inject the soul into the system prompt
+at the runtime layer; codex has no such layer, so `ensurePersonaInlineBlock`
+inlines the persona INTO `AGENTS.md`: a
+`<!-- OS PERSONA INLINE — DO NOT EDIT (generated from SOUL.md + IDENTITY.md) -->`
+… `<!-- /OS PERSONA INLINE -->` block upserted idempotently at the very top
+(above the OS mandatory block) containing a mandatory "Who you are" preamble,
+the agent name parsed from `IDENTITY.md` (`- **Name:** …`), and the
+freshly-reconciled `SOUL.md` verbatim (capped at 20 000 bytes with a
+truncation note so `AGENTS.md` stays under codex's 32 KiB project-doc cap).
+The block is rebuilt after `ensureSoulMDBlock` on every `EnsureOnboarding`
+and also right after a rename (`UpdateIdentityName`), so the very next turn
+sees the new name; a missing `SOUL.md` removes the block. Written atomically
+(tmp+rename), and only when the bytes actually differ.
 
 ## 2. Transport & sending a turn
 

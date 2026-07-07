@@ -97,6 +97,14 @@ func (s *CodexService) UpdateIdentityName(name string) error {
 		return fmt.Errorf("rename: %w", err)
 	}
 	slog.Info("identity name updated", "component", "codex", "name", name, "path", path)
+
+	// Reflect the rename into the AGENTS.md persona inline block so the very
+	// next `codex exec` turn already sees the new name. Best-effort — the block
+	// is also refreshed on the next EnsureOnboarding.
+	if _, err := s.ensurePersonaInlineBlock(); err != nil {
+		slog.Warn("refresh persona inline block after rename failed",
+			"component", "codex", "error", err)
+	}
 	return nil
 }
 
