@@ -215,6 +215,8 @@ method đó.
 
 ## 5. Kênh
 
+### Telegram (receive loop device-owned)
+
 Telegram dưới Codex là **device-owned**. Codex CLI không có channel layer riêng
 (khác PicoClaw: binary runtime của PicoClaw tự poll Telegram Bot API — presync
 của nó bật `channel_list.telegram` trong config riêng của PicoClaw), nên
@@ -259,11 +261,61 @@ lỗi qua `handleError` — và bị chặn trần bởi `telegramTypingLifetime
 để một turn kẹt không thể làm chat "đang nhập…" mãi mãi. Việc gửi là
 best-effort (lỗi chỉ log ở mức debug rồi bỏ qua).
 
-`SupportedChannels()` trả `["telegram"]`. `AddChannel(telegram)` là no-op
-success trung thực — credential mà caller vừa lưu vào config.json là tất cả
-những gì loop cần — và `RefreshChannelConfig(telegram)` trả `("", nil)` cùng lý
-do. Slack / discord / whatsapp không có receive loop và trả
-`domain.ErrChannelNotSupported`. Xem thêm
+### Slack (đường proxy HTTP-mode)
+
+Slack cũng là **device-owned**, qua đường proxy HTTP-mode (mô phỏng bridge
+của hermes, `internal/hermes/slack.go`): proxy công khai bff-campaign-service
+nhận các delivery Slack Events API và fan-out qua MQTT tới handler
+`slack_event` của thiết bị
+(`server/device/delivery/mqtt/slack_event_handler.go`), handler dedup theo
+`event_id` (LRU trong bộ nhớ, TTL 5 phút) rồi type-assert gateway đang active
+sang `domain.SlackBridge`. `CodexService` implement bridge đó
+(`internal/codex/slack.go`), nên event chỉ được route về đây **khi codex là
+runtime đang active** — không sửa gì code dispatch phía server, cùng cách nối
+dây với hermes. Không dùng Socket Mode; thiết bị không bao giờ mở WebSocket
+tới Slack.
+
+Xử lý event mirror hermes: `url_verification` echo lại challenge; chỉ event
+`message` / `app_mention` từ user thật mới qua (tin của bot, event có subtype
+và event không có user bị bỏ qua — loop guard); mention bot ở đầu bị strip; và
+khi `config.SlackUserID` được set, chỉ user đó được phép tạo turn (rỗng = mở,
+workspace/app đã tự giới hạn phạm vi). Reply đi vào thread sẵn có nếu tin nhắn
+nằm trong thread, ngược lại thread dưới tin của user (`thread_ts` fallback =
+`ts` của tin).
+
+Tin được chấp nhận sẽ được inject bất đồng bộ (goroutine): chờ agent rảnh
+(`IsBusy`, poll 500 ms, chặn trần 2 phút — quá trần thì tin bị bỏ, vì MQTT
+handler đã ack và Slack sẽ không gửi lại), rồi đi qua `sendChat` với flow
+source `slack` và prefix metadata người gửi
+`[slack] Message from <@U…> [channel:C…]:\n<text>`. Run được đánh dấu
+**silent** (không TTS) và theo dõi trong `slackRuns` (runID →
+channel/thread_ts/ts của tin); việc nhận tin được xác nhận bằng **reaction
+eyes** trên tin của user (best-effort). Tại `turn.completed`, `emitFinal`
+consume tracker và post reply — đã làm sạch bằng `stripForChannel`, như
+telegram — về đúng channel/thread qua `chat.postMessage`
+(`config.SlackBotToken`), đồng thời xoá reaction eyes; khi `turn.failed`,
+tracker được consume và chỉ xoá reaction (không reply). Khác hermes,
+**không có progressive streaming** (`chat.startStream`/`appendStream`) và
+không có status "…is typing" của assistant — codex exec trả reply nguyên
+khối, nên `StreamSlackDelta` là no-op và văn bản cuối chỉ được post một lần;
+`DeliverSlackReply` (do shared agent handler gọi) là safety net
+consume-nếu-còn, bình thường là no-op vì `emitFinal` đã consume tracker đồng
+bộ trước khi dispatch các event lifecycle.
+
+Yêu cầu (config.json): `slack_bot_token` (`chat.postMessage` + reactions) và
+tuỳ chọn `slack_user_id` (allowlist + đích `Broadcast` chủ động của channel
+sender `SlackSender`). `slack_signing_secret` của HTTP mode do proxy công khai
+tiêu thụ, không phải trên thiết bị — codex, như bridge của hermes, tin đường
+MQTT đã được xác thực.
+
+### Channel API
+
+`SupportedChannels()` trả `["telegram", "slack"]`. `AddChannel` /
+`RefreshChannelConfig` cho cả hai đều là no-op success trung thực — mọi
+consumer đọc credential mới từ config.json mỗi lần dùng (loop telegram mỗi
+vòng lặp, bridge Slack mỗi event / lần gọi Web API), nên không có gì phía
+agent để ghi và không cần restart. Discord / whatsapp không có đường nhận và
+trả `domain.ErrChannelNotSupported`. Xem thêm
 [`adding-agent-runtime_vi.md`](adding-agent-runtime_vi.md).
 
 ## 6. Hooks
