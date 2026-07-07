@@ -273,8 +273,8 @@ func (s *CodexService) ensureAgentsMDBlock() (bool, error) {
 // ensurePersonaInlineBlock inlines the persona (SOUL.md + the IDENTITY.md name) at
 // the very top of workspace/AGENTS.md. Codex auto-loads ONLY AGENTS.md into context;
 // the AGENTS.md "Session Startup" instruction to read SOUL.md/IDENTITY.md is
-// voluntary, and on short turns the model skips it (device-verified: "bạn tên gì"
-// → "Tôi là Codex"). OpenClaw/Hermes inject the soul into the system prompt at the
+// voluntary, and on short turns the model skips it (device-verified: asked for its name,
+// the model introduced itself as "Codex"). OpenClaw/Hermes inject the soul into the system prompt at the
 // runtime layer; codex has no such layer, so the persona must live inside the one
 // file codex is guaranteed to read. Returns true if AGENTS.md was modified.
 func (s *CodexService) ensurePersonaInlineBlock() (bool, error) {

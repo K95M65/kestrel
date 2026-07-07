@@ -32,7 +32,7 @@ func setupPersonaWorkspace(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	writeWS(t, dir, "SOUL.md", "# Soul\n\nBe warm, playful, and concise.\n")
-	writeWS(t, dir, "IDENTITY.md", "# Identity\n\n- **Name:** Ngân Hà\n")
+	writeWS(t, dir, "IDENTITY.md", "# Identity\n\n- **Name:** Nova\n")
 	writeWS(t, dir, "AGENTS.md", personaTestAgents)
 	return dir
 }
@@ -57,7 +57,7 @@ func TestPersonaInline_InjectIdempotentAndPreservesContent(t *testing.T) {
 	if !strings.Contains(got, personaInlineEnd) {
 		t.Error("end marker missing")
 	}
-	if !strings.Contains(got, "Your name is **Ngân Hà**.") {
+	if !strings.Contains(got, "Your name is **Nova**.") {
 		t.Errorf("name line missing:\n%s", got)
 	}
 	if !strings.Contains(got, "Be warm, playful, and concise.") {

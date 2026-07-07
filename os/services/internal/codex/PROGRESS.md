@@ -12,10 +12,10 @@ stub convention). This file is the running history for whoever picks the task up
 | Transport | WS bridge on `ws://127.0.0.1:18792/codex/ws/`, token `autonomous_codex_token` | Mirror `feature/claude-code` (bridge.py + WS, picoclaw-shaped Go client) — team-established pattern |
 | Bridge | **Go** (`internal/codex/gatewayd`, compiled into os-server; unit runs `os-server codex-gatewayd`) — user decision 2026-07-07 after weighing vs the claudecode branch's Python bridge: same-language repo, `go test` in CI, zero device deps (no python3/websockets), OTA rides os-server. Per-turn `codex exec --json` subprocess (exec is the stable automation surface; `codex app-server` is experimental/version-coupled). An earlier Python bridge.py existed briefly and was deleted. | |
 | Session | `thread_id` from `thread.started`, persisted `/root/.codex/session.json`, `codex exec resume <id>`; `session.new` frame → fresh | History lives on disk under `$CODEX_HOME/sessions/` — process exit ≠ session loss |
-| Auth (phase 1) | `OPENAI_API_KEY` = config.json `llm_api_key`, provider base_url = `llm_base_url` (campaign-api) | User decision: "qua campaign-api". ChatGPT-subscription `codex login --device-auth` deferred to phase 2 (share pairing plumbing with claudecode's `ClaudeLoginPairer` after that branch merges) |
+| Auth (phase 1) | `OPENAI_API_KEY` = config.json `llm_api_key`, provider base_url = `llm_base_url` (campaign-api) | User decision: route through campaign-api. ChatGPT-subscription `codex login --device-auth` deferred to phase 2 (share pairing plumbing with claudecode's `ClaudeLoginPairer` after that branch merges) |
 | Wire API | `wire_api = "responses"` — Codex removed chat-completions (~2/2026) | ⚠️ VERIFY ON DEVICE: campaign-api must serve `{base}/responses` |
 | CLI install | Pinned GitHub release `rust-v0.142.5`, `codex-aarch64-unknown-linux-musl.tar.gz` → /usr/local/bin/codex | picoclaw's pinned-binary pattern; musl static, no runtime deps |
-| Permissions | `--dangerously-bypass-approvals-and-sandbox` + config `approval_policy="never"`, `sandbox_mode="danger-full-access"` | Appliance running as root; must never block on approval (user: "miễn là chạy không vấp") |
+| Permissions | `--dangerously-bypass-approvals-and-sandbox` + config `approval_policy="never"`, `sandbox_mode="danger-full-access"` | Appliance running as root; must never block on approval (user requirement: must never block on approval prompts) |
 | Instructions file | `AGENTS.md` in workspace — codex reads it natively; OS-managed block reused from picoclaw's (openclaw-derived) | Zero-translation persona slot |
 | Channels | **None inbound** (SupportedChannels=[], all AddChannel → ErrChannelNotSupported). The original "telegram device-owned (picoclaw model)" copy was FALSE: picoclaw's inbound lives in the picoclaw binary itself (its presync enables channel_list.telegram), and os-server has no getUpdates loop — so codex had zero inbound and fake AddChannel success. Fixed 2026-07-07. Outbound TelegramSender kept (explicit-ID DMs + operator-seeded /root/.codex/telegram_targets.json broadcast). Inbound = TODO(codex-telegram) | Codex CLI has no channel layer |
 | Stubs | Return `domain.ErrNotSupportedByRuntime` (never bare nil) | Main's new convention (docs/agentic/adding-agent-runtime.md §4 "No fake success") |
@@ -115,7 +115,7 @@ stub convention). This file is the running history for whoever picks the task up
       automatic.
 - [ ] Device verify remainder (switch flow, rotation, MCP write) — first turn + resume done
       via subscription mode; api-key path still blocked on the /responses backend work above
-- [ ] Device verify: persona inline block in AGENTS.md (pre-fix codex answered "Tôi là Codex" on "bạn tên gì" — reading SOUL.md/IDENTITY.md was voluntary; now inlined via ensurePersonaInlineBlock)
+- [ ] Device verify: persona inline block in AGENTS.md (pre-fix, codex introduced itself as "Codex" instead of the device persona name)
 - [x] Device prepped for full switch test (2026-07-07): manual codex binary REMOVED
       (install.sh must install it), auth.json KEPT (root:root). ⚠️ USER DECISION:
       auth.json is TEST-ONLY — production mode is api-key via campaign-api once the
