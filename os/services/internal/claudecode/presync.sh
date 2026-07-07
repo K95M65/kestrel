@@ -10,12 +10,13 @@
 #      ~/.claude/.credentials.json on disk → CLAUDE_CODE_OAUTH_TOKEN, no
 #      ANTHROPIC_*) vs API-KEY (ANTHROPIC_* from llm_api_key / llm_base_url /
 #      llm_model — the same source hermes/picoclaw presync reads).
-#   §3 CHANNELS — Claude Code's native channel plugin config (telegram +
-#      discord): ~/.claude/channels/<ch>/.env (bot token) + access.json
-#      (dmPolicy allowlist seeded from the owner's user id — replaces the
-#      interactive /telegram:access | /discord:access pairing, which a headless
-#      device cannot run), and the CLAUDECODE_CHANNELS launch flag the bridge
-#      passes to `claude --channels`.
+#   §3 CHANNELS — Claude Code's native channel plugin config (discord only —
+#      telegram is device-owned, see telegram_poll.go):
+#      ~/.claude/channels/<ch>/.env (bot token) + access.json (dmPolicy
+#      allowlist seeded from the owner's user id — replaces the interactive
+#      /discord:access pairing, which a headless device cannot run), and the
+#      CLAUDECODE_CHANNELS launch flag the bridge passes to `claude
+#      --channels`.
 #
 # The bridge itself is NOT materialized here anymore: it ships inside the
 # os-server binary as the `os-server claudecode-gatewayd` subcommand
