@@ -176,10 +176,12 @@ Các gotcha vòng đời turn:
 - `usage` là **theo từng lượt** (shape API Anthropic: `input_tokens`,
   `cache_creation_input_tokens`, `cache_read_input_tokens`, `output_tokens`) —
   khác `context_usage` cộng dồn của picoclaw.
-- **Turn khởi phát từ channel nổi lên trên cùng stdout**: một message Telegram
+- **Turn khởi phát từ channel nổi lên trên cùng stdout**: một message Discord
   được plugin xử lý bên trong session Claude sinh ra các event assistant/result
   không có pending runID — `ensureTurnStarted` cấp một runID mới, nên các turn
   đó vẫn hiện trong Flow Monitor (không cần hook observer, khác hermes).
+  Telegram KHÔNG đi đường này — loop do device sở hữu inject thành lượt
+  `sendChat` thường có pending runID (§7).
 
 ## 6. Session
 
@@ -190,29 +192,40 @@ Claude sở hữu session: id được bắt từ bất kỳ event nào mang `se
 `domain.ErrNotSupportedByRuntime` — Claude Code tự auto-compact context của
 nó, nên một rotation do os-server điều khiển chỉ tổ vứt context đi.
 
-## 7. Kênh — Telegram + Discord qua channel plugin native, Slack do device sở hữu
+## 7. Kênh — Telegram do device sở hữu, Discord qua channel plugin native, Slack do device sở hữu
 
-`SupportedChannels() = [telegram, slack, discord]`. Khác hermes/picoclaw
-(receive loop do device sở hữu), loop telegram/discord ở đây là **channel plugin của chính Claude Code**:
-bridge khởi chạy `claude --channels
-plugin:telegram@claude-plugins-official plugin:discord@claude-plugins-official`
-(chỉ những kênh đã cấu hình), mỗi plugin poll Bot API của nó và trả lời qua
-chính chat đó, hoàn toàn bên trong session Claude.
+`SupportedChannels() = [telegram, slack, discord]`.
 
-- presync ghi `~/.claude/channels/<ch>/.env` (`TELEGRAM_BOT_TOKEN` ←
-  `telegram_bot_token`, `DISCORD_BOT_TOKEN` ← `discord_bot_token`) và seed
-  `access.json` với `{"dmPolicy":"allowlist","allowFrom":["<owner user id>"]}`
-  (`telegram_user_id` / `discord_user_id` — một *snowflake* Discord) — thay cho
-  các flow tương tác `/telegram:access pair` / `/discord:access pair`, thứ một
-  thiết bị headless không chạy được. Hai plugin dùng chung schema access.json.
-  **Owner user id là bắt buộc** cho message chiều vào; chỉ có token thì plugin
-  ở lại pairing mode và drop người lạ.
-- `AddChannel`/`RefreshChannelConfig` (telegram/discord) → chạy lại presync +
-  restart theo hash-diff (`syncChannels` → `EnsureOnboarding`, pattern của
-  hermes). Với slack cả hai là no-op success trung thực: bridge do device sở
-  hữu đọc `slack_user_id` theo từng event và `slack_bot_token` theo từng call
-  Web API — luôn tươi từ config.json — nên chỉ cần persist creds là đủ (không
-  presync, không restart bridge). whatsapp → `domain.ErrChannelNotSupported`.
+- **Telegram do DEVICE SỞ HỮU** (`telegram_poll.go`, mirror 1:1 của
+  `internal/codex/telegram_poll.go`): một goroutine khởi động từ `StartWS`
+  long-poll `getUpdates` và inject mỗi DM được chấp nhận (chat private, sender
+  == `telegram_user_id`) thành một lượt chat thường với flow source
+  `telegram`; run được track trong `telegramRuns` và **đánh dấu silent**
+  (không TTS), typing keeper bắn `sendChatAction` trong lúc turn chạy, và
+  `emitFinal` DM câu trả lời ngược về (marker `[HW:/...]` được strip qua
+  `stripForChannel`). Offset persist ở
+  `/root/.claudecode/telegram_offset.json`. Creds đọc tươi từ config.json mỗi
+  vòng poll — đổi token/user không cần restart. Plugin telegram native của
+  Claude Code **cố ý không dùng**: thực địa cho thấy không debug được (bun
+  child không log ra journal, allowlist drop im lặng, chết im lặng khi race
+  restart bridge), và presync **xoá** `~/.claude/channels/telegram/` để plugin
+  không bao giờ giành `getUpdates` (Telegram 409 khi có poller song song).
+- Discord chạy qua **channel plugin của chính Claude Code**: bridge khởi chạy
+  `claude --channels plugin:discord@claude-plugins-official` (chỉ khi đã cấu
+  hình), plugin poll Bot API của nó và trả lời qua chính chat đó, hoàn toàn
+  bên trong session Claude. presync ghi `~/.claude/channels/discord/.env`
+  (`DISCORD_BOT_TOKEN` ← `discord_bot_token`) và seed `access.json` với
+  `{"dmPolicy":"allowlist","allowFrom":["<owner user id>"]}` (`discord_user_id`
+  — một *snowflake* Discord) — thay cho flow tương tác `/discord:access pair`,
+  thứ một thiết bị headless không chạy được. **Owner user id là bắt buộc** cho
+  message chiều vào; chỉ có token thì plugin ở lại pairing mode và drop người
+  lạ.
+- `AddChannel`/`RefreshChannelConfig` (discord) → chạy lại presync + restart
+  theo hash-diff (`syncChannels` → `EnsureOnboarding`, pattern của hermes).
+  Với telegram và slack cả hai là no-op success trung thực: các loop do device
+  sở hữu đọc creds tươi từ config.json mỗi lần dùng, nên chỉ cần persist creds
+  là đủ (không presync, không restart bridge). whatsapp →
+  `domain.ErrChannelNotSupported`.
 - **Slack do DEVICE SỞ HỮU** (`slack.go` + `slack_sender.go`, mirror của
   `internal/codex/slack.go`): Claude Code không có slack channel plugin
   ("Claude in Slack" là một tính năng cloud riêng, spawn web session từ mention

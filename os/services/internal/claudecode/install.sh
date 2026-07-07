@@ -70,7 +70,7 @@ claude --version || true
 
 echo "[install-claudecode] install bun (channel plugins are bun scripts)"
 if ! command -v bun >/dev/null 2>&1 && [ ! -x /root/.bun/bin/bun ]; then
-  curl -fsSL https://bun.sh/install | bash || echo "[install-claudecode] WARN: bun install failed — telegram channel plugin will not run"
+  curl -fsSL https://bun.sh/install | bash || echo "[install-claudecode] WARN: bun install failed — discord channel plugin will not run"
 fi
 if [ -x /root/.bun/bin/bun ]; then
   ln -sf /root/.bun/bin/bun /usr/local/bin/bun
@@ -80,13 +80,14 @@ fi
 # if the plugin CLI or marketplace is unavailable on this build, the device
 # still works — voice/web/sensing flow through the bridge; only the channel
 # receive loops are skipped (presync leaves CLAUDECODE_CHANNELS empty when no
-# token is configured anyway). telegram + discord are the two channels the
-# claudecode runtime declares (SupportedChannels); slack has no Claude Code
-# channel plugin ("Claude in Slack" is a separate cloud feature).
-echo "[install-claudecode] add plugin marketplace + telegram/discord channel plugins (best-effort)"
+# token is configured anyway). discord is the only plugin channel: telegram is
+# device-owned (telegram_poll.go — do NOT install its plugin, it would compete
+# for getUpdates), slack has no Claude Code channel plugin ("Claude in Slack"
+# is a separate cloud feature).
+echo "[install-claudecode] add plugin marketplace + discord channel plugin (best-effort)"
 "$CLAUDE_BIN" plugin marketplace add anthropics/claude-plugins-official \
   || echo "[install-claudecode] WARN: marketplace add failed (offline or older CLI?)"
-for ch in telegram discord; do
+for ch in discord; do
   "$CLAUDE_BIN" plugin install "${ch}@claude-plugins-official" \
     || echo "[install-claudecode] WARN: $ch plugin install failed — $ch channel unavailable until installed"
 done

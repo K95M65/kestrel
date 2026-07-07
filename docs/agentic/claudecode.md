@@ -9,8 +9,9 @@ claudecode-specific protocol, layout, and quirks.
 > **Status:** full parity with the checklist — embedded install + presync,
 > WebSocket bridge transport, persona/memory Go migration adapter (lossless with
 > the OpenClaw layout), skills (CDN restore + watcher, native `.claude/skills`),
-> identity watch/rename, real MCP (`.mcp.json`), factory reset, Telegram +
-> Discord via Claude Code's **native channel plugins**
+> identity watch/rename, real MCP (`.mcp.json`), factory reset, Telegram
+> device-owned (os-server getUpdates loop, `telegram_poll.go`), Discord via
+> Claude Code's **native channel plugin**
 > ([code.claude.com/docs/en/channels](https://code.claude.com/docs/en/channels)),
 > device-owned **Slack inbound** (HTTP mode, `domain.SlackBridge`),
 > and the **claude.ai OAuth login** flow (§7b) as an alternative to the
@@ -28,7 +29,8 @@ Code: `os/services/internal/claudecode/`.
 | Skills | `workspace/.claude/skills/<name>/` (native Claude Code skills) |
 | MCP connectors | `workspace/.mcp.json` |
 | Session-resume state | `/root/.claudecode/session.json` |
-| Channel config (telegram / discord) | `/root/.claude/channels/<ch>/{.env,access.json}` |
+| Channel config (discord plugin) | `/root/.claude/channels/discord/{.env,access.json}` |
+| Telegram poll offset (device-owned loop) | `/root/.claudecode/telegram_offset.json` |
 | claude.ai OAuth credentials (login flow) | `config.json` `claude_code_oauth_token` + `/root/.claude/.credentials.json` |
 | Conversation transcripts | `/root/.claude/projects/` (Claude-internal) |
 
@@ -47,11 +49,12 @@ backend in `internal/agent/factory.go`. Switching in/out goes through the generi
    (`curl -fsSL https://claude.ai/install.sh | bash` → `~/.local/bin/claude`,
    standalone binary, linux arm64/amd64, no Node.js), symlinked to
    `/usr/local/bin/claude`;
-3. **bun** + the **telegram + discord channel plugins** (best-effort):
+3. **bun** + the **discord channel plugin** (best-effort):
    `claude plugin marketplace add anthropics/claude-plugins-official` +
-   `claude plugin install {telegram,discord}@claude-plugins-official`. Channel
-   plugins are bun scripts; a failure here only disables the channel receive
-   loops (⚠️ §11);
+   `claude plugin install discord@claude-plugins-official`. Channel plugins
+   are bun scripts; a failure here only disables the discord receive loop
+   (⚠️ §11). The telegram plugin is deliberately NOT installed — telegram is
+   device-owned (§7);
 4. runs the presync hook once (bridge + env + channel sync);
 5. writes + starts **`claudecode.service`** (unit name == runtime name — no
    service declaration file). The unit runs `os-server claudecode-gatewayd`
@@ -66,7 +69,7 @@ backend in `internal/agent/factory.go`. Switching in/out goes through the generi
 `/usr/local/bin/runtime-claudecode-presync` on every switch, run by
 switch-runtime before start, by install.sh once, and by `EnsureOnboarding` on
 **every os-server boot / config change** — the hermes pattern, so a device that
-boots straight into claudecode or edits `llm_*`/telegram while active self-heals
+boots straight into claudecode or edits `llm_*`/discord while active self-heals
 without a switch):
 
 - the bridge itself is **no longer materialized here** — it ships inside the
@@ -177,11 +180,12 @@ Turn-lifecycle gotchas:
 - `usage` is **per-turn** (Anthropic API shape: `input_tokens`,
   `cache_creation_input_tokens`, `cache_read_input_tokens`, `output_tokens`) —
   unlike picoclaw's cumulative `context_usage`.
-- **Channel-initiated turns surface on the same stdout**: a Telegram message
+- **Channel-initiated turns surface on the same stdout**: a Discord message
   handled by the plugin inside the Claude session produces assistant/result
   events with no pending runID — `ensureTurnStarted` allocates a fresh one, so
   those turns show up in the Flow Monitor (no observer hook needed, unlike
-  hermes).
+  hermes). Telegram turns do NOT take this path — the device-owned loop
+  injects them as regular `sendChat` turns with a pending runID (§7).
 
 ## 6. Session
 
