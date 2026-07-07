@@ -271,6 +271,57 @@ báo cáo chúng trong trường `unsupported_channels` của uplink MQTT info
 (`domain.MQTTInfoResponse`), và creds của chúng **vẫn nằm trong `config.json`** —
 switch ngược lại openclaw sẽ khôi phục chúng.
 
+## 7.1 Lượt kênh trên Flow Monitor (observer hook)
+
+Một lượt Telegram được xử lý hoàn toàn bên trong gateway PicoClaw (gateway sở hữu
+I/O kênh) và **không** đi qua WebSocket, nên — y hệt Hermes — os-server sẽ không
+thấy nó. Parity được khôi phục bằng một **observer hook**, tương tự trực tiếp hook
+`os-server-observer` của Hermes: os-server ship một subprocess nhỏ mà gateway chạy
+trên pipeline agent dùng chung, subprocess đó forward mỗi lượt về endpoint loopback
+`POST /api/agent/channel-turn` mà handler `ChannelTurn` dùng chung đã phục vụ
+(`handler_channel_turn.go`). Không đổi consumer/UI — text user vào làm sáng node
+IN, và mọi marker `[HW:/…]` trong reply điều khiển phần cứng cục bộ, giống Hermes.
+
+Hai điểm khác Hermes, do `internal/picoclaw/hooks.go` sở hữu:
+
+1. **Transport.** Process hook của PicoClaw là một **subprocess nói NDJSON JSON-RPC
+   qua stdio** (`resources/hooks/os-server-observer/observer.py`), không phải hàm
+   `handle()` in-process được phát hiện bằng quét thư mục. Script này:
+   - đăng ký **observe** `turn_start` / `turn_end` (fire-and-forget, lấy mốc lượt +
+     `scope`) và **intercept** `after_llm` (lấy toàn văn user+assistant). Intercept
+     nằm trong critical path nên trả `{"action":"continue"}` **ngay** — không chặn,
+     không sửa.
+   - lọc theo `scope.channel` (allow-list mặc định `telegram`), bỏ lượt cục bộ
+     `pico` đã được `sendChat` log — tương tự `skipPlatform(api_server/cli)` của
+     Hermes.
+   - map `scope` → payload `ChannelTurn` (`platform=channel`, `chat_id`,
+     `sender_id`→`user_id`, `session_key`→`session_id`), phát `agent:start` (kèm
+     text user) ở `turn_start` và `agent:end` (kèm reply) ở `turn_end`.
+   - `OBSERVER_DEBUG=1` dump mỗi dòng stdin thô ra stderr (hiện trong log gateway) —
+     vì `payload` mỗi kind là `any`, dùng nó để xác minh tên field thật trên device.
+
+2. **Đăng ký.** PicoClaw **không** quét thư mục hook; hook được đăng ký bằng một mục
+   `config.json` dưới `hooks.processes.<name>`, gate bởi `hooks.enabled` (mặc định
+   false — cùng dạng gate `tools.mcp`). Nên `ensureObserverHook()` (gọi từ
+   `EnsureOnboarding`) làm hai việc ghi: materialize `observer.py` ra
+   `/root/.picoclaw/hooks/os-server-observer/` (thay placeholder
+   `__OS_SERVER_TURN_URL__`), và upsert:
+
+   ```json
+   "hooks": { "enabled": true, "processes": { "os-server-observer": {
+     "transport": "stdio",
+     "command": ["python3", "/root/.picoclaw/hooks/os-server-observer/observer.py"],
+     "env": { "OS_SERVER_TURN_URL": "http://127.0.0.1:<HttpPort>/api/agent/channel-turn" },
+     "observe": ["turn_start", "turn_end"],
+     "intercept": ["after_llm"]
+   } } }
+   ```
+
+   Nó idempotent (so diff script + diff marshal config) và trả `changed`;
+   `EnsureOnboarding` chỉ restart gateway khi có thay đổi, vì gateway chỉ nạp hook
+   lúc khởi động. Việc ghi config được serialize dưới cùng `mcpMu` bảo vệ
+   `config.json` (xem `mcp.go`).
+
 ## 8. Những phần để stub
 
 Mọi thứ không nằm trên hot path của PicoClaw đều là no-op để thỏa interface
