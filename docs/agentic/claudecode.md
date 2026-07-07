@@ -192,29 +192,41 @@ Claude owns the session: the id is captured from any event carrying
 `domain.ErrNotSupportedByRuntime` — Claude Code auto-compacts its own context,
 so an os-server-driven rotation would only throw context away.
 
-## 7. Channels — Telegram + Discord via the native channel plugins, Slack device-owned
+## 7. Channels — Telegram device-owned, Discord via the native channel plugin, Slack device-owned
 
-`SupportedChannels() = [telegram, slack, discord]`. Unlike hermes/picoclaw
-(device-owned receive loop), the telegram/discord loops here are **Claude Code's own channel
-plugins**: the bridge launches `claude --channels
-plugin:telegram@claude-plugins-official plugin:discord@claude-plugins-official`
-(only the configured ones), each plugin polls its Bot API and replies through
-the same chat, entirely inside the Claude session.
+`SupportedChannels() = [telegram, slack, discord]`.
 
-- presync writes `~/.claude/channels/<ch>/.env` (`TELEGRAM_BOT_TOKEN` ←
-  `telegram_bot_token`, `DISCORD_BOT_TOKEN` ← `discord_bot_token`) and seeds
-  `access.json` with `{"dmPolicy":"allowlist","allowFrom":["<owner user id>"]}`
-  (`telegram_user_id` / `discord_user_id` — a Discord *snowflake*) — replacing
-  the interactive `/telegram:access pair` / `/discord:access pair` flows, which
-  a headless device cannot run. Both plugins share the same access.json schema.
-  **The owner user id is required** for inbound messages; with only a token the
-  plugin stays in pairing mode and drops strangers.
-- `AddChannel`/`RefreshChannelConfig` (telegram/discord) → re-run presync +
-  hash-diff restart (`syncChannels` → `EnsureOnboarding`, the hermes pattern).
-  For slack both are honest no-op successes: the device-owned bridge reads
-  `slack_user_id` per event and `slack_bot_token` per Web API call — fresh from
-  config.json — so persisting the creds is all that is needed (no presync, no
-  bridge restart). whatsapp → `domain.ErrChannelNotSupported`.
+- **Telegram is DEVICE-OWNED** (`telegram_poll.go`, a 1:1 mirror of
+  `internal/codex/telegram_poll.go`): one goroutine started from `StartWS`
+  long-polls `getUpdates` and injects each accepted DM (private chat, sender ==
+  `telegram_user_id`) as a regular chat turn with flow source `telegram`; the
+  run is tracked in `telegramRuns` and **marked silent** (no TTS), a typing
+  keeper fires `sendChatAction` while the turn runs, and `emitFinal` DMs the
+  reply back (`[HW:/...]` markers stripped via `stripForChannel`). Offset
+  persists in `/root/.claudecode/telegram_offset.json`. Creds are read fresh
+  from config.json every poll iteration — token/user changes need no restart.
+  Claude Code's native telegram plugin is **deliberately not used**: it proved
+  undebuggable in the field (bun child with no journal logs, silent allowlist
+  drops, silent death on bridge-restart races), and presync **removes**
+  `~/.claude/channels/telegram/` so the plugin can never compete for
+  `getUpdates` (Telegram 409s concurrent pollers).
+- Discord runs via **Claude Code's own channel plugin**: the bridge launches
+  `claude --channels plugin:discord@claude-plugins-official` (only when
+  configured), and the plugin polls its Bot API and replies through the same
+  chat, entirely inside the Claude session. presync writes
+  `~/.claude/channels/discord/.env` (`DISCORD_BOT_TOKEN` ← `discord_bot_token`)
+  and seeds `access.json` with
+  `{"dmPolicy":"allowlist","allowFrom":["<owner user id>"]}` (`discord_user_id`
+  — a Discord *snowflake*) — replacing the interactive `/discord:access pair`
+  flow, which a headless device cannot run. **The owner user id is required**
+  for inbound messages; with only a token the plugin stays in pairing mode and
+  drops strangers.
+- `AddChannel`/`RefreshChannelConfig` (discord) → re-run presync + hash-diff
+  restart (`syncChannels` → `EnsureOnboarding`, the hermes pattern). For
+  telegram and slack both are honest no-op successes: the device-owned loops
+  read creds fresh from config.json on each use, so persisting the creds is
+  all that is needed (no presync, no bridge restart). whatsapp →
+  `domain.ErrChannelNotSupported`.
 - **Slack is DEVICE-OWNED** (`slack.go` + `slack_sender.go`, a mirror of
   `internal/codex/slack.go`): Claude Code has no slack channel plugin ("Claude
   in Slack" is a separate cloud feature that spawns web sessions from `@Claude`
