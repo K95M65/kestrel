@@ -19,6 +19,7 @@ const RUNTIME_BLURB: Record<string, string> = {
   hermes: "Hermes — local HTTP+SSE agent server (Nous Research).",
   picoclaw: "PicoClaw — lightweight Go agent gateway (WebSocket).",
   codex: "Codex — OpenAI Codex CLI behind the os-server bridge (WebSocket).",
+  claudecode: "Claude Code — Anthropic CLI agent behind a local bridge.",
 };
 
 const selectStyle = {

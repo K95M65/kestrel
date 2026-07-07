@@ -93,5 +93,6 @@ func rebrandToOpenclaw(text string) string {
 	text = reHermes.ReplaceAllStringFunc(text, repl)
 	text = rePicoClaw.ReplaceAllStringFunc(text, repl)
 	text = reCodex.ReplaceAllStringFunc(text, repl)
+	text = reClaudeCode.ReplaceAllStringFunc(text, repl)
 	return text
 }

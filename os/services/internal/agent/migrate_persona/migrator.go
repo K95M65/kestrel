@@ -34,6 +34,7 @@ const (
 	RuntimeHermes   Runtime = "hermes"
 	RuntimePicoclaw Runtime = "picoclaw"
 	RuntimeCodex    Runtime = "codex"
+	RuntimeClaudeCode Runtime = "claudecode"
 )
 
 // runtimeAdapter is the read/write surface every migratable runtime implements.
@@ -50,6 +51,7 @@ var adapters = map[Runtime]runtimeAdapter{
 	RuntimeHermes:   hermesAdapter{},
 	RuntimePicoclaw: picoclawAdapter{},
 	RuntimeCodex:    codexAdapter{},
+	RuntimeClaudeCode: claudecodeAdapter{},
 }
 
 // CanMigrate reports whether a runtime participates in persona migration (has a
@@ -100,6 +102,10 @@ type Options struct {
 	// Layout matches OpenClaw exactly (presync seeds it as a verbatim copy):
 	// SOUL.md / IDENTITY.md / MEMORY.md / USER.md / KNOWLEDGE.md / memory/.
 	CodexWorkspace string
+	// ClaudecodeWorkspace is the Claude Code workspace dir (e.g.
+    // /root/.claudecode/workspace). Layout is identical to OpenClaw's
+    // (SOUL.md / IDENTITY.md / USER.md / MEMORY.md / KNOWLEDGE.md / memory/).
+    ClaudecodeWorkspace string
 
 	// Execute writes changes; false performs a dry-run (records intended actions,
 	// touches nothing).
@@ -127,6 +133,7 @@ func DefaultOptions(openclawConfigDir, hermesRoot string) Options {
 		HermesRoot:         hermesRoot,
 		PicoclawWorkspace:  "/root/.picoclaw/workspace",
 		CodexWorkspace:     "/root/.codex/workspace",
+		ClaudecodeWorkspace: "/root/.claudecode/workspace",
 		IncludeDailyMemory: true,
 		MemoryCharLimit:    DefaultMemoryCharLimit,
 		UserCharLimit:      DefaultUserCharLimit,
