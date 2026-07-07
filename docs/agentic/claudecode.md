@@ -250,9 +250,10 @@ so an os-server-driven rotation would only throw context away.
 - Outbound `Broadcast`/`SendToUser` (proactive nudges) go straight to the
   Telegram Bot API (`telegram_sender.go`); a `SlackSender` posts proactive
   messages to the configured `slack_user_id` channel when both slack creds are
-  set. The shared target store
-  (`/root/.lumi/telegram_targets.json`) is not populated by the plugin, so
-  `GetTelegramTargets` falls back to the configured owner id (`telegram.go`).
+  set. The shared target store (`/root/.lumi/telegram_targets.json`) is
+  populated by the receive loop (`upsertTelegramTarget`) on every accepted DM;
+  `GetTelegramTargets` falls back to the configured owner id while the store
+  is still empty (`telegram.go`).
 
 ## 7b. Auth — claude.ai OAuth login (alternative to the API key)
 

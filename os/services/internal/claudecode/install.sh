@@ -13,13 +13,15 @@
 #   1. prerequisites: jq (presync config reads) + curl (CLI/bun downloads);
 #   2. install the Claude Code CLI (native installer, linux arm64/amd64) and
 #      symlink it to /usr/local/bin/claude;
-#   3. install bun + the telegram channel plugin (best-effort — Claude Code
-#      channel plugins are bun scripts; only needed when a telegram bot token is
-#      configured, see https://code.claude.com/docs/en/channels);
+#   3. install bun + the discord channel plugin (best-effort — Claude Code
+#      channel plugins are bun scripts; only needed when a discord bot token is
+#      configured, see https://code.claude.com/docs/en/channels). telegram is
+#      DEVICE-OWNED (os-server polls getUpdates itself, telegram_poll.go) so
+#      its plugin is deliberately NOT installed;
 #   4. run the presync hook (materialized by os-server BEFORE this installer):
 #      it OWNS the launch env (/root/.claudecode/.env — ANTHROPIC_* from
-#      config.json llm_*) and the telegram channel config
-#      (~/.claude/channels/telegram/.env + access.json). See presync.sh.
+#      config.json llm_*) and the discord channel config
+#      (~/.claude/channels/discord/.env + access.json). See presync.sh.
 #   5. write + start the systemd unit. Claude Code only runs in the foreground,
 #      so the unit runs the Go gatewayd (`os-server claudecode-gatewayd` —
 #      compiled into the os-server binary, nothing to materialize), which holds
