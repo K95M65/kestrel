@@ -3,7 +3,6 @@ package claudecode
 import (
 	"context"
 	"fmt"
-	"log/slog"
 
 	"go.autonomous.ai/os/domain"
 )

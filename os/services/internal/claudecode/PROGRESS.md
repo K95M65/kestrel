@@ -18,10 +18,10 @@ original `feature/claude-code` branch history.
 - [x] Channels honesty verified: telegram DEVICE-OWNED (`telegram_poll.go`,
   codex mirror — the native plugin proved undebuggable in the field: no
   journal logs, silent allowlist drops, silent death on restart races;
-  presync removes `~/.claude/channels/telegram/` so it never competes for
-  getUpdates); discord native via the Claude Code channel plugin
-  (presync-owned token/allowlist sync, GetConfiguredChannel checks
-  DiscordBotToken); whatsapp → `domain.ErrChannelNotSupported`; stale
+  presync removes stale `~/.claude/channels` state so no plugin ever competes
+  for getUpdates); discord ALSO device-owned since the same date (`discord.go`
+  discordgo session — see the dedicated entry below; GetConfiguredChannel
+  checks DiscordBotToken); whatsapp → `domain.ErrChannelNotSupported`; stale
   stubs.go comment (claimed discord unsupported) fixed.
 - [x] Bridge ported to Go: bridge.py → `internal/claudecode/gatewayd` (`os-server
       claudecode-gatewayd` subcommand, codex-gatewayd file layout); presync no longer
@@ -53,3 +53,13 @@ original `feature/claude-code` branch history.
   (getUpdates 409 guard); AddChannel/Refresh telegram → honest no-op (creds
   read live per poll). NOT device-verified (deploy pending — device offline
   mid-session).
+- [x] Discord moved to DEVICE-OWNED too (2026-07-07, same session as telegram):
+  `discord.go` — discordgo gateway session (DM + guild + message-content
+  intents), accept filter (allowlisted `discord_user_id`, DM or
+  @mention-in-`discord_guild_id`, mention stripped), busy-wait inject (flow
+  source `discord`, silent run, native typing keeper), emitFinal reply
+  chunked at the 2000-char limit — 1:1 codex mirror, tests ported. With no
+  plugin channels left: presync §3 reduced to `rm -rf ~/.claude/channels` +
+  CLAUDECODE_CHANNELS no longer written (gatewayd passthrough kept, unused);
+  install.sh drops bun + plugin marketplace entirely; AddChannel/Refresh are
+  honest no-ops for all three channels (creds read live). NOT device-verified.

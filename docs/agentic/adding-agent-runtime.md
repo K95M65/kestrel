@@ -359,10 +359,9 @@ runtime changes.
   - hermes → `[telegram, slack, discord]` (`internal/hermes/channels.go`)
   - picoclaw → `[telegram]` (`internal/picoclaw/channels.go`)
   - claudecode → `[telegram, slack, discord]` (`internal/claudecode/channels.go`
-    — telegram and slack are device-owned (`telegram_poll.go` getUpdates loop /
-    `slack.go` MQTT bridge); only discord uses Claude Code's native channel
-    plugin, with presync landing the token + allowlist under
-    `~/.claude/channels/discord/`)
+    — all device-owned, mirroring codex: `telegram_poll.go` getUpdates loop,
+    `discord.go` discordgo session, `slack.go` MQTT bridge; Claude Code's
+    native channel plugins are deliberately not used)
 - Helper `domain.ChannelSupported(gw, channel) bool` (`domain/channel.go`) — the
   one place callers test membership.
 - Shared sentinels in package `domain` (`domain/channel.go`):

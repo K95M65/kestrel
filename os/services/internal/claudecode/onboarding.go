@@ -28,9 +28,10 @@ var knowledgeFS embed.FS
 // Onboarding (Claude Code). Mirrors internal/picoclaw/onboarding.go, trimmed to
 // what the Claude Code backend owns on-device:
 //
-//   - The Claude Code CLI + bun + telegram channel plugin are installed
-//     out-of-process by internal/claudecode/install.sh; the bridge + .env +
-//     channel config are (re)materialized by presync.sh. Those run during the
+//   - The Claude Code CLI is installed out-of-process by
+//     internal/claudecode/install.sh (no bun/channel plugins — telegram +
+//     discord are device-owned loops); the bridge + .env are (re)materialized
+//     by presync.sh. Those run during the
 //     switch-runtime flow AND from EnsureOnboarding below (hermes-style), so the
 //     config self-heals on every boot/config change, not only on a switch.
 //   - This file owns the OS-managed workspace markdown: CLAUDE.md (Claude Code's

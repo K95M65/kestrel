@@ -346,9 +346,9 @@ khi runtime đổi.
   - hermes → `[telegram, slack, discord]` (`internal/hermes/channels.go`)
   - picoclaw → `[telegram]` (`internal/picoclaw/channels.go`)
   - claudecode → `[telegram, slack, discord]` (`internal/claudecode/channels.go`
-    — telegram và slack do device sở hữu (loop getUpdates `telegram_poll.go` /
-    bridge MQTT `slack.go`); chỉ discord dùng channel plugin native của Claude
-    Code, presync đặt token + allowlist dưới `~/.claude/channels/discord/`)
+    — tất cả do device sở hữu, mirror codex: loop getUpdates
+    `telegram_poll.go`, session discordgo `discord.go`, bridge MQTT `slack.go`;
+    channel plugin native của Claude Code cố ý không dùng)
 - Helper `domain.ChannelSupported(gw, channel) bool` (`domain/channel.go`) — chỗ
   duy nhất caller kiểm tra thành viên.
 - Sentinel dùng chung trong package `domain` (`domain/channel.go`):
