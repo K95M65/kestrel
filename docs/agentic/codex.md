@@ -218,23 +218,44 @@ by that method.
 
 ## 5. Channels
 
-Codex supports **no inbound channel**. The Codex CLI has no channel layer of
-its own (unlike PicoClaw, whose runtime binary polls the Telegram Bot API
-itself — its presync enables `channel_list.telegram` in PicoClaw's own config),
-and os-server runs no Telegram receive loop either. `SupportedChannels()`
-therefore returns an empty list, and `AddChannel` / `RefreshChannelConfig`
-return `domain.ErrChannelNotSupported` for **every** channel, telegram
-included — a no-op success would be fake (nothing would ever listen). After a
-switch, `ChannelReconcile` reports the configured channels as
-`unsupported_channels` in the MQTT info uplink and their creds stay in
-config.json (switching back to openclaw restores them).
+Telegram is **device-owned** under Codex. The Codex CLI has no channel layer
+of its own (unlike PicoClaw, whose runtime binary polls the Telegram Bot API
+itself — its presync enables `channel_list.telegram` in PicoClaw's own
+config), so os-server runs the inbound receive loop:
+`internal/codex/telegram_poll.go`, one goroutine started from `StartWS`
+(outside its reconnect loop, so it survives WS drops). Because it lives inside
+the codex service's lifecycle it runs **only while codex is the active
+runtime** — it can never compete with the openclaw/hermes gateway pollers for
+`getUpdates` (Telegram 409s concurrent pollers).
 
-Outbound-only delivery still works: `TelegramSender` sends proactive alerts
-(sensing/guard) via the Bot API when `config.TelegramBotToken` is set.
-`SendToUser*` take an explicit chat ID; `Broadcast` fans out to
-`/root/.codex/telegram_targets.json`, an operator-seeded file nothing populates
-automatically. Inbound is an open TODO(codex-telegram) — see
-`internal/codex/channels.go`. See also
+The loop long-polls `getUpdates` (50 s window, client timeout 70 s) and reads
+`config.TelegramBotToken` / `TelegramUserID` **fresh on every iteration** — no
+restart is needed after saving or rotating creds; while the token is empty it
+rechecks every 30 s, and HTTP/network errors back off 5 s. A message is
+accepted only if it is a non-empty **text** message, in a **private** chat,
+and `from.id` equals `TelegramUserID` (string compare after `strconv`);
+everything else is skipped at debug level while the offset still advances (no
+re-delivery). The next-update offset is persisted atomically
+(temp + rename) to `/root/.codex/telegram_offset.json`, and each accepted chat
+id is upserted into `/root/.codex/telegram_targets.json` so outbound
+`Broadcast` (proactive sensing/guard alerts) reaches the chat.
+
+Each accepted message waits for the agent to go idle (`IsBusy`, 500 ms poll,
+ctx-aware), then is injected via `sendChat` with flow source `telegram`, so
+`chat_input` / `chat_send` fire as usual and Flow Monitor shows the origin.
+The run is marked **silent** (the reply must not hit TTS) and tracked in
+`telegramRuns`; at `turn.completed`, `emitFinal` consumes the tracker and DMs
+the final text back to the originating chat with `[HW:/...]` hardware markers
+and TTS audio tags (`[laugh]`, `[sigh]`, …) stripped (`stripForChannel` in
+`hal.go`, mirroring the downstream `hwMarkerRe` and HAL's audio-tag
+whitelist). On `turn.failed` the tracker is consumed without a DM so the map
+cannot leak.
+
+`SupportedChannels()` returns `["telegram"]`. `AddChannel(telegram)` is an
+honest no-op success — the creds the caller just persisted to config.json are
+all the loop needs — and `RefreshChannelConfig(telegram)` returns `("", nil)`
+for the same reason. Slack / discord / whatsapp have no receive loop and
+return `domain.ErrChannelNotSupported`. See also
 [`adding-agent-runtime.md`](adding-agent-runtime.md).
 
 ## 6. Hooks
