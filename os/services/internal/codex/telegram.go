@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -12,14 +13,14 @@ import (
 )
 
 // telegramTargetsFile is os-server's own list of Telegram chats to Broadcast
-// proactive alerts (sensing/guard) to. NOTHING populates it automatically:
-// Codex has no channel layer and os-server runs no Telegram receive loop (see
-// TODO(codex-telegram) in channels.go), so this file only exists if seeded by
-// an operator. Until then Broadcast finds zero targets and warns; SendToUser /
-// SendToUserWithMedia still work with an explicit chat ID whenever
-// config.TelegramBotToken is set. The path lives under Codex's own data dir
-// (/root/.codex, wiped by factory reset) — the previous /root/.lumi path was a
-// leftover copied from picoclaw, itself inherited from the pre-fork Lumi repo.
+// proactive alerts (sensing/guard) to. The device-owned receive loop
+// (telegram_poll.go) upserts the chat id of every accepted DM here, so the
+// first message from the allowlisted user makes Broadcast reach their chat;
+// operators can also seed it by hand. SendToUser / SendToUserWithMedia work
+// with an explicit chat ID whenever config.TelegramBotToken is set. The path
+// lives under Codex's own data dir (/root/.codex, wiped by factory reset) —
+// the previous /root/.lumi path was a leftover copied from picoclaw, itself
+// inherited from the pre-fork Lumi repo.
 //
 // Schema: {"targets":[{"chat_id":"...","type":"private|group"}, ...]}
 const telegramTargetsFile = "/root/.codex/telegram_targets.json"
@@ -36,18 +37,68 @@ type telegramTargetsFileContent struct {
 // targetsFileMu serialises read-modify-write on telegramTargetsFile.
 var targetsFileMu sync.Mutex
 
+// telegramTargetsFilePath returns the targets store path (test override).
+func (s *CodexService) telegramTargetsFilePath() string {
+	if s.telegramTargetsPath != "" {
+		return s.telegramTargetsPath
+	}
+	return telegramTargetsFile
+}
+
+// upsertTelegramTarget records chatID in the targets store so outbound
+// Broadcast reaches the chat the user wrote from. Called by the inbound poll
+// loop (telegram_poll.go) on every accepted message; idempotent, atomic write.
+func (s *CodexService) upsertTelegramTarget(chatID, chatType string) {
+	if chatID == "" {
+		return
+	}
+	targetsFileMu.Lock()
+	defer targetsFileMu.Unlock()
+	path := s.telegramTargetsFilePath()
+	var content telegramTargetsFileContent
+	if data, err := os.ReadFile(path); err == nil {
+		// Corrupt file → rewrite from scratch with just this target.
+		_ = json.Unmarshal(data, &content)
+	}
+	for _, t := range content.Targets {
+		if t.ChatID == chatID {
+			return // already known
+		}
+	}
+	content.Targets = append(content.Targets, telegramTargetEntry{ChatID: chatID, Type: chatType})
+	data, err := json.Marshal(content)
+	if err != nil {
+		slog.Warn("telegram targets marshal failed", "component", "codex", "error", err)
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		slog.Warn("telegram targets dir create failed", "component", "codex", "error", err)
+		return
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		slog.Warn("telegram targets write failed", "component", "codex", "error", err)
+		return
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		slog.Warn("telegram targets rename failed", "component", "codex", "error", err)
+		return
+	}
+	slog.Info("telegram target upserted", "component", "codex", "chatID", chatID, "type", chatType)
+}
+
 // GetTelegramBotToken returns the bot token from Device config. There is no
 // agent-side config to consult under Codex.
 func (s *CodexService) GetTelegramBotToken() string {
 	return s.config.TelegramBotToken
 }
 
-// GetTelegramTargets reads the operator-seeded target store. Returns nil + nil
-// (no error) when the file doesn't exist — the normal state, since no receive
-// loop writes it under Codex (see telegramTargetsFile).
+// GetTelegramTargets reads the target store (populated by the receive loop's
+// upsertTelegramTarget, or operator-seeded). Returns nil + nil (no error) when
+// the file doesn't exist — the state before the first accepted DM.
 func (s *CodexService) GetTelegramTargets() ([]domain.TelegramTarget, error) {
 	targetsFileMu.Lock()
-	data, err := os.ReadFile(telegramTargetsFile)
+	data, err := os.ReadFile(s.telegramTargetsFilePath())
 	targetsFileMu.Unlock()
 	if err != nil {
 		if os.IsNotExist(err) {

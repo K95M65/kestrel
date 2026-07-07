@@ -35,6 +35,12 @@ const (
 // handler for each translated event. Runs until ctx is cancelled, auto-
 // reconnecting on drop. Mirrors the openclaw.CodexService.StartWS shape.
 func (s *CodexService) StartWS(ctx context.Context, handler domain.AgentEventHandler) {
+	// Device-owned Telegram inbound: ONE poll goroutine for the whole gateway
+	// lifetime (outside the reconnect loop, so it survives WS drops; ctx-bound
+	// so it dies with the gateway). Started here — not at construction — so it
+	// only runs while codex is the ACTIVE runtime, which is what guarantees no
+	// getUpdates conflict with other runtimes' pollers. See telegram_poll.go.
+	go s.startTelegramPoll(ctx)
 	for {
 		select {
 		case <-ctx.Done():

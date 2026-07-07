@@ -153,6 +153,34 @@ func (s *CodexService) ConsumeSilentRun(runID string) bool {
 	return ok
 }
 
+// markTelegramRun records a Telegram-originated turn (telegram_poll.go) so
+// emitFinal can DM the reply back to the originating chat.
+func (s *CodexService) markTelegramRun(runID string, chatID string) {
+	if runID == "" || chatID == "" {
+		return
+	}
+	s.telegramRunsMu.Lock()
+	if s.telegramRuns == nil {
+		s.telegramRuns = make(map[string]string)
+	}
+	s.telegramRuns[runID] = chatID
+	s.telegramRunsMu.Unlock()
+	slog.Info("telegram run marked — reply will be DMed", "component", "codex", "runID", runID, "chatID", chatID)
+}
+
+// consumeTelegramRun is one-shot: returns the chat id for a Telegram-originated
+// run and removes the entry, or "" when the run did not come from Telegram.
+// Called by emitFinal (reply routing) and handleError (leak prevention).
+func (s *CodexService) consumeTelegramRun(runID string) string {
+	s.telegramRunsMu.Lock()
+	chatID, ok := s.telegramRuns[runID]
+	if ok {
+		delete(s.telegramRuns, runID)
+	}
+	s.telegramRunsMu.Unlock()
+	return chatID
+}
+
 const pendingChatTTL = 2 * time.Minute
 const pendingSendBusyWindow = 30 * time.Second
 

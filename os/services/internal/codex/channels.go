@@ -7,33 +7,39 @@ import (
 	"go.autonomous.ai/os/domain"
 )
 
-// TODO(codex-telegram): Codex has NO inbound messaging channel today. The Codex
-// CLI has no channel layer of its own (unlike picoclaw, whose runtime binary
-// polls the Telegram Bot API itself — see internal/picoclaw/presync.sh, which
-// enables channel_list.telegram + token in picoclaw's own config), and os-server
-// runs no Telegram receive loop either. The earlier "telegram is device-owned"
-// claim copied from picoclaw was false. Until someone builds an inbound loop
-// (os-server-side getUpdates poller, or a channel layer in the codex gatewayd),
-// no channel is supported.
+// Telegram is DEVICE-OWNED under Codex. The Codex CLI has no channel layer of
+// its own (unlike picoclaw, whose runtime binary polls the Telegram Bot API
+// itself — see internal/picoclaw/presync.sh), so os-server runs the inbound
+// getUpdates receive loop: telegram_poll.go, one goroutine started from
+// StartWS. Because it lives inside this service's lifecycle it runs ONLY while
+// codex is the active runtime — it can never fight another runtime's poller
+// for getUpdates (Telegram 409s concurrent pollers; the hermes lesson).
+// Slack / discord / whatsapp have no receive loop and stay unsupported.
 
-// SupportedChannels — none. See TODO(codex-telegram) above. Outbound-only
-// delivery (proactive sensing alerts via the Bot API) still works through
-// TelegramSender when config.TelegramBotToken is set, but that is not an
-// inbound channel and must not be advertised as one.
+// SupportedChannels — telegram only, via the device-owned receive loop
+// (telegram_poll.go).
 func (s *CodexService) SupportedChannels() []string {
-	return nil
+	return []string{domain.ChannelTelegram}
 }
 
-// AddChannel — every channel, telegram included, returns
-// domain.ErrChannelNotSupported: there is no receive loop to wire the creds
-// into, so a no-op success here would be fake (the user would believe the bot
-// listens when nothing does).
+// AddChannel — telegram is an honest no-op success: the receive loop reads
+// config.TelegramBotToken / TelegramUserID fresh on every iteration, so the
+// creds the caller just persisted to config.json are all it needs — there is
+// nothing agent-side to write. Every other channel has no receive loop and
+// returns domain.ErrChannelNotSupported.
 func (s *CodexService) AddChannel(_ context.Context, data domain.AddChannelRequest) error {
+	if data.EffectiveChannel() == domain.ChannelTelegram {
+		return nil
+	}
 	return fmt.Errorf("codex: channel %q: %w", data.EffectiveChannel(), domain.ErrChannelNotSupported)
 }
 
-// RefreshChannelConfig — same rule: nothing consumes channel config under
-// Codex, so every channel is not supported.
+// RefreshChannelConfig — same rule: telegram creds are consumed live from
+// Device config by the poll loop, so there is nothing to refresh and no
+// derived value to return. Other channels are not supported.
 func (s *CodexService) RefreshChannelConfig(_ context.Context, req domain.RefreshChannelRequest) (string, error) {
+	if req.Channel == domain.ChannelTelegram {
+		return "", nil
+	}
 	return "", fmt.Errorf("codex: channel %q: %w", req.Channel, domain.ErrChannelNotSupported)
 }

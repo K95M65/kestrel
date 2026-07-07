@@ -21,10 +21,10 @@ const telegramMaxMediaGroup = 10
 
 // TelegramSender delivers OUTBOUND messages via the Telegram Bot API (identical
 // wire protocol to the openclaw / hermes implementations). Send (broadcast)
-// fans out to GetTelegramTargets(), which is an operator-seeded file nothing
-// populates automatically under Codex (see telegram.go); SendToUser* take an
-// explicit chat ID and work whenever the bot token is set. There is no inbound
-// counterpart — see TODO(codex-telegram) in channels.go.
+// fans out to GetTelegramTargets(), populated by the device-owned receive loop
+// on every accepted DM (and optionally seeded by hand — see telegram.go);
+// SendToUser* take an explicit chat ID and work whenever the bot token is set.
+// The inbound counterpart is the getUpdates poll loop in telegram_poll.go.
 type TelegramSender struct {
 	svc *CodexService
 }

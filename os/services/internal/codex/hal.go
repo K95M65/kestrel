@@ -58,6 +58,30 @@ func stripForTTS(text string) string {
 	return strings.TrimSpace(text)
 }
 
+// stripForChannel regexes — package-level, compiled once.
+var (
+	// reHWMarker mirrors hwMarkerRe in server/agent/delivery/http/handler_hw.go
+	// (the downstream consumer that fires + strips [HW:/...] markers on the TTS
+	// path). The Telegram reply routing in emitFinal reads the RAW final text
+	// (it bypasses that pipeline), so the same markers must be stripped here.
+	// Keep the two patterns in sync.
+	reHWMarker = regexp.MustCompile(`\[HW:((?:/[^{:\]]+(?::[^{:\]]+)*))(?::(\{[^}]*\}))?\]`)
+	// reAudioTag mirrors HAL's _strip_audio_tags whitelist
+	// (os/hal/drivers/voice/tts/openai.py): ElevenLabs-style delivery tags like
+	// [laugh] / [sigh] are TTS styling and meaningless in a chat bubble.
+	reAudioTag = regexp.MustCompile(`(?i)\[(?:laugh|sigh|whisper|gasp|gulp|nervous|excited|frustrated|sorrowful|calm)[^\]]*\]`)
+)
+
+// stripForChannel removes [HW:/...] hardware markers and TTS audio-style tags
+// so a channel reply (Telegram DM, see translator.go emitFinal) shows only the
+// conversational text. Unlike stripForTTS it keeps markdown and emoji — chat
+// clients render them fine.
+func stripForChannel(text string) string {
+	text = reHWMarker.ReplaceAllString(text, "")
+	text = reAudioTag.ReplaceAllString(text, "")
+	return strings.TrimSpace(text)
+}
+
 func truncRunes(s string, n int) string {
 	r := []rune(s)
 	if len(r) <= n {

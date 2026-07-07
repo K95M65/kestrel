@@ -8,24 +8,23 @@ import (
 	"go.autonomous.ai/os/domain"
 )
 
-// Codex supports NO inbound channel (no receive loop exists anywhere — see
-// TODO(codex-telegram) in channels.go), so the channel API must refuse
-// everything, telegram included, instead of faking success.
+// Telegram is device-owned under Codex (os-server runs the getUpdates receive
+// loop — see telegram_poll.go), so the channel API accepts telegram and
+// refuses everything else.
 
 func TestCodexSupportedChannels(t *testing.T) {
 	got := (&CodexService{}).SupportedChannels()
-	if len(got) != 0 {
-		t.Fatalf("SupportedChannels() = %v, want empty (codex has no inbound channel)", got)
+	if len(got) != 1 || got[0] != domain.ChannelTelegram {
+		t.Fatalf("SupportedChannels() = %v, want [telegram] (device-owned receive loop)", got)
 	}
 }
 
 func TestCodexAddChannel(t *testing.T) {
 	s := &CodexService{}
-	err := s.AddChannel(context.Background(), domain.AddChannelRequest{Channel: domain.ChannelTelegram})
-	if !errors.Is(err, domain.ErrChannelNotSupported) {
-		t.Errorf("AddChannel(telegram) err = %v, want ErrChannelNotSupported (no receive loop under codex)", err)
+	if err := s.AddChannel(context.Background(), domain.AddChannelRequest{Channel: domain.ChannelTelegram}); err != nil {
+		t.Errorf("AddChannel(telegram) err = %v, want nil (creds in config.json drive the device-owned loop)", err)
 	}
-	err = s.AddChannel(context.Background(), domain.AddChannelRequest{Channel: domain.ChannelSlack, SlackBotToken: "x"})
+	err := s.AddChannel(context.Background(), domain.AddChannelRequest{Channel: domain.ChannelSlack, SlackBotToken: "x"})
 	if !errors.Is(err, domain.ErrChannelNotSupported) {
 		t.Errorf("AddChannel(slack) err = %v, want ErrChannelNotSupported", err)
 	}
@@ -33,9 +32,9 @@ func TestCodexAddChannel(t *testing.T) {
 
 func TestCodexRefreshChannelConfig(t *testing.T) {
 	s := &CodexService{}
-	_, err := s.RefreshChannelConfig(context.Background(), domain.RefreshChannelRequest{Channel: domain.ChannelTelegram})
-	if !errors.Is(err, domain.ErrChannelNotSupported) {
-		t.Errorf("RefreshChannelConfig(telegram) err = %v, want ErrChannelNotSupported", err)
+	out, err := s.RefreshChannelConfig(context.Background(), domain.RefreshChannelRequest{Channel: domain.ChannelTelegram})
+	if err != nil || out != "" {
+		t.Errorf(`RefreshChannelConfig(telegram) = (%q, %v), want ("", nil)`, out, err)
 	}
 	_, err = s.RefreshChannelConfig(context.Background(), domain.RefreshChannelRequest{Channel: domain.ChannelDiscord})
 	if !errors.Is(err, domain.ErrChannelNotSupported) {

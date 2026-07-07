@@ -346,6 +346,23 @@ func (s *CodexService) emitFinal(f codexFrame, dispatch func(domain.WSEvent)) {
 	// markers still match.
 	s.currentRunID.Store("")
 
+	// Telegram-originated turn (telegram_poll.go): DM the reply back to the
+	// originating chat. TTS was suppressed at injection (MarkSilentRun), so
+	// this DM is the user-visible output. [HW:/...] hardware markers and TTS
+	// audio tags are for HAL, not the chat bubble — strip them
+	// (stripForChannel, hal.go). Best-effort in a goroutine: the read loop
+	// must not block on the Bot API.
+	if chatID := s.consumeTelegramRun(runID); chatID != "" && finalText != "" {
+		if reply := stripForChannel(finalText); reply != "" {
+			go func() {
+				if err := s.SendToUser(chatID, reply, ""); err != nil {
+					slog.Error("telegram reply send failed",
+						"component", "codex", "runID", runID, "chatID", chatID, "error", err)
+				}
+			}()
+		}
+	}
+
 	if finalText != "" {
 		deltaPayload, _ := json.Marshal(map[string]any{
 			"runId":      runID,
@@ -397,6 +414,13 @@ func (s *CodexService) handleError(msg string, dispatch func(domain.WSEvent)) {
 	s.assistantParts = nil
 	s.toolStartSeen = nil
 	s.turnMu.Unlock()
+
+	// Telegram-originated turn: consume the tracker so the map doesn't leak.
+	// No DM — the user simply gets no reply for a failed turn.
+	if chatID := s.consumeTelegramRun(runID); chatID != "" {
+		slog.Warn("telegram-originated turn failed — reply dropped",
+			"component", "codex", "runID", runID, "chatID", chatID)
+	}
 
 	payload, _ := json.Marshal(map[string]any{
 		"runId":      runID,
