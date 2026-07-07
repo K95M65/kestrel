@@ -38,8 +38,18 @@ install, migration, skills, hooks, reset.
   `gateway.default` trong DEVICE.md về sau KHÔNG còn ảnh hưởng device đã seed — phải
   sửa config.json hoặc switch runtime.
 - Switch lúc runtime đi qua một core — `device.Service.UpdateAgentRuntime` — kích
-  bởi 3 trigger (MQTT `agent_runtime.set`, HTTP `/api/device/agent-runtime`, web
+  bởi 3 trigger (MQTT `<runtime>.setup`, HTTP `/api/device/agent-runtime`, web
   Runtime section). Xem `docs/vi/agentic/hermes_vi.md` §10–§11.
+- **Báo hiệu hoàn tất:** MQTT ack 3 pha cho mỗi `<runtime>.setup` — `starting`
+  ngay lập tức, rồi `success` (publish *trước khi* os-server restart) hoặc
+  `failure` (+error, switch-runtime đã tự rollback); uplink `info` mang
+  `agent_runtime` + version từng runtime để confirm lại. HTTP
+  `POST /api/device/agent-runtime` trả 200 = *chỉ là accepted* (switch chạy
+  nền); nguồn truth là `GET /api/device/agent-runtime`, vì
+  `config.agent_runtime` chỉ được persist sau khi switch land. Web Runtime
+  section sau khi POST sẽ poll GET đó tới khi device báo đúng runtime đích
+  (success) hoặc quá deadline 5 phút (hiển thị runtime thực đang active thay
+  vì giá trị lạc quan).
 
 ---
 
