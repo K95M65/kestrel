@@ -3,6 +3,7 @@ module go.autonomous.ai/os
 go 1.24.0
 
 require (
+	github.com/bwmarrin/discordgo v0.29.0
 	github.com/creack/pty v1.1.24
 	github.com/eclipse/paho.golang v0.23.0
 	github.com/fsnotify/fsnotify v1.10.1
@@ -18,7 +19,6 @@ require (
 )
 
 require (
-	github.com/bwmarrin/discordgo v0.29.0 // indirect
 	github.com/bytedance/sonic v1.14.0 // indirect
 	github.com/bytedance/sonic/loader v0.3.0 // indirect
 	github.com/cloudwego/base64x v0.1.6 // indirect
