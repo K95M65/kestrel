@@ -287,34 +287,43 @@ Hai điểm khác Hermes, do `internal/picoclaw/hooks.go` sở hữu:
 
 1. **Transport.** Process hook của PicoClaw là một **subprocess nói NDJSON JSON-RPC
    qua stdio** (`resources/hooks/os-server-observer/observer.py`), không phải hàm
-   `handle()` in-process được phát hiện bằng quét thư mục. Script này:
-   - đăng ký **observe** `turn_start` / `turn_end` (fire-and-forget, lấy mốc lượt +
-     `scope`) và **intercept** `after_llm` (lấy toàn văn user+assistant). Intercept
-     nằm trong critical path nên trả `{"action":"continue"}` **ngay** — không chặn,
-     không sửa.
-   - lọc theo `scope.channel` (allow-list mặc định `telegram`), bỏ lượt cục bộ
-     `pico` đã được `sendChat` log — tương tự `skipPlatform(api_server/cli)` của
-     Hermes.
+   `handle()` in-process được phát hiện bằng quét thư mục. PicoClaw gửi cho subprocess
+   (đã verify trên device, picoclaw 0.2.9):
+   - `hook.hello` — một REQUEST (có `id` JSON-RPC); script trả `{"action":"continue"}`.
+     Mọi request (có `id`) đều được đáp ngay để không chặn lượt.
+   - `hook.runtime_event` — một NOTIFICATION mà `params` là envelope sự kiện
+     `{kind, scope{channel,chat_id,sender_id,session_key,turn_id}, payload}`. Script
+     chỉ xử lý hai kind, bỏ phần còn lại (`agent.tool.*`, `agent.llm.*`):
+     - `agent.turn.start` → `agent:start`, message = **`payload.UserMessage`**.
+     - `agent.turn.end`   → `agent:end`, response = **`payload.FinalContent`** (reply,
+       KÈM marker `[HW:/…]` — `agent.turn.end` mang cả user message lẫn reply cuối, nên
+       **chỉ observe là đủ; không cần intercept**).
+   - lọc theo `scope.channel` (allow-list `telegram`) VÀ bỏ sender nội bộ
+     (`sender_id == heartbeat`) — lượt cục bộ `pico` đã được `sendChat` log; tương tự
+     `skipPlatform(api_server/cli)` của Hermes.
    - map `scope` → payload `ChannelTurn` (`platform=channel`, `chat_id`,
-     `sender_id`→`user_id`, `session_key`→`session_id`), phát `agent:start` (kèm
-     text user) ở `turn_start` và `agent:end` (kèm reply) ở `turn_end`.
-   - `OBSERVER_DEBUG=1` dump mỗi dòng stdin thô ra stderr (hiện trong log gateway) —
-     vì `payload` mỗi kind là `any`, dùng nó để xác minh tên field thật trên device.
+     `sender_id`→`user_id`, `session_key`→`session_id`). PicoClaw ghép 2 forward thành
+     một lượt Flow theo `session_key`.
+   - POST chạy trên daemon thread (audit log vẫn đồng bộ) nên os-server chậm không làm
+     nghẽn event kế (`observer_timeout_ms` chỉ 500ms).
+   - `OBSERVER_DEBUG=1` dump mỗi dòng stdin thô ra stderr (hiện trong log gateway dạng
+     `Process hook stderr hook=os-server-observer`) — dùng để xác minh tên field trên.
 
 2. **Đăng ký.** PicoClaw **không** quét thư mục hook; hook được đăng ký bằng một mục
-   `config.json` dưới `hooks.processes.<name>`, gate bởi `hooks.enabled` (mặc định
-   false — cùng dạng gate `tools.mcp`). Nên `ensureObserverHook()` (gọi từ
-   `EnsureOnboarding`) làm hai việc ghi: materialize `observer.py` ra
-   `/root/.picoclaw/hooks/os-server-observer/` (thay placeholder
-   `__OS_SERVER_TURN_URL__`), và upsert:
+   `config.json` dưới `hooks.processes.<name>`, gate bởi CẢ `hooks.enabled` toàn cục
+   LẪN **`enabled` per-process** (đều mặc định false — cùng dạng gate toàn cục +
+   per-server của `tools.mcp`; thiếu `enabled` per-process thì PicoClaw lặng lẽ KHÔNG
+   spawn subprocess). Nên `ensureObserverHook()` (gọi từ `EnsureOnboarding`) làm hai
+   việc ghi: materialize `observer.py` ra `/root/.picoclaw/hooks/os-server-observer/`
+   (thay placeholder `__OS_SERVER_TURN_URL__`), và upsert:
 
    ```json
    "hooks": { "enabled": true, "processes": { "os-server-observer": {
+     "enabled": true,
      "transport": "stdio",
      "command": ["python3", "/root/.picoclaw/hooks/os-server-observer/observer.py"],
      "env": { "OS_SERVER_TURN_URL": "http://127.0.0.1:<HttpPort>/api/agent/channel-turn" },
-     "observe": ["turn_start", "turn_end"],
-     "intercept": ["after_llm"]
+     "observe": ["turn_start", "turn_end"]
    } } }
    ```
 

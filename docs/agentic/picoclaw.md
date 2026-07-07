@@ -295,36 +295,46 @@ Two things differ from Hermes and are owned by `internal/picoclaw/hooks.go`:
 
 1. **Transport.** PicoClaw process hooks are a **subprocess speaking NDJSON
    JSON-RPC over stdio** (`resources/hooks/os-server-observer/observer.py`), not an
-   in-process Python `handle()` discovered by directory scan. The script:
-   - subscribes **observe** `turn_start` / `turn_end` (fire-and-forget, for the
-     turn boundaries + `scope`) and **intercept** `after_llm` (for the full
-     user+assistant text). Intercept is in the turn's critical path, so it replies
-     `{"action":"continue"}` **immediately** — never blocks, never mutates.
-   - filters on `scope.channel` (default allow-list `telegram`), skipping
-     device-local `pico` turns already logged by `sendChat` — the analogue of the
-     Hermes hook's `skipPlatform(api_server/cli)`.
+   in-process Python `handle()` discovered by directory scan. PicoClaw sends the
+   subprocess (verified on-device, picoclaw 0.2.9):
+   - `hook.hello` — a REQUEST (has JSON-RPC `id`); the script replies
+     `{"action":"continue"}`. Any request (has `id`) is answered immediately so the
+     turn is never blocked.
+   - `hook.runtime_event` — a NOTIFICATION whose `params` is the event envelope
+     `{kind, scope{channel,chat_id,sender_id,session_key,turn_id}, payload}`. The
+     script acts on two kinds and ignores the rest (`agent.tool.*`, `agent.llm.*`):
+     - `agent.turn.start` → `agent:start`, message = **`payload.UserMessage`**.
+     - `agent.turn.end`   → `agent:end`, response = **`payload.FinalContent`** (the
+       reply, WITH any `[HW:/…]` markers — `agent.turn.end` carries both the user
+       message and the final reply, so **observe alone suffices; no intercept**).
+   - filters on `scope.channel` (allow-list `telegram`) AND drops internal senders
+     (`sender_id == heartbeat`) — device-local `pico` turns are already logged by
+     `sendChat`; the analogue of the Hermes hook's `skipPlatform(api_server/cli)`.
    - maps `scope` → the `ChannelTurn` payload (`platform=channel`, `chat_id`,
-     `sender_id`→`user_id`, `session_key`→`session_id`), emitting `agent:start`
-     (with the user text) on `turn_start` and `agent:end` (with the reply) on
-     `turn_end`.
+     `sender_id`→`user_id`, `session_key`→`session_id`). PicoClaw pairs the two
+     forwards into one Flow turn by `session_key`.
+   - the POST fires on a daemon thread (audit log stays synchronous) so a slow
+     os-server never stalls the next event (`observer_timeout_ms` is 500ms).
    - `OBSERVER_DEBUG=1` dumps every raw stdin line to stderr (surfaced in the
-     gateway log) — because each kind's `payload` is `any`, use it to verify the
-     exact field names on-device.
+     gateway log as `Process hook stderr hook=os-server-observer`) — used to verify
+     the field names above.
 
 2. **Registration.** PicoClaw does **not** scan a hooks dir; a hook is registered
-   by a `config.json` entry under `hooks.processes.<name>`, gated by
-   `hooks.enabled` (defaults false — same shape as the `tools.mcp` gate). So
-   `ensureObserverHook()` (called from `EnsureOnboarding`) does two writes:
-   materializes `observer.py` to `/root/.picoclaw/hooks/os-server-observer/` with
-   the `__OS_SERVER_TURN_URL__` placeholder substituted, and upserts:
+   by a `config.json` entry under `hooks.processes.<name>`, gated by BOTH the global
+   `hooks.enabled` AND the **per-process `enabled`** (both default false — same shape
+   as the `tools.mcp` global + per-server gate; without the per-process `enabled`
+   PicoClaw silently never spawns the subprocess). So `ensureObserverHook()` (called
+   from `EnsureOnboarding`) does two writes: materializes `observer.py` to
+   `/root/.picoclaw/hooks/os-server-observer/` with the `__OS_SERVER_TURN_URL__`
+   placeholder substituted, and upserts:
 
    ```json
    "hooks": { "enabled": true, "processes": { "os-server-observer": {
+     "enabled": true,
      "transport": "stdio",
      "command": ["python3", "/root/.picoclaw/hooks/os-server-observer/observer.py"],
      "env": { "OS_SERVER_TURN_URL": "http://127.0.0.1:<HttpPort>/api/agent/channel-turn" },
-     "observe": ["turn_start", "turn_end"],
-     "intercept": ["after_llm"]
+     "observe": ["turn_start", "turn_end"]
    } } }
    ```
 

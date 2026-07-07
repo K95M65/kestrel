@@ -109,14 +109,14 @@ func (s *PicoclawService) ensureObserverHookConfig(url string) (bool, error) {
 // applyMCPServerWrite in mcp.go).
 func applyObserverHook(cfg map[string]any, scriptPath, url string) {
 	hooks := ensurePicoMap(cfg, "hooks")
-	hooks["enabled"] = true // gate defaults false — must be on to load any hook
+	hooks["enabled"] = true // global gate — must be on to load ANY hook
 	procs := ensurePicoMap(hooks, "processes")
 	procs[observerHookName] = map[string]any{
+		"enabled":   true,
 		"transport": "stdio",
 		"command":   []any{"python3", scriptPath},
 		"env":       map[string]any{"OS_SERVER_TURN_URL": url},
 		"observe":   []any{"turn_start", "turn_end"},
-		"intercept": []any{"after_llm"},
 	}
 }
 

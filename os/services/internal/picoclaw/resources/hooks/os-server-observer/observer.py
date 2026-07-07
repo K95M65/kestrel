@@ -2,38 +2,39 @@
 """os-server-observer — PicoClaw process hook forwarding channel (Telegram) turns
 to os-server so they appear in the device Flow Monitor and drive [HW:/…] markers.
 
-Mirror of the Hermes os-server-observer hook (internal/hermes/hooks/…), adapted to
-PicoClaw's process-hook wire protocol: a long-lived subprocess speaking NDJSON
-JSON-RPC over stdio — one JSON object per line on stdin; responses on stdout.
+Mirror of the Hermes os-server-observer hook, adapted to PicoClaw's process-hook
+wire protocol: a long-lived subprocess speaking NDJSON JSON-RPC over stdio — one
+JSON object per line on stdin; responses on stdout. PicoClaw spawns it because
+config.json has hooks.enabled + hooks.processes.os-server-observer.enabled + this
+script's command (see internal/picoclaw/hooks.go).
 
-Registered via config.json hooks.processes.os-server-observer (internal/picoclaw/
-hooks.go), with observe=[turn_start,turn_end] + intercept=[after_llm].
+Wire protocol (verified on-device, picoclaw 0.2.9):
+  * hook.hello (REQUEST, has "id") — handshake. Respond {"action":"continue"}.
+  * hook.runtime_event (NOTIFICATION, no "id") — params is the events.Event:
+    {kind, scope{channel,chat_id,sender_id,session_key,turn_id,…}, payload:{…}}.
+      - kind "agent.turn.start": payload.UserMessage is the inbound user text.
+      - kind "agent.turn.end":   payload.UserMessage + payload.FinalContent (the
+        assistant reply, WITH any [HW:/…] markers). FinalContent is what os-server
+        turns into the chat_response + fires HW from.
+    Other kinds (agent.tool.*, agent.llm.*) are ignored.
+  * Any other REQUEST (before_llm/after_llm if ever configured) — we are in the
+    turn's critical path, so respond {"action":"continue"} IMMEDIATELY, never block.
 
-Two message shapes arrive on stdin:
-  * observe NOTIFICATION (no "id"): params is the events.Event envelope
-    {kind, scope{channel,chat_id,sender_id,session_key,turn_id,…}, payload, …}.
-    Fire-and-forget — no response expected.
-  * intercept REQUEST (has "id"): after_llm — params is the LLMHookRequest
-    {messages:[{role,content}], context{…}, …}. We are in the turn's CRITICAL
-    PATH (interceptor_timeout_ms, default 5000), so we ALWAYS respond immediately
-    with {"action":"continue"} — never block, never mutate — then use `messages`
-    purely to capture the conversation text.
+We forward, per turn: agent:start (with UserMessage) on turn.start and agent:end
+(with FinalContent) on turn.end, mapped to the ChannelTurn payload os-server's
+shared handler already serves for Hermes (handler_channel_turn.go). PicoClaw pairs
+these into one Flow turn by session_key.
 
-Only turns whose channel is in FORWARD_CHANNELS (default: telegram) are forwarded.
-Device-local turns (channel "pico", already logged by os-server's own sendChat) are
-ignored to avoid double-counting — the analogue of the Hermes hook's skipPlatform.
+Only channels in FORWARD_CHANNELS (default: telegram) are forwarded, and internal
+senders in SKIP_SENDERS (heartbeat) are dropped — device-local "pico" turns are
+already logged by os-server's own sendChat.
 
-__OS_SERVER_TURN_URL__ is substituted with the real loopback URL at materialize
-time by ensureObserverHook (internal/picoclaw/hooks.go).
+Besides POSTing, every forwarded payload is appended as one JSON line (JSONL) to
+OBSERVER_LOG (default /root/.picoclaw/logs/messages_hooks.log) — a local audit
+trail written before the POST, so it survives an os-server outage.
 
-Besides POSTing each forwarded turn to os-server, every forwarded payload is also
-appended as one JSON line (JSONL) to OBSERVER_LOG (default
-/root/.picoclaw/logs/messages_hooks.log) — a local, os-server-independent audit
-trail of the Telegram↔PicoClaw turns this hook saw.
-
-Set OBSERVER_DEBUG=1 to dump every raw stdin line to stderr — PicoClaw surfaces
-subprocess stderr in its gateway log. Because each kind's `payload` is `any`, use
-that dump to VERIFY the exact field names on-device, then tighten the extractors.
+Set OBSERVER_DEBUG=1 to dump every raw stdin line to stderr (PicoClaw surfaces
+subprocess stderr in its gateway log) — used to verify the field names above.
 """
 
 import datetime
@@ -51,10 +52,13 @@ FORWARD_CHANNELS = {
     for c in os.environ.get("OBSERVER_CHANNELS", "telegram").split(",")
     if c.strip()
 }
-
-# Per-turn buffer keyed by turn id: {"scope":{}, "user":str, "assistant":str, "started":bool}.
-# after_llm (fires between turn_start and turn_end) fills user/assistant text.
-_turns = {}
+# Internal senders whose turns ride a real channel (e.g. the heartbeat turn is
+# tagged channel=telegram) but are not user messages — never forward them.
+SKIP_SENDERS = {
+    s.strip()
+    for s in os.environ.get("OBSERVER_SKIP_SENDERS", "heartbeat").split(",")
+    if s.strip()
+}
 
 
 def _debug(*a):
@@ -88,140 +92,60 @@ def _send(payload):
 
 def _post(event, ctx):
     payload = {"event": event, "context": ctx}
-    # Local audit copy first (synchronous, fast, keeps event order) so it is written
-    # regardless of the POST outcome.
+    # Local audit copy first (synchronous, fast, keeps event order).
     _log_json({"ts": datetime.datetime.now(datetime.timezone.utc).isoformat(), **payload})
-    # Fire the network POST OFF the stdin loop: a slow/hung os-server must never delay
-    # our reply to an after_llm intercept (interceptor_timeout_ms=5000) nor stall the
-    # next event (observer_timeout_ms is only 500ms). Best-effort daemon thread.
+    # Fire the network POST OFF the stdin loop so a slow/hung os-server never stalls
+    # the next event (observer_timeout_ms is only 500ms). Best-effort daemon thread.
     threading.Thread(target=_send, args=(payload,), daemon=True).start()
 
 
-def _text(v):
-    """Best-effort text out of str | {text|content|message|final} | list-of-blocks."""
-    if v is None:
-        return ""
-    if isinstance(v, str):
-        return v
-    if isinstance(v, dict):
-        for k in ("text", "content", "message", "final", "output"):
-            if k in v:
-                t = _text(v[k])
-                if t:
-                    return t
-        return ""
-    if isinstance(v, list):
-        return " ".join(t for t in (_text(it) for it in v) if t).strip()
-    return ""
-
-
-def _last_role(messages, role):
-    if not isinstance(messages, list):
-        return ""
-    for m in reversed(messages):
-        if isinstance(m, dict) and m.get("role") == role:
-            return _text(m.get("content"))
-    return ""
-
-
-def _scope_of(params):
-    """The observe envelope carries `scope`; the intercept request carries `context`
-    (TurnContext). Return whichever is present, else params itself as a last resort."""
-    if not isinstance(params, dict):
-        return {}
-    for k in ("scope", "context"):
-        s = params.get(k)
-        if isinstance(s, dict):
-            return s
-    return params
-
-
-def _channel(scope):
-    return str(scope.get("channel") or scope.get("platform") or "").lower()
-
-
-def _turn_key(scope):
-    return (
-        scope.get("turn_id")
-        or scope.get("session_key")
-        or scope.get("session_id")
-        or "default"
-    )
-
-
 def _ctx(scope, message="", response=""):
-    """Map PicoClaw scope → the ChannelTurn payload context (handler_channel_turn.go)."""
+    """Map a PicoClaw runtime-event scope → the ChannelTurn payload context."""
     return {
-        "platform": _channel(scope) or "telegram",
-        "user_id": str(scope.get("sender_id") or scope.get("user_id") or ""),
+        "platform": str(scope.get("channel") or "telegram").lower(),
+        "user_id": str(scope.get("sender_id") or ""),
         "chat_id": str(scope.get("chat_id") or ""),
-        "session_id": str(scope.get("session_key") or scope.get("session_id") or ""),
+        "session_id": str(scope.get("session_key") or ""),
         "message": message,
         "response": response,
     }
 
 
-def _kind(msg, params):
-    k = ""
-    if isinstance(params, dict):
-        k = params.get("kind") or params.get("event") or ""
-    return str(k or msg.get("method") or "").lower()
-
-
 def handle(msg):
-    params = msg.get("params") if isinstance(msg, dict) else None
-    is_request = isinstance(msg, dict) and msg.get("id") is not None
+    if not isinstance(msg, dict):
+        return
 
-    # CRITICAL PATH: answer intercept requests immediately, before any other work,
-    # so a slow/unreachable os-server can never stall the turn.
-    if is_request:
+    # CRITICAL PATH: answer every request (hook.hello handshake + any intercept)
+    # immediately so picoclaw is never blocked waiting on us.
+    if msg.get("id") is not None:
         sys.stdout.write(
             json.dumps({"jsonrpc": "2.0", "id": msg["id"], "result": {"action": "continue"}})
             + "\n"
         )
         sys.stdout.flush()
 
-    scope = _scope_of(params)
-    channel = _channel(scope)
-    kind = _kind(msg, params)
-
-    # Only forward configured channels; skip device-local ("pico") turns entirely.
-    if channel and channel not in FORWARD_CHANNELS:
+    # Only observe runtime events carry the turn boundaries + text we forward.
+    if msg.get("method") != "hook.runtime_event":
         return
-    if not channel and not is_request:
+    params = msg.get("params") or {}
+    if not isinstance(params, dict):
         return
 
-    key = _turn_key(scope)
-    buf = _turns.setdefault(key, {"scope": {}, "user": "", "assistant": "", "started": False})
-    buf["scope"].update({k: v for k, v in scope.items() if v})
+    kind = str(params.get("kind") or "")
+    scope = params.get("scope") or {}
+    payload = params.get("payload") or {}
+    channel = str(scope.get("channel") or "").lower()
+    sender = str(scope.get("sender_id") or "")
 
-    # after_llm (intercept): the full message list carries user + assistant text.
-    if is_request or "llm" in kind:
-        messages = params.get("messages") if isinstance(params, dict) else None
-        u = _last_role(messages, "user")
-        a = _last_role(messages, "assistant")
-        if u:
-            buf["user"] = u
-        if a:
-            buf["assistant"] = a
-        if not buf["assistant"] and isinstance(params, dict):
-            buf["assistant"] = _text(params.get("response") or params.get("result"))
-        return
+    if channel not in FORWARD_CHANNELS:
+        return  # device-local "pico" (or other) turns — not ours
+    if sender in SKIP_SENDERS or str(scope.get("session_key") or "") in SKIP_SENDERS:
+        return  # heartbeat / internal turns riding the channel
 
-    if kind.endswith("turn.start") or kind == "turn_start":
-        payload = params.get("payload") if isinstance(params, dict) else None
-        _post("agent:start", _ctx(buf["scope"], message=buf["user"] or _text(payload)))
-        buf["started"] = True
-        return
-
-    if kind.endswith("turn.end") or kind == "turn_end":
-        if not buf["started"]:
-            # start missed (e.g. only after_llm seen) — synthesise so start/end pair up.
-            _post("agent:start", _ctx(buf["scope"], message=buf["user"]))
-        payload = params.get("payload") if isinstance(params, dict) else None
-        _post("agent:end", _ctx(buf["scope"], response=buf["assistant"] or _text(payload)))
-        _turns.pop(key, None)
-        return
+    if kind.endswith("turn.start"):
+        _post("agent:start", _ctx(scope, message=str(payload.get("UserMessage") or "")))
+    elif kind.endswith("turn.end"):
+        _post("agent:end", _ctx(scope, response=str(payload.get("FinalContent") or "")))
 
 
 def main():

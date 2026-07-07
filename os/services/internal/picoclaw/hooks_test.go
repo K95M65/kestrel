@@ -28,6 +28,9 @@ func TestApplyObserverHook(t *testing.T) {
 	if !ok {
 		t.Fatalf("hooks.processes.%s missing: %v", observerHookName, procs)
 	}
+	if entry["enabled"] != true {
+		t.Errorf("entry.enabled = %v, want true (per-process gate — without it PicoClaw skips the hook)", entry["enabled"])
+	}
 	if entry["transport"] != "stdio" {
 		t.Errorf("transport = %v, want stdio", entry["transport"])
 	}
@@ -42,8 +45,9 @@ func TestApplyObserverHook(t *testing.T) {
 	if obs, ok := entry["observe"].([]any); !ok || len(obs) != 2 {
 		t.Errorf("observe = %v, want [turn_start turn_end]", entry["observe"])
 	}
-	if icpt, ok := entry["intercept"].([]any); !ok || len(icpt) != 1 || icpt[0] != "after_llm" {
-		t.Errorf("intercept = %v, want [after_llm]", entry["intercept"])
+	// Observe-only: no intercept (turn.end payload carries the reply text).
+	if _, present := entry["intercept"]; present {
+		t.Errorf("intercept should be absent (observe-only), got %v", entry["intercept"])
 	}
 }
 
