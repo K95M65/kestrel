@@ -8,14 +8,22 @@ import (
 	"go.autonomous.ai/os/domain"
 )
 
-// SupportedChannels — Claude Code runs telegram and discord natively via its
-// channel plugins: the bridge launches
-// `claude --channels plugin:telegram@claude-plugins-official plugin:discord@...`
-// (see https://code.claude.com/docs/en/channels), and each plugin polls its Bot
+// SupportedChannels — three channels, three ownership models:
+//
+// telegram is DEVICE-OWNED: os-server long-polls getUpdates and injects
+// accepted DMs as chat turns (telegram_poll.go, started from StartWS —
+// mirrors internal/codex). Claude Code's native telegram plugin is NOT used —
+// it proved undebuggable in the field (bun child, no journal logs, silent
+// allowlist drops, silent death on bridge-restart races), and presync removes
+// its state so it can never compete for getUpdates (Telegram 409s concurrent
+// pollers).
+//
+// discord runs natively via Claude Code's channel plugin: the bridge launches
+// `claude --channels plugin:discord@claude-plugins-official`
+// (see https://code.claude.com/docs/en/channels), and the plugin polls its Bot
 // API inside the Claude session and replies through the same chat. os-server's
-// job is to land the token + allowlist under ~/.claude/channels/<ch>/
-// (presync-owned, from config.json) and bounce the bridge — it runs no receive
-// loop of its own.
+// job is to land the token + allowlist under ~/.claude/channels/discord/
+// (presync-owned, from config.json) and bounce the bridge.
 //
 // slack is DEVICE-OWNED (HTTP mode): Claude Code has no slack channel plugin —
 // "Claude in Slack" is a separate cloud feature that spawns web sessions from
@@ -29,26 +37,26 @@ func (s *ClaudeCodeService) SupportedChannels() []string {
 	return []string{domain.ChannelTelegram, domain.ChannelSlack, domain.ChannelDiscord}
 }
 
-// AddChannel — telegram and discord re-sync the channel config from
-// config.json (via the embedded presync) and restart the bridge only when
-// something actually changed. The device layer persists the channel creds to
-// config.json BEFORE calling this (persist-then-apply), so the presync run
-// sees them.
+// AddChannel — discord re-syncs the channel config from config.json (via the
+// embedded presync) and restarts the bridge only when something actually
+// changed. The device layer persists the channel creds to config.json BEFORE
+// calling this (persist-then-apply), so the presync run sees them.
 //
-// slack is an honest no-op success: the device-owned Slack bridge (slack.go)
-// reads config.SlackUserID per event and config.SlackBotToken per Web API
-// call — fresh from Device config — so the creds the caller just persisted
-// are all that is needed; there is nothing agent-side to write and no bridge
-// restart. Slack HTTP mode's signing secret is consumed by the public proxy,
-// not on the device (the authenticated MQTT path is trusted, same as
-// codex/hermes). Unsupported channels return domain.ErrChannelNotSupported.
+// telegram and slack are honest no-op successes: their device-owned loops
+// read creds fresh from Device config on each use (the telegram poll loop
+// per iteration, the Slack bridge per event/Web API call), so the creds the
+// caller just persisted are all that is needed — nothing agent-side to write,
+// no bridge restart. Slack HTTP mode's signing secret is consumed by the
+// public proxy, not on the device (the authenticated MQTT path is trusted,
+// same as codex/hermes). Unsupported channels return
+// domain.ErrChannelNotSupported.
 func (s *ClaudeCodeService) AddChannel(_ context.Context, data domain.AddChannelRequest) error {
 	channel := data.EffectiveChannel()
 	if !domain.ChannelSupported(s, channel) {
 		return fmt.Errorf("claudecode: channel %q: %w", channel, domain.ErrChannelNotSupported)
 	}
-	if channel == domain.ChannelSlack {
-		return nil // creds are read live from Device config (slack.go / slack_sender.go)
+	if channel == domain.ChannelTelegram || channel == domain.ChannelSlack {
+		return nil // creds are read live from Device config (telegram_poll.go / slack.go)
 	}
 	slog.Info("AddChannel: re-syncing channel config", "component", "claudecode", "channel", channel)
 	return s.syncChannels()
