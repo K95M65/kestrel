@@ -153,6 +153,51 @@ func (s *ClaudeCodeService) ConsumeSilentRun(runID string) bool {
 	return ok
 }
 
+// markTelegramRun records a Telegram-originated turn (telegram_poll.go) so
+// emitFinal can DM the reply back to the originating chat. Mirrors codex'
+// markTelegramRun; entries with no chat id are unroutable and skipped.
+func (s *ClaudeCodeService) markTelegramRun(runID string, chatID string) {
+	if runID == "" || chatID == "" {
+		return
+	}
+	s.telegramRunsMu.Lock()
+	if s.telegramRuns == nil {
+		s.telegramRuns = make(map[string]string)
+	}
+	s.telegramRuns[runID] = chatID
+	s.telegramRunsMu.Unlock()
+	slog.Info("telegram run marked — reply will be DMed",
+		"component", "claudecode", "runID", runID, "chatID", chatID)
+}
+
+// hasTelegramRun reports (non-consuming) whether a Telegram-originated run is
+// still awaiting its reply — backs the typing keeper (telegram_poll.go).
+func (s *ClaudeCodeService) hasTelegramRun(runID string) bool {
+	if runID == "" {
+		return false
+	}
+	s.telegramRunsMu.Lock()
+	_, ok := s.telegramRuns[runID]
+	s.telegramRunsMu.Unlock()
+	return ok
+}
+
+// consumeTelegramRun is one-shot: returns the chat id for a Telegram-originated
+// run ("" when none) and removes the entry. Called by emitFinal (reply
+// routing) and handleError (leak prevention).
+func (s *ClaudeCodeService) consumeTelegramRun(runID string) string {
+	s.telegramRunsMu.Lock()
+	chatID, ok := s.telegramRuns[runID]
+	if ok {
+		delete(s.telegramRuns, runID)
+	}
+	s.telegramRunsMu.Unlock()
+	if !ok {
+		return ""
+	}
+	return chatID
+}
+
 // markSlackRun records a Slack-originated turn (slack.go) so emitFinal can
 // post the reply back to the originating channel/thread. Mirrors codex'
 // markSlackRun; entries with no channel are unroutable and skipped.

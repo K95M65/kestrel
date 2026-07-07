@@ -329,6 +329,23 @@ func (s *ClaudeCodeService) emitFinal(f claudeEvent, dispatch func(domain.WSEven
 		go s.finishSlackTurn(o, stripForChannel(finalText))
 	}
 
+	// Telegram-originated turn (telegram_poll.go): DM the reply back to the
+	// originating chat. TTS was suppressed at injection (MarkSilentRun), so
+	// this DM is the user-visible output. [HW:/...] hardware markers and TTS
+	// audio tags are for HAL, not the chat bubble — strip them
+	// (stripForChannel, hal.go). Best-effort in a goroutine: the read loop
+	// must not block on the Bot API.
+	if chatID := s.consumeTelegramRun(runID); chatID != "" && finalText != "" {
+		if reply := stripForChannel(finalText); reply != "" {
+			go func() {
+				if err := s.SendToUser(chatID, reply, ""); err != nil {
+					slog.Error("telegram reply send failed",
+						"component", "claudecode", "runID", runID, "chatID", chatID, "error", err)
+				}
+			}()
+		}
+	}
+
 	// The whole reply as a single assistant delta BEFORE chat.final — the
 	// shared consumer only flushes TTS + [HW:/…] markers (and logs tts_send,
 	// which the web chat reads) from accumulated deltas at lifecycle.end;
@@ -380,6 +397,14 @@ func (s *ClaudeCodeService) handleError(msg string, dispatch func(domain.WSEvent
 	s.currentRunID.Store("")
 	s.pendingRunID.Store("")
 	s.lastAssistantText.Store("")
+
+	// Telegram-originated turn: consume the tracker so the map doesn't leak
+	// (and the typing keeper stops). No DM — the user simply gets no reply
+	// for a failed turn.
+	if chatID := s.consumeTelegramRun(runID); chatID != "" {
+		slog.Warn("telegram-originated turn failed — reply dropped",
+			"component", "claudecode", "runID", runID, "chatID", chatID)
+	}
 
 	// Slack-originated turn: consume the tracker (no reply for a failed turn)
 	// and clear the eyes ack reaction so the message isn't left marked.

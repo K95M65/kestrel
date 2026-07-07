@@ -124,6 +124,18 @@ type ClaudeCodeService struct {
 	poseBucketRunsMu sync.Mutex
 	poseBucketRuns   map[string]poseBucketInfo
 
+	// telegramRuns maps a Telegram-originated runID → originating chat id so
+	// emitFinal DMs the reply back (see telegram_poll.go / translator.go).
+	telegramRunsMu sync.Mutex
+	telegramRuns   map[string]string
+
+	// Telegram inbound test seams (telegram_poll.go). Zero values select the
+	// production defaults: api.telegram.org, the on-disk offset file and the
+	// real sendChat-backed send step.
+	telegramAPIBase    string
+	telegramOffsetPath string
+	telegramSendTurn   func(text, reqID, runID string) error
+
 	// slackRuns maps a Slack-originated runID → its origin channel/thread so
 	// emitFinal posts the reply back (see slack.go / translator.go).
 	slackRunsMu sync.Mutex
