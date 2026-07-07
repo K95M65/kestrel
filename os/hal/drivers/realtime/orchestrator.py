@@ -174,14 +174,21 @@ class RealtimeOrchestrator:
     flow (device → OpenClaw).
     """
 
+    # PicoClaw and Codex reuse OpenClawContextManager: their workspaces are
+    # verbatim copies of OpenClaw's layout (SOUL.md / IDENTITY.md / MEMORY.md /
+    # memory/), only the root dir differs.
     CONTEXT_MANAGERS: dict[str, type[ContextManagerBase]] = {
         AgentGateway.OPENCLAW: OpenClawContextManager,
         AgentGateway.HERMES: HermesContextManager,
+        AgentGateway.PICOCLAW: OpenClawContextManager,
+        AgentGateway.CODEX: OpenClawContextManager,
     }
 
     WORKSPACE_DIRS: dict[str, str] = {
         AgentGateway.OPENCLAW: config.OPENCLAW_WORKSPACE_DIR,
         AgentGateway.HERMES: config.HERMES_WORKSPACE_DIR,
+        AgentGateway.PICOCLAW: config.PICOCLAW_WORKSPACE_DIR,
+        AgentGateway.CODEX: config.CODEX_WORKSPACE_DIR,
     }
 
     def __init__(
