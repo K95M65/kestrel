@@ -227,6 +227,54 @@ Until the early `lan_ip` poll lands, the manual copy link falls back to
   remove the constraint, but the target hardware has a single Wi-Fi radio — so
   the "learn the IP before AP dies, or via mDNS after" model is inherent.
 
+### Marking the Wi-Fi step done after the reload
+
+The auto-redirect lands a **full page reload on the new LAN-IP origin**
+(`http://<lan_ip>/setup?…`), which is a different origin from the AP page. All
+of the Setup form's React state — including the `ssid` / `password` the operator
+just typed — resets to empty. `/api/device/config`, which would rehydrate the
+saved SSID, is admin-gated and a fresh device has no admin session yet (401), so
+the reloaded page can't read it back. Left alone, the Wi-Fi step would therefore
+re-render "Choose your Wi-Fi + enter its password" even though the device is
+already on home Wi-Fi.
+
+To avoid re-prompting, the Wi-Fi step's done-state is derived from the
+**device's live network state**, not the form fields (`useWifiConnected.ts`):
+
+- `GET /api/network/check-internet` — the device has an uplink. The setup AP has
+  no uplink, so internet == the device left AP mode and joined a real network.
+- `GET /api/network/current` — the SSID `wlan0` is presently associated with
+  (`iwgetid -r`); non-empty == station mode.
+
+Both are **public** (no admin auth), matching the same internet signal
+`SetupGate` (`App.tsx`) already uses to pick continue vs initial mode. When both
+are satisfied, `sectionDone.wifi` short-circuits to done and `WifiSection`
+collapses the picker into a **"Connected to `<ssid>`"** row (with a *Change
+network* link to switch), instead of the empty selector. The associated SSID
+also prefills the picker. The Wi-Fi *password* never leaves the device — only
+the associated SSID name (which the device already scans and broadcasts) and the
+`check-internet` boolean are read.
+
+While that first probe is still in flight (`checking`), `WifiSection` renders a
+**skeleton** for the network + password fields instead of the empty picker, so
+the step never flashes "Choose your Wi-Fi" for a beat before resolving into the
+connected state. Later background retries (covering the DHCP-lease race) don't
+re-raise the skeleton, so the picker stays interactive once shown.
+
+### Deep-linking into a step via the URL hash
+
+The redirect carries the original hash through, so a URL like
+`http://<lan_ip>/setup?<params>#voice` should open the **Voice** tab directly.
+On mount, `Setup.tsx` reads `window.location.hash` and, when it names a
+currently-visible section (`#wifi` / `#voice` / `#face` / …), selects that step.
+Because Voice/Face only exist in continue mode, this relies on `SetupGate`
+resolving the mode *before* Setup mounts (it renders `null` until then).
+
+The continue-mode auto-scroll — which otherwise jumps the operator to the first
+*incomplete* step — is suppressed when a valid deep-link hash was honored
+(`deepLinkedRef`), so `#voice` isn't immediately overridden back to Wi-Fi. The
+"all required steps done → bounce to `/monitor`" behavior still applies.
+
 ## Post-Setup
 
 After `SetUpCompleted = true`:
@@ -307,7 +355,8 @@ full listener example lives in the file header of `lib/setupBridge.ts`.
 | `os/services/web/src/lib/setupBridge.ts` | Parent-window event bridge (postMessage) |
 | `os/services/web/src/pages/Setup.tsx` | Setup wizard UI + bridge emit call sites + IP-first copy link |
 | `os/services/web/src/hooks/setup/useSetupStatusPolling.ts` | AP→STA auto-redirect: phase poll + LAN-IP probe + mDNS probe |
-| `os/services/internal/network/service.go` | WiFi connect, AP mode |
+| `os/services/web/src/hooks/setup/useWifiConnected.ts` | Post-reload Wi-Fi-done detection from live device state (`check-internet` + `network/current`) |
+| `os/services/internal/network/service.go` | WiFi connect, AP mode, `CurrentNetwork()` (associated SSID) |
 | `os/services/server/device/delivery/http/handler.go` | HTTP setup handler (async goroutine) |
 | `os/services/server/config/config.go` | Config load/save |
 | `imager/build-orangepi.sh`, `imager/build.sh`, `scripts/provision/setup.sh` | nginx config baked into the image (incl. `connect-src` CSP) |

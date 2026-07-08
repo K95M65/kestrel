@@ -216,6 +216,52 @@ early-poll lấy được `lan_ip`, link copy thủ công fallback về
   được ràng buộc, nhưng phần cứng đích chỉ có một sóng Wi-Fi — nên mô hình "biết
   IP trước khi AP chết, hoặc qua mDNS sau đó" là cố hữu.
 
+### Đánh dấu bước Wi-Fi đã xong sau khi reload
+
+Auto-redirect đưa trang vào một **full page reload trên origin LAN-IP mới**
+(`http://<lan_ip>/setup?…`), là một origin khác với trang AP. Toàn bộ React
+state của form Setup — kể cả `ssid` / `password` operator vừa nhập — reset về
+rỗng. `/api/device/config`, thứ lẽ ra rehydrate lại SSID đã lưu, bị admin-gate và
+thiết bị mới chưa có admin session (401), nên trang sau reload không đọc lại
+được. Nếu để nguyên, bước Wi-Fi sẽ render lại "Choose your Wi-Fi + nhập password"
+dù thiết bị đã ở trên Wi-Fi nhà.
+
+Để tránh hỏi lại, trạng thái done của bước Wi-Fi được suy ra từ **trạng thái
+mạng sống của thiết bị**, không phải từ các ô form (`useWifiConnected.ts`):
+
+- `GET /api/network/check-internet` — thiết bị có uplink. AP setup không có
+  uplink, nên có internet == thiết bị đã rời AP mode và join một mạng thật.
+- `GET /api/network/current` — SSID mà `wlan0` đang associated (`iwgetid -r`);
+  non-empty == đang ở station mode.
+
+Cả hai đều **public** (không cần admin auth), khớp đúng tín hiệu internet mà
+`SetupGate` (`App.tsx`) đã dùng để chọn continue vs initial mode. Khi cả hai
+thỏa, `sectionDone.wifi` short-circuit thành done và `WifiSection` thu gọn
+picker thành một hàng **"Connected to `<ssid>`"** (kèm link *Change network* để
+đổi mạng) thay cho selector rỗng. SSID đang associated cũng được prefill vào
+picker. *Password* Wi-Fi không bao giờ rời thiết bị — chỉ tên SSID đang associated
+(thứ thiết bị vốn đã scan và broadcast) và boolean `check-internet` được đọc.
+
+Trong lúc probe đầu tiên còn đang chạy (`checking`), `WifiSection` render một
+**skeleton** cho ô network + password thay vì picker rỗng, để bước này không
+flash "Choose your Wi-Fi" một nhịp trước khi resolve sang trạng thái connected.
+Các retry nền về sau (xử lý race DHCP-lease) không raise lại skeleton, nên picker
+giữ nguyên tương tác được sau khi đã hiện.
+
+### Deep-link vào một bước qua URL hash
+
+Redirect carry nguyên hash, nên một URL kiểu `http://<lan_ip>/setup?<params>#voice`
+phải mở thẳng tab **Voice**. Lúc mount, `Setup.tsx` đọc `window.location.hash` và
+khi nó trỏ tới một section đang hiển thị (`#wifi` / `#voice` / `#face` / …) thì
+chọn bước đó. Vì Voice/Face chỉ tồn tại ở continue mode, việc này dựa vào
+`SetupGate` resolve xong mode *trước khi* Setup mount (nó render `null` cho tới
+lúc đó).
+
+Auto-scroll của continue mode — vốn nhảy operator tới bước *chưa hoàn thành* đầu
+tiên — bị chặn khi một deep-link hash hợp lệ đã được honor (`deepLinkedRef`), nên
+`#voice` không bị ghi đè ngược về Wi-Fi ngay. Hành vi "tất cả bước bắt buộc xong
+→ bounce về `/monitor`" vẫn được giữ.
+
 ## Post-Setup
 
 Sau khi `SetUpCompleted = true`:
@@ -296,7 +342,8 @@ listener đầy đủ nằm ở phần header của file `lib/setupBridge.ts`.
 | `os/services/web/src/lib/setupBridge.ts` | Bridge sự kiện về cửa sổ cha (postMessage) |
 | `os/services/web/src/pages/Setup.tsx` | UI wizard Setup + các điểm gọi emit bridge + link copy ưu tiên IP |
 | `os/services/web/src/hooks/setup/useSetupStatusPolling.ts` | Auto-redirect AP→STA: phase poll + LAN-IP probe + mDNS probe |
-| `os/services/internal/network/service.go` | WiFi connect, AP mode |
+| `os/services/web/src/hooks/setup/useWifiConnected.ts` | Nhận biết Wi-Fi-đã-xong sau reload từ trạng thái sống của thiết bị (`check-internet` + `network/current`) |
+| `os/services/internal/network/service.go` | WiFi connect, AP mode, `CurrentNetwork()` (SSID đang associated) |
 | `os/services/server/device/delivery/http/handler.go` | HTTP setup handler (goroutine async) |
 | `os/services/server/config/config.go` | Config load/save |
 | `imager/build-orangepi.sh`, `imager/build.sh`, `scripts/provision/setup.sh` | nginx config bake vào image (gồm CSP `connect-src`) |
