@@ -119,6 +119,19 @@ _STRANGER_SNAPSHOTS_DIR = STRANGER_STATE_DIR / "snapshots"
 # face-enroll skill handles asking the user and POST /face/enroll on confirm.
 _FAMILIAR_VISIT_THRESHOLD = 2
 
+# Auto-captured "extended" enrollment views persist in this per-user subfolder,
+# i.e. USERS_DIR/<user>/.extended/. It is dot-prefixed so the upload loader
+# (which reads image FILES directly under the user dir) never mistakes an
+# extended view for an upload, and the photos watcher can skip it (the extended
+# set self-manages and must not trigger a full re-embed of every upload). Each
+# captured view is stored as a JPEG crop PLUS a sidecar .npy holding its
+# (already L2-normalized) embedding, so a restart reloads the exact embedding
+# and never has to re-detect a hard side-view — which is the very thing this
+# feature exists to keep, and the thing a re-detect would be most likely to miss.
+_EXTENDED_SUBDIR = ".extended"
+_EXTENDED_IMG_EXT = ".jpg"
+_EXTENDED_EMB_EXT = ".npy"
+
 
 # =============================================================================
 # Alignment helpers — ported & renamed from temp-updated-face-recognizer/utils.py
@@ -793,6 +806,8 @@ class FaceRecognizer:
         scrfd_model_path: str = _SCRFD_MODEL_PATH,
         edgeface_model_path: str = _EDGEFACE_MODEL_PATH,
         landmark_model_path: str = _LANDMARK_MODEL_PATH,
+        max_extended_images: int = 5,
+        diversity_threshold: float = 0.8,
     ):
         self._area_ratio_threshold: float = area_ratio_threshold
         self._threshold: float = threshold
@@ -802,9 +817,36 @@ class FaceRecognizer:
         self._edgeface_model_path: str = edgeface_model_path
         self._landmark_model_path: str = landmark_model_path
 
+        # --- Auto-extend enrollment config -----------------------------------
+        # Max number of dynamically-captured extra views KEPT per user (on top
+        # of their untouched uploaded enrollment images).
+        self._max_extended_images: int = max_extended_images
+        # A confidently-matched live frame is only added to a user's extended
+        # set when its max cosine similarity to that user's existing views
+        # (uploads + current extended) is BELOW this value. Anything above is
+        # redundant (near-duplicate of a view we already have) and skipped, so
+        # the extended set fills up with genuinely new poses (e.g. side-view).
+        self._diversity_threshold: float = diversity_threshold
+
         self._app: _EdgeFacePipeline | None = None
         self._owner_embeddings: npt.NDArray[np.float32] | None = None
         self._owner_labels: npt.NDArray[np.str_] | None = None
+        # Dynamically-grown per-user "extended" bank. Same FRIEND_PREFIX labels
+        # as the uploads so retrieval maps a match straight back to the friend
+        # id regardless of which bank it came from. Kept SEPARATE from
+        # ``_owner_embeddings`` so the user's uploads are never mutated and can
+        # always be rebuilt verbatim from disk. Mirrored to disk under each
+        # user's ``.extended`` folder so it survives restarts (see
+        # _EXTENDED_SUBDIR). ``_extended_paths`` runs parallel to the
+        # embeddings/labels and holds each view's on-disk JPEG path, so an
+        # eviction during pruning can delete the backing files too.
+        self._extended_embeddings: npt.NDArray[np.float32] | None = None
+        self._extended_labels: npt.NDArray[np.str_] | None = None
+        self._extended_paths: npt.NDArray[np.object_] | None = None
+        # Monotonic counter appended to extended-view filenames so two views
+        # captured in the same millisecond never collide (which would overwrite
+        # a file and desync disk from memory).
+        self._extended_save_seq: int = 0
         self._stranger_counter: int = 0
         self._stranger_embeddings: npt.NDArray[np.float32] | None = None
         self._stranger_labels: npt.NDArray[np.str_] | None = None
@@ -860,6 +902,14 @@ class FaceRecognizer:
             if owners:
                 self._owner_embeddings = None
                 self._owner_labels = None
+                # Extended views belong to the (now-cleared) uploads; drop the
+                # in-memory copy so no sample dangles on a removed user. The
+                # on-disk .extended files are left intact (persistence): a
+                # subsequent load_from_disk repopulates them, and only removing a
+                # person/photo (which rmtrees the user dir) erases them for good.
+                self._extended_embeddings = None
+                self._extended_labels = None
+                self._extended_paths = None
 
             if strangers:
                 self._stranger_embeddings = None
@@ -929,6 +979,380 @@ class FaceRecognizer:
 
         return scores, ids
 
+    # -- Auto-extend enrollment --------------------------------------------------
+    #
+    # Users typically upload frontal shots, but a ceiling/desk camera mostly
+    # sees them side-on. Those side views miss the frontal bank, get flagged as
+    # strangers, and spawn duplicate "stranger_N" identities. To fix this each
+    # user gets a second, dynamically-grown "extended" bank: every time a live
+    # frame matches them confidently we may keep that frame's embedding as an
+    # extra reference view — but only if it is DIFFERENT enough from what we
+    # already store (so the bank captures new poses instead of near-duplicates),
+    # and capped at ``max_extended_images`` most-diverse samples. The uploaded
+    # images are never touched; the extended bank only ever grows recall.
+
+    def _combined_owner_bank(
+        self,
+    ) -> tuple[npt.NDArray[np.float32] | None, npt.NDArray[np.str_] | None]:
+        """Uploaded enrollment bank + extended bank, concatenated for retrieval.
+
+        Both banks use FRIEND_PREFIX labels, so a nearest-neighbour hit in
+        either resolves to the same friend id. Returns (None, None) when no
+        owner has been enrolled yet.
+        """
+        embeds: list[npt.NDArray[np.float32]] = []
+        labels: list[npt.NDArray[np.str_]] = []
+        if self._owner_embeddings is not None and self._owner_labels is not None:
+            embeds.append(self._owner_embeddings)
+            labels.append(self._owner_labels)
+        if self._extended_embeddings is not None and self._extended_labels is not None:
+            embeds.append(self._extended_embeddings)
+            labels.append(self._extended_labels)
+        if not embeds:
+            return None, None
+        return np.concatenate(embeds), np.concatenate(labels)
+
+    @staticmethod
+    def _user_embeddings(
+        bank: npt.NDArray[np.float32] | None,
+        labels: npt.NDArray[np.str_] | None,
+        raw_label: str,
+    ) -> npt.NDArray[np.float32] | None:
+        """Rows of ``bank`` whose label equals ``raw_label`` (a friend_* id), or
+        None if the bank is empty or holds nothing for that user."""
+        if bank is None or labels is None:
+            return None
+        mask = labels == raw_label
+        if not np.any(mask):
+            return None
+        return bank[mask]
+
+    def _maybe_extend_user(
+        self,
+        raw_label: str,
+        embedding: npt.NDArray[np.float32],
+        crop: npt.NDArray[np.uint8] | None,
+    ) -> None:
+        """Consider folding one confidently-matched live view into a user's
+        extended set AND persisting it to disk. Caller must hold ``self._lock``.
+
+        ``embedding`` is assumed L2-normalized (as produced in ``detect``).
+        ``crop`` is the BGR face crop to persist; if it is None/empty the view is
+        not added, keeping memory and disk in lock-step (every in-memory extended
+        embedding has a backing file).
+
+        Diversity gate: compute the max cosine similarity between the new view
+        and everything already stored for this user (uploads + extended). If it
+        exceeds ``diversity_threshold`` (default 0.8) the view is a near-
+        duplicate of one we already have -> skip. Otherwise it shows a pose the
+        set lacks (e.g. a ~0.35 side-view that only just cleared the confidence
+        threshold) -> persist it, append it, and prune back to the most diverse
+        samples.
+        """
+        if crop is None or crop.size == 0:
+            return
+
+        enroll = self._user_embeddings(
+            self._owner_embeddings, self._owner_labels, raw_label
+        )
+        extended = self._user_embeddings(
+            self._extended_embeddings, self._extended_labels, raw_label
+        )
+        existing = [e for e in (enroll, extended) if e is not None and len(e)]
+        if existing:
+            existing_stack = np.concatenate(existing)
+            max_sim = float(np.max(existing_stack @ embedding))
+            if max_sim > self._diversity_threshold:
+                # Redundant — we already store an almost identical view.
+                return
+
+        # Persist first: a view enters the in-memory bank only once it has a
+        # backing file, so the two never drift apart.
+        path = self._save_extended_view(raw_label, embedding, crop)
+        if path is None:
+            return
+
+        self._extended_embeddings = (
+            np.concatenate([self._extended_embeddings, embedding[None, :]])
+            if self._extended_embeddings is not None
+            else embedding[None, :].copy()
+        )
+        self._extended_labels = (
+            np.concatenate([self._extended_labels, np.array([raw_label])])
+            if self._extended_labels is not None
+            else np.array([raw_label])
+        )
+        self._extended_paths = (
+            np.concatenate([self._extended_paths, np.array([path], dtype=object)])
+            if self._extended_paths is not None
+            else np.array([path], dtype=object)
+        )
+        self._prune_extended_set(raw_label)
+        kept = self._user_embeddings(
+            self._extended_embeddings, self._extended_labels, raw_label
+        )
+        logger.debug(
+            "Extended set for '%s' now holds %d view(s)",
+            raw_label,
+            0 if kept is None else len(kept),
+        )
+
+    def _prune_extended_set(self, raw_label: str) -> None:
+        """Trim one user's extended bank to the ``max_extended_images`` most
+        diverse views, deleting the backing files of evicted views. Caller must
+        hold ``self._lock``.
+
+        Greedy farthest-point selection anchored on the user's (fixed) uploads:
+        starting from the uploads as reference anchors, repeatedly keep the
+        candidate whose similarity to everything already kept (uploads + kept
+        extended) is LOWEST — i.e. the farthest / most novel pose. This packs
+        the limited slots with the views that best complement the frontal
+        uploads (side-views, tilts) rather than more frontals. If the user has
+        no uploads to anchor on, the newest candidate seeds the selection.
+        """
+        if (
+            self._extended_embeddings is None
+            or self._extended_labels is None
+            or self._extended_paths is None
+        ):
+            return
+
+        mask = self._extended_labels == raw_label
+        idxs = np.nonzero(mask)[0]
+        if len(idxs) <= self._max_extended_images:
+            return
+
+        candidates = self._extended_embeddings[idxs]  # (M, D), newest is last
+
+        enroll = self._user_embeddings(
+            self._owner_embeddings, self._owner_labels, raw_label
+        )
+        if enroll is not None and len(enroll):
+            selected_ref: list[npt.NDArray[np.float32]] = [enroll]
+            selected_local: list[int] = []
+        else:
+            seed = len(candidates) - 1  # newest view
+            selected_ref = [candidates[seed][None, :]]
+            selected_local = [seed]
+
+        remaining = [j for j in range(len(candidates)) if j not in selected_local]
+        while len(selected_local) < self._max_extended_images and remaining:
+            ref = np.concatenate(selected_ref)  # (K, D)
+            sims = candidates[remaining] @ ref.T  # (R, K)
+            # Closeness of each candidate to its nearest already-kept view;
+            # the smallest such value is the most novel candidate.
+            nearest = sims.max(axis=1)
+            pick = int(np.argmin(nearest))
+            chosen = remaining.pop(pick)
+            selected_local.append(chosen)
+            selected_ref.append(candidates[chosen][None, :])
+
+        keep_global = idxs[np.array(selected_local)]
+        # Delete files backing the dropped rows so disk mirrors memory and stale
+        # poses don't pile up under the user's .extended folder.
+        for gi in np.setdiff1d(idxs, keep_global):
+            self._delete_extended_view(str(self._extended_paths[gi]))
+
+        keep_mask = ~mask  # keep every OTHER user's rows untouched
+        keep_mask[keep_global] = True
+        self._extended_embeddings = self._extended_embeddings[keep_mask]
+        self._extended_labels = self._extended_labels[keep_mask]
+        self._extended_paths = self._extended_paths[keep_mask]
+
+    # -- Extended-set persistence (disk) -----------------------------------------
+
+    def _extended_dir_for(self, raw_label: str) -> Path:
+        """Per-user directory holding auto-captured extended views.
+
+        The user's on-disk folder name is exactly the friend label without the
+        FRIEND_PREFIX (load_from_disk labels each user by their folder name), so
+        no re-normalization is needed here.
+        """
+        folder = raw_label.removeprefix(self.FRIEND_PREFIX)
+        return USERS_DIR / folder / _EXTENDED_SUBDIR
+
+    def _save_extended_view(
+        self,
+        raw_label: str,
+        embedding: npt.NDArray[np.float32],
+        crop: npt.NDArray[np.uint8],
+    ) -> str | None:
+        """Persist one extended view: a JPEG crop + a sidecar .npy embedding.
+
+        Returns the JPEG path on success, or None if it could not be written (in
+        which case the caller must NOT add the view to the in-memory bank). The
+        sidecar embedding is what a later load trusts, so a restart reloads the
+        exact vector and never has to re-detect the (possibly hard) pose.
+        """
+        try:
+            dest = self._extended_dir_for(raw_label)
+            dest.mkdir(parents=True, exist_ok=True)
+            # Millisecond stamp keeps names sortable; the seq suffix guarantees
+            # uniqueness even for two captures within the same millisecond.
+            self._extended_save_seq += 1
+            stem = f"ext_{int(time.time() * 1000)}_{self._extended_save_seq}"
+            img_path = dest / f"{stem}{_EXTENDED_IMG_EXT}"
+            emb_path = dest / f"{stem}{_EXTENDED_EMB_EXT}"
+            if not cv2.imwrite(str(img_path), crop):
+                logger.warning("[face-v2] cv2.imwrite failed for %s", img_path)
+                return None
+            np.save(emb_path, embedding.astype(np.float32))
+            return str(img_path)
+        except (OSError, cv2.error) as e:
+            logger.warning("[face-v2] failed to save extended view: %s", e)
+            return None
+
+    @staticmethod
+    def _delete_extended_view(img_path: str) -> None:
+        """Delete an extended view's JPEG and its sidecar .npy (best-effort)."""
+        try:
+            p = Path(img_path)
+            p.unlink(missing_ok=True)
+            p.with_suffix(_EXTENDED_EMB_EXT).unlink(missing_ok=True)
+        except OSError as e:
+            logger.warning(
+                "[face-v2] failed to delete extended view %s: %s", img_path, e
+            )
+
+    def _load_extended_embedding(
+        self, img_path: Path, expected_dim: int | None = None
+    ) -> npt.NDArray[np.float32] | None:
+        """Return the L2-normalized embedding for one persisted extended view.
+
+        Fast path: the sidecar .npy next to the JPEG (exact, no inference). It is
+        trusted as-is because it was validated when captured — crucially we do
+        NOT re-gate it against the uploads, since a legitimate side-view may only
+        match other extended views, not the frontal uploads. If ``expected_dim``
+        is given and the sidecar's length differs (a model swap invalidated it),
+        the sidecar is ignored and we re-embed the JPEG with the current model.
+        Fallback: re-embed the JPEG and take the largest detected face, then
+        rewrite the sidecar. Returns None if neither yields an embedding.
+        """
+        emb_path = img_path.with_suffix(_EXTENDED_EMB_EXT)
+        if emb_path.is_file():
+            try:
+                emb = np.load(emb_path).astype(np.float32).reshape(-1)
+                n = float(np.linalg.norm(emb))
+                if n > 0 and (expected_dim is None or emb.shape[0] == expected_dim):
+                    return emb / n
+            except (OSError, ValueError) as e:
+                logger.warning("[face-v2] bad extended sidecar %s: %s", emb_path, e)
+
+        if self._app is None:
+            return None
+        img = cv2.imread(str(img_path))
+        if img is None:
+            return None
+        results = self._app.get(img)
+        if not results:
+            return None
+        best = max(
+            results,
+            key=lambda r: max(r["bbox"][2] - r["bbox"][0], 0)
+            * max(r["bbox"][3] - r["bbox"][1], 0),
+        )
+        emb = best["embedding"].astype(np.float32)
+        n = float(np.linalg.norm(emb))
+        if n == 0:
+            return None
+        emb = emb / n
+        try:
+            np.save(emb_path, emb)
+        except OSError:
+            pass
+        return emb
+
+    def load_extended_from_disk(self, person_name: str) -> int:
+        """Load one user's persisted extended views into the in-memory bank.
+
+        Meant to be called by FacePerception.load_from_disk AFTER the user's
+        uploads have been trained, so the owner bank's embedding dimension is
+        known. Returns the number of views loaded.
+
+        Each view's sidecar embedding is trusted as-is (it was validated at
+        capture); we deliberately do NOT re-gate against the uploads, since a
+        genuine side-view often matches only other extended views. A view is
+        dropped (and its files removed) only when it is truly unusable — no
+        sidecar AND no detectable face in the crop — so the set self-heals
+        without discarding the hard poses this feature exists to keep. A shrunk
+        ``max_extended_images`` (config change) is enforced by the final prune.
+        """
+        if self._app is None:
+            return 0
+
+        raw_label = self.FRIEND_PREFIX + person_name
+        dest = self._extended_dir_for(raw_label)
+        if not dest.is_dir():
+            return 0
+
+        owner = self._user_embeddings(
+            self._owner_embeddings, self._owner_labels, raw_label
+        )
+        expected_dim = int(owner.shape[1]) if owner is not None and len(owner) else None
+
+        embeds: list[npt.NDArray[np.float32]] = []
+        paths: list[str] = []
+        for img_path in sorted(dest.glob(f"*{_EXTENDED_IMG_EXT}")):
+            emb = self._load_extended_embedding(img_path, expected_dim=expected_dim)
+            if emb is None:
+                # Neither a usable sidecar nor a detectable face — drop it.
+                self._delete_extended_view(str(img_path))
+                continue
+            embeds.append(emb)
+            paths.append(str(img_path))
+
+        if not embeds:
+            return 0
+
+        with self._lock:
+            stacked_e = np.stack(embeds, axis=0)
+            stacked_l = np.array([raw_label] * len(embeds))
+            stacked_p = np.array(paths, dtype=object)
+            self._extended_embeddings = (
+                np.concatenate([self._extended_embeddings, stacked_e])
+                if self._extended_embeddings is not None
+                else stacked_e
+            )
+            self._extended_labels = (
+                np.concatenate([self._extended_labels, stacked_l])
+                if self._extended_labels is not None
+                else stacked_l
+            )
+            self._extended_paths = (
+                np.concatenate([self._extended_paths, stacked_p])
+                if self._extended_paths is not None
+                else stacked_p
+            )
+            self._prune_extended_set(raw_label)
+        logger.info(
+            "Loaded %d extended view(s) for '%s'", len(embeds), person_name
+        )
+        return len(embeds)
+
+    @staticmethod
+    def _crop_face(
+        frame: npt.NDArray[np.uint8],
+        bbox: tuple[int, int, int, int],
+        margin: float = 0.3,
+    ) -> npt.NDArray[np.uint8] | None:
+        """BGR crop around a detection bbox with a relative margin, clamped to
+        the frame. The margin gives the reloader enough context to re-detect the
+        face if a sidecar embedding is ever missing. None if degenerate.
+        """
+        h, w = frame.shape[:2]
+        x1, y1, x2, y2 = bbox
+        bw, bh = x2 - x1, y2 - y1
+        if bw <= 0 or bh <= 0:
+            return None
+        mx, my = int(bw * margin), int(bh * margin)
+        x1 = max(0, x1 - mx)
+        y1 = max(0, y1 - my)
+        x2 = min(w, x2 + mx)
+        y2 = min(h, y2 + my)
+        if x2 <= x1 or y2 <= y1:
+            return None
+        return frame[y1:y2, x1:x2].copy()
+
     def detect(self, frame: cv2.typing.MatLike):
         if self._app is None:
             msg = f"[{self.__class__.__name__}] service must be started first"
@@ -953,8 +1377,12 @@ class FaceRecognizer:
         with self._lock:
             self._load_strangers_state()
 
+            # Owner retrieval compares against BOTH banks at once: the user's
+            # untouched uploads and their dynamically-extended views. Both carry
+            # FRIEND_PREFIX labels, so a hit in either resolves to the friend id.
+            owner_bank, owner_bank_labels = self._combined_owner_bank()
             owner_scores, owner_ids = self._retrieve(
-                embeds, self._owner_embeddings, self._owner_labels
+                embeds, owner_bank, owner_bank_labels
             )
             stranger_scores, stranger_ids = self._retrieve(
                 embeds, self._stranger_embeddings, self._stranger_labels
@@ -962,6 +1390,12 @@ class FaceRecognizer:
 
         new_stranger_embeds = []
         new_stranger_labels = []
+        # (friend_raw_label, normalized_embedding, bbox) for confidently-matched
+        # faces that may extend their user's set (diversity-gated + cropped +
+        # persisted after the loop).
+        extend_candidates: list[
+            tuple[str, npt.NDArray[np.float32], tuple[int, int, int, int]]
+        ] = []
         # per-face: (bbox_pixels, face_kind, label)  face_kind: "friend"|"stranger"|"unsure"
         faces: list[Face] = []
 
@@ -981,6 +1415,11 @@ class FaceRecognizer:
                 raw_id = owner_ids[i] or ""
                 person_id = raw_id.removeprefix(self.FRIEND_PREFIX)
                 face_kind = PersonKind.FRIEND
+                # Confidently identified: this live view is a candidate to
+                # enrich the user's extended set (kept only if it adds a pose
+                # the current set lacks — see _maybe_extend_user).
+                if raw_id:
+                    extend_candidates.append((raw_id, embeds[i], (x1, y1, x2, y2)))
             elif s_score > self._threshold:
                 raw_id = stranger_ids[i] or ""
                 person_id = raw_id.removeprefix(self.STRANGER_PREFIX)
@@ -1026,6 +1465,15 @@ class FaceRecognizer:
                 )
                 self._evict_oldest_strangers()
                 self._save_strangers_state()
+
+        # Auto-extend enrollment: crop each confidently-matched view and fold it
+        # into its user's extended set (diversity-gated, persisted + pruned
+        # inside the helper).
+        if extend_candidates:
+            with self._lock:
+                for raw_label, emb, bbox in extend_candidates:
+                    crop = self._crop_face(frame, bbox)
+                    self._maybe_extend_user(raw_label, emb, crop)
 
         return faces
 
@@ -1093,6 +1541,8 @@ class FacePerception(Perception[cv2.typing.MatLike]):
         area_ratio_threshold: float = config.FACE_AREA_RATIO_THRESHOLD,
         owners_forget_ts: float = config.FACE_OWNER_FORGET_S,
         strangers_forget_ts: float = config.FACE_STRANGER_FORGET_S,
+        max_extended_images: int = 5,
+        diversity_threshold: float = 0.8,
     ):
         super().__init__(perception_state, send_event)
 
@@ -1102,6 +1552,8 @@ class FacePerception(Perception[cv2.typing.MatLike]):
             threshold=threshold,
             negative_threshold=negative_threshold,
             max_strangers=max_strangers,
+            max_extended_images=max_extended_images,
+            diversity_threshold=diversity_threshold,
         )
         self._face_recognizer.start()
         self._owners_forget_ts: float = owners_forget_ts
@@ -1143,9 +1595,17 @@ class FacePerception(Perception[cv2.typing.MatLike]):
         USERS_DIR.mkdir(parents=True, exist_ok=True)
 
         def _latest_mtime() -> float:
+            # Ignore the auto-managed .extended folders: they are written by the
+            # recognizer itself (extend + prune), are already reflected in the
+            # in-memory bank, and must NOT trigger a full re-embed of every
+            # upload. Only user-driven upload/metadata changes should reload.
             try:
                 return max(
-                    (e.stat().st_mtime for e in USERS_DIR.rglob("*")),
+                    (
+                        e.stat().st_mtime
+                        for e in USERS_DIR.rglob("*")
+                        if _EXTENDED_SUBDIR not in e.parts
+                    ),
                     default=0.0,
                 )
             except OSError:
@@ -1265,6 +1725,11 @@ class FacePerception(Perception[cv2.typing.MatLike]):
                     len(images),
                     person_dir.name,
                 )
+
+            # Restore this user's persisted extended views AFTER their uploads
+            # are trained (the owner bank is then available to sanity-check each
+            # view). No-ops when the user has no .extended folder.
+            _ = self._face_recognizer.load_extended_from_disk(person_dir.name)
 
         n_owners = len(self._face_recognizer.owners)
         n_strangers = len(self._face_recognizer.strangers)
