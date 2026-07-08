@@ -39,4 +39,10 @@ const (
 	// (ANTHROPIC_* + channel launch flags, presync-owned), session.json, and the
 	// workspace/ Claude Code runs in.
 	claudecodeHome = "/root/.claudecode"
+
+	// EnvFile is the presync-owned launch env (ANTHROPIC_* creds + channel
+	// flags). systemd injects it into the gatewayd only; the web CLI sources it
+	// too so an interactive `claude` reuses the campaign key instead of
+	// prompting login.
+	EnvFile = claudecodeHome + "/.env"
 )

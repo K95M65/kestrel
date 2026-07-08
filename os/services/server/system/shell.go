@@ -1,12 +1,14 @@
 package system
 
 import (
+	"bufio"
 	"encoding/json"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -27,13 +29,27 @@ var shellUpgrader = websocket.Upgrader{
 // in both directions. Frames from the client are stdin bytes by default; small
 // JSON envelopes with `type: "resize"` resize the PTY (rows/cols).
 //
+// agentEnvFile, when non-nil, is resolved per-connection to the active agent
+// runtime's launch env file (e.g. claudecode's /root/.claudecode/.env). Its
+// KEY=VALUE pairs are merged into the PTY env (plus IS_SANDBOX=1) so an
+// interactive `claude` in the web CLI reuses the campaign API key instead of
+// prompting login — the file is otherwise only injected into the gatewayd
+// service by systemd, so a bare login shell would not see it. Returning "" (or
+// a missing file) skips the injection.
+//
 // Client → server frames:
 //   - TextMessage starting with '{' and ending with '}' AND parseable as
 //     {"type":"resize","rows":N,"cols":M}  ⇒ window resize signal
 //   - Anything else (text or binary)       ⇒ raw stdin bytes
 //
 // Server → client frames: raw stdout/stderr bytes as binary messages.
-func ShellHandler(c *gin.Context) {
+func ShellHandler(agentEnvFile func() string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		shellSession(c, agentEnvFile)
+	}
+}
+
+func shellSession(c *gin.Context, agentEnvFile func() string) {
 	ws, err := shellUpgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		log.Printf("[shell] upgrade failed: %v", err)
@@ -47,6 +63,11 @@ func ShellHandler(c *gin.Context) {
 		"TERM=xterm-256color",
 		"COLORTERM=truecolor",
 	)
+	if agentEnvFile != nil {
+		if extra := loadAgentEnv(agentEnvFile()); len(extra) > 0 {
+			cmd.Env = append(cmd.Env, extra...)
+		}
+	}
 
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
@@ -137,4 +158,46 @@ func ShellHandler(c *gin.Context) {
 			return
 		}
 	}
+}
+
+// loadAgentEnv parses a KEY=VALUE launch env file (blank/#/no-"=" lines
+// skipped, keys/values trimmed, surrounding double quotes stripped — same rules
+// as the gatewayd child env loader) and returns "KEY=VALUE" entries for the PTY
+// env. IS_SANDBOX=1 is appended when the file loads so a root `claude
+// --dangerously-skip-permissions` is allowed. An empty path or unreadable file
+// yields nil (no injection).
+func loadAgentEnv(path string) []string {
+	if path == "" {
+		return nil
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+
+	var out []string
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		i := strings.Index(line, "=")
+		if i < 0 {
+			continue
+		}
+		key := strings.TrimSpace(line[:i])
+		val := strings.Trim(strings.TrimSpace(line[i+1:]), `"`)
+		if key == "" {
+			continue
+		}
+		out = append(out, key+"="+val)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	// The device runs as root; claude refuses --dangerously-skip-permissions
+	// under uid 0 unless IS_SANDBOX=1 (mirrors the gatewayd child env).
+	return append(out, "IS_SANDBOX=1")
 }
