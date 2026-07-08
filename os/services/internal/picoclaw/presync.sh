@@ -139,6 +139,7 @@ jq_edit "$PICO_CONFIG" '
   | .agents.defaults.allow_read_outside_workspace = true
   | .agents.defaults.provider                     = "anthropic-messages"
   | .agents.defaults.model_name                   = "autonomous"
+  | .agents.defaults.image_model                  = "autonomous_vision"
 '
 
 # Upsert the "autonomous" model_list entry — drop any existing copy, append a fresh
@@ -151,6 +152,19 @@ jq_edit "$PICO_CONFIG" --arg ab "$DEFAULT_API_BASE" '
   | .model_list = ( (.model_list // []) | map(select(.model_name != "autonomous")) )
       + [ { model_name: "autonomous", provider: "anthropic-messages",
             model: "Auto-AI", api_base: ($existing // $ab) } ]
+'
+
+# Upsert the "autonomous_vision" model_list entry — the multimodal/vision model
+# agents.defaults.image_model routes image turns at. Same campaign-api endpoint +
+# provider as "autonomous"; preserve an already-set api_base (DYNAMIC overrides it
+# below from llm_base_url), else fall back to the default endpoint.
+log "ensure model_list autonomous_vision entry"
+jq_edit "$PICO_CONFIG" --arg ab "$DEFAULT_API_BASE" '
+  ( [ (.model_list // [])[] | select(.model_name == "autonomous_vision") | .api_base ]
+    | map(select(. != null and . != "")) | .[0] ) as $existing
+  | .model_list = ( (.model_list // []) | map(select(.model_name != "autonomous_vision")) )
+      + [ { model_name: "autonomous_vision", provider: "anthropic-messages",
+            model: "qwen/qwen3.6-plus", api_base: ($existing // $ab) } ]
 '
 
 # Gateway server block — assert canonical host:port so it always matches constants.go
@@ -223,16 +237,16 @@ if [ -n "$LLM_BASE_URL" ]; then
   base="${LLM_BASE_URL%/}"
   case "$base" in */v1) : ;; *) base="${base}/v1" ;; esac
   jq_edit "$PICO_CONFIG" --arg ab "$base" '
-    .model_list = ((.model_list // []) | map(if .model_name == "autonomous" then .api_base = $ab else . end))
+    .model_list = ((.model_list // []) | map(if (.model_name == "autonomous" or .model_name == "autonomous_vision") then .api_base = $ab else . end))
   '
-  log "model_list[autonomous].api_base = $base"
+  log "model_list[autonomous,autonomous_vision].api_base = $base"
 fi
 
 # LLM api key → .security.yml model_list."autonomous:0".api_keys.
 LLM_API_KEY="$(dev llm_api_key)"
 if [ -n "$LLM_API_KEY" ]; then
-  KEY="$LLM_API_KEY" yq -i '.model_list["autonomous:0"].api_keys = [strenv(KEY)]' "$PICO_SECURITY"
-  log "security model_list autonomous:0 api_keys synced"
+  KEY="$LLM_API_KEY" yq -i '.model_list["autonomous:0"].api_keys = [strenv(KEY)] | .model_list["autonomous_vision:0"].api_keys = [strenv(KEY)]' "$PICO_SECURITY"
+  log "security model_list autonomous:0 + autonomous_vision:0 api_keys synced"
 fi
 
 # pico bearer token (always) — must match constants.go Token.

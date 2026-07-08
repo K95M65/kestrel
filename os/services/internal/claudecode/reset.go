@@ -24,12 +24,13 @@ import (
 //	  /root/.claude/history.jsonl     prompt history
 //
 //	KEPT — installed software (install.sh only re-runs on a failed verify):
-//	  the claude CLI, bun, /root/.claude/plugins (telegram channel plugin),
-//	  /root/.claude.json + global settings (the bridge itself ships inside
-//	  the os-server binary — nothing on disk to wipe or keep).
+//	  the claude CLI, /root/.claude.json + global settings (the bridge itself
+//	  ships inside the os-server binary — nothing on disk to wipe or keep; no
+//	  bun/plugins anymore: telegram + discord are device-owned loops).
 //
 // Everything wiped has a restore path that runs after the reset: presync +
-// EnsureOnboarding rebuild .env/channels from the (re-entered) config.json, and
+// EnsureOnboarding rebuild .env from the (re-entered) config.json (the
+// device-owned channel loops need nothing beyond config), and
 // ensureSkills re-downloads the skill set from the CDN — see
 // docs/agentic/adding-agent-runtime.md §7.
 func (s *ClaudeCodeService) ResetAgent() error {

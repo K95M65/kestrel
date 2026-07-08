@@ -10,19 +10,16 @@
 # hook or enable the unit afterwards.
 #
 # What it does:
-#   1. prerequisites: jq (presync config reads) + curl (CLI/bun downloads);
+#   1. prerequisites: jq (presync config reads) + curl (CLI download);
 #   2. install the Claude Code CLI (native installer, linux arm64/amd64) and
 #      symlink it to /usr/local/bin/claude;
-#   3. install bun + the discord channel plugin (best-effort — Claude Code
-#      channel plugins are bun scripts; only needed when a discord bot token is
-#      configured, see https://code.claude.com/docs/en/channels). telegram is
-#      DEVICE-OWNED (os-server polls getUpdates itself, telegram_poll.go) so
-#      its plugin is deliberately NOT installed;
-#   4. run the presync hook (materialized by os-server BEFORE this installer):
+#   3. run the presync hook (materialized by os-server BEFORE this installer):
 #      it OWNS the launch env (/root/.claudecode/.env — ANTHROPIC_* from
-#      config.json llm_*) and the discord channel config
-#      (~/.claude/channels/discord/.env + access.json). See presync.sh.
-#   5. write + start the systemd unit. Claude Code only runs in the foreground,
+#      config.json llm_*). No channel plugins are installed: telegram +
+#      discord are DEVICE-OWNED (os-server runs the receive loops itself —
+#      telegram_poll.go / discord.go), so bun and the plugin marketplace are
+#      not needed. See presync.sh.
+#   4. write + start the systemd unit. Claude Code only runs in the foreground,
 #      so the unit runs the Go gatewayd (`os-server claudecode-gatewayd` —
 #      compiled into the os-server binary, nothing to materialize), which holds
 #      the headless Claude process and exposes the WebSocket os-server
@@ -68,29 +65,13 @@ command -v claude >/dev/null 2>&1 || {
 }
 claude --version || true
 
-echo "[install-claudecode] install bun (channel plugins are bun scripts)"
-if ! command -v bun >/dev/null 2>&1 && [ ! -x /root/.bun/bin/bun ]; then
-  curl -fsSL https://bun.sh/install | bash || echo "[install-claudecode] WARN: bun install failed — discord channel plugin will not run"
-fi
-if [ -x /root/.bun/bin/bun ]; then
-  ln -sf /root/.bun/bin/bun /usr/local/bin/bun
-fi
-
-# Channel plugins (best-effort). Channels are a Claude Code research preview:
-# if the plugin CLI or marketplace is unavailable on this build, the device
-# still works — voice/web/sensing flow through the bridge; only the channel
-# receive loops are skipped (presync leaves CLAUDECODE_CHANNELS empty when no
-# token is configured anyway). discord is the only plugin channel: telegram is
-# device-owned (telegram_poll.go — do NOT install its plugin, it would compete
-# for getUpdates), slack has no Claude Code channel plugin ("Claude in Slack"
-# is a separate cloud feature).
-echo "[install-claudecode] add plugin marketplace + discord channel plugin (best-effort)"
-"$CLAUDE_BIN" plugin marketplace add anthropics/claude-plugins-official \
-  || echo "[install-claudecode] WARN: marketplace add failed (offline or older CLI?)"
-for ch in discord; do
-  "$CLAUDE_BIN" plugin install "${ch}@claude-plugins-official" \
-    || echo "[install-claudecode] WARN: $ch plugin install failed — $ch channel unavailable until installed"
-done
+# No channel plugins, no bun: telegram + discord are DEVICE-OWNED (os-server
+# runs the receive loops itself — telegram_poll.go / discord.go, mirroring
+# codex), and slack has no Claude Code channel plugin ("Claude in Slack" is a
+# separate cloud feature). The native plugins proved undebuggable in the field
+# (bun children with no journal logs, silent allowlist drops, silent death on
+# restart races) and would compete with the device-owned loops for the same
+# bot (Telegram 409s concurrent pollers; Discord would double-reply).
 
 # Env + channel config are owned ENTIRELY by the presync hook, NOT written
 # here (the bridge itself ships inside the os-server binary). The hook is

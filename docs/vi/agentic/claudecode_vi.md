@@ -10,8 +10,8 @@ protocol, layout và các quirk đặc thù claudecode.
 > transport bridge WebSocket, adapter migrate persona/memory bằng Go (lossless
 > với layout OpenClaw), skills (restore từ CDN + watcher, `.claude/skills`
 > native), watch/rename identity, MCP thật (`.mcp.json`), factory reset,
-> Telegram + Discord qua **channel plugin native** của Claude Code
-> ([code.claude.com/docs/en/channels](https://code.claude.com/docs/en/channels)),
+> Telegram + Discord do device sở hữu (loop getUpdates `telegram_poll.go` /
+> session discordgo `discord.go` — channel plugin native cố ý không dùng),
 > **Slack inbound do device sở hữu** (HTTP mode, `domain.SlackBridge`),
 > và flow **claude.ai OAuth login** (§7b) thay thế cho API key trong
 > config.json. Các caveat đã biết được đánh dấu ⚠️ ở §11.
@@ -28,7 +28,7 @@ Code: `os/services/internal/claudecode/`.
 | Skills | `workspace/.claude/skills/<name>/` (skill Claude Code native) |
 | MCP connector | `workspace/.mcp.json` |
 | State resume session | `/root/.claudecode/session.json` |
-| Config kênh (telegram / discord) | `/root/.claude/channels/<ch>/{.env,access.json}` |
+| Offset poll Telegram (loop device sở hữu) | `/root/.claudecode/telegram_offset.json` |
 | Credentials claude.ai OAuth (flow login) | `config.json` `claude_code_oauth_token` + `/root/.claude/.credentials.json` |
 | Transcript hội thoại | `/root/.claude/projects/` (nội bộ Claude) |
 
@@ -47,11 +47,9 @@ resolve backend trong `internal/agent/factory.go`. Switch vào/ra đi qua flow
    (`curl -fsSL https://claude.ai/install.sh | bash` → `~/.local/bin/claude`,
    binary standalone, linux arm64/amd64, không cần Node.js), symlink sang
    `/usr/local/bin/claude`;
-3. **bun** + **channel plugin telegram + discord** (best-effort):
-   `claude plugin marketplace add anthropics/claude-plugins-official` +
-   `claude plugin install {telegram,discord}@claude-plugins-official`. Channel
-   plugin là script bun; lỗi ở bước này chỉ vô hiệu các receive loop của
-   channel (⚠️ §11);
+3. **không bun, không channel plugin** — telegram + discord do device sở hữu
+   (os-server tự chạy các receive loop, §7), nên bước plugin marketplace bỏ
+   hẳn;
 4. chạy hook presync một lần (bridge + env + sync channel);
 5. ghi + start **`claudecode.service`** (tên unit == tên runtime — không cần
    file khai báo service). Unit chạy `os-server claudecode-gatewayd`
@@ -66,7 +64,7 @@ resolve backend trong `internal/agent/factory.go`. Switch vào/ra đi qua flow
 `/usr/local/bin/runtime-claudecode-presync` mỗi lần switch, được switch-runtime
 chạy trước khi start, install.sh chạy một lần, và `EnsureOnboarding` chạy trên
 **mỗi lần os-server boot / config đổi** — pattern của hermes, nên thiết bị boot
-thẳng vào claudecode hoặc sửa `llm_*`/telegram khi đang active sẽ tự lành mà
+thẳng vào claudecode hoặc sửa `llm_*` khi đang active sẽ tự lành mà
 không cần switch):
 
 - bản thân bridge **không còn được materialize ở đây** — nó nằm trong binary
@@ -92,10 +90,11 @@ không cần switch):
       `ANTHROPIC_MODEL` / `ANTHROPIC_SMALL_FAST_MODEL` ← `llm_model` (mặc định
       `Auto-AI`).
 
-  Cả hai mode đều thêm `DISABLE_AUTOUPDATER=1`,
-  `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`, và các cờ khởi chạy
-  `CLAUDECODE_CHANNELS`;
-- **§3 CHANNELS** — xem §7.
+  Cả hai mode đều thêm `DISABLE_AUTOUPDATER=1` và
+  `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`. `CLAUDECODE_CHANNELS` không
+  còn được ghi (không plugin channel nào chạy — §7);
+- **§3 CHANNELS** — không còn gì để cấu hình: presync chỉ xoá state
+  `~/.claude/channels` cũ từ các bản trước (xem §7).
 
 ## 2. Hằng số wire (`constants.go`)
 
@@ -117,9 +116,9 @@ còn phụ thuộc python3/websockets), gatewayd này:
   cộng `HOME` và `IS_SANDBOX=1` được assert sẵn (device chạy root, claude từ
   chối `--dangerously-skip-permissions` dưới uid 0 nếu thiếu escape hatch
   containerized-root này); `--resume <session_id>` khi respawn (session liên
-  tục qua các lần bridge
-  restart, state trong `session.json`); `--channels <CLAUDECODE_CHANNELS>` khi
-  presync đã cấu hình một channel plugin;
+  tục qua các lần bridge restart, state trong `session.json`). Gatewayd vẫn
+  hỗ trợ passthrough `--channels <CLAUDECODE_CHANNELS>`, nhưng presync không
+  còn set biến này (channel đều do device sở hữu, §7);
 - serve WebSocket (gorilla/websocket), gate bằng bearer token (close code
   `4401` khi token sai); mỗi lúc một client — kết nối mới thay thế kết nối cũ;
 - forward **nguyên văn** các event stream-json trên stdout của Claude tới
@@ -176,28 +175,40 @@ Các gotcha vòng đời turn:
 - `usage` là **theo từng lượt** (shape API Anthropic: `input_tokens`,
   `cache_creation_input_tokens`, `cache_read_input_tokens`, `output_tokens`) —
   khác `context_usage` cộng dồn của picoclaw.
-- **Turn khởi phát từ channel nổi lên trên cùng stdout**: một message Discord
-  được plugin xử lý bên trong session Claude sinh ra các event assistant/result
-  không có pending runID — `ensureTurnStarted` cấp một runID mới, nên các turn
-  đó vẫn hiện trong Flow Monitor (không cần hook observer, khác hermes).
-  Telegram KHÔNG đi đường này — loop do device sở hữu inject thành lượt
-  `sendChat` thường có pending runID (§7).
+- **Turn khởi phát từ bên ngoài nổi lên trên cùng stdout**: nếu có gì đó chạy
+  bên trong session Claude mà không có pending runID (ví dụ một channel
+  plugin, nếu có bật), `ensureTurnStarted` cấp một runID mới nên turn vẫn hiện
+  trong Flow Monitor. Với tất cả kênh do device sở hữu (§7) đây chỉ còn là
+  đường phòng thủ — turn telegram/discord/slack đều inject thành lượt
+  `sendChat` thường có pending runID.
 
 ## 6. Session
 
 Claude sở hữu session: id được bắt từ bất kỳ event nào mang `session_id` và
 được bridge persist (`session.json`) cho `--resume`.
 `NewSession` gửi `{"type":"session.new"}` (session mới, không resume).
-`ShouldRotateSession` **luôn false** và `CompactSession` trả
-`domain.ErrNotSupportedByRuntime` — Claude Code tự auto-compact context của
-nó, nên một rotation do os-server điều khiển chỉ tổ vứt context đi.
+`ShouldRotateSession` rotate theo **turn count (80) hoặc token spike 150k**
+(`rotation.go`): auto-compaction của Claude Code giữ được *kích thước*
+context nhưng không giữ được persona — sau đủ nhiều chu kỳ compaction, dòng
+tên duy nhất trong IDENTITY.md trôi khỏi context nén (quan sát trên device
+2026-07-08: agent tự bịa tên), mà `CLAUDE.md` @imports chỉ được đọc lại lúc
+session start, nên rotation định kỳ chính là điểm neo lại. Ký ức dài hạn
+(MEMORY.md/KNOWLEDGE.md) sống sót qua imports; chỉ mất hội thoại nguyên văn
+trong session. `CompactSession` trả `domain.ErrNotSupportedByRuntime` (không
+có compact RPC ngoài).
 
-## 7. Kênh — Telegram do device sở hữu, Discord qua channel plugin native, Slack do device sở hữu
+## 7. Kênh — tất cả do device sở hữu (telegram, discord, slack)
 
-`SupportedChannels() = [telegram, slack, discord]`.
+`SupportedChannels() = [telegram, slack, discord]`. Cả ba receive loop đều
+chạy trong os-server, mirror `internal/codex` 1:1. Channel plugin native
+telegram/discord của Claude Code **cố ý không dùng**: thực địa cho thấy không
+debug được (bun child không log ra journal, allowlist drop im lặng, chết im
+lặng khi race restart bridge), và chúng sẽ giành bot với các loop device sở
+hữu (Telegram 409 khi có poller song song; Discord sẽ trả lời đúp). presync
+xoá state `~/.claude/channels` cũ và install.sh không còn cài bun hay plugin
+nào.
 
-- **Telegram do DEVICE SỞ HỮU** (`telegram_poll.go`, mirror 1:1 của
-  `internal/codex/telegram_poll.go`): một goroutine khởi động từ `StartWS`
+- **Telegram** (`telegram_poll.go`): một goroutine khởi động từ `StartWS`
   long-poll `getUpdates` và inject mỗi DM được chấp nhận (chat private, sender
   == `telegram_user_id`) thành một lượt chat thường với flow source
   `telegram`; run được track trong `telegramRuns` và **đánh dấu silent**
@@ -205,26 +216,22 @@ nó, nên một rotation do os-server điều khiển chỉ tổ vứt context �
   `emitFinal` DM câu trả lời ngược về (marker `[HW:/...]` được strip qua
   `stripForChannel`). Offset persist ở
   `/root/.claudecode/telegram_offset.json`. Creds đọc tươi từ config.json mỗi
-  vòng poll — đổi token/user không cần restart. Plugin telegram native của
-  Claude Code **cố ý không dùng**: thực địa cho thấy không debug được (bun
-  child không log ra journal, allowlist drop im lặng, chết im lặng khi race
-  restart bridge), và presync **xoá** `~/.claude/channels/telegram/` để plugin
-  không bao giờ giành `getUpdates` (Telegram 409 khi có poller song song).
-- Discord chạy qua **channel plugin của chính Claude Code**: bridge khởi chạy
-  `claude --channels plugin:discord@claude-plugins-official` (chỉ khi đã cấu
-  hình), plugin poll Bot API của nó và trả lời qua chính chat đó, hoàn toàn
-  bên trong session Claude. presync ghi `~/.claude/channels/discord/.env`
-  (`DISCORD_BOT_TOKEN` ← `discord_bot_token`) và seed `access.json` với
-  `{"dmPolicy":"allowlist","allowFrom":["<owner user id>"]}` (`discord_user_id`
-  — một *snowflake* Discord) — thay cho flow tương tác `/discord:access pair`,
-  thứ một thiết bị headless không chạy được. **Owner user id là bắt buộc** cho
-  message chiều vào; chỉ có token thì plugin ở lại pairing mode và drop người
-  lạ.
-- `AddChannel`/`RefreshChannelConfig` (discord) → chạy lại presync + restart
-  theo hash-diff (`syncChannels` → `EnsureOnboarding`, pattern của hermes).
-  Với telegram và slack cả hai là no-op success trung thực: các loop do device
-  sở hữu đọc creds tươi từ config.json mỗi lần dùng, nên chỉ cần persist creds
-  là đủ (không presync, không restart bridge). whatsapp →
+  vòng poll — đổi token/user không cần restart.
+- **Discord** (`discord.go`): Discord không có API nhận kiểu long-poll, nên
+  os-server sở hữu một **session gateway discordgo** (intent DM +
+  guild-message + message-content), khởi động từ `StartWS`. Chấp nhận = không
+  phải bot, sender == `discord_user_id` (allowlist rỗng = đóng), và hoặc là
+  DM hoặc là message trong `discord_guild_id` có **@mention bot** (mention bị
+  strip khỏi text). Message được chấp nhận inject thành turn với flow source
+  `discord` (track trong `discordRuns`, silent, typing keeper native);
+  `emitFinal` post reply ngược về **chunk theo giới hạn 2000 ký tự của
+  Discord**. Token đọc tươi mỗi lần (re)connect; khi session đang mở,
+  discordgo tự xử lý reconnect gateway.
+- `AddChannel`/`RefreshChannelConfig` là no-op success trung thực cho cả ba
+  kênh: các loop device sở hữu đọc creds tươi từ config.json mỗi lần dùng,
+  nên chỉ cần persist creds là đủ (không presync, không restart bridge).
+  Lưu ý discord: token lưu lần đầu được nhặt trong ~30 s, nhưng xoay token khi
+  session đang mở thì có hiệu lực ở chu kỳ session kế. whatsapp →
   `domain.ErrChannelNotSupported`.
 - **Slack do DEVICE SỞ HỮU** (`slack.go` + `slack_sender.go`, mirror của
   `internal/codex/slack.go`): Claude Code không có slack channel plugin
@@ -249,8 +256,9 @@ nó, nên một rotation do os-server điều khiển chỉ tổ vứt context �
 - Outbound `Broadcast`/`SendToUser` (nudge chủ động) đi thẳng tới Telegram Bot
   API (`telegram_sender.go`); `SlackSender` post message chủ động tới kênh
   `slack_user_id` đã cấu hình khi đủ cả hai creds slack. Target store dùng chung
-  (`/root/.lumi/telegram_targets.json`) không được plugin populate, nên
-  `GetTelegramTargets` fallback về owner id đã cấu hình (`telegram.go`).
+  (`/root/.lumi/telegram_targets.json`) được receive loop populate
+  (`upsertTelegramTarget`) trên mỗi DM được chấp nhận; `GetTelegramTargets`
+  fallback về owner id đã cấu hình khi store còn rỗng (`telegram.go`).
 
 ## 7b. Auth — claude.ai OAuth login (thay thế cho API key)
 
@@ -335,25 +343,19 @@ creds**: `workspace/`, `.env`, `session.json`, `~/.claude/projects`,
 `~/.claude/channels`, `~/.claude/todos`, `~/.claude/history.jsonl`, và
 `~/.claude/.credentials.json` (phần login claude.ai — nửa nằm trong
 config.json, `claude_code_oauth_token`, bị wipe cùng config). **Giữ lại**
-(phần mềm đã cài): claude CLI, bun, `~/.claude/plugins`, `~/.claude.json`
-(bản thân bridge nằm trong binary os-server). Mọi thứ bị wipe đều có đường restore chạy sau reset
-(presync/EnsureOnboarding dựng lại env + channels từ config.json được nhập
-lại; `ensureSkills` tải lại skills; flow login chạy lại cho subscription auth).
+(phần mềm đã cài): claude CLI, `~/.claude.json` (bản thân bridge nằm trong
+binary os-server). Mọi thứ bị wipe đều có đường restore chạy sau reset
+(presync/EnsureOnboarding dựng lại env từ config.json được nhập lại; các loop
+kênh device sở hữu không cần gì ngoài config; `ensureSkills` tải lại skills;
+flow login chạy lại cho subscription auth).
 
 ## 11. ⚠️ Cần verify trên thiết bị
 
-- **Channels đang là research preview** (Claude Code ≥ 2.1.80): flag/protocol
-  `--channels` có thể đổi, và account do org quản lý cần `channelsEnabled`.
-  Nếu một plugin đăng ký thất bại, mọi thứ trừ receive loop của kênh đó vẫn
-  chạy.
 - **Format output của `claude setup-token`**: scanner của login match URL
   OAuth, token `sk-ant-oat01-…`, và các marker thành công dạng text — verify
   với build CLI trên thiết bị (flow degrade thành
   `failure (last output: …)` kèm dòng cuối của CLI khi parse trượt). Các lần
   ghi pty dùng `\r` cho Enter; xác nhận prompt dán code chấp nhận nó.
-- **`claude plugin` CLI có sẵn hay không**: install.sh coi việc cài
-  marketplace/plugin là best-effort; verify build CLI trên thiết bị hỗ trợ cài
-  plugin headless, hoặc cài plugin một lần bằng tay.
 - **Tương thích campaign-api**: Claude Code dùng đầy đủ Anthropic Messages API
   (system prompt, vòng lặp tool_use, streaming) trên `ANTHROPIC_BASE_URL` —
   verify proxy pass được các thứ này qua (hermes đã dùng cùng endpoint ở mode

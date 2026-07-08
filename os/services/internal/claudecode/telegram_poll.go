@@ -25,8 +25,8 @@ import (
 // regular chat turn. The loop is started from StartWS, i.e. it runs inside
 // this service's lifecycle and therefore ONLY while claudecode is the active
 // runtime — no other poller can compete for getUpdates (Telegram 409s
-// concurrent pollers; the hermes lesson). presync.sh accordingly does NOT put
-// telegram on the `--channels` launch list (discord stays a native plugin).
+// concurrent pollers; the hermes lesson). presync.sh accordingly launches no
+// channel plugins at all (discord is device-owned too — discord.go).
 //
 // Credentials are read fresh from Device config on every iteration
 // (config.TelegramBotToken / TelegramUserID), so saving or rotating them

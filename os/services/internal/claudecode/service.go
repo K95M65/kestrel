@@ -7,7 +7,7 @@
 // (the Go gatewayd in internal/claudecode/gatewayd, launched as
 // `os-server claudecode-gatewayd`) that holds ONE headless
 // Claude process (`claude --print --input-format stream-json --output-format
-// stream-json`, plus `--channels plugin:telegram@...` when configured) and
+// stream-json`, plus `--channels plugin:discord@...` when configured) and
 // exposes the socket at WSURL. os-server only acts as a client: it sends user
 // turns as `message.send`, and translates the forwarded Claude stream-json
 // events (system / assistant / user / result) into the same domain.WSEvent
@@ -28,6 +28,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/bwmarrin/discordgo"
 	"github.com/gorilla/websocket"
 
 	"go.autonomous.ai/os/domain"
@@ -128,6 +129,22 @@ type ClaudeCodeService struct {
 	// emitFinal DMs the reply back (see telegram_poll.go / translator.go).
 	telegramRunsMu sync.Mutex
 	telegramRuns   map[string]string
+
+	// discordRuns maps a Discord-originated runID → originating channel id so
+	// emitFinal posts the reply back (see discord.go / translator.go).
+	discordRunsMu sync.Mutex
+	discordRuns   map[string]string
+
+	// discordSession is the live gateway session handle (discord.go), guarded
+	// by discordMu so emitFinal's reply sender sees a consistent value.
+	discordMu      sync.Mutex
+	discordSession *discordgo.Session
+
+	// Discord inbound test seams (discord.go). Zero values select the
+	// production defaults: the real sendChat-backed send step and the live
+	// discordgo session's ChannelMessageSend.
+	discordSendTurn    func(text, reqID, runID string) error
+	discordSendMessage func(channelID, text string) error
 
 	// Telegram inbound test seams (telegram_poll.go). Zero values select the
 	// production defaults: api.telegram.org, the on-disk offset file and the

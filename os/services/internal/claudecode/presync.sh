@@ -10,20 +10,17 @@
 #      ~/.claude/.credentials.json on disk → CLAUDE_CODE_OAUTH_TOKEN, no
 #      ANTHROPIC_*) vs API-KEY (ANTHROPIC_* from llm_api_key / llm_base_url /
 #      llm_model — the same source hermes/picoclaw presync reads).
-#   §3 CHANNELS — Claude Code's native channel plugin config (discord only —
-#      telegram is device-owned, see telegram_poll.go):
-#      ~/.claude/channels/<ch>/.env (bot token) + access.json (dmPolicy
-#      allowlist seeded from the owner's user id — replaces the interactive
-#      /discord:access pairing, which a headless device cannot run), and the
-#      CLAUDECODE_CHANNELS launch flag the bridge passes to `claude
-#      --channels`.
+#   §3 CHANNELS — nothing to configure: telegram + discord are device-owned
+#      (telegram_poll.go / discord.go — os-server runs the receive loops
+#      itself), so no channel plugin runs and CLAUDECODE_CHANNELS is not
+#      written; stale ~/.claude/channels state from older presyncs is removed.
 #
 # The bridge itself is NOT materialized here anymore: it ships inside the
 # os-server binary as the `os-server claudecode-gatewayd` subcommand
 # (internal/claudecode/gatewayd — Go port of the former bridge.py), so a plain
-# os-server OTA updates it. The gatewayd reads /root/.claudecode/.env itself
-# (including CLAUDECODE_CHANNELS written in §2), and EnsureOnboarding
-# hash-gates the bridge restart on the files this script writes.
+# os-server OTA updates it. The gatewayd reads /root/.claudecode/.env itself,
+# and EnsureOnboarding hash-gates the bridge restart on the files this script
+# writes.
 #
 # This file is EMBEDDED IN os-server (internal/claudecode/presync.sh) and
 # materialized to /usr/local/bin/runtime-claudecode-presync on every switch.
@@ -72,52 +69,16 @@ mkdir -p "$WS_DIR/.claude"
 [ -f "$SETTINGS" ] || echo '{}' >"$SETTINGS"
 jq_edit "$SETTINGS" '.enableAllProjectMcpServers = true'
 
-# ── §3 CHANNELS (computed before §2 so the .env write includes the launch flags)
-# discord runs natively via Claude Code's channel plugin: the bridge launches
-# `claude --channels <plugins>`, the plugin polls its Bot API with the token in
-# ~/.claude/channels/<ch>/.env, and access.json gates senders. We seed
-# dmPolicy=allowlist with the configured owner id — the interactive pairing
-# flow (/discord:access pair) needs a terminal this device does not have.
-#
-# telegram is DEVICE-OWNED (telegram_poll.go — os-server long-polls getUpdates
-# and injects turns, mirroring codex): the native plugin proved undebuggable
-# in the field (bun child, no journal logs, silent allowlist drops, silent
-# death on restart races). It must NOT ride --channels, or plugin and
-# os-server would compete for getUpdates (Telegram 409s concurrent pollers) —
-# stale plugin state from older presyncs is removed below.
-CHANNELS=""
-rm -rf "$CLAUDE_HOME/channels/telegram"
-
-# sync_channel <name> <token-env-var> <token> <owner-id> — writes the plugin's
-# .env + allowlist and appends the plugin to the --channels launch list.
-sync_channel() {
-  local ch="$1" var="$2" token="$3" user="$4"
-  local dir="$CLAUDE_HOME/channels/$ch"
-  if [ -z "$token" ]; then
-    log "$ch: no bot token in config.json — channel left disabled"
-    return 0
-  fi
-  mkdir -p "$dir"
-  umask 077
-  printf '%s=%s\n' "$var" "$token" >"$dir/.env"
-  umask 022
-  local access="$dir/access.json"
-  [ -f "$access" ] || echo '{}' >"$access"
-  if [ -n "$user" ]; then
-    jq_edit "$access" --arg id "$user" '
-        .dmPolicy  = "allowlist"
-      | .allowFrom = (((.allowFrom // []) + [$id]) | unique)
-    '
-    log "$ch enabled — token synced, allowlist seeded ($user)"
-  else
-    # No owner id → leave the plugin's default pairing policy; inbound stays
-    # gated (headless pairing is not possible) until the user id is configured.
-    log "$ch token set but owner user id missing — allowlist NOT seeded (inbound gated on pairing)"
-  fi
-  CHANNELS="${CHANNELS:+$CHANNELS }plugin:${ch}@claude-plugins-official"
-}
-
-sync_channel discord DISCORD_BOT_TOKEN "$(dev discord_bot_token)" "$(dev discord_user_id)"
+# ── §3 CHANNELS — none via plugins anymore. telegram AND discord are
+# DEVICE-OWNED (telegram_poll.go getUpdates loop / discord.go discordgo
+# session, mirroring codex): the native channel plugins proved undebuggable in
+# the field (bun children, no journal logs, silent allowlist drops, silent
+# death on restart races). They must NOT ride --channels, or plugin and
+# os-server would compete for the same bot (Telegram 409s concurrent pollers;
+# Discord would double-reply) — stale plugin state from older presyncs is
+# removed here, and CLAUDECODE_CHANNELS is no longer written (the gatewayd
+# omits --channels when the var is absent).
+rm -rf "$CLAUDE_HOME/channels"
 
 # ── §2 ENV (config.json wins) ───────────────────────────────────────────────────
 # Two auth modes, decided by the claude login flow (internal/claudecode/login.go):
@@ -139,7 +100,6 @@ if [ -n "$OAUTH_TOKEN" ] || [ -s "$CLAUDE_HOME/.credentials.json" ]; then
     fi
     echo "DISABLE_AUTOUPDATER=1"
     echo "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1"
-    echo "CLAUDECODE_CHANNELS=$CHANNELS"
   } >"$ENV_FILE.tmp"
 else
   LLM_BASE_URL="$(dev llm_base_url)"; [ -n "$LLM_BASE_URL" ] || LLM_BASE_URL="$DEFAULT_BASE_URL"
@@ -161,7 +121,6 @@ ANTHROPIC_MODEL=$LLM_MODEL
 ANTHROPIC_SMALL_FAST_MODEL=$LLM_MODEL
 DISABLE_AUTOUPDATER=1
 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
-CLAUDECODE_CHANNELS=$CHANNELS
 ENV
 fi
 mv "$ENV_FILE.tmp" "$ENV_FILE"
