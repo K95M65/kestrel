@@ -123,13 +123,14 @@ metadata mỗi 5 phút và tự cập nhật `workspace/skills/<name>` từ CDN 
 skill được hỗ trợ thay đổi (gate qua `skills.Supported`), rồi báo agent qua
 `SendSystemChatMessage`.
 - **§1 cấu trúc** (`jq` trên `config.json`) — `agents.defaults` (provider
-  `anthropic-messages`, `model_name "autonomous"`, `restrict_to_workspace:false`,
-  `allow_read_outside_workspace:true`), entry `autonomous` trong `model_list`, và
-  khung `channel_list`. `channel_list.pico` luôn được bật.
+  `anthropic-messages`, `model_name "autonomous"`, `image_model "autonomous_vision"`,
+  `restrict_to_workspace:false`, `allow_read_outside_workspace:true`), hai entry
+  `autonomous` và `autonomous_vision` (`qwen/qwen3.6-plus`, cùng endpoint campaign-api)
+  trong `model_list`, và khung `channel_list`. `channel_list.pico` luôn được bật.
 - **§2 động** (secrets lấy từ `/root/config/config.json` cấp **project**, thắng) —
-  `model_list[autonomous].api_base` từ `llm_base_url` (PicoClaw cần đuôi `/v1`, khác
-  hermes), `.security.yml` `model_list."autonomous:0".api_keys` từ `llm_api_key`,
-  bearer token `pico` (phải khớp `constants.go` `Token`), và mỗi kênh non-pico **chỉ
+  `model_list[autonomous,autonomous_vision].api_base` từ `llm_base_url` (PicoClaw cần
+  đuôi `/v1`, khác hermes), `.security.yml` `model_list."autonomous:0".api_keys` +
+  `"autonomous_vision:0".api_keys` từ `llm_api_key`, bearer token `pico` (phải khớp `constants.go` `Token`), và mỗi kênh non-pico **chỉ
   bật khi có credential**: telegram (`telegram_bot_token` + `telegram_user_id`),
   discord (`discord_bot_token` + `discord_user_id`), slack (`slack_bot_token` +
   `slack_app_token` + `slack_user_id`), whatsapp native (`whatsapp_user_id` →

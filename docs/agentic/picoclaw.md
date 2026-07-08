@@ -126,13 +126,15 @@ polls OTA metadata every 5 min and auto-updates `workspace/skills/<name>` from t
 CDN when a supported skill's version bumps (capability-gated via
 `skills.Supported`), then notifies the agent with `SendSystemChatMessage`.
 - **§1 structure** (`jq` on `config.json`) — `agents.defaults` (provider
-  `anthropic-messages`, `model_name "autonomous"`, `restrict_to_workspace:false`,
-  `allow_read_outside_workspace:true`), the `autonomous` `model_list` entry, and the
-  `channel_list` skeleton. `channel_list.pico` is always enabled.
+  `anthropic-messages`, `model_name "autonomous"`, `image_model "autonomous_vision"`,
+  `restrict_to_workspace:false`, `allow_read_outside_workspace:true`), the `autonomous`
+  and `autonomous_vision` (`qwen/qwen3.6-plus`, same campaign-api endpoint) `model_list`
+  entries, and the `channel_list` skeleton. `channel_list.pico` is always enabled.
 - **§2 dynamic** (secrets from the **project** `/root/config/config.json`, which
-  wins) — `model_list[autonomous].api_base` from `llm_base_url` (PicoClaw needs a
-  trailing `/v1`, unlike hermes), `.security.yml` `model_list."autonomous:0".api_keys`
-  from `llm_api_key`, the `pico` bearer token (must equal `constants.go` `Token`),
+  wins) — `model_list[autonomous,autonomous_vision].api_base` from `llm_base_url`
+  (PicoClaw needs a trailing `/v1`, unlike hermes), `.security.yml`
+  `model_list."autonomous:0".api_keys` + `"autonomous_vision:0".api_keys` from
+  `llm_api_key`, the `pico` bearer token (must equal `constants.go` `Token`),
   and each non-pico channel **enabled only when its credentials exist**: telegram
   (`telegram_bot_token` + `telegram_user_id`), discord (`discord_bot_token` +
   `discord_user_id`), slack (`slack_bot_token` + `slack_app_token` + `slack_user_id`),
