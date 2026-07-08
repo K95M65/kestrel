@@ -38,8 +38,18 @@ wire the switch, install, migration, skills, hooks, and reset.
   becomes a no-op. Corollary: changing `gateway.default` in DEVICE.md afterwards no
   longer affects an already-seeded device — edit config.json or switch the runtime.
 - Switching at runtime goes through one core — `device.Service.UpdateAgentRuntime`
-  — fired by 3 triggers (MQTT `agent_runtime.set`, HTTP `/api/device/agent-runtime`,
+  — fired by 3 triggers (MQTT `<runtime>.setup`, HTTP `/api/device/agent-runtime`,
   web Runtime section). See `docs/agentic/hermes.md` §10–§11.
+- **Completion signaling:** MQTT acks three phases per `<runtime>.setup` —
+  `starting` immediately, then `success` (published *before* the os-server
+  restart) or `failure` (+error, switch-runtime already rolled back); the `info`
+  uplink carries `agent_runtime` + per-runtime versions for re-confirmation.
+  HTTP `POST /api/device/agent-runtime` returns 200 = *accepted only* (the
+  switch runs in the background); the truth is `GET /api/device/agent-runtime`,
+  because `config.agent_runtime` is persisted only after the switch lands. The
+  web Runtime section polls that GET after the POST until the target runtime is
+  reported (success) or a 5-minute deadline passes (shows the actually-active
+  runtime instead of the optimistic one).
 
 ---
 
@@ -348,10 +358,10 @@ runtime changes.
   - openclaw → `[telegram, slack, discord, whatsapp]` (`internal/openclaw/channels.go`)
   - hermes → `[telegram, slack, discord]` (`internal/hermes/channels.go`)
   - picoclaw → `[telegram]` (`internal/picoclaw/channels.go`)
-  - claudecode → `[telegram, discord]` (`internal/claudecode/channels.go` —
-    Claude Code's native channel plugins run the receive loops; presync lands
-    each token + allowlist under `~/.claude/channels/<ch>/`. No slack: Claude
-    Code has no slack channel plugin)
+  - claudecode → `[telegram, slack, discord]` (`internal/claudecode/channels.go`
+    — all device-owned, mirroring codex: `telegram_poll.go` getUpdates loop,
+    `discord.go` discordgo session, `slack.go` MQTT bridge; Claude Code's
+    native channel plugins are deliberately not used)
 - Helper `domain.ChannelSupported(gw, channel) bool` (`domain/channel.go`) — the
   one place callers test membership.
 - Shared sentinels in package `domain` (`domain/channel.go`):

@@ -11,8 +11,9 @@ import (
 )
 
 // AddChannel + RefreshChannelConfig + SupportedChannels live in channels.go —
-// Claude Code runs telegram natively via its channels plugin (the token/allowlist
-// sync is presync-owned); slack/discord/whatsapp return domain.ErrChannelNotSupported.
+// telegram, discord and slack are ALL device-owned (telegram_poll.go
+// getUpdates loop / discord.go discordgo session / slack.go MQTT bridge);
+// whatsapp returns domain.ErrChannelNotSupported.
 
 func (s *ClaudeCodeService) HasWhatsappSession(_ string) bool { return false }
 
@@ -42,10 +43,13 @@ func (s *ClaudeCodeService) RestartAgent() error {
 }
 
 // RefreshModelsConfig — the model is selected via ANTHROPIC_MODEL in
-// /root/.claudecode/.env, which presync owns (synced from config.json llm_model).
-// No-op here because EnsureOnboarding re-runs presync on every boot/config change.
+// /root/.claudecode/.env, which presync owns (synced from config.json
+// llm_model). Returns ErrNotSupportedByRuntime so the caller falls back to
+// EnsureOnboarding, whose embedded presync re-reads llm_* from config.json and
+// the hash gate restarts the bridge — i.e. the change is applied, just not by
+// this method.
 func (s *ClaudeCodeService) RefreshModelsConfig() error {
-	return nil
+	return domain.ErrNotSupportedByRuntime
 }
 
 // EnsureOnboarding lives in onboarding.go — it re-runs the embedded presync
@@ -91,8 +95,12 @@ func (s *ClaudeCodeService) StartModelSync(ctx context.Context) {
 	<-ctx.Done()
 }
 
+// UpdatePrimaryModel — the model is pinned in .env (ANTHROPIC_MODEL) by
+// presync (from config.json llm_model), not patched per-call. Same fallback
+// contract as RefreshModelsConfig: sentinel → EnsureOnboarding presync
+// applies it.
 func (s *ClaudeCodeService) UpdatePrimaryModel(_ string) error {
-	return nil
+	return domain.ErrNotSupportedByRuntime
 }
 
 // StartPrimaryModelWatch — no openclaw.json-style agent config file to watch.
@@ -112,35 +120,9 @@ func (s *ClaudeCodeService) GetConfiguredChannel() string {
 	return "channel"
 }
 
-// CompactSession — no-op because Claude Code auto-compacts its own context when
-// it approaches the window limit; there is no external compact RPC to call.
-func (s *ClaudeCodeService) CompactSession(sessionKey string) error {
-	slog.Info("CompactSession: no-op (claudecode auto-compacts)", "component", "claudecode", "session", sessionKey)
-	return nil
-}
-
-// ShouldRotateSession — never rotate: Claude Code manages its own context window
-// (auto-compaction), so an os-server-driven rotation would only throw context
-// away. NewSession stays available for an explicit user reset.
-func (s *ClaudeCodeService) ShouldRotateSession(_, _ int) bool {
-	return false
-}
-
-// NewSession asks the bridge to restart Claude Code WITHOUT --resume, starting a
-// fresh session; the local session id is dropped so the init event of the new
-// session is adopted.
-func (s *ClaudeCodeService) NewSession(sessionKey string) error {
-	slog.Info("NewSession: requesting fresh claude session", "component", "claudecode", "key", sessionKey)
-	s.sessionUUID.Store("")
-	if err := s.sendFrame(map[string]any{"type": "session.new"}); err != nil {
-		// Not connected — the bridge never saw the request, so its session.json
-		// still resumes the old session on the next spawn. Best-effort by design:
-		// rotation is user-triggered and can simply be retried once the bridge
-		// is back.
-		slog.Warn("NewSession: bridge not reachable", "component", "claudecode", "error", err)
-	}
-	return nil
-}
+// CompactSession + ShouldRotateSession + NewSession live in rotation.go —
+// the session-lifecycle policy (turn-count rotation for persona re-anchor +
+// token safety net, session.new frame to the bridge).
 
 // WriteMCPEntry + RemoveMCPEntry live in mcp.go — Claude Code natively reads
 // workspace/.mcp.json, so MCP connector writes are real on this backend.

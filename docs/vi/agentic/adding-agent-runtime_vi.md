@@ -38,8 +38,18 @@ install, migration, skills, hooks, reset.
   `gateway.default` trong DEVICE.md về sau KHÔNG còn ảnh hưởng device đã seed — phải
   sửa config.json hoặc switch runtime.
 - Switch lúc runtime đi qua một core — `device.Service.UpdateAgentRuntime` — kích
-  bởi 3 trigger (MQTT `agent_runtime.set`, HTTP `/api/device/agent-runtime`, web
+  bởi 3 trigger (MQTT `<runtime>.setup`, HTTP `/api/device/agent-runtime`, web
   Runtime section). Xem `docs/vi/agentic/hermes_vi.md` §10–§11.
+- **Báo hiệu hoàn tất:** MQTT ack 3 pha cho mỗi `<runtime>.setup` — `starting`
+  ngay lập tức, rồi `success` (publish *trước khi* os-server restart) hoặc
+  `failure` (+error, switch-runtime đã tự rollback); uplink `info` mang
+  `agent_runtime` + version từng runtime để confirm lại. HTTP
+  `POST /api/device/agent-runtime` trả 200 = *chỉ là accepted* (switch chạy
+  nền); nguồn truth là `GET /api/device/agent-runtime`, vì
+  `config.agent_runtime` chỉ được persist sau khi switch land. Web Runtime
+  section sau khi POST sẽ poll GET đó tới khi device báo đúng runtime đích
+  (success) hoặc quá deadline 5 phút (hiển thị runtime thực đang active thay
+  vì giá trị lạc quan).
 
 ---
 
@@ -335,10 +345,10 @@ khi runtime đổi.
   - openclaw → `[telegram, slack, discord, whatsapp]` (`internal/openclaw/channels.go`)
   - hermes → `[telegram, slack, discord]` (`internal/hermes/channels.go`)
   - picoclaw → `[telegram]` (`internal/picoclaw/channels.go`)
-  - claudecode → `[telegram, discord]` (`internal/claudecode/channels.go` —
-    channel plugin native của Claude Code chạy các receive loop; presync đặt
-    từng token + allowlist dưới `~/.claude/channels/<ch>/`. Không có slack:
-    Claude Code không có slack channel plugin)
+  - claudecode → `[telegram, slack, discord]` (`internal/claudecode/channels.go`
+    — tất cả do device sở hữu, mirror codex: loop getUpdates
+    `telegram_poll.go`, session discordgo `discord.go`, bridge MQTT `slack.go`;
+    channel plugin native của Claude Code cố ý không dùng)
 - Helper `domain.ChannelSupported(gw, channel) bool` (`domain/channel.go`) — chỗ
   duy nhất caller kiểm tra thành viên.
 - Sentinel dùng chung trong package `domain` (`domain/channel.go`):

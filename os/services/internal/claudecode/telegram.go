@@ -5,18 +5,19 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
 	"go.autonomous.ai/os/domain"
 )
 
-// telegramTargetsFile is the Device-owned store of known Telegram chats used by
-// the OTHER runtimes' receive loops. Under Claude Code the inbound loop lives in
-// the Claude channels plugin (which keeps its own state), so this file is
-// usually absent — GetTelegramTargets then falls back to the configured owner id
-// (config.TelegramUserID), which is the one DM target the device provably knows,
-// so proactive Broadcast/SendToUser still reach the owner.
+// telegramTargetsFile is the Device-owned store of known Telegram chats,
+// populated by the device-owned receive loop (telegram_poll.go →
+// upsertTelegramTarget) on every accepted DM. GetTelegramTargets falls back to
+// the configured owner id (config.TelegramUserID) while the store is still
+// absent/empty (before the first accepted DM), so proactive
+// Broadcast/SendToUser reach the owner from boot.
 //
 // Schema: {"targets":[{"chat_id":"...","type":"private|group"}, ...]}
 const telegramTargetsFile = "/root/.lumi/telegram_targets.json"
@@ -39,13 +40,63 @@ func (s *ClaudeCodeService) GetTelegramBotToken() string {
 	return s.config.TelegramBotToken
 }
 
+// telegramTargetsFilePath returns the targets store path (test override).
+func (s *ClaudeCodeService) telegramTargetsFilePath() string {
+	if s.telegramTargetsPath != "" {
+		return s.telegramTargetsPath
+	}
+	return telegramTargetsFile
+}
+
+// upsertTelegramTarget records chatID in the targets store so outbound
+// Broadcast reaches the chat the user wrote from. Called by the inbound poll
+// loop (telegram_poll.go) on every accepted message; idempotent, atomic write.
+func (s *ClaudeCodeService) upsertTelegramTarget(chatID, chatType string) {
+	if chatID == "" {
+		return
+	}
+	targetsFileMu.Lock()
+	defer targetsFileMu.Unlock()
+	path := s.telegramTargetsFilePath()
+	var content telegramTargetsFileContent
+	if data, err := os.ReadFile(path); err == nil {
+		// Corrupt file → rewrite from scratch with just this target.
+		_ = json.Unmarshal(data, &content)
+	}
+	for _, t := range content.Targets {
+		if t.ChatID == chatID {
+			return // already known
+		}
+	}
+	content.Targets = append(content.Targets, telegramTargetEntry{ChatID: chatID, Type: chatType})
+	data, err := json.Marshal(content)
+	if err != nil {
+		slog.Warn("telegram targets marshal failed", "component", "claudecode", "error", err)
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		slog.Warn("telegram targets dir create failed", "component", "claudecode", "error", err)
+		return
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		slog.Warn("telegram targets write failed", "component", "claudecode", "error", err)
+		return
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		slog.Warn("telegram targets rename failed", "component", "claudecode", "error", err)
+		return
+	}
+	slog.Info("telegram target upserted", "component", "claudecode", "chatID", chatID, "type", chatType)
+}
+
 // GetTelegramTargets reads the Device-owned target store, falling back to the
 // configured owner id when the store is absent/empty (the Claude channels
 // plugin owns the receive loop and never populates this file — see
 // telegramTargetsFile).
 func (s *ClaudeCodeService) GetTelegramTargets() ([]domain.TelegramTarget, error) {
 	targetsFileMu.Lock()
-	data, err := os.ReadFile(telegramTargetsFile)
+	data, err := os.ReadFile(s.telegramTargetsFilePath())
 	targetsFileMu.Unlock()
 	if err != nil {
 		if os.IsNotExist(err) {

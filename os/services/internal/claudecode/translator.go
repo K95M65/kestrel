@@ -318,6 +318,60 @@ func (s *ClaudeCodeService) emitFinal(f claudeEvent, dispatch func(domain.WSEven
 	s.pendingRunID.Store("")
 	s.lastAssistantText.Store("")
 
+	// Slack-originated turn (slack.go): post the reply back to the originating
+	// channel/thread (chat.postMessage) and clear the eyes ack reaction. TTS
+	// was suppressed at injection (MarkSilentRun); [HW:/...] markers and audio
+	// tags are stripped (stripForChannel, hal.go). Consumed here —
+	// synchronously, before dispatch — so the shared handler's
+	// DeliverSlackReply safety net stays a no-op. Best-effort in a goroutine:
+	// the read loop must not block on the Web API.
+	if o, ok := s.consumeSlackRun(runID); ok {
+		go s.finishSlackTurn(o, stripForChannel(finalText))
+	}
+
+	// Telegram-originated turn (telegram_poll.go): DM the reply back to the
+	// originating chat. TTS was suppressed at injection (MarkSilentRun), so
+	// this DM is the user-visible output. [HW:/...] hardware markers and TTS
+	// audio tags are for HAL, not the chat bubble — strip them
+	// (stripForChannel, hal.go). Best-effort in a goroutine: the read loop
+	// must not block on the Bot API.
+	if chatID := s.consumeTelegramRun(runID); chatID != "" && finalText != "" {
+		if reply := stripForChannel(finalText); reply != "" {
+			go func() {
+				if err := s.SendToUser(chatID, reply, ""); err != nil {
+					slog.Error("telegram reply send failed",
+						"component", "claudecode", "runID", runID, "chatID", chatID, "error", err)
+				}
+			}()
+		}
+	}
+
+	// Discord-originated turn (discord.go): post the reply back to the
+	// originating channel (chunked at Discord's 2000-char limit). TTS was
+	// suppressed at injection (MarkSilentRun); markers are stripped like the
+	// telegram path. Best-effort in a goroutine: the read loop must not block
+	// on the Discord API.
+	if channelID := s.consumeDiscordRun(runID); channelID != "" && finalText != "" {
+		go s.finishDiscordTurn(channelID, stripForChannel(finalText))
+	}
+
+	// The whole reply as a single assistant delta BEFORE chat.final — the
+	// shared consumer only flushes TTS + [HW:/…] markers (and logs tts_send,
+	// which the web chat reads) from accumulated deltas at lifecycle.end;
+	// without this the reply reaches the chat stream but is never spoken nor
+	// shown in Flow Monitor. Claude Code --print does not stream tokens, so
+	// this is the N=1 case of the delta contract (mirrors the codex
+	// translator).
+	if finalText != "" {
+		deltaPayload, _ := json.Marshal(map[string]any{
+			"runId":      runID,
+			"sessionKey": s.GetSessionKey(),
+			"stream":     "assistant",
+			"data":       map[string]any{"delta": finalText},
+		})
+		dispatch(domain.WSEvent{Type: "evt", Event: "agent", Payload: deltaPayload})
+	}
+
 	chatMsg, _ := json.Marshal(map[string]any{
 		"runId":      runID,
 		"sessionKey": s.GetSessionKey(),
@@ -352,6 +406,29 @@ func (s *ClaudeCodeService) handleError(msg string, dispatch func(domain.WSEvent
 	s.currentRunID.Store("")
 	s.pendingRunID.Store("")
 	s.lastAssistantText.Store("")
+
+	// Telegram-originated turn: consume the tracker so the map doesn't leak
+	// (and the typing keeper stops). No DM — the user simply gets no reply
+	// for a failed turn.
+	if chatID := s.consumeTelegramRun(runID); chatID != "" {
+		slog.Warn("telegram-originated turn failed — reply dropped",
+			"component", "claudecode", "runID", runID, "chatID", chatID)
+	}
+
+	// Slack-originated turn: consume the tracker (no reply for a failed turn)
+	// and clear the eyes ack reaction so the message isn't left marked.
+	if o, ok := s.consumeSlackRun(runID); ok {
+		slog.Warn("slack-originated turn failed — reply dropped",
+			"component", "claudecode", "runID", runID, "channel", o.channel)
+		go s.finishSlackTurn(o, "")
+	}
+
+	// Discord-originated turn: consume the tracker so the map doesn't leak
+	// (and the typing keeper stops). No reply for a failed turn.
+	if channelID := s.consumeDiscordRun(runID); channelID != "" {
+		slog.Warn("discord-originated turn failed — reply dropped",
+			"component", "claudecode", "runID", runID, "channelID", channelID)
+	}
 
 	payload, _ := json.Marshal(map[string]any{
 		"runId":      runID,
