@@ -45,7 +45,7 @@ export function SetupProgressScreen({
             <span className="lm-blink">.</span><span>.</span><span>.</span>
           </div>
           <div style={{ fontSize: 13, color: C.textDim, marginBottom: 14, lineHeight: 1.5 }}>
-            This usually takes 10-30 seconds. Stay on this network.
+            Please be patient while your device connects to Wi-Fi. Stay on this network.
           </div>
           {/* Indeterminate progress + elapsed counter: the join has no
               knowable %, so a sweeping bar signals "working" while the

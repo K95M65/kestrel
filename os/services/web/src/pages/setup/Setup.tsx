@@ -120,17 +120,7 @@ export default function Setup({ mode = "initial" }: SetupProps = {}) {
           })}
         </nav>
 
-        <div style={{ padding: "12px 16px", borderTop: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <a href="/monitor" style={{
-            display: "flex", alignItems: "center", gap: 7,
-            color: C.textMuted, textDecoration: "none", fontSize: 12,
-            transition: "color 0.15s",
-          }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = C.textDim)}
-            onMouseLeave={(e) => (e.currentTarget.style.color = C.textMuted)}
-          >
-            ← Monitor
-          </a>
+        <div style={{ padding: "12px 16px", borderTop: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "flex-end" }}>
           <button onClick={toggleTheme} style={{
             background: "none", border: "none", cursor: "pointer",
             fontSize: 14, color: C.textMuted, padding: "2px 4px",
