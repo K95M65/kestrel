@@ -112,6 +112,16 @@ func (s *Server) childLoop(ctx context.Context) {
 		if rc != 0 && strings.TrimSpace(res.stderrTail) != "" {
 			log.Printf("%s stderr tail: %s", logPrefix, strings.TrimSpace(res.stderrTail))
 		}
+		// Self-heal a dead --resume: claude exits rc=1 with "No conversation
+		// found with session ID" when the persisted session was dropped from
+		// its store (storage wiped, workspace changed, session expired). Without
+		// clearing it, every respawn re-resumes the same dead id and the runtime
+		// bricks in a crash loop. Drop the stale session so the next spawn is
+		// fresh (--resume gated off), exactly like a session.new.
+		if rc != 0 && strings.Contains(res.stderrTail, staleSessionMarker) {
+			log.Printf("%s stale session — dropping persisted session and respawning fresh", logPrefix)
+			s.clearStaleSession()
+		}
 		if hadInflight > 0 {
 			s.sendBridgeError("claude exited (rc=%d) mid-turn", rc)
 		}
@@ -274,6 +284,23 @@ func (s *Server) queuePending(line []byte) {
 	s.mu.Lock()
 	s.pending = append(s.pending, line)
 	s.mu.Unlock()
+}
+
+// staleSessionMarker is the claude CLI stderr substring emitted when --resume
+// targets a session id it can no longer find in its store.
+const staleSessionMarker = "No conversation found with session ID"
+
+// clearStaleSession drops the persisted session after a failed --resume so the
+// next respawn starts fresh. Unlike newSession it does not signal the child
+// (already exited) and leaves resumeNext untouched — buildArgv's `sessionID !=
+// ""` gate alone suppresses --resume until a fresh session id is captured.
+func (s *Server) clearStaleSession() {
+	s.mu.Lock()
+	s.sessionID = ""
+	s.mu.Unlock()
+	if err := os.Remove(s.cfg.SessionFile); err != nil && !os.IsNotExist(err) {
+		log.Printf("%s remove stale session file failed: %v", logPrefix, err)
+	}
 }
 
 // newSession clears the session id, disables resume for the NEXT spawn only,

@@ -77,6 +77,26 @@ exit 7
 	return writeScript(t, dir, "fake-claude-midturn", script)
 }
 
+// writeFakeClaudeStaleResume stands in for a claude whose --resume target was
+// dropped from its store: spawned WITH --resume it prints the stale-session
+// marker to stderr and exits rc=1; spawned fresh it inits with a per-spawn
+// session id and stays alive reading stdin. Drives the self-heal path.
+func writeFakeClaudeStaleResume(t *testing.T, dir, argvFile string) string {
+	t.Helper()
+	script := fmt.Sprintf(`#!/bin/bash
+echo "ARGV:$*" >> %[1]q
+for a in "$@"; do
+  if [ "$a" = "--resume" ]; then
+    echo "No conversation found with session ID: dead-session" >&2
+    exit 1
+  fi
+done
+echo '{"type":"system","subtype":"init","session_id":"sess-'"$$"'"}'
+while IFS= read -r line; do :; done
+`, argvFile)
+	return writeScript(t, dir, "fake-claude-stale", script)
+}
+
 func writeScript(t *testing.T, dir, name, content string) string {
 	t.Helper()
 	path := filepath.Join(dir, name)
@@ -431,6 +451,40 @@ func TestChildCrashRespawnsWithResume(t *testing.T) {
 	}
 	if !strings.Contains(lines[1], "--resume "+sid) {
 		t.Fatalf("respawn must resume %s: %s", sid, lines[1])
+	}
+}
+
+func TestStaleResumeSelfHeals(t *testing.T) {
+	dir := t.TempDir()
+	argvFile := filepath.Join(dir, "argv.txt")
+	// Pre-seed a dead session so New() sets resumeNext -> the first spawn
+	// resumes it, exactly like the bricked device.
+	if err := os.WriteFile(filepath.Join(dir, "session.json"),
+		[]byte(`{"session_id":"dead-session"}`), 0o600); err != nil {
+		t.Fatalf("seed session file: %v", err)
+	}
+	bin := writeFakeClaudeStaleResume(t, dir, argvFile)
+	url, cfg := startServer(t, bin, dir, 50*time.Millisecond)
+	_ = dial(t, url, testToken)
+
+	// The first spawn resumes the dead id and exits; the self-heal drops the
+	// stale session so a later spawn goes fresh and persists a live id.
+	waitFor(t, "fresh session after self-heal", 5*time.Second, func() bool {
+		sid := readSessionID(cfg.SessionFile)
+		return strings.HasPrefix(sid, "sess-")
+	})
+
+	lines := argvLines(t, argvFile)
+	if len(lines) < 2 {
+		t.Fatalf("expected a resume attempt then a fresh respawn, got %v", lines)
+	}
+	if !strings.Contains(lines[0], "--resume dead-session") {
+		t.Fatalf("first spawn should resume the seeded dead id: %s", lines[0])
+	}
+	// Every spawn after the self-heal must be fresh (no --resume) until a live
+	// id is captured.
+	if strings.Contains(lines[len(lines)-1], "--resume") {
+		t.Fatalf("spawn after self-heal must be fresh: %s", lines[len(lines)-1])
 	}
 }
 
