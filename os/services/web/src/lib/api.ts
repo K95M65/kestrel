@@ -112,18 +112,27 @@ const SETUP_URL_SEARCH_STORE_KEY = "autonomous.setup_url_search.v1";
  *  Called once on every page mount so a `?llm_api_key=…` link doesn't survive
  *  in browser history / address bar / clipboard after the page reads it.
  *
- *  F5-reload survival: persist the raw pre-scrub search to sessionStorage
- *  BEFORE wiping the URL. That way a reload (which reloads the scrubbed URL,
- *  losing everything the module-load snapshot in useSetupUrlParams would have
- *  captured) can still rehydrate the operator's secrets. sessionStorage is
- *  per-tab and cleared on tab close, so this stays a safer resting place than
- *  the URL — not shown in the address bar, not screenshot-captured, not
- *  walked by "back" history. Doing this here (rather than only in
- *  useSetupUrlParams) covers the cache-transitional case: a cached OLD JS
- *  bundle that runs scrub before the NEW JS bundle has ever loaded still
+ *  EXCEPTION — the /setup route is deliberately left untouched: the operator
+ *  flow requires that an F5 on Setup keeps the full URL (secrets included) on
+ *  the address bar, so a reload re-reads them straight from the query string
+ *  rather than depending on sessionStorage rehydration (which does not survive
+ *  the AP→STA origin change: 192.168.100.1 → the device's LAN IP). This is an
+ *  accepted trade-off: secrets stay visible in Setup's history / address bar.
+ *
+ *  F5-reload survival (all OTHER routes): persist the raw pre-scrub search to
+ *  sessionStorage BEFORE wiping the URL. That way a reload (which reloads the
+ *  scrubbed URL, losing everything the module-load snapshot in useSetupUrlParams
+ *  would have captured) can still rehydrate the operator's secrets.
+ *  sessionStorage is per-tab and cleared on tab close, so this stays a safer
+ *  resting place than the URL — not shown in the address bar, not
+ *  screenshot-captured, not walked by "back" history. Doing this here (rather
+ *  than only in useSetupUrlParams) covers the cache-transitional case: a cached
+ *  OLD JS bundle that runs scrub before the NEW JS bundle has ever loaded still
  *  seeds sessionStorage, so a subsequent F5 into NEW JS can rehydrate. */
 export function scrubLocationSecrets(): void {
   if (typeof window === "undefined") return;
+  // Keep the full URL (secrets included) on /setup — see doc comment above.
+  if (window.location.pathname === "/setup") return;
   const raw = window.location.search;
   const cleaned = safeSearch(raw);
   if (cleaned === raw) return;
