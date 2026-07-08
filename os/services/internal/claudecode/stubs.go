@@ -121,8 +121,8 @@ func (s *ClaudeCodeService) GetConfiguredChannel() string {
 }
 
 // CompactSession + ShouldRotateSession + NewSession live in rotation.go —
-// the session-lifecycle policy (never auto-rotate, session.new frame for
-// explicit user reset).
+// the session-lifecycle policy (turn-count rotation for persona re-anchor +
+// token safety net, session.new frame to the bridge).
 
 // WriteMCPEntry + RemoveMCPEntry live in mcp.go — Claude Code natively reads
 // workspace/.mcp.json, so MCP connector writes are real on this backend.

@@ -189,9 +189,15 @@ Turn-lifecycle gotchas:
 Claude owns the session: the id is captured from any event carrying
 `session_id` and persisted by the bridge (`session.json`) for `--resume`.
 `NewSession` sends `{"type":"session.new"}` (fresh session, no resume).
-`ShouldRotateSession` is **always false** and `CompactSession` returns
-`domain.ErrNotSupportedByRuntime` — Claude Code auto-compacts its own context,
-so an os-server-driven rotation would only throw context away.
+`ShouldRotateSession` rotates on **turn count (80) or a 150k-token spike**
+(`rotation.go`): Claude Code's auto-compaction bounds the context *size* but
+not persona fidelity — after enough compaction cycles the one-line
+IDENTITY.md name drifts out of the compacted context (device-observed
+2026-07-08: the agent invented a name), and `CLAUDE.md` @imports are only
+re-read at session start, so periodic rotation is the re-anchor. Long-term
+memory (MEMORY.md/KNOWLEDGE.md) survives via the imports; only verbatim
+in-session conversation is lost. `CompactSession` returns
+`domain.ErrNotSupportedByRuntime` (no external compact RPC).
 
 ## 7. Channels — all device-owned (telegram, discord, slack)
 

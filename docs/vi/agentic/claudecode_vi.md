@@ -187,9 +187,15 @@ Các gotcha vòng đời turn:
 Claude sở hữu session: id được bắt từ bất kỳ event nào mang `session_id` và
 được bridge persist (`session.json`) cho `--resume`.
 `NewSession` gửi `{"type":"session.new"}` (session mới, không resume).
-`ShouldRotateSession` **luôn false** và `CompactSession` trả
-`domain.ErrNotSupportedByRuntime` — Claude Code tự auto-compact context của
-nó, nên một rotation do os-server điều khiển chỉ tổ vứt context đi.
+`ShouldRotateSession` rotate theo **turn count (80) hoặc token spike 150k**
+(`rotation.go`): auto-compaction của Claude Code giữ được *kích thước*
+context nhưng không giữ được persona — sau đủ nhiều chu kỳ compaction, dòng
+tên duy nhất trong IDENTITY.md trôi khỏi context nén (quan sát trên device
+2026-07-08: agent tự bịa tên), mà `CLAUDE.md` @imports chỉ được đọc lại lúc
+session start, nên rotation định kỳ chính là điểm neo lại. Ký ức dài hạn
+(MEMORY.md/KNOWLEDGE.md) sống sót qua imports; chỉ mất hội thoại nguyên văn
+trong session. `CompactSession` trả `domain.ErrNotSupportedByRuntime` (không
+có compact RPC ngoài).
 
 ## 7. Kênh — tất cả do device sở hữu (telegram, discord, slack)
 

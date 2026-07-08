@@ -14,11 +14,27 @@ func (s *ClaudeCodeService) CompactSession(sessionKey string) error {
 	return domain.ErrNotSupportedByRuntime
 }
 
-// ShouldRotateSession — never rotate: Claude Code manages its own context window
-// (auto-compaction), so an os-server-driven rotation would only throw context
-// away. NewSession stays available for an explicit user reset.
-func (s *ClaudeCodeService) ShouldRotateSession(_, _ int) bool {
-	return false
+// rotateMaxTurns / rotateTokenThreshold gate session rotation (see
+// ShouldRotateSession). Auto-compaction bounds the context SIZE but not
+// persona fidelity: device-observed 2026-07-08, after ~18h / hundreds of
+// sensing turns and several compaction cycles the one-line IDENTITY.md name
+// had drifted out of the compacted context and the agent invented a name —
+// CLAUDE.md @imports are only re-read at session start, so rotation is the
+// re-anchor. Turn count is the primary trigger (compaction keeps reported
+// tokens bounded, so a token threshold alone may never fire); the token
+// gate is the codex-style safety net for a runaway thread.
+const (
+	rotateMaxTurns       = 80
+	rotateTokenThreshold = 150_000
+)
+
+// ShouldRotateSession rotates on turn count (primary — persona re-anchor,
+// see the constants above) or a token spike (safety net). The handler's
+// NewSession path is instant (no compact freeze) and MEMORY.md/KNOWLEDGE.md
+// long-term memory survives via the CLAUDE.md imports; only verbatim
+// in-session conversation is lost.
+func (s *ClaudeCodeService) ShouldRotateSession(totalTokens, turnsSinceRotation int) bool {
+	return turnsSinceRotation >= rotateMaxTurns || totalTokens > rotateTokenThreshold
 }
 
 // NewSession asks the bridge to restart Claude Code WITHOUT --resume, starting a
