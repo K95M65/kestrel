@@ -324,7 +324,7 @@ class _MediaPipeLandmarkONNX:
         scores, landmarks = self.session.run(
             self.output_names, {self.input_name: self._blob(bgr_crop)}
         )
-        score = scores[0][0]
+        score = float(scores[0]) # already sigmoided in the model output (face-presence probability)
         # normalized [0,1] -> pixels of the (square) model input
         xy = landmarks[0][:, :2].astype(np.float32) * np.float32(self.input_size)
         return xy, score
