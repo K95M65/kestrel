@@ -324,7 +324,7 @@ class _MediaPipeLandmarkONNX:
         scores, landmarks = self.session.run(
             self.output_names, {self.input_name: self._blob(bgr_crop)}
         )
-        score = float(1.0 / (1.0 + np.exp(-float(scores.reshape(-1)[0]))))
+        score = scores[0][0]
         # normalized [0,1] -> pixels of the (square) model input
         xy = landmarks[0][:, :2].astype(np.float32) * np.float32(self.input_size)
         return xy, score
