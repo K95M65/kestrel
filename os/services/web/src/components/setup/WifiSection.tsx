@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Wifi, Eye, EyeOff, Settings } from "lucide-react";
+import { Wifi, Eye, EyeOff, Settings, Check } from "lucide-react";
 import { C, ConfiguredHint, PasswordField, SectionCard, SkeletonBlock, LABEL_STYLE, INPUT_STYLE, INPUT_PAD_ONE_ICON, FIELD_GAP, ADMIN_PASSWORD_MIN } from "./shared";
 import type { NetworkItem } from "@/types";
 
@@ -26,9 +26,24 @@ function GroupLabel({ children, first = false }: { children: React.ReactNode; fi
 const SSID_MAX_BYTES = 32;
 const ssidByteLength = (s: string) => new TextEncoder().encode(s).length;
 
+// Placeholder bar shown while useWifiConnected's first probe decides whether the
+// device is already on Wi-Fi. Mirrors INPUT_STYLE's box (height ≈ 40px from
+// 14px text + 10px×2 padding + border, radius 10) so the real network/password
+// fields drop in without a layout jump. Theme-aware via C.surface / C.border.
+const SKELETON_FIELD: React.CSSProperties = {
+  width: "100%",
+  height: 40,
+  borderRadius: 10,
+  background: C.surface,
+  border: `1px solid ${C.border}`,
+  boxSizing: "border-box",
+};
+
 export function WifiSection({
   active, ssid, setSsid, password, setPassword, loadingList, uniqueNetworks,
   passwordConfigured = false,
+  connectedSsid = "",
+  checkingConnection = false,
   adminPassword, setAdminPassword,
 }: {
   active: boolean;
@@ -38,10 +53,22 @@ export function WifiSection({
   setPassword: (v: string) => void;
   loadingList: boolean;
   uniqueNetworks: NetworkItem[];
+  /** True while useWifiConnected's first probe is still deciding whether the
+   *  device is already on home Wi-Fi. We show a skeleton for the whole Wi-Fi
+   *  group during this window so the step doesn't flash the empty "Choose your
+   *  Wi-Fi" picker for a beat before collapsing into the connected state. */
+  checkingConnection?: boolean;
   /** True when ConfigPublicResponse.has_network_password=true: hide the
    *  password input + show "configured" indicator. Operator can rotate via
    *  /edit or by clicking "update" → toggles back into the input. */
   passwordConfigured?: boolean;
+  /** The SSID the device is CURRENTLY joined to (from useWifiConnected /
+   *  GET /api/network/current). When set, the device already left the setup AP
+   *  and is on home Wi-Fi — this is the state after the AP→STA join reloads the
+   *  page — so we show a "Connected to <ssid>" row instead of re-prompting the
+   *  operator to pick a network + type a password they already entered. A
+   *  "Change network" link folds the picker back open for switching Wi-Fi. */
+  connectedSsid?: string;
   /** Device admin password. Only passed (and only rendered) when the device
    *  has no admin password on file yet — i.e. first-time setup. Shown in clear
    *  text on purpose (no hide toggle, no confirm): it's set once here and the
@@ -51,6 +78,11 @@ export function WifiSection({
   setAdminPassword?: (v: string) => void;
 }) {
   const showAdminPassword = setAdminPassword !== undefined;
+  // When the device reports it's already on home Wi-Fi, collapse the picker
+  // into a "connected" confirmation. `changing` lets the operator re-open the
+  // full picker if they actually want to switch networks during re-setup.
+  const [changing, setChanging] = useState(false);
+  const showConnected = !!connectedSsid && !changing;
   // Device password is revealed by default (it's set once and the operator
   // needs to read it back), with an eye toggle to hide if someone's watching.
   const [adminVisible, setAdminVisible] = useState(true);
@@ -69,7 +101,9 @@ export function WifiSection({
       active={active}
       title={showAdminPassword ? "Setting up" : "Wi-Fi"}
       icon={showAdminPassword ? <Settings size={17} /> : <Wifi size={17} />}
-      description="Choose your Wi-Fi and enter its password."
+      description={showConnected
+        ? "Your device is connected to Wi-Fi."
+        : "Choose your Wi-Fi and enter its password."}
     >
       {/* Device admin password — kept mounted but hidden so its state (empty)
           still submits. Operators no longer see or type this: the backend
@@ -110,56 +144,108 @@ export function WifiSection({
           </div>
         </>
       )}
-      <div style={{ marginBottom: FIELD_GAP }}>
-        {!showAdminPassword && (
-          <label htmlFor="ssid" style={LABEL_STYLE}>
-            Wi-Fi network
-          </label>
-        )}
-        {loadingList ? (
-          <SkeletonBlock />
-        ) : uniqueNetworks.length > 0 ? (
-          <select
-            id="ssid"
-            value={ssid}
-            onChange={(e) => setSsid(e.target.value)}
-            style={{
-              ...INPUT_STYLE,
-              border: `1px solid ${overLimit ? C.red : C.border}`,
-              cursor: "pointer",
-            }}
-          >
-            <option value="">Choose your Wi-Fi</option>
-            {uniqueNetworks.map((n) => (
-              <option key={n.bssid} value={n.ssid}>{n.ssid}</option>
-            ))}
-          </select>
-        ) : (
-          <input
-            id="ssid" type="text" value={ssid}
-            onChange={(e) => setSsid(e.target.value)}
-            placeholder="Enter Wi-Fi name" autoComplete="off"
-            style={{
-              ...INPUT_STYLE,
-              border: `1px solid ${overLimit ? C.red : C.border}`,
-            }}
-          />
-        )}
-        {showCounter && (
-          <div style={{
-            marginTop: 6, fontSize: 12,
-            color: overLimit ? C.red : C.textDim,
-          }}>
-            {overLimit
-              ? `SSID too long: ${bytes}/${SSID_MAX_BYTES} bytes (802.11 limit)`
-              : `${bytes}/${SSID_MAX_BYTES} bytes`}
+      {checkingConnection ? (
+        // First useWifiConnected probe still deciding: skeleton the whole Wi-Fi
+        // group (network + password) so we never flash the empty picker before
+        // resolving into either the connected state or the real picker. Bars
+        // mirror the real input box (height/radius/border from INPUT_STYLE) so
+        // nothing jumps when they resolve; C.surface + C.border keep them
+        // theme-aware (light + dark), matching SkeletonBlock's static style.
+        <>
+          <div style={{ marginBottom: FIELD_GAP }}>
+            {!showAdminPassword && <label style={LABEL_STYLE}>Wi-Fi network</label>}
+            <div style={SKELETON_FIELD} />
           </div>
-        )}
-      </div>
-      {passwordConfigured ? (
-        <ConfiguredHint label={showAdminPassword ? "" : "Wi-Fi password"} />
+          <div style={{ marginBottom: FIELD_GAP }}>
+            {!showAdminPassword && <label style={LABEL_STYLE}>Wi-Fi password</label>}
+            <div style={SKELETON_FIELD} />
+          </div>
+        </>
+      ) : showConnected ? (
+        // Device is already on home Wi-Fi (post-join page reload). Show the
+        // live network as a done state instead of an empty picker + password
+        // the operator would otherwise be forced to re-enter. "Change network"
+        // re-opens the full picker for a deliberate switch.
+        <div style={{ marginBottom: FIELD_GAP }}>
+          {!showAdminPassword && (
+            <label style={LABEL_STYLE}>Wi-Fi network</label>
+          )}
+          <div style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            gap: 10, padding: "10px 13px",
+            background: C.bg, border: `1px solid ${C.border}`,
+            borderRadius: 10, fontSize: 14, color: C.textDim,
+          }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Check size={15} style={{ color: C.green }} />
+              <span>Connected to <span style={{ color: C.text }}>{connectedSsid}</span></span>
+            </span>
+            <button
+              type="button"
+              onClick={() => { setChanging(true); setSsid(""); }}
+              style={{
+                background: "none", border: "none", cursor: "pointer",
+                color: C.amber, fontSize: 13, padding: 0,
+              }}
+            >
+              Change network →
+            </button>
+          </div>
+        </div>
       ) : (
-        <PasswordField label={showAdminPassword ? "" : "Wi-Fi password"} id="password" value={password} onChange={setPassword} placeholder="Wi-Fi password" />
+        <>
+          <div style={{ marginBottom: FIELD_GAP }}>
+            {!showAdminPassword && (
+              <label htmlFor="ssid" style={LABEL_STYLE}>
+                Wi-Fi network
+              </label>
+            )}
+            {loadingList ? (
+              <SkeletonBlock />
+            ) : uniqueNetworks.length > 0 ? (
+              <select
+                id="ssid"
+                value={ssid}
+                onChange={(e) => setSsid(e.target.value)}
+                style={{
+                  ...INPUT_STYLE,
+                  border: `1px solid ${overLimit ? C.red : C.border}`,
+                  cursor: "pointer",
+                }}
+              >
+                <option value="">Choose your Wi-Fi</option>
+                {uniqueNetworks.map((n) => (
+                  <option key={n.bssid} value={n.ssid}>{n.ssid}</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                id="ssid" type="text" value={ssid}
+                onChange={(e) => setSsid(e.target.value)}
+                placeholder="Enter Wi-Fi name" autoComplete="off"
+                style={{
+                  ...INPUT_STYLE,
+                  border: `1px solid ${overLimit ? C.red : C.border}`,
+                }}
+              />
+            )}
+            {showCounter && (
+              <div style={{
+                marginTop: 6, fontSize: 12,
+                color: overLimit ? C.red : C.textDim,
+              }}>
+                {overLimit
+                  ? `SSID too long: ${bytes}/${SSID_MAX_BYTES} bytes (802.11 limit)`
+                  : `${bytes}/${SSID_MAX_BYTES} bytes`}
+              </div>
+            )}
+          </div>
+          {passwordConfigured ? (
+            <ConfiguredHint label={showAdminPassword ? "" : "Wi-Fi password"} />
+          ) : (
+            <PasswordField label={showAdminPassword ? "" : "Wi-Fi password"} id="password" value={password} onChange={setPassword} placeholder="Wi-Fi password" />
+          )}
+        </>
       )}
     </SectionCard>
   );

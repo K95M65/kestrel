@@ -202,6 +202,23 @@ export async function getNetworks(): Promise<NetworkItem[]> {
   return apiRequest<NetworkItem[]>(`${API_BASE}/api/network`);
 }
 
+/** The Wi-Fi network wlan0 is currently associated with (from `iwgetid -r`),
+ *  or null when the interface isn't associated with any station network.
+ *  Public (no admin auth) so the reloaded Setup page — served from the new
+ *  LAN IP after the AP→STA join — can confirm the device is actually on home
+ *  Wi-Fi and mark the Wi-Fi step done without reading admin-gated config. */
+export interface CurrentNetwork {
+  ssid: string;
+  signal: number;
+  linkRate: number;
+}
+
+/** GET /api/network/current — the SSID the device is presently joined to.
+ *  Returns null when wlan0 isn't associated (e.g. still running the setup AP). */
+export async function getCurrentNetwork(): Promise<CurrentNetwork | null> {
+  return apiRequest<CurrentNetwork | null>(`${API_BASE}/api/network/current`);
+}
+
 export async function setupNetwork(ssid: string, password: string): Promise<string> {
   return apiRequest<string>(`${API_BASE}/api/network/setup`, {
     method: "POST",
