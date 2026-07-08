@@ -137,10 +137,9 @@ _snapshot_paths: list = []
 
 DEFAULT_USER = os.environ.get("HAL_DEFAULT_USER", "unknown")
 
-# --- OpenClaw workspace ---
+# --- Agent workspace ---
 
 _DEFAULT_AGENT_NAME = "friend"  # last-resort only; device_type is preferred (see _read_agent_name)
-_OPENCLAW_WORKSPACE = os.environ.get("OPENCLAW_WORKSPACE", "/root/.openclaw/workspace")
 
 
 # ---------------------------------------------------------------------------
@@ -595,9 +594,13 @@ def _auto_camera_on(reason: str) -> bool:
 
 
 def _read_agent_name() -> str:
-    """Read agent name from IDENTITY.md. Falls back to the device type
+    """Read agent name from the ACTIVE runtime's IDENTITY.md (a rename lands
+    in the active workspace only — reading a fixed openclaw path returns a
+    stale/template name on other runtimes). Falls back to the device type
     (lamp/dog/intern) so wake words follow the device class, not a brand."""
-    identity_path = os.path.join(_OPENCLAW_WORKSPACE, "IDENTITY.md")
+    identity_path = os.path.join(
+        _hal_config.ACTIVE_AGENT_WORKSPACE_DIR, "IDENTITY.md"
+    )
     try:
         with open(identity_path) as f:
             for line in f:

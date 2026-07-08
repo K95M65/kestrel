@@ -686,6 +686,24 @@ PICOCLAW_WORKSPACE_DIR: str = os.environ.get("HAL_PICOCLAW_WORKSPACE_DIR", "/roo
 CODEX_WORKSPACE_DIR: str = os.environ.get("HAL_CODEX_WORKSPACE_DIR", "/root/.codex/workspace")
 CLAUDECODE_WORKSPACE_DIR: str = os.environ.get("HAL_CLAUDECODE_WORKSPACE_DIR", "/root/.claudecode/workspace")
 
+# ACTIVE_AGENT_WORKSPACE_DIR is the ACTIVE runtime's workspace (follows
+# AGENT_GATEWAY, like SNAPSHOT_DIR below). Persona files (IDENTITY.md /
+# SOUL.md) live per-runtime, so anything reading them OUTSIDE the realtime
+# orchestrator (which has its own per-gateway map) must resolve through this —
+# a hardcoded openclaw path reads a stale/template IDENTITY.md on other
+# runtimes and the agent name silently falls back to the device type (the
+# "Lamp" wake-word bug, device-observed 2026-07-08 on claudecode).
+_AGENT_WORKSPACE_DIRS: dict[str, str] = {
+    "openclaw": OPENCLAW_WORKSPACE_DIR,
+    "hermes": HERMES_WORKSPACE_DIR,
+    "picoclaw": PICOCLAW_WORKSPACE_DIR,
+    "codex": CODEX_WORKSPACE_DIR,
+    "claudecode": CLAUDECODE_WORKSPACE_DIR,
+}
+ACTIVE_AGENT_WORKSPACE_DIR: str = _AGENT_WORKSPACE_DIRS.get(
+    AGENT_GATEWAY, OPENCLAW_WORKSPACE_DIR
+)
+
 # Camera snapshot dir. MUST sit under the ACTIVE agent runtime's media root — the
 # agent's image tool only reads files under its allow-list, else it returns "not
 # under an allowed directory". So this follows AGENT_GATEWAY instead of a hardcoded
@@ -703,7 +721,13 @@ SNAPSHOT_DIR: str = os.environ.get("HAL_SNAPSHOT_DIR") or (
     _AGENT_CONFIG_DIRS.get(AGENT_GATEWAY, _AGENT_CONFIG_DIRS["openclaw"])
     + "/media/hal-snapshots"
 )
-_rt_workspace: str = OPENCLAW_WORKSPACE_DIR.rstrip("/")
+# Realtime memory follows the ACTIVE runtime's workspace — memory.jsonl plus
+# the derived summary.md / device_summary.md / memory_raw.jsonl all live in its
+# realtime/ subdir (context_manager/base.py derives them from this path's
+# parent). Pinning this to openclaw meant every runtime shared ONE realtime
+# memory: stale facts from an old runtime era (e.g. a previous agent name)
+# kept leaking into the current persona's turns (device-observed 2026-07-08).
+_rt_workspace: str = ACTIVE_AGENT_WORKSPACE_DIR.rstrip("/")
 REALTIME_MEMORY_PATH: str = os.environ.get("HAL_REALTIME_MEMORY_PATH", f"{_rt_workspace}/realtime/memory.jsonl")
 REALTIME_MAX_MEMORY_ENTRIES: int = int(os.environ.get("HAL_REALTIME_MAX_MEMORY_ENTRIES", "1000"))
 REALTIME_MEMORY_TRIM_KEEP: int = int(os.environ.get("HAL_REALTIME_MEMORY_TRIM_KEEP", "500"))
