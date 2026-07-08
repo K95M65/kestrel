@@ -549,6 +549,9 @@ type MQTTInfoResponse struct {
 	// (e.g. "0.17.0"), empty when hermes isn't installed. agent_runtime says which
 	// one is actually active.
 	HermesVersion string `json:"hermes_version,omitempty"`
+	// PicoclawVersion mirrors hermes_version for the PicoClaw backend: the
+	// installed picoclaw binary version, empty when not installed.
+	PicoclawVersion string `json:"picoclaw_version,omitempty"`
 	// CodexVersion mirrors hermes_version for the Codex backend: the installed
 	// Codex CLI version (e.g. "0.142.5"), empty when codex isn't installed.
 	CodexVersion string `json:"codex_version,omitempty"`

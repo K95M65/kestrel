@@ -58,13 +58,14 @@ OS server sử dụng MQTT để giao tiếp với backend server (báo cáo tr�
 ```
 
 `agent_runtime` là backend agentic **đang thực sự chạy** (`openclaw` | `hermes` |
-`picoclaw` | `codex`) — resolve theo thứ tự `config.agent_runtime`, rồi `gateway.default`
-trong `DEVICE.md` của device, cuối cùng mặc định `openclaw`. Phản hồi còn kèm các
-field tùy chọn khi có: `hal_version`, `openclaw_version`, `hermes_version`, `codex_version`,
+`picoclaw` | `codex` | `claudecode`) — resolve theo thứ tự `config.agent_runtime`,
+rồi `gateway.default` trong `DEVICE.md` của device, cuối cùng mặc định `openclaw`.
+Phản hồi còn kèm các field tùy chọn khi có: `hal_version`, `openclaw_version`,
+`hermes_version`, `picoclaw_version`, `codex_version`, `claudecode_version`,
 `local_ip`, `tts_provider`, `tts_voice`, `stt_language`, `timezone`,
 `unsupported_channels`. `timezone` là múi giờ IANA **trực tiếp** của device (ví dụ
 `Asia/Ho_Chi_Minh`), đọc tươi từ `/etc/timezone` (fallback về config), không chỉ là
-bản ghi trong config. `openclaw_version`, `hermes_version` và `codex_version` đều được probe lúc startup (mỗi cái
+bản ghi trong config. Cả năm version per-runtime đều được probe lúc startup (mỗi cái
 từ `--version` riêng) và bắn cạnh nhau; `agent_runtime` cho biết cái nào đang active.
 
 `unsupported_channels` (bỏ qua khi rỗng) liệt kê các channel đã cấu hình trên thiết bị
