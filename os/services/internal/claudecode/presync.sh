@@ -122,6 +122,21 @@ ANTHROPIC_SMALL_FAST_MODEL=$LLM_MODEL
 DISABLE_AUTOUPDATER=1
 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 ENV
+  # Pre-approve the campaign key for INTERACTIVE claude (web CLI): Claude Code
+  # identifies a custom ANTHROPIC_API_KEY by its last 20 chars and, unless that
+  # id sits in ~/.claude.json customApiKeyResponses.approved, an interactive
+  # session refuses the key and shows "Not logged in / run /login" (a stray
+  # `rejected` entry from an earlier manual session bricks it entirely). The
+  # headless gatewayd (--print) bypasses this gate, so only the web CLI needs
+  # it. Seed approved / clear rejected so `claude` just works.
+  if [ -n "$LLM_API_KEY" ]; then
+    KEYID="${LLM_API_KEY: -20}"
+    jq_edit "$CLAUDE_JSON" --arg k "$KEYID" '
+        .customApiKeyResponses.approved = (((.customApiKeyResponses.approved // []) + [$k]) | unique)
+      | .customApiKeyResponses.rejected = ((.customApiKeyResponses.rejected // []) | map(select(. != $k)))
+    '
+    log "pre-approved interactive API key (…$KEYID) in ~/.claude.json"
+  fi
 fi
 mv "$ENV_FILE.tmp" "$ENV_FILE"
 umask 022
