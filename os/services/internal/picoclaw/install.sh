@@ -50,7 +50,7 @@ PICO_CONFIG="$PICO_DIR/config.json"
 
 # Pin the release the device installs. Bump here (and re-OTA os-server) to upgrade.
 # The asset is published per-arch as picoclaw-linux-<arch> on GitHub releases.
-PICO_VERSION="${PICO_VERSION:-v0.2.9-toolfix}"
+PICO_VERSION="${PICO_VERSION:-v0.3.1-fixvision}"
 PICO_REPO="${PICO_REPO:-autonomous-ai/picoclaw}"
 
 echo "[install-picoclaw] prerequisites (jq, yq, curl)"
