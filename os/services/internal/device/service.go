@@ -21,19 +21,9 @@ import (
 	"go.autonomous.ai/os/lib/hal"
 	"go.autonomous.ai/os/lib/i18n"
 	"go.autonomous.ai/os/lib/runtimereg"
+	"go.autonomous.ai/os/lib/urlnorm"
 	"go.autonomous.ai/os/server/config"
 )
-
-// normalizeBaseURL ensures autonomous.ai base URLs include the /v1 OpenAI-compat
-// prefix so all backends (TTS, STT, LLM) receive a ready-to-use URL without each
-// backend having to patch it individually. Non-autonomous URLs are left untouched.
-func normalizeBaseURL(base string) string {
-	base = strings.TrimSuffix(strings.TrimSpace(base), "/")
-	if strings.Contains(base, "campaign-api.autonomous.ai") && strings.HasSuffix(base, "/ai") {
-		base += "/v1"
-	}
-	return base
-}
 
 // Setup phase strings exposed via /api/setup/status so the web client can
 // follow the device through the AP→STA transition. Phases progress only
@@ -180,9 +170,9 @@ func (s *Service) buildPingPayload(status string) beclient.PingPayload {
 
 func (s *Service) Setup(data domain.SetupRequest) error {
 	slog.Info("starting setup", "component", "device")
-	data.LLMBaseURL = normalizeBaseURL(data.LLMBaseURL)
-	data.STTBaseURL = normalizeBaseURL(data.STTBaseURL)
-	data.TTSBaseURL = normalizeBaseURL(data.TTSBaseURL)
+	data.LLMBaseURL = urlnorm.NormalizeBaseURL(data.LLMBaseURL)
+	data.STTBaseURL = urlnorm.NormalizeBaseURL(data.STTBaseURL)
+	data.TTSBaseURL = urlnorm.NormalizeBaseURL(data.TTSBaseURL)
 	s.setupState.set(SetupPhaseConnecting, "", "")
 
 	// Blue-blink cue while wlan0 associates with the target Wi-Fi. Mirrors the
@@ -718,7 +708,7 @@ func (s *Service) UpdateConfig(data domain.UpdateConfigRequest) error {
 			c.LLMAPIKey = data.LLMAPIKey
 		}
 		if data.LLMBaseURL != "" {
-			c.LLMBaseURL = normalizeBaseURL(data.LLMBaseURL)
+			c.LLMBaseURL = urlnorm.NormalizeBaseURL(data.LLMBaseURL)
 		}
 		if data.LLMModel != "" {
 			c.LLMModel = data.LLMModel
@@ -745,10 +735,10 @@ func (s *Service) UpdateConfig(data domain.UpdateConfigRequest) error {
 			c.TTSAPIKey = data.TTSAPIKey
 		}
 		if data.STTBaseURL != "" {
-			c.STTBaseURL = normalizeBaseURL(data.STTBaseURL)
+			c.STTBaseURL = urlnorm.NormalizeBaseURL(data.STTBaseURL)
 		}
 		if data.TTSBaseURL != "" {
-			c.TTSBaseURL = normalizeBaseURL(data.TTSBaseURL)
+			c.TTSBaseURL = urlnorm.NormalizeBaseURL(data.TTSBaseURL)
 		}
 		// Operators pick a language; the matching Deepgram SKU is auto-derived
 		// because end users don't know which model handles which language.
