@@ -3,8 +3,9 @@ package agent
 import (
 	"log/slog"
 
-	migrateconfig "go.autonomous.ai/os/internal/agent/migrate_config"
 	"go.autonomous.ai/os/domain"
+	migrateconfig "go.autonomous.ai/os/internal/agent/migrate_config"
+	"go.autonomous.ai/os/lib/urlnorm"
 	"go.autonomous.ai/os/server/config"
 )
 
@@ -116,7 +117,11 @@ func (c *ConfigMigration) Reconcile() {
 			cfg.LLMAPIKey = migrated.APIKey
 		}
 		if migrated.BaseURL != "" {
-			cfg.LLMBaseURL = migrated.BaseURL
+			// Re-normalize: claudecode/presync.sh strips /v1 from llm_base_url
+			// before writing ANTHROPIC_BASE_URL (Claude Code appends /v1/messages
+			// itself). Reading that value back here would persist the stripped URL
+			// to config.json, breaking all other backends that need the /v1 suffix.
+			cfg.LLMBaseURL = urlnorm.NormalizeBaseURL(migrated.BaseURL)
 		}
 	}); err != nil {
 		slog.Warn("[cfg-migration] step2 config.json sync failed, will retry next boot", "component", cfgMigComponent, "error", err)
