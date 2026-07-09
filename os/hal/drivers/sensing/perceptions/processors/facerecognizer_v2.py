@@ -135,25 +135,6 @@ _EXTENDED_EMB_EXT = ".npy"
 # only files with these suffixes sitting DIRECTLY in a user folder; the photos
 # watcher uses the same set so the two agree on what "an enrollment change" is.
 _ENROLL_IMG_EXTS = {".jpg", ".jpeg", ".png", ".bmp"}
-# Debug dump: on every classified face (friend / stranger / unsure) write the
-# full model I/O — raw frame, the aligned crop fed to EdgeFace, bbox / kps /
-# det_score, the query embedding, the owner + stranger bank embeddings, and the
-# similarity scores — to one folder per face for offline prod-vs-test diffing.
-# Enabled by default; set HAL_FACE_DEBUG_DUMP=0 to turn it off, override the
-# location with HAL_FACE_DEBUG_DIR.
-_DEBUG_DUMP_ENABLED: bool = os.environ.get("HAL_FACE_DEBUG_DUMP", "1") not in (
-    "0",
-    "false",
-    "False",
-    "",
-)
-_DEBUG_DUMP_DIR = Path(
-    os.environ.get(
-        "HAL_FACE_DEBUG_DIR",
-        "/opt/hal/drivers/sensing/perceptions/processors/logs",
-    )
-)
-
 
 # =============================================================================
 # Alignment helpers — ported & renamed from temp-updated-face-recognizer/utils.py
@@ -429,8 +410,6 @@ class _OnnxLandmarkAligner:
         Returns ``(aligned, pts5, score)``:
             * ``aligned``: 112x112 BGR crop, or None if the face cannot align.
             * ``pts5``: the 5 alignment points used for the warp, or None.
-            * ``score``: the landmark face-presence probability (for debug),
-              or None if inference failed.
 
         Faces whose landmark confidence is below ``conf_thresh`` (or whose
         landmarks fall outside the bbox/image) are dropped: there is NO SCRFD
@@ -442,17 +421,17 @@ class _OnnxLandmarkAligner:
             landmarks, score = self._landmarker.detect_in_frame(frame, bbox, kps=kps)
         except Exception as e:  # noqa: BLE001
             logger.debug("[face-v2] landmark inference error: %s", e)
-            return None, None, -1.0
+            return None, None
 
         if landmarks is not None and score >= self._landmarker.conf_thresh:
             pts5 = self._landmarker.to_5points(landmarks)
             if not _v2_landmarks_out_of_bounds(pts5, bbox, frame.shape):
                 try:
-                    return _v2_warp_and_crop_face(frame, pts5), pts5, score
+                    return _v2_warp_and_crop_face(frame, pts5), pts5
                 except Exception as e:  # noqa: BLE001
                     logger.debug("[face-v2] landmark alignment error: %s", e)
 
-        return None, None, score
+        return None, None
 
 
 # =============================================================================
@@ -803,7 +782,7 @@ class _EdgeFacePipeline:
             bbox = det["bbox"]
             kps = det["kps"]
 
-            aligned, kps, landmark_score = self.aligner.align_crop_from_bbox(
+            aligned, kps = self.aligner.align_crop_from_bbox(
                 frame, bbox, kps=kps
             )
             if aligned is None:
@@ -816,13 +795,6 @@ class _EdgeFacePipeline:
                     "kps": None if kps is None else kps.astype(np.float32),
                     "det_score": np.float32(det["det_score"]),
                     "embedding": embedding.astype(np.float32),
-                    # 5 alignment points used for the warp (mirrors temp/utils_v3
-                    # align_crop_from_bbox returning pts5); kept for debug.
-                    # Landmark face-presence probability (for debug).
-                    "landmark_score": float(landmark_score),
-                    # 112x112 BGR crop that is the DIRECT input to EdgeFace
-                    # (kept for debug dumping; ignored by normal callers).
-                    "aligned": aligned,
                 }
             )
         return results
@@ -1027,27 +999,6 @@ class FaceRecognizer:
     # already store (so the bank captures new poses instead of near-duplicates),
     # and capped at ``max_extended_images`` most-diverse samples. The uploaded
     # images are never touched; the extended bank only ever grows recall.
-
-    def _combined_owner_bank(
-        self,
-    ) -> tuple[npt.NDArray[np.float32] | None, npt.NDArray[np.str_] | None]:
-        """Uploaded enrollment bank + extended bank, concatenated for retrieval.
-
-        Both banks use FRIEND_PREFIX labels, so a nearest-neighbour hit in
-        either resolves to the same friend id. Returns (None, None) when no
-        owner has been enrolled yet.
-        """
-        embeds: list[npt.NDArray[np.float32]] = []
-        labels: list[npt.NDArray[np.str_]] = []
-        if self._owner_embeddings is not None and self._owner_labels is not None:
-            embeds.append(self._owner_embeddings)
-            labels.append(self._owner_labels)
-        if self._extended_embeddings is not None and self._extended_labels is not None:
-            embeds.append(self._extended_embeddings)
-            labels.append(self._extended_labels)
-        if not embeds:
-            return None, None
-        return np.concatenate(embeds), np.concatenate(labels)
 
     @staticmethod
     def _user_embeddings(
@@ -1668,22 +1619,6 @@ class FaceRecognizer:
                 person_id = "?"
                 face_kind = PersonKind.UNSURE
 
-            self._dump_debug(
-                frame=frame,
-                i=i,
-                raw_results=raw_results,
-                embeds=embeds,
-                face_kind=face_kind,
-                person_id=person_id,
-                owner_scores=owner_scores,
-                owner_ids=owner_ids,
-                owner_source=owner_source,
-                upload_scores=upload_scores,
-                ext_scores=ext_scores,
-                stranger_scores=stranger_scores,
-                stranger_ids=stranger_ids,
-            )
-
             faces.append(
                 Face(
                     bbox=bbox, kind=face_kind, person_id=person_id, confidence=det_score
@@ -1718,124 +1653,6 @@ class FaceRecognizer:
                 self._maybe_extend_user(raw_label, emb, crop)
 
         return faces
-
-    def _dump_debug(
-        self,
-        frame: npt.NDArray[np.uint8],
-        i: int,
-        raw_results: list,
-        embeds: npt.NDArray[np.float32],
-        face_kind: PersonKind,
-        person_id: str,
-        owner_scores: npt.NDArray[np.float32],
-        owner_ids: list[str | None],
-        owner_source: list[str | None],
-        upload_scores: npt.NDArray[np.float32],
-        ext_scores: npt.NDArray[np.float32],
-        stranger_scores: npt.NDArray[np.float32],
-        stranger_ids: list[str | None],
-    ) -> None:
-        """Dump the full model I/O for one classified face to _DEBUG_DUMP_DIR.
-
-        One folder per face containing: the raw frame, the aligned crop that is
-        the DIRECT EdgeFace input, the query embedding (raw + normalized), the
-        owner (uploads) + extended + stranger bank embeddings/labels we matched
-        against, and a meta.json with bbox / kps / det_score / similarity scores
-        / thresholds. The owner score is split into ``enroll_sim_score`` (uploads
-        only) and ``extended_sim_score`` so you can see whether the extended set
-        made the difference; ``extended_rescued`` flags the case where the
-        uploads alone were below threshold but the extended set carried it.
-        Best-effort: any failure is logged and swallowed so it never breaks
-        detection.
-        """
-        if not _DEBUG_DUMP_ENABLED:
-            return
-        try:
-            r = raw_results[i]
-            o_score = float(owner_scores[i])
-            s_score = float(stranger_scores[i])
-            enroll_sim = float(upload_scores[i])
-            extended_sim = float(ext_scores[i])
-            rescued = enroll_sim <= self._threshold < extended_sim
-
-            ts = time.strftime("%Y%m%d_%H%M%S")
-            ms = int((time.time() % 1.0) * 1000)
-            # A trailing "_rescued" makes extended-set wins easy to spot by name.
-            suffix = "_rescued" if rescued else ""
-            ev_dir = (
-                _DEBUG_DUMP_DIR
-                / f"{ts}_{ms:03d}_face{i}_{face_kind}_{person_id}{suffix}"
-            )
-            ev_dir.mkdir(parents=True, exist_ok=True)
-
-            # Raw frame + the aligned crop fed straight into EdgeFace.
-            _ = cv2.imwrite(str(ev_dir / "frame.jpg"), frame)
-            aligned = r.get("aligned")
-            if aligned is not None:
-                # PNG (lossless) — this is the exact tensor source for the model.
-                _ = cv2.imwrite(str(ev_dir / "aligned_input.png"), aligned)
-
-            # Query embedding: raw (model output) + normalized (what we match).
-            np.save(ev_dir / "embedding_raw.npy", np.asarray(r["embedding"]))
-            np.save(ev_dir / "embedding_normalized.npy", np.asarray(embeds[i]))
-
-            # Bank embeddings + labels (snapshot under lock for consistency).
-            with self._lock:
-                owner_bank = self._owner_embeddings
-                owner_labels = self._owner_labels
-                extended_bank = self._extended_embeddings
-                extended_labels = self._extended_labels
-                stranger_bank = self._stranger_embeddings
-                stranger_labels = self._stranger_labels
-                if owner_bank is not None:
-                    np.save(ev_dir / "owner_bank.npy", owner_bank)
-                    np.save(ev_dir / "owner_labels.npy", owner_labels)
-                if extended_bank is not None:
-                    np.save(ev_dir / "extended_bank.npy", extended_bank)
-                    np.save(ev_dir / "extended_labels.npy", extended_labels)
-                if stranger_bank is not None:
-                    np.save(ev_dir / "stranger_bank.npy", stranger_bank)
-                    np.save(ev_dir / "stranger_labels.npy", stranger_labels)
-                owner_bank_size = 0 if owner_bank is None else int(len(owner_bank))
-                extended_bank_size = (
-                    0 if extended_bank is None else int(len(extended_bank))
-                )
-                stranger_bank_size = (
-                    0 if stranger_bank is None else int(len(stranger_bank))
-                )
-
-            kps = r["kps"]
-            landmark_score = r.get("landmark_score")
-            meta = {
-                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
-                "face_index": int(i),
-                "face_kind": str(face_kind),
-                "person_id": str(person_id),
-                "bbox": [float(v) for v in r["bbox"]],
-                "kps": None if kps is None else np.asarray(kps).tolist(),
-                "landmark_score": float(landmark_score),
-                "det_score": float(r["det_score"]),
-                "owner_sim_score": o_score,
-                "owner_match_id": owner_ids[i],
-                # Split of the owner score so you can tell if the extended set
-                # helped: which bank won, and each bank's best similarity.
-                "owner_match_source": owner_source[i],
-                "enroll_sim_score": enroll_sim,
-                "extended_sim_score": extended_sim,
-                "extended_rescued": bool(rescued),
-                "stranger_sim_score": s_score,
-                "stranger_match_id": stranger_ids[i],
-                "best_sim_score": max(o_score, s_score),
-                "threshold": self._threshold,
-                "negative_threshold": self._negative_threshold,
-                "embedding_dim": int(np.asarray(r["embedding"]).shape[0]),
-                "owner_bank_size": owner_bank_size,
-                "extended_bank_size": extended_bank_size,
-                "stranger_bank_size": stranger_bank_size,
-            }
-            _ = (ev_dir / "meta.json").write_text(json.dumps(meta, indent=2))
-        except Exception as e:  # noqa: BLE001 — debugging must never break detection
-            logger.warning("[face] debug dump failed: %s", e)
 
     def _evict_oldest_strangers(self) -> None:
         if self._stranger_embeddings is None or self._stranger_labels is None:
