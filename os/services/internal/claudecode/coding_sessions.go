@@ -229,18 +229,18 @@ func oneLine(s string) string {
 	return strings.Join(strings.Fields(s), " ")
 }
 
-// humanizeAgo renders how long ago t was, in Vietnamese, for session listings.
+// humanizeAgo renders how long ago t was, for session listings.
 func humanizeAgo(t time.Time) string {
 	d := time.Since(t)
 	switch {
 	case d < time.Minute:
-		return "vừa xong"
+		return "just now"
 	case d < time.Hour:
-		return fmt.Sprintf("%d phút trước", int(d.Minutes()))
+		return fmt.Sprintf("%dm ago", int(d.Minutes()))
 	case d < 24*time.Hour:
-		return fmt.Sprintf("%d giờ trước", int(d.Hours()))
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
 	default:
-		return fmt.Sprintf("%d ngày trước", int(d.Hours()/24))
+		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
 	}
 }
 

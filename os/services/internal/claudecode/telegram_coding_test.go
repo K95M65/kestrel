@@ -72,7 +72,7 @@ func (r *codingTestRig) waitDM(t *testing.T) string {
 
 func TestCodingCommandsFlow(t *testing.T) {
 	proj := t.TempDir()
-	writeTranscript(t, proj, "-root-test", "aaaa1111-2222-3333-4444-555566667777", "/root/test", "Caro game", "làm game caro", time.Now())
+	writeTranscript(t, proj, "-root-test", "aaaa1111-2222-3333-4444-555566667777", "/root/test", "Caro game", "make caro game", time.Now())
 	rig := newCodingRig(t, proj)
 	s := rig.svc
 	ctx := context.Background()
@@ -88,7 +88,7 @@ func TestCodingCommandsFlow(t *testing.T) {
 
 	// /use 1 selects it and persists.
 	s.handleTelegramCoding(ctx, "/use 1", chat)
-	if dm := rig.waitDM(t); !strings.Contains(dm, "Đang ở phiên") {
+	if dm := rig.waitDM(t); !strings.Contains(dm, "In session") {
 		t.Fatalf("/use DM = %q", dm)
 	}
 	tgt, ok := s.getCodingTarget(chat)
@@ -97,18 +97,18 @@ func TestCodingCommandsFlow(t *testing.T) {
 	}
 
 	// A plain message now routes to the coding runner (not device-main).
-	if !s.handleTelegramCoding(ctx, "thêm nút undo", chat) {
+	if !s.handleTelegramCoding(ctx, "add undo button", chat) {
 		t.Fatal("plain msg with active selection should be handled")
 	}
 	select {
 	case call := <-rig.runs:
-		if call.folder != "/root/test" || call.sessionID != "aaaa1111-2222-3333-4444-555566667777" || call.prompt != "thêm nút undo" {
+		if call.folder != "/root/test" || call.sessionID != "aaaa1111-2222-3333-4444-555566667777" || call.prompt != "add undo button" {
 			t.Fatalf("runner called with %+v", call)
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("coding runner not invoked")
 	}
-	if dm := rig.waitDM(t); !strings.Contains(dm, "ok reply for thêm nút undo") {
+	if dm := rig.waitDM(t); !strings.Contains(dm, "ok reply for add undo button") {
 		t.Fatalf("reply DM = %q", dm)
 	}
 	// The new session id from the runner was captured.
@@ -119,7 +119,7 @@ func TestCodingCommandsFlow(t *testing.T) {
 	// /device clears the selection → plain msg falls through to device-main.
 	s.handleTelegramCoding(ctx, "/device", chat)
 	rig.waitDM(t)
-	if s.handleTelegramCoding(ctx, "chào đèn", chat) {
+	if s.handleTelegramCoding(ctx, "hi lamp", chat) {
 		t.Fatal("after /device a plain msg must fall through to device-main (return false)")
 	}
 }
@@ -147,7 +147,7 @@ func TestCodingLiveTUIGuard(t *testing.T) {
 		return "", "", nil
 	}
 	rig.svc.setCodingTarget("9", codingTarget{Folder: "/root/live", SessionID: "s"})
-	rig.svc.handleTelegramCoding(context.Background(), "làm gì đó", "9")
+	rig.svc.handleTelegramCoding(context.Background(), "do something", "9")
 	if dm := rig.waitDM(t); !strings.Contains(dm, "terminal") {
 		t.Fatalf("guard DM = %q", dm)
 	}

@@ -44,15 +44,15 @@ const (
 	telegramMessageLimit = 4000
 )
 
-const codingHelpText = "🤖 Coding qua Telegram\n\n" +
-	"/sessions — liệt kê các folder có phiên claude\n" +
-	"/sessions <folder> — liệt kê mọi phiên trong 1 folder\n" +
-	"/use <số> — chọn phiên theo số ở danh sách gần nhất\n" +
-	"/use <folder> — chọn phiên mới nhất của folder\n" +
-	"/new <folder> — mở phiên mới trong folder\n" +
-	"/here — xem đang ở phiên nào\n" +
-	"/device — quay về trợ lý thiết bị (con đèn)\n\n" +
-	"Khi đã chọn phiên, nhắn thường sẽ chạy claude trong folder đó và gửi kết quả về đây."
+const codingHelpText = "🤖 Coding over Telegram\n\n" +
+	"/sessions — list folders that have claude sessions\n" +
+	"/sessions <folder> — list every session in one folder\n" +
+	"/use <n> — pick a session by its number in the last list\n" +
+	"/use <folder> — pick the folder's newest session\n" +
+	"/new <folder> — start a new session in a folder\n" +
+	"/here — show which session you're in\n" +
+	"/device — return to the device assistant (the lamp)\n\n" +
+	"Once a session is selected, a plain message runs claude in that folder and sends the result back here."
 
 // codingTarget is a chat's selected coding session. SessionID is empty for a
 // freshly requested /new folder until its first turn captures the real uuid.
@@ -97,7 +97,7 @@ func (s *ClaudeCodeService) handleCodingCommand(ctx context.Context, text, chatI
 		s.cmdWhere(ctx, chatID)
 	case "/device", "/lamp", "/exit", "/quit":
 		s.clearCodingTarget(chatID)
-		s.dmCoding(ctx, chatID, "✅ Đã về trợ lý thiết bị. Nhắn thường sẽ nói chuyện với con đèn.")
+		s.dmCoding(ctx, chatID, "✅ Back to the device assistant. Plain messages now talk to the lamp.")
 	case "/help", "/coding":
 		s.dmCoding(ctx, chatID, codingHelpText)
 	default:
@@ -121,15 +121,15 @@ func (s *ClaudeCodeService) cmdListSessions(ctx context.Context, chatID, arg str
 	)
 	if strings.TrimSpace(arg) == "" {
 		sessions = s.codingFolders()
-		header = "📂 Các folder có phiên code (mới nhất trước):"
+		header = "📂 Coding sessions by folder (most recent first):"
 	} else {
 		folder := normalizeFolder(arg)
 		sessions = s.folderSessions(folder)
-		header = "📂 Các phiên trong " + folder + ":"
+		header = "📂 Sessions in " + folder + ":"
 	}
 	s.setCodingList(chatID, sessions)
 	if len(sessions) == 0 {
-		s.dmCoding(ctx, chatID, "Chưa có phiên code nào. Mở terminal chạy `claude` trong 1 folder, hoặc /new <folder> để tạo mới.")
+		s.dmCoding(ctx, chatID, "No coding sessions yet. Run `claude` in a folder from the terminal, or /new <folder> to start one.")
 		return
 	}
 	var b strings.Builder
@@ -138,11 +138,11 @@ func (s *ClaudeCodeService) cmdListSessions(ctx context.Context, chatID, arg str
 	for i, cs := range sessions {
 		summary := cs.Summary
 		if summary == "" {
-			summary = "(chưa có mô tả)"
+			summary = "(no description)"
 		}
 		fmt.Fprintf(&b, "%d) %s\n    %s\n    ⏱ %s · id %s\n\n", i+1, cs.Folder, summary, humanizeAgo(cs.Modified), shortID(cs.SessionID))
 	}
-	b.WriteString("Dùng /use <số> để chọn phiên, /device để về trợ lý thiết bị.")
+	b.WriteString("Use /use <n> to pick a session, /device to return to the device assistant.")
 	s.dmCoding(ctx, chatID, b.String())
 }
 
@@ -151,13 +151,13 @@ func (s *ClaudeCodeService) cmdListSessions(ctx context.Context, chatID, arg str
 func (s *ClaudeCodeService) cmdUseSession(ctx context.Context, chatID, arg string) {
 	arg = strings.TrimSpace(arg)
 	if arg == "" {
-		s.dmCoding(ctx, chatID, "Cú pháp: /use <số>  hoặc  /use <folder>. /sessions để xem danh sách.")
+		s.dmCoding(ctx, chatID, "Usage: /use <n>  or  /use <folder>. /sessions to list them.")
 		return
 	}
 	if n, err := strconv.Atoi(arg); err == nil {
 		list := s.getCodingList(chatID)
 		if n < 1 || n > len(list) {
-			s.dmCoding(ctx, chatID, "Số không hợp lệ. /sessions để xem lại danh sách.")
+			s.dmCoding(ctx, chatID, "Invalid number. /sessions to see the list again.")
 			return
 		}
 		s.selectCoding(ctx, chatID, list[n-1])
@@ -166,7 +166,7 @@ func (s *ClaudeCodeService) cmdUseSession(ctx context.Context, chatID, arg strin
 	cs, ok := s.latestSessionForFolder(arg)
 	if !ok {
 		folder := normalizeFolder(arg)
-		s.dmCoding(ctx, chatID, fmt.Sprintf("Không thấy phiên nào trong %s. Dùng /new %s để mở phiên mới.", folder, folder))
+		s.dmCoding(ctx, chatID, fmt.Sprintf("No session found in %s. Use /new %s to start one.", folder, folder))
 		return
 	}
 	s.selectCoding(ctx, chatID, cs)
@@ -177,9 +177,9 @@ func (s *ClaudeCodeService) selectCoding(ctx context.Context, chatID string, cs 
 	s.setCodingTarget(chatID, codingTarget{Folder: cs.Folder, SessionID: cs.SessionID})
 	summary := cs.Summary
 	if summary == "" {
-		summary = "(chưa có mô tả)"
+		summary = "(no description)"
 	}
-	s.dmCoding(ctx, chatID, fmt.Sprintf("✅ Đang ở phiên:\n📂 %s\n📝 %s\n\nNhắn để tiếp tục code. /device để thoát.", cs.Folder, summary))
+	s.dmCoding(ctx, chatID, fmt.Sprintf("✅ In session:\n📂 %s\n📝 %s\n\nSend a message to continue coding. /device to exit.", cs.Folder, summary))
 }
 
 // cmdNewSession selects a folder for a brand-new session (no --resume). The
@@ -187,27 +187,27 @@ func (s *ClaudeCodeService) selectCoding(ctx context.Context, chatID string, cs 
 func (s *ClaudeCodeService) cmdNewSession(ctx context.Context, chatID, arg string) {
 	folder := normalizeFolder(arg)
 	if folder == "" {
-		s.dmCoding(ctx, chatID, "Cú pháp: /new <folder>. Ví dụ: /new /root/myapp")
+		s.dmCoding(ctx, chatID, "Usage: /new <folder>. Example: /new /root/myapp")
 		return
 	}
 	if err := os.MkdirAll(folder, 0o755); err != nil {
-		s.dmCoding(ctx, chatID, "❌ Không tạo được folder "+folder+": "+err.Error())
+		s.dmCoding(ctx, chatID, "❌ Could not create folder "+folder+": "+err.Error())
 		return
 	}
 	s.setCodingTarget(chatID, codingTarget{Folder: folder, SessionID: ""})
-	s.dmCoding(ctx, chatID, "🆕 Phiên mới trong "+folder+". Nhắn yêu cầu đầu tiên để bắt đầu.")
+	s.dmCoding(ctx, chatID, "🆕 New session in "+folder+". Send your first request to begin.")
 }
 
 // cmdWhere reports the chat's current selection.
 func (s *ClaudeCodeService) cmdWhere(ctx context.Context, chatID string) {
 	tgt, ok := s.getCodingTarget(chatID)
 	if !ok {
-		s.dmCoding(ctx, chatID, "Đang ở trợ lý thiết bị (con đèn). /sessions để chọn phiên code.")
+		s.dmCoding(ctx, chatID, "On the device assistant (the lamp). /sessions to pick a coding session.")
 		return
 	}
 	sid := tgt.SessionID
 	if sid == "" {
-		sid = "(phiên mới, chưa chạy turn nào)"
+		sid = "(new session, no turn run yet)"
 	}
 	s.dmCoding(ctx, chatID, fmt.Sprintf("📂 %s\n🔑 %s", tgt.Folder, sid))
 }
@@ -220,7 +220,7 @@ func (s *ClaudeCodeService) runTelegramCodingTurn(ctx context.Context, chatID st
 	defer unlock()
 
 	if s.liveClaudeHolds(tgt.Folder) {
-		s.dmCoding(ctx, chatID, "⚠️ Đang có phiên claude mở trong terminal ở "+tgt.Folder+".\nĐóng nó trước khi tiếp qua Telegram (tránh hỏng transcript).")
+		s.dmCoding(ctx, chatID, "⚠️ An interactive claude session is open in the terminal at "+tgt.Folder+".\nClose it before continuing over Telegram (two writers would corrupt the transcript).")
 		return
 	}
 
@@ -234,14 +234,14 @@ func (s *ClaudeCodeService) runTelegramCodingTurn(ctx context.Context, chatID st
 
 	if err != nil {
 		slog.Warn("telegram coding turn failed", "component", "claudecode", "folder", tgt.Folder, "error", err)
-		s.dmCoding(ctx, chatID, "❌ Lỗi khi chạy phiên:\n"+err.Error())
+		s.dmCoding(ctx, chatID, "❌ Turn failed:\n"+err.Error())
 		return
 	}
 	if newSID != "" && newSID != tgt.SessionID {
 		s.setCodingTarget(chatID, codingTarget{Folder: tgt.Folder, SessionID: newSID})
 	}
 	if strings.TrimSpace(reply) == "" {
-		reply = "(phiên chạy xong nhưng không có nội dung trả lời)"
+		reply = "(turn finished with no reply text)"
 	}
 	s.dmCoding(ctx, chatID, reply)
 }
