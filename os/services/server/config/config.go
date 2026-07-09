@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	"go.autonomous.ai/os/lib/mqtt"
+	"go.autonomous.ai/os/lib/urlnorm"
 )
 
 // bootstrapConfigPath is the OTA worker's config file. The device-wide OTA
@@ -37,7 +38,7 @@ func otaMetadataURLFromBootstrap() string {
 	return strings.TrimSpace(bc.MetadataURL)
 }
 
-const configPath = "config/config.json"
+var configPath = "config/config.json"
 
 // OSVersion is injected at build time via ldflags.
 // Example:
@@ -358,6 +359,9 @@ func (c *Config) ResetToDefault() error {
 func (c *Config) WithLockSave(fn func(*Config)) error {
 	c.mu.Lock()
 	fn(c)
+	c.LLMBaseURL = urlnorm.NormalizeBaseURL(c.LLMBaseURL)
+	c.STTBaseURL = urlnorm.NormalizeBaseURL(c.STTBaseURL)
+	c.TTSBaseURL = urlnorm.NormalizeBaseURL(c.TTSBaseURL)
 	data, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
 		c.mu.Unlock()
