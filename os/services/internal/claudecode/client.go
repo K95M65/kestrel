@@ -35,6 +35,13 @@ const (
 // handler for each translated event. Runs until ctx is cancelled, auto-
 // reconnecting on drop. Mirrors the openclaw.ClaudeCodeService.StartWS shape.
 func (s *ClaudeCodeService) StartWS(ctx context.Context, handler domain.AgentEventHandler) {
+	// Device-owned channel inbounds (telegram_poll.go / discord.go). Started
+	// here — NOT in ProvideService — so they run only while claudecode is the
+	// active runtime and die with the gateway ctx (no getUpdates competition /
+	// duplicate bot sessions across runtimes; Telegram 409s concurrent
+	// pollers).
+	go s.startTelegramPoll(ctx)
+	go s.startDiscordBot(ctx)
 	for {
 		select {
 		case <-ctx.Done():

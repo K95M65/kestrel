@@ -17,6 +17,7 @@ import (
 	"go.autonomous.ai/os/domain"
 	"go.autonomous.ai/os/internal/agent"
 	"go.autonomous.ai/os/internal/ambient"
+	"go.autonomous.ai/os/internal/claudecode"
 	"go.autonomous.ai/os/internal/device"
 	"go.autonomous.ai/os/internal/healthwatch"
 	"go.autonomous.ai/os/internal/network"
@@ -89,6 +90,18 @@ type Server struct {
 // Engine ...
 func (s *Server) Engine() *gin.Engine {
 	return s.engine
+}
+
+// shellAgentEnvFile resolves, per web-CLI connection, the launch env file to
+// source into the PTY so an interactive `claude` reuses the campaign key. Only
+// claudecode needs it (its .env is otherwise service-scoped); other runtimes
+// return "" (no injection). Resolved lazily so a runtime switch is picked up
+// without a restart.
+func (s *Server) shellAgentEnvFile() string {
+	if device.CurrentAgentRuntimeFromConfig(s.config) == domain.AgentRuntimeClaudeCode {
+		return claudecode.EnvFile
+	}
+	return ""
 }
 
 // GetContext ...
@@ -263,7 +276,7 @@ func (s *Server) Serve(closeFn func()) error {
 	// xterm.js shell: admin-gated. WS upgrade doesn't carry the Bearer header
 	// in browsers, so the cookie path inside adminAuthMiddleware is the live
 	// auth on this route. Scripts may still ?token=<llm_api_key>=.
-	system.GET("shell", adminAuthMiddleware(s.config), systemshell.ShellHandler)
+	system.GET("shell", adminAuthMiddleware(s.config), systemshell.ShellHandler(s.shellAgentEnvFile))
 
 	// Login: POST {password} → bcrypt-verifies admin_password_hash, mints
 	// signed session cookie. No auth required (this is how you get auth).

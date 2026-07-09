@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { Toaster } from "@/components/ui/sonner";
 import { SourceFooter } from "@/components/SourceFooter";
-import Setup from "@/pages/Setup";
+import Setup from "@/pages/setup";
 import Login from "@/pages/Login";
 import Monitor from "@/pages/monitor";
 import GwConfig from "@/pages/GwConfig";

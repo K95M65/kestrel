@@ -58,15 +58,16 @@ The OS server uses MQTT to communicate with the backend server (status reporting
 ```
 
 `agent_runtime` is the **effective** agentic backend currently running
-(`openclaw` | `hermes` | `picoclaw` | `codex`) — resolved as `config.agent_runtime`, else
-the device's `DEVICE.md` `gateway.default`, else `openclaw`. The response also
-carries these optional fields when known: `hal_version`, `openclaw_version`,
-`hermes_version`, `codex_version`, `local_ip`, `tts_provider`, `tts_voice`, `stt_language`,
-`timezone`, `unsupported_channels`. `timezone` is the device's **live** IANA zone
-(e.g. `Asia/Ho_Chi_Minh`), read fresh from `/etc/timezone` (falling back to config),
-not just the config record. `openclaw_version`, `hermes_version` and `codex_version` are all probed at
-startup (each from its own `--version`) and reported side by side; `agent_runtime`
-names the active one.
+(`openclaw` | `hermes` | `picoclaw` | `codex` | `claudecode`) — resolved as
+`config.agent_runtime`, else the device's `DEVICE.md` `gateway.default`, else
+`openclaw`. The response also carries these optional fields when known:
+`hal_version`, `openclaw_version`, `hermes_version`, `picoclaw_version`,
+`codex_version`, `claudecode_version`, `local_ip`, `tts_provider`, `tts_voice`,
+`stt_language`, `timezone`, `unsupported_channels`. `timezone` is the device's
+**live** IANA zone (e.g. `Asia/Ho_Chi_Minh`), read fresh from `/etc/timezone`
+(falling back to config), not just the config record. The five per-runtime
+versions are all probed at startup (each from its own `--version`) and
+reported side by side; `agent_runtime` names the active one.
 
 `unsupported_channels` (omitted when empty) lists the channels configured on the
 device that the **active** runtime cannot run. It is populated by `ChannelReconcile`

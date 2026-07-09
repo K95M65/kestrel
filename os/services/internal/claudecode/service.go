@@ -4,9 +4,10 @@
 // runtime boundaries with OpenClaw / Hermes / PicoClaw.
 //
 // Claude Code has no server mode, so the claudecode systemd unit runs a bridge
-// (presync-materialized /root/.claudecode/bridge.py) that holds ONE headless
+// (the Go gatewayd in internal/claudecode/gatewayd, launched as
+// `os-server claudecode-gatewayd`) that holds ONE headless
 // Claude process (`claude --print --input-format stream-json --output-format
-// stream-json`, plus `--channels plugin:telegram@...` when configured) and
+// stream-json`, plus `--channels plugin:discord@...` when configured) and
 // exposes the socket at WSURL. os-server only acts as a client: it sends user
 // turns as `message.send`, and translates the forwarded Claude stream-json
 // events (system / assistant / user / result) into the same domain.WSEvent
@@ -27,6 +28,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/bwmarrin/discordgo"
 	"github.com/gorilla/websocket"
 
 	"go.autonomous.ai/os/domain"
@@ -123,7 +125,46 @@ type ClaudeCodeService struct {
 	poseBucketRunsMu sync.Mutex
 	poseBucketRuns   map[string]poseBucketInfo
 
-	// Channel senders (Telegram).
+	// telegramRuns maps a Telegram-originated runID → originating chat id so
+	// emitFinal DMs the reply back (see telegram_poll.go / translator.go).
+	telegramRunsMu sync.Mutex
+	telegramRuns   map[string]string
+
+	// discordRuns maps a Discord-originated runID → originating channel id so
+	// emitFinal posts the reply back (see discord.go / translator.go).
+	discordRunsMu sync.Mutex
+	discordRuns   map[string]string
+
+	// discordSession is the live gateway session handle (discord.go), guarded
+	// by discordMu so emitFinal's reply sender sees a consistent value.
+	discordMu      sync.Mutex
+	discordSession *discordgo.Session
+
+	// Discord inbound test seams (discord.go). Zero values select the
+	// production defaults: the real sendChat-backed send step and the live
+	// discordgo session's ChannelMessageSend.
+	discordSendTurn    func(text, reqID, runID string) error
+	discordSendMessage func(channelID, text string) error
+
+	// Telegram inbound test seams (telegram_poll.go). Zero values select the
+	// production defaults: api.telegram.org, the on-disk offset file and the
+	// real sendChat-backed send step.
+	telegramAPIBase     string
+	telegramOffsetPath  string
+	telegramTargetsPath string
+	telegramSendTurn    func(text, reqID, runID string) error
+
+	// slackRuns maps a Slack-originated runID → its origin channel/thread so
+	// emitFinal posts the reply back (see slack.go / translator.go).
+	slackRunsMu sync.Mutex
+	slackRuns   map[string]slackRun
+
+	// Slack inbound test seams (slack.go / slack_sender.go). Zero values select
+	// the production defaults: slack.com/api and the real sendChat-backed send step.
+	slackAPIBase  string
+	slackSendTurn func(text, reqID, runID string) error
+
+	// Channel senders (Telegram, Slack).
 	channels []domain.ChannelSender
 
 	// Pending chat traces (idempotencyKey ↔ message text for MatchPendingByMessage).
@@ -167,9 +208,11 @@ func ProvideService(cfg *config.Config, bus *monitor.Bus, sled *statusled.Servic
 		webChatRuns:    make(map[string]bool),
 		silentRuns:     make(map[string]bool),
 		poseBucketRuns: make(map[string]poseBucketInfo),
+		slackRuns:      make(map[string]slackRun),
 	}
 	s.channels = []domain.ChannelSender{
 		&TelegramSender{svc: s},
+		&SlackSender{svc: s},
 	}
 	return s
 }

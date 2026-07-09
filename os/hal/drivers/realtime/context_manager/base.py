@@ -187,7 +187,23 @@ class ContextManagerBase(ABC):
         add("prompt", self._load_system_prompt())
 
         identity: str = self.load_device_context()
-        add("identity", f"# DEVICE IDENTITY\n\n{identity}" if identity else "")
+        # Name-precedence rule: SOUL.md describes the KIND of being (its species
+        # is often name-like, e.g. "you are Lamp"), while the user-given name
+        # lives in IDENTITY.md's **Name:** card and renames land ONLY there —
+        # without this rule the model reads the species as its name and argues
+        # with a rename (device-observed 2026-07-08: SOUL said "Lamp", IDENTITY
+        # said "Linh", the agent kept calling itself Lamp).
+        identity_rules: str = (
+            "(Reading rules: SOUL.md describes WHAT you are — your kind and "
+            "character; kind words there may look like names. Your actual "
+            "given name is the **Name:** value in IDENTITY.md — it is "
+            "authoritative, overrides any name-like word elsewhere in this "
+            "section, and is where renames land.)"
+        )
+        add(
+            "identity",
+            f"# DEVICE IDENTITY\n\n{identity_rules}\n\n{identity}" if identity else "",
+        )
 
         catalog: str = self.load_skills_catalog()
         add("skills", f"# SKILLS CATALOG\n\n{catalog}" if catalog else "")
