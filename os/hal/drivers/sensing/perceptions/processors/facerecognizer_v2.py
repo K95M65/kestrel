@@ -1973,7 +1973,13 @@ class FacePerception(Perception[cv2.typing.MatLike]):
             #     etc., excluded by the suffix check.
             try:
                 return max(
-                    (e.stat().st_mtime for e in USERS_DIR.rglob("*")),
+                    (
+                        e.stat().st_mtime
+                        for e in USERS_DIR.rglob("*")
+                        if e.is_file()
+                        and e.suffix.lower() in _ENROLL_IMG_EXTS
+                        and e.parent.parent == USERS_DIR
+                    ),
                     default=0.0,
                 )
             except OSError:
