@@ -22,6 +22,7 @@
 package claudecode
 
 import (
+	"context"
 	"regexp"
 	"strings"
 	"sync"
@@ -163,6 +164,27 @@ type ClaudeCodeService struct {
 	// the production defaults: slack.com/api and the real sendChat-backed send step.
 	slackAPIBase  string
 	slackSendTurn func(text, reqID, runID string) error
+
+	// Telegram coding-sessions (telegram_coding.go / coding_sessions.go): a chat
+	// can attach to a folder's interactive `claude` session and continue it over
+	// Telegram (per-turn --resume in the folder's cwd). codingSel maps chatID →
+	// selection (persisted to codingSelPath so it survives restarts); codingList
+	// caches the last /sessions listing so /use <n> can index it; codingFolder
+	// holds a per-folder mutex serializing turns so two Telegram turns never
+	// append to the same transcript at once.
+	codingMu     sync.Mutex
+	codingSel    map[string]codingTarget
+	codingList   map[string][]codingSession
+	codingFolder map[string]*sync.Mutex
+
+	// Coding-session test seams. Zero values select production defaults:
+	// /root/.claude/projects, the presync .env, /root/.claudecode's selection
+	// file, a real `claude` exec, and a /proc-based interactive-TUI check.
+	claudeProjectsDirPath string
+	codingEnvFilePath     string
+	codingSelPath         string
+	codingRunner          func(ctx context.Context, folder, sessionID, prompt string) (reply, newSessionID string, err error)
+	folderHasLiveClaude   func(folder string) bool
 
 	// Channel senders (Telegram, Slack).
 	channels []domain.ChannelSender

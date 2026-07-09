@@ -287,6 +287,50 @@ one-shot ("claude login not supported on … backend"). Chi tiết hợp đồng
 đây: `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN` **đứng trên** OAuth token, đó
 là lý do presync ở subscription-mode bỏ hẳn chúng.
 
+## 7c. Coding từ xa qua Telegram (`telegram_coding.go`, `coding_sessions.go`)
+
+Tách biệt với lượt persona device-main: một chat Telegram có thể **gắn vào phiên
+`claude` interactive của một folder và tiếp tục code từ điện thoại**. Usecase —
+ở nhà code trong terminal, ra ngoài thì nhắn Telegram làm tiếp, nhiều folder mỗi
+folder một phiên riêng.
+
+- **Khám phá phiên** (`coding_sessions.go`): claude lưu mỗi phiên thành transcript
+  JSONL ở `~/.claude/projects/<cwd-mã-hoá>/<uuid>.jsonl` (root ⇒
+  `/root/.claude/projects`). `allCodingSessions` quét cây đó; **cwd thật của mỗi
+  phiên được đọc từ NỘI DUNG transcript** (trường `cwd` trong các record), KHÔNG
+  giải mã từ tên thư mục — cách mã hoá `/`→`-` mất mát với folder có dấu `-`. Mô
+  tả ngắn lấy từ record `{"type":"summary"}` hoặc tin user đầu tiên. Phiên **gắn
+  theo cwd**: `claude --resume <uuid>` chỉ tìm thấy phiên khi chạy đúng folder của
+  nó (đã kiểm chứng trên device: resume sai cwd trả `No conversation found`).
+- **Lệnh** (chặn trong `handleTelegramUpdate` TRƯỚC khi inject device-main):
+  `/sessions` (liệt kê folder, mỗi folder phiên mới nhất) · `/sessions <folder>`
+  (mọi phiên trong 1 folder) · `/use <số>` (chọn theo số ở danh sách gần nhất) ·
+  `/use <folder>` (phiên mới nhất của folder) · `/new <folder>` (phiên mới, tạo
+  folder nếu chưa có) · `/here` (đang ở phiên nào) · `/device` (về persona
+  device-main) · `/help`. Chat chưa chọn phiên và không phải lệnh thì rơi xuống
+  device-main như cũ.
+- **Mô hình HAND-OFF, KHÔNG đồng-biên-tập.** Mỗi lượt được chấp nhận spawn một
+  `claude --print --output-format json [--resume <uuid>]
+  --dangerously-skip-permissions` mới với `cmd.Dir` = folder của phiên và prompt
+  ở stdin; `result`/`session_id` của reply được parse lại
+  (`parseClaudeJSONResult`) và DM về (chunk ở giới hạn 4000 ký tự của Telegram).
+  Env exec = env tiến trình + các cặp trong `.env` presync (`ANTHROPIC_*`) +
+  `IS_SANDBOX=1` + `HOME=/root` (root cần `IS_SANDBOX` cho
+  `--dangerously-skip-permissions`, giống child của gatewayd). uuid thật của phiên
+  `/new` được bắt từ lượt đầu tiên.
+- **Bảo vệ.** Một **mutex theo folder** tuần tự hoá các lượt để không có 2 lượt
+  cùng ghi vào một transcript. Một **lượt quét `/proc`** (`procHoldsFolder`) từ
+  chối chạy khi vẫn còn TUI `claude` interactive đang giữ folder đó làm cwd — 2
+  writer sẽ làm hỏng transcript, nên mô hình là hand-off (đóng phiên terminal
+  trước). Chỉ `telegram_user_id` trong allowlist chạm được (cùng cổng chặn với
+  lượt Telegram thường); coding từ xa chạy `--dangerously-skip-permissions` nên
+  allowlist chính là ranh giới bảo mật.
+- **Trạng thái.** Lựa chọn phiên mỗi chat persist vào
+  `/root/.claudecode/telegram_coding.json` (sống qua restart — chat vẫn ở nguyên
+  phiên). Chạy thẳng trong os-server (mỗi lượt một tiến trình `claude` con riêng),
+  độc lập với child thường trú của gatewayd, nên lượt coding và persona device-main
+  không đụng nhau.
+
 ## 8. Workspace, persona, skills, MCP
 
 - **`CLAUDE.md`** là file memory Claude Code tự nạp; onboarding sở hữu một khối

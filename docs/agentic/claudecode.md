@@ -292,6 +292,50 @@ Non-claudecode runtimes answer `claudecode_login` with a one-shot failure
 `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN` **outrank** the OAuth token, which
 is why subscription-mode presync omits them entirely.
 
+## 7c. Telegram remote coding-sessions (`telegram_coding.go`, `coding_sessions.go`)
+
+Separate from the device-main persona turn: a Telegram chat can **attach to a
+folder's interactive `claude` session and continue coding it from the phone**.
+Usecase — code on the device terminal at home, walk out, keep going over
+Telegram, across multiple folders each with its own session.
+
+- **Discovery** (`coding_sessions.go`): claude stores each session as a JSONL
+  transcript under `~/.claude/projects/<encoded-cwd>/<uuid>.jsonl` (root ⇒
+  `/root/.claude/projects`). `allCodingSessions` walks that tree; each session's
+  **real cwd is read from the transcript content** (a `cwd` field on its
+  records), NOT decoded from the directory name — the `/`→`-` encoding is lossy
+  for folders containing `-`. A short summary comes from the `{"type":"summary"}`
+  record or the first user message. Sessions are **cwd-scoped**: `claude
+  --resume <uuid>` only finds a session when run from its folder (device-proven:
+  resuming from the wrong cwd returns `No conversation found`).
+- **Commands** (intercepted in `handleTelegramUpdate` before the device-main
+  injection): `/sessions` (folders, newest each) · `/sessions <folder>` (every
+  session in one folder) · `/use <n>` (index into the last listing) · `/use
+  <folder>` (its newest session) · `/new <folder>` (fresh session, folder
+  created if missing) · `/here` (current selection) · `/device` (back to the
+  device-main persona) · `/help`. A chat with no selection and no command falls
+  through to device-main unchanged.
+- **Hand-off model, NOT co-editing.** Each accepted turn spawns a fresh `claude
+  --print --output-format json [--resume <uuid>] --dangerously-skip-permissions`
+  with `cmd.Dir` = the session folder and the prompt on stdin; the reply's
+  `result`/`session_id` are parsed back (`parseClaudeJSONResult`) and the reply
+  DMed (chunked at Telegram's 4000-char limit). The exec env = process env + the
+  presync `.env` pairs (`ANTHROPIC_*`) + `IS_SANDBOX=1` + `HOME=/root` (root
+  needs `IS_SANDBOX` for `--dangerously-skip-permissions`, same as the gatewayd
+  child). A `/new` session's real uuid is captured from its first turn.
+- **Guards.** A **per-folder mutex** serializes turns so two never append to one
+  transcript. A **`/proc` scan** (`procHoldsFolder`) refuses a turn while an
+  interactive `claude` TUI still holds the folder as its cwd — two writers would
+  corrupt the transcript, so the model is hand-off (close the terminal session
+  first). Only the allowlisted `telegram_user_id` reaches any of this (the same
+  gate as ordinary Telegram turns); remote coding runs
+  `--dangerously-skip-permissions`, so the allowlist is the security boundary.
+- **State.** Per-chat selection persists to
+  `/root/.claudecode/telegram_coding.json` (survives restart — the chat stays in
+  its session). This runs in os-server directly (its own `claude` subprocess per
+  turn), independent of the persistent gatewayd child, so coding turns and the
+  device-main persona never collide.
+
 ## 8. Workspace, persona, skills, MCP
 
 - **`CLAUDE.md`** is Claude Code's auto-loaded memory file; onboarding owns an

@@ -194,6 +194,12 @@ func (s *ClaudeCodeService) handleTelegramUpdate(ctx context.Context, u tgUpdate
 	chatID := strconv.FormatInt(msg.Chat.ID, 10)
 	// Remember the chat so outbound Broadcast (proactive alerts) reaches it.
 	s.upsertTelegramTarget(chatID, msg.Chat.Type)
+	// Coding-sessions intercept: a /command, or a plain message while this chat
+	// is attached to a folder's claude session, is handled here (per-turn
+	// --resume) instead of the device-main persona turn below (telegram_coding.go).
+	if s.handleTelegramCoding(ctx, msg.Text, chatID) {
+		return
+	}
 	// Prefix sender metadata so the agent knows who is talking and on which
 	// channel (openclaw's telegram plugin does the same) — the persona can
 	// address the sender by name and keep the reply channel-appropriate.
