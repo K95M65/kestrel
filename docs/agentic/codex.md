@@ -368,6 +368,48 @@ receive path cannot work without them — accepting would be fake success).
 Whatsapp has no receive path and returns `domain.ErrChannelNotSupported`. See
 also [`adding-agent-runtime.md`](adding-agent-runtime.md).
 
+### Telegram remote coding-sessions (`telegram_coding.go`, `coding_sessions.go`)
+
+Mirrors `internal/claudecode/telegram_coding.go` 1:1 — a Telegram chat can
+**attach to a folder's interactive `codex` thread and continue coding it from
+the phone**, across multiple folders each with its own thread. Separate from the
+device-main persona turn.
+
+- **Discovery** (`coding_sessions.go`): codex stores each thread as a "rollout"
+  JSONL under `~/.codex/sessions/YYYY/MM/DD/rollout-<ts>-<uuid>.jsonl`
+  (`/root/.codex/sessions`). `allCodingSessions` walks that tree; each rollout's
+  **thread id (`payload.id`) and cwd (`payload.cwd`) come from its first
+  `session_meta` record**, the summary from the first user message. Entries are
+  deduped by thread id (newest rollout wins). Unlike claude, codex resume is
+  **thread-id-global**: `codex exec --cd <dir> resume <id>` sets the cwd
+  independently and does not require it to match the original (device-verified —
+  resuming an old thread echoes its id back; a 404 in that test was the separate
+  campaign-api `/responses` endpoint gap, not the resume mechanism).
+- **Commands** (intercepted in `handleTelegramUpdate` before the device-main
+  injection): `/sessions` · `/sessions <folder>` · `/use <n>` · `/use <folder>`
+  · `/new <folder>` · `/here` · `/device` · `/help`. A chat with no selection and
+  no command falls through to device-main unchanged.
+- **Hand-off model.** Each accepted turn spawns a fresh `codex exec --json
+  --dangerously-bypass-approvals-and-sandbox --cd <folder> [resume <thread>]
+  <prompt>` (flag order matters — `--cd` is rejected after `resume`, so it rides
+  before). The reply is the accumulated `agent_message` items parsed from the
+  JSONL (`parseCodexResult`: `thread.started` → id, `item.completed`/
+  `agent_message` → text, `turn.completed` → done), DMed chunked at Telegram's
+  4000-char limit. The exec env **mirrors the gatewayd's `turnEnv`** (process env
+  + presync `.env` pairs + `HOME=/root` + `CODEX_HOME=/root/.codex`), so codex
+  resolves the same `config.toml` + auth — working in **both** auth modes
+  (`OPENAI_API_KEY` via `/responses`, or the ChatGPT-subscription `auth.json`)
+  with no runner change.
+- **Guards.** A per-folder mutex serializes turns; a `/proc` scan
+  (`procHoldsFolder`) refuses a turn while an interactive `codex` TUI still holds
+  the folder (two writers would corrupt the rollout). Only the allowlisted
+  `telegram_user_id` reaches any of this; remote coding runs
+  `--dangerously-bypass-approvals-and-sandbox`, so the allowlist is the security
+  boundary.
+- **State.** Per-chat selection persists to `/root/.codex/telegram_coding.json`
+  (survives restart). Runs in os-server directly (its own `codex exec` per turn),
+  independent of the persistent gatewayd child.
+
 ## 6. Hooks
 
 Codex ships no hooks loader, so OpenClaw's `emotion-acknowledge` hook is
