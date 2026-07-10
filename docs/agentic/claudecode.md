@@ -345,7 +345,7 @@ Telegram, across multiple folders each with its own session.
   opens ANY session by id (device-proven). The device therefore ships its own
   picker: `claude-sessions` (a thin `/usr/local/bin/claude-sessions` wrapper
   installed by presync §5, sudo-reexecs into `os-server claude-sessions`)
-  lists every session for the **current folder** (`--all` for all folders,
+  lists every session for the **current folder** (`-a` for all folders,
   `--json` for scripts) via the same `allCodingSessions` discovery (one source
   of truth, exposed as `claudecode.ListCodingSessions`), then execs
   `claude --resume <id>` in the session's folder with the presync `.env` +

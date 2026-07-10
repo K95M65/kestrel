@@ -42,10 +42,12 @@ const ccConfigJSON = "/root/config/config.json"
 
 func ccMain(args []string) int {
 	fs := flag.NewFlagSet("claude-sessions", flag.ContinueOnError)
-	all := fs.Bool("all", false, "list sessions from every folder, not just the current directory")
-	asJSON := fs.Bool("json", false, "print the listing as JSON and exit (no picker)")
+	var all, asJSON bool
+	fs.BoolVar(&all, "a", false, "list sessions from every folder, not just the current directory")
+	fs.BoolVar(&all, "all", false, "alias of -a")
+	fs.BoolVar(&asJSON, "json", false, "print the listing as JSON and exit (no picker)")
 	fs.Usage = func() {
-		fmt.Fprintln(fs.Output(), "Usage: claude-sessions [--all] [--json] [folder]\nClaude coding-session picker: lists every session (terminal- AND Telegram-created) and resumes the picked one.")
+		fmt.Fprintln(fs.Output(), "Usage: claude-sessions [-a] [--json] [folder]\nClaude coding-session picker: lists every session (terminal- AND Telegram-created) and resumes the picked one.")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -64,7 +66,7 @@ func ccMain(args []string) int {
 	sessions := claudecode.ListCodingSessions()
 
 	scope := "all folders"
-	if !*all {
+	if !all {
 		dir, err := ccScopeDir(fs.Arg(0))
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "claude-sessions:", err)
@@ -74,7 +76,7 @@ func ccMain(args []string) int {
 		sessions = ccFilterFolder(sessions, dir)
 	}
 
-	if *asJSON {
+	if asJSON {
 		if sessions == nil {
 			sessions = []claudecode.CodingSessionInfo{} // emit [] not null
 		}
@@ -84,15 +86,15 @@ func ccMain(args []string) int {
 		return 0
 	}
 	if len(sessions) == 0 {
-		if *all {
+		if all {
 			fmt.Println("No claude coding sessions found on this device.")
 		} else {
-			fmt.Printf("No claude sessions in %s.\nTry `claude-sessions --all` to list every folder, or start one with `claude`.\n", scope)
+			fmt.Printf("No claude sessions in %s.\nTry `claude-sessions -a` to list every folder, or start one with `claude`.\n", scope)
 		}
 		return 0
 	}
 
-	ccPrintMenu(scope, sessions, *all)
+	ccPrintMenu(scope, sessions, all)
 	pick, ok := ccReadPick(len(sessions))
 	if !ok {
 		return 0

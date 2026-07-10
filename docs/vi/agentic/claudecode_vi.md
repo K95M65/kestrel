@@ -339,7 +339,7 @@ folder một phiên riêng.
   kiểm chứng trên device). Vì vậy device có picker riêng: `claude-sessions`
   (wrapper mỏng `/usr/local/bin/claude-sessions` do presync §5 cài, sudo-reexec
   vào `os-server claude-sessions`) liệt kê mọi phiên của **folder hiện tại**
-  (`--all` cho mọi folder, `--json` cho script) qua đúng discovery
+  (`-a` cho mọi folder, `--json` cho script) qua đúng discovery
   `allCodingSessions` (một nguồn sự thật, export là
   `claudecode.ListCodingSessions`), rồi exec `claude --resume <id>` trong folder
   của phiên với `.env` presync + `IS_SANDBOX=1` + `HOME=/root` merge vào. Reply
