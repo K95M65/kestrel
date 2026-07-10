@@ -48,10 +48,10 @@ const (
 )
 
 const codingHelpText = "🤖 Coding over Telegram\n\n" +
-	"/sessions — list folders that have codex threads\n" +
+	"/resume — list folders that have codex threads\n" +
+	"/resume <n> — pick a thread by its number in the last list\n" +
+	"/resume <folder> — pick the folder's newest thread\n" +
 	"/sessions <folder> — list every thread in one folder\n" +
-	"/use <n> — pick a thread by its number in the last list\n" +
-	"/use <folder> — pick the folder's newest thread\n" +
 	"/new <folder> — start a new thread in a folder\n" +
 	"/here — show which thread you're in\n" +
 	"/device — return to the device assistant (the lamp)\n\n" +
@@ -90,6 +90,14 @@ func (s *CodexService) handleCodingCommand(ctx context.Context, text, chatID str
 	cmd := strings.ToLower(fields[0])
 	arg := strings.TrimSpace(strings.TrimPrefix(text, fields[0]))
 	switch cmd {
+	case "/resume":
+		// Mirrors the codex CLI's resume: no arg lists threads, an arg picks one
+		// (by number or folder).
+		if arg == "" {
+			s.cmdListSessions(ctx, chatID, "")
+		} else {
+			s.cmdUseSession(ctx, chatID, arg)
+		}
 	case "/sessions", "/ls":
 		s.cmdListSessions(ctx, chatID, arg)
 	case "/use", "/cd":

@@ -117,6 +117,27 @@ func TestCodingCommandsFlow(t *testing.T) {
 	}
 }
 
+func TestResumeCommand(t *testing.T) {
+	proj := t.TempDir()
+	writeRollout(t, proj, "aaaa1111", "/root/test", "caro game", time.Now())
+	rig := newCodingRig(t, proj)
+	s := rig.svc
+	ctx := context.Background()
+	chat := "9"
+
+	s.handleTelegramCoding(ctx, "/resume", chat)
+	if dm := rig.waitDM(t); !strings.Contains(dm, "/root/test") {
+		t.Fatalf("/resume list DM = %q", dm)
+	}
+	s.handleTelegramCoding(ctx, "/resume 1", chat)
+	if dm := rig.waitDM(t); !strings.Contains(dm, "In thread") {
+		t.Fatalf("/resume 1 DM = %q", dm)
+	}
+	if tgt, ok := s.getCodingTarget(chat); !ok || tgt.SessionID != "aaaa1111" {
+		t.Fatalf("/resume 1 did not select: %+v ok=%v", tgt, ok)
+	}
+}
+
 func TestCodingSelectionPersists(t *testing.T) {
 	proj := t.TempDir()
 	writeRollout(t, proj, "th0", "/root/app", "app", time.Now())

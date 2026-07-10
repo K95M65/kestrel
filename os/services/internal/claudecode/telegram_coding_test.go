@@ -124,6 +124,29 @@ func TestCodingCommandsFlow(t *testing.T) {
 	}
 }
 
+func TestResumeCommand(t *testing.T) {
+	proj := t.TempDir()
+	writeTranscript(t, proj, "-root-test", "aaaa1111-2222-3333-4444-555566667777", "/root/test", "Caro game", "make caro game", time.Now())
+	rig := newCodingRig(t, proj)
+	s := rig.svc
+	ctx := context.Background()
+	chat := "9"
+
+	// /resume with no arg lists sessions (like /sessions).
+	s.handleTelegramCoding(ctx, "/resume", chat)
+	if dm := rig.waitDM(t); !strings.Contains(dm, "/root/test") {
+		t.Fatalf("/resume list DM = %q", dm)
+	}
+	// /resume <n> picks the session (like /use <n>).
+	s.handleTelegramCoding(ctx, "/resume 1", chat)
+	if dm := rig.waitDM(t); !strings.Contains(dm, "In session") {
+		t.Fatalf("/resume 1 DM = %q", dm)
+	}
+	if tgt, ok := s.getCodingTarget(chat); !ok || tgt.SessionID != "aaaa1111-2222-3333-4444-555566667777" {
+		t.Fatalf("/resume 1 did not select: %+v ok=%v", tgt, ok)
+	}
+}
+
 func TestCodingSelectionPersists(t *testing.T) {
 	proj := t.TempDir()
 	writeTranscript(t, proj, "-root-app", "sid0", "/root/app", "app", "x", time.Now())

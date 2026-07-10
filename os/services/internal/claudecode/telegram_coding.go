@@ -45,10 +45,10 @@ const (
 )
 
 const codingHelpText = "🤖 Coding over Telegram\n\n" +
-	"/sessions — list folders that have claude sessions\n" +
+	"/resume — list folders that have claude sessions\n" +
+	"/resume <n> — pick a session by its number in the last list\n" +
+	"/resume <folder> — pick the folder's newest session\n" +
 	"/sessions <folder> — list every session in one folder\n" +
-	"/use <n> — pick a session by its number in the last list\n" +
-	"/use <folder> — pick the folder's newest session\n" +
 	"/new <folder> — start a new session in a folder\n" +
 	"/here — show which session you're in\n" +
 	"/device — return to the device assistant (the lamp)\n\n" +
@@ -87,6 +87,14 @@ func (s *ClaudeCodeService) handleCodingCommand(ctx context.Context, text, chatI
 	cmd := strings.ToLower(fields[0])
 	arg := strings.TrimSpace(strings.TrimPrefix(text, fields[0]))
 	switch cmd {
+	case "/resume":
+		// Mirrors the claude CLI's /resume: no arg lists sessions, an arg picks
+		// one (by number or folder).
+		if arg == "" {
+			s.cmdListSessions(ctx, chatID, "")
+		} else {
+			s.cmdUseSession(ctx, chatID, arg)
+		}
 	case "/sessions", "/ls":
 		s.cmdListSessions(ctx, chatID, arg)
 	case "/use", "/cd":
