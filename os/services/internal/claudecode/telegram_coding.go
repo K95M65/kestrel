@@ -261,6 +261,13 @@ func (s *ClaudeCodeService) runTelegramCodingTurn(ctx context.Context, chatID st
 // runCodingClaude is the production runner: `claude --print --output-format json
 // [--resume <uuid>] --dangerously-skip-permissions` in the folder's cwd, prompt
 // on stdin. Returns the result text and the (possibly new) session id.
+//
+// A NEW session is given a `--name` so it shows up in the interactive `/resume`
+// picker — device-proven: an un-named headless (--print) session starts with a
+// bare queue-operation line and the picker omits it, while `--name` prepends a
+// custom-title line the picker lists (`claude --help`: "shown in … /resume").
+// Without this, a session started from Telegram is resumable by id but invisible
+// in the terminal's picker. (Codex needs no equivalent — its resume is global.)
 func (s *ClaudeCodeService) runCodingClaude(ctx context.Context, folder, sessionID, prompt string) (string, string, error) {
 	cctx, cancel := context.WithTimeout(ctx, codingTurnTimeout)
 	defer cancel()
@@ -268,6 +275,8 @@ func (s *ClaudeCodeService) runCodingClaude(ctx context.Context, folder, session
 	args := []string{"--print", "--output-format", "json", "--dangerously-skip-permissions"}
 	if sessionID != "" {
 		args = append(args, "--resume", sessionID)
+	} else {
+		args = append(args, "--name", codingSessionName(prompt))
 	}
 	cmd := exec.CommandContext(cctx, "claude", args...)
 	cmd.Dir = folder
@@ -287,6 +296,16 @@ func (s *ClaudeCodeService) runCodingClaude(ctx context.Context, folder, session
 		return "", "", fmt.Errorf("claude turn errored")
 	}
 	return result, sid, nil
+}
+
+// codingSessionName derives a `/resume`-picker display name for a new session
+// from its first prompt, tagged so its Telegram origin is obvious in the picker.
+func codingSessionName(prompt string) string {
+	n := truncRunes(oneLine(prompt), 40)
+	if n == "" {
+		n = "session"
+	}
+	return "tg: " + n
 }
 
 // parseClaudeJSONResult extracts result text, session id and error flag from
