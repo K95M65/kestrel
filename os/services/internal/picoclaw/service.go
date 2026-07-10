@@ -131,6 +131,9 @@ type PicoclawService struct {
 	// presync hook only edits channel_list/model_list via jq, so the two owners do
 	// not collide, but concurrent connector.set writes must not interleave.
 	mcpMu sync.Mutex
+
+	// ackHookEnabled mirrors OpenClaw's emotion-acknowledge hook
+	ackHookEnabled bool
 }
 
 type recentOutbound struct {
@@ -169,6 +172,7 @@ func ProvideService(cfg *config.Config, bus *monitor.Bus, sled *statusled.Servic
 	s.channels = []domain.ChannelSender{
 		&TelegramSender{svc: s},
 	}
+	s.ackHookEnabled = ackEmotionEnabled(cfg.DeviceTypeOrDefault())
 	return s
 }
 
