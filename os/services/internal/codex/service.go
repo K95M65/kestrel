@@ -21,6 +21,7 @@
 package codex
 
 import (
+	"context"
 	"regexp"
 	"strings"
 	"sync"
@@ -150,6 +151,27 @@ type CodexService struct {
 
 	poseBucketRunsMu sync.Mutex
 	poseBucketRuns   map[string]poseBucketInfo
+
+	// Telegram coding-sessions (telegram_coding.go / coding_sessions.go): a chat
+	// can attach to a folder's interactive `codex` thread and continue it over
+	// Telegram (per-turn `codex exec resume` in the folder's cwd). codingSel maps
+	// chatID → selection (persisted to codingSelPath so it survives restarts);
+	// codingList caches the last /sessions listing so /use <n> can index it;
+	// codingFolder holds a per-folder mutex serializing turns so two Telegram
+	// turns never touch the same thread at once.
+	codingMu     sync.Mutex
+	codingSel    map[string]codingTarget
+	codingList   map[string][]codingSession
+	codingFolder map[string]*sync.Mutex
+
+	// Coding-session test seams. Zero values select production defaults:
+	// /root/.codex/sessions, the presync .env, /root/.codex's selection file, a
+	// real `codex exec` run, and a /proc-based interactive-TUI check.
+	codexSessionsDirPath string
+	codingEnvFilePath    string
+	codingSelPath        string
+	codingRunner         func(ctx context.Context, folder, threadID, prompt string) (reply, newThreadID string, err error)
+	folderHasLiveCodex   func(folder string) bool
 
 	// Channel senders (Telegram Bot API): proactive alerts + reply DMs for
 	// Telegram-originated turns. The inbound counterpart is the device-owned
