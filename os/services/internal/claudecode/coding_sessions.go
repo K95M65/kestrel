@@ -36,6 +36,10 @@ const (
 	// recentPromptsMax is how many recent user prompts a listing shows per
 	// session (most-recent first).
 	recentPromptsMax = 3
+
+	// deviceMainWorkspace is the persona (device-main) session's own cwd — it is
+	// not a user coding session, so it is excluded from the /sessions listing.
+	deviceMainWorkspace = "/root/.claudecode/workspace"
 )
 
 // codingSession is one resumable claude session discovered on disk.
@@ -90,8 +94,8 @@ func (s *ClaudeCodeService) allCodingSessions() []codingSession {
 				continue
 			}
 			folder, recent := readTranscriptMeta(filepath.Join(projDir, f.Name()))
-			if folder == "" {
-				continue
+			if folder == "" || folder == deviceMainWorkspace {
+				continue // skip the device-main persona's own workspace session
 			}
 			out = append(out, codingSession{
 				Folder:    folder,
@@ -102,6 +106,29 @@ func (s *ClaudeCodeService) allCodingSessions() []codingSession {
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Modified.After(out[j].Modified) })
+	return out
+}
+
+// CodingSessionInfo is the exported view of one discovered session, consumed
+// by the `os-server cc` unified terminal picker (cmd/os-server/cc.go).
+type CodingSessionInfo struct {
+	Folder    string    `json:"folder"`
+	SessionID string    `json:"session_id"`
+	Modified  time.Time `json:"modified"`
+	Recent    []string  `json:"recent,omitempty"`
+}
+
+// ListCodingSessions returns every resumable claude session on the device,
+// newest first — the exact discovery Telegram uses (allCodingSessions),
+// exposed for the cc picker. A zero-value service reads the production store
+// (/root/.claude/projects).
+func ListCodingSessions() []CodingSessionInfo {
+	var s ClaudeCodeService
+	all := s.allCodingSessions()
+	out := make([]CodingSessionInfo, len(all))
+	for i, cs := range all {
+		out[i] = CodingSessionInfo{Folder: cs.Folder, SessionID: cs.SessionID, Modified: cs.Modified, Recent: cs.Recent}
+	}
 	return out
 }
 

@@ -338,6 +338,21 @@ Telegram, across multiple folders each with its own session.
   its session). This runs in os-server directly (its own `claude` subprocess per
   turn), independent of the persistent gatewayd child, so coding turns and the
   device-main persona never collide.
+- **Terminal side — the `claude-sessions` picker (`cmd/os-server/cc.go`).**
+  Claude's interactive `/resume` picker **excludes headless (`--print`)
+  sessions by design** (filtered on how the session was created), so
+  Telegram-created sessions never appear in it — but `claude --resume <id>`
+  opens ANY session by id (device-proven). The device therefore ships its own
+  picker: `claude-sessions` (a thin `/usr/local/bin/claude-sessions` wrapper
+  installed by presync §5, sudo-reexecs into `os-server claude-sessions`)
+  lists every session for the **current folder** (`--all` for all folders,
+  `--json` for scripts) via the same `allCodingSessions` discovery (one source
+  of truth, exposed as `claudecode.ListCodingSessions`), then execs
+  `claude --resume <id>` in the session's folder with the presync `.env` +
+  `IS_SANDBOX=1` + `HOME=/root` merged in. Telegram's `/resume <n>`·`/here`
+  replies include the matching `claude --resume <id>` / `claude-sessions`
+  hint. Codex needs no equivalent — `codex resume`'s own picker is global and
+  already lists Telegram-created threads.
 
 ## 8. Workspace, persona, skills, MCP
 

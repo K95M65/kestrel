@@ -332,6 +332,20 @@ folder một phiên riêng.
   phiên). Chạy thẳng trong os-server (mỗi lượt một tiến trình `claude` con riêng),
   độc lập với child thường trú của gatewayd, nên lượt coding và persona device-main
   không đụng nhau.
+- **Phía terminal — picker `claude-sessions` (`cmd/os-server/cc.go`).** Picker
+  `/resume` interactive của claude **loại phiên headless (`--print`) theo thiết
+  kế** (lọc theo cách phiên được tạo), nên phiên tạo từ Telegram không bao giờ
+  hiện trong đó — nhưng `claude --resume <id>` mở được MỌI phiên theo id (đã
+  kiểm chứng trên device). Vì vậy device có picker riêng: `claude-sessions`
+  (wrapper mỏng `/usr/local/bin/claude-sessions` do presync §5 cài, sudo-reexec
+  vào `os-server claude-sessions`) liệt kê mọi phiên của **folder hiện tại**
+  (`--all` cho mọi folder, `--json` cho script) qua đúng discovery
+  `allCodingSessions` (một nguồn sự thật, export là
+  `claudecode.ListCodingSessions`), rồi exec `claude --resume <id>` trong folder
+  của phiên với `.env` presync + `IS_SANDBOX=1` + `HOME=/root` merge vào. Reply
+  `/resume <n>`·`/here` bên Telegram kèm gợi ý `claude --resume <id>` /
+  `claude-sessions` tương ứng. Codex không cần tương đương — picker của `codex
+  resume` là global, đã liệt kê sẵn thread tạo từ Telegram.
 
 ## 8. Workspace, persona, skills, MCP
 

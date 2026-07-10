@@ -169,4 +169,30 @@ PROFILE
 }
 write_cli_login_env && log "wrote /etc/profile.d/agent-cli-env.sh (interactive CLI auto-login)"
 
+# ── §5 UNIFIED SESSION PICKER (`claude-sessions`) ────────────────────────────
+# Claude's interactive /resume picker excludes headless (--print) sessions by
+# design, so Telegram-created sessions never appear in it. `claude-sessions` is
+# the device picker that lists EVERY session for the current folder (same
+# discovery the Telegram feature uses) and resumes the picked one via
+# `claude --resume <id>` — implemented as the `os-server claude-sessions`
+# subcommand (cmd/os-server/cc.go); this wrapper just sudo-reexecs into it
+# (sessions live under /root).
+write_session_picker() {
+  cat >/usr/local/bin/claude-sessions <<'PICKER'
+#!/bin/sh
+# Managed by os-server runtime presync — do not edit.
+# Unified claude coding-session picker: `claude-sessions` in a folder lists its
+# sessions (terminal- AND Telegram-created) and resumes the one you pick.
+[ "$(id -u)" -eq 0 ] || exec sudo /usr/local/bin/claude-sessions "$@"
+exec /usr/local/bin/os-server claude-sessions "$@"
+PICKER
+  chmod 0755 /usr/local/bin/claude-sessions
+  # Remove the picker's earlier `cc` name — only if it is OUR managed wrapper
+  # (never clobber a real C-compiler cc that may sit there on other systems).
+  if grep -q "Managed by os-server runtime presync" /usr/local/bin/cc 2>/dev/null; then
+    rm -f /usr/local/bin/cc
+  fi
+}
+write_session_picker && log "wrote /usr/local/bin/claude-sessions (unified session picker)"
+
 log "done — claudecode env + channel config synced"

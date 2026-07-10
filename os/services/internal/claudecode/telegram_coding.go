@@ -188,10 +188,11 @@ func (s *ClaudeCodeService) cmdUseSession(ctx context.Context, chatID, arg strin
 	s.selectCoding(ctx, chatID, cs)
 }
 
-// selectCoding stores a resolved session selection and confirms it.
+// selectCoding stores a resolved session selection and confirms it, including
+// the terminal command that opens the same session interactively.
 func (s *ClaudeCodeService) selectCoding(ctx context.Context, chatID string, cs codingSession) {
 	s.setCodingTarget(chatID, codingTarget{Folder: cs.Folder, SessionID: cs.SessionID})
-	s.dmCoding(ctx, chatID, fmt.Sprintf("✅ In session:\n📂 %s\n📝 %s\n\nSend a message to continue coding. /device to exit.", cs.Folder, cs.label()))
+	s.dmCoding(ctx, chatID, fmt.Sprintf("✅ In session:\n📂 %s\n📝 %s\n💻 Terminal: claude --resume %s (in that folder), or just run claude-sessions\n\nSend a message to continue coding. /device to exit.", cs.Folder, cs.label(), cs.SessionID))
 }
 
 // cmdNewSession selects a folder for a brand-new session (no --resume). The
@@ -207,7 +208,7 @@ func (s *ClaudeCodeService) cmdNewSession(ctx context.Context, chatID, arg strin
 		return
 	}
 	s.setCodingTarget(chatID, codingTarget{Folder: folder, SessionID: ""})
-	s.dmCoding(ctx, chatID, "🆕 New session in "+folder+". Send your first request to begin.")
+	s.dmCoding(ctx, chatID, "🆕 New session in "+folder+". Send your first request to begin.\n💻 To continue this session in the device terminal later: cd "+folder+" && claude-sessions, then pick it from the list.")
 }
 
 // cmdWhere reports the chat's current selection.
@@ -217,11 +218,11 @@ func (s *ClaudeCodeService) cmdWhere(ctx context.Context, chatID string) {
 		s.dmCoding(ctx, chatID, "On the device assistant. /sessions to pick a coding session.")
 		return
 	}
-	sid := tgt.SessionID
-	if sid == "" {
-		sid = "(new session, no turn run yet)"
+	if tgt.SessionID == "" {
+		s.dmCoding(ctx, chatID, fmt.Sprintf("📂 %s\n🔑 (new session, no turn run yet)", tgt.Folder))
+		return
 	}
-	s.dmCoding(ctx, chatID, fmt.Sprintf("📂 %s\n🔑 %s", tgt.Folder, sid))
+	s.dmCoding(ctx, chatID, fmt.Sprintf("📂 %s\n🔑 %s\n💻 Terminal: claude --resume %s (in that folder), or just run claude-sessions", tgt.Folder, tgt.SessionID, tgt.SessionID))
 }
 
 // runTelegramCodingTurn executes one hand-off turn: serialize on the folder,
@@ -262,12 +263,13 @@ func (s *ClaudeCodeService) runTelegramCodingTurn(ctx context.Context, chatID st
 // [--resume <uuid>] --dangerously-skip-permissions` in the folder's cwd, prompt
 // on stdin. Returns the result text and the (possibly new) session id.
 //
-// A NEW session is given a `--name` so it shows up in the interactive `/resume`
-// picker — device-proven: an un-named headless (--print) session starts with a
-// bare queue-operation line and the picker omits it, while `--name` prepends a
-// custom-title line the picker lists (`claude --help`: "shown in … /resume").
-// Without this, a session started from Telegram is resumable by id but invisible
-// in the terminal's picker. (Codex needs no equivalent — its resume is global.)
+// A NEW session is given a `--name` so it carries a human title when reopened
+// (`claude --resume <id>` shows it). NOTE: headless (--print) sessions are
+// excluded from claude's interactive `/resume` PICKER by design (filtered on
+// how the session was created — Anthropic docs; --name and transcript edits
+// cannot change that). Terminal-side visibility comes from the device `cc`
+// picker instead (cmd/os-server/cc.go), which lists every session and resumes
+// by id. (Codex needs no equivalent — its resume is global.)
 func (s *ClaudeCodeService) runCodingClaude(ctx context.Context, folder, sessionID, prompt string) (string, string, error) {
 	cctx, cancel := context.WithTimeout(ctx, codingTurnTimeout)
 	defer cancel()
@@ -298,8 +300,9 @@ func (s *ClaudeCodeService) runCodingClaude(ctx context.Context, folder, session
 	return result, sid, nil
 }
 
-// codingSessionName derives a `/resume`-picker display name for a new session
-// from its first prompt, tagged so its Telegram origin is obvious in the picker.
+// codingSessionName derives a display name for a new session from its first
+// prompt, tagged so its Telegram origin is obvious when the session is
+// reopened in the terminal (`cc` / `claude --resume <id>`).
 func codingSessionName(prompt string) string {
 	n := truncRunes(oneLine(prompt), 40)
 	if n == "" {
