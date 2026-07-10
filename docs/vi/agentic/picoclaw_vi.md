@@ -32,9 +32,11 @@ não nào đang chạy.
 > giữ khối OS-managed trong SOUL/AGENTS/HEARTBEAT cập nhật), `StartSkillWatcher`
 > (`skill_watcher.go`, auto-update skill từ CDN), identity (`identity.go`:
 > `WatchIdentity`/`UpdateIdentityName` đọc/ghi `IDENTITY.md` như OpenClaw), và
-> `ResetAgent` (`reset.go`, factory-reset xoá sạch `/root/.picoclaw` + onboard lại) —
+> `ResetAgent` (`reset.go`, factory-reset xoá sạch `/root/.picoclaw` + onboard lại), và
+> emotion-acknowledge (`emotion_ack.go`: turn kênh bắn mặt "thinking" tại `agent:start`
+> của observer hook, gate theo capability `expression` như OpenClaw/Hermes) —
 > đều là thật (§1.1, §8).
-> Các gap còn lại (hook emotion-acknowledge, pin queue/steer) được theo dõi theo checklist
+> Các gap còn lại (pin queue/steer) được theo dõi theo checklist
 > [`adding-agent-runtime_vi.md`](adding-agent-runtime_vi.md) — xem đó trước khi nâng
 > PicoClaw lên parity đầy đủ.
 
@@ -299,9 +301,13 @@ Hai điểm khác Hermes, do `internal/picoclaw/hooks.go` sở hữu:
      - `agent.turn.end`   → `agent:end`, response = **`payload.FinalContent`** (reply,
        KÈM marker `[HW:/…]` — `agent.turn.end` mang cả user message lẫn reply cuối, nên
        **chỉ observe là đủ; không cần intercept**).
-   - lọc theo `scope.channel` (allow-list `telegram`) VÀ bỏ sender nội bộ
-     (`sender_id == heartbeat`) — lượt cục bộ `pico` đã được `sendChat` log; tương tự
-     `skipPlatform(api_server/cli)` của Hermes.
+   - forward **mọi** kênh mặc định (channel-agnostic như hook Hermes —
+     `OBSERVER_CHANNELS` là allow-list tùy chọn, rỗng = tất cả) VÀ bỏ sender nội bộ
+     (`sender_id == heartbeat`). Lượt cục bộ `pico` mà os-server đã log qua
+     `sendChat`/`session.message` bị loại ở phía sau bởi `skipPlatform`
+     (`channelHookSkipPlatforms` nay có thêm `pico`, cạnh `api_server`/`cli`) — nên
+     forward-all không thể double-count hay double-fire ack. Đúng cách Hermes loại
+     lượt `api_server` của chính nó.
    - map `scope` → payload `ChannelTurn` (`platform=channel`, `chat_id`,
      `sender_id`→`user_id`, `session_key`→`session_id`). PicoClaw ghép 2 forward thành
      một lượt Flow theo `session_key`.

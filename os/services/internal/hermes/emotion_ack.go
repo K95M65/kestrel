@@ -4,11 +4,15 @@ import (
 	"log/slog"
 	"strings"
 
+	"go.autonomous.ai/os/domain"
 	"go.autonomous.ai/os/internal/device"
 	"go.autonomous.ai/os/internal/skills"
 	"go.autonomous.ai/os/lib/hal"
 	"go.autonomous.ai/os/lib/safego"
 )
+
+// Compile-time check: *HermesService fires the channel-turn "thinking" ack.
+var _ domain.ChannelStartEmotioner = (*HermesService)(nil)
 
 // emotion-acknowledge parity for Hermes.
 //
@@ -86,4 +90,13 @@ func (s *HermesService) fireAckEmotion(runID, message string) {
 			slog.Debug("ack emotion post failed", "component", "hermes", "error", err)
 		}
 	})
+}
+
+// FireChannelStartEmotion gives the "thinking" ack to gateway-owned channel turns
+// (native Telegram/Discord) that never reach sendChat. Called from the shared
+// ChannelTurn handler on agent:start (channelStartEmotioner). os-server-mediated
+// turns (Slack/web = api_server/cli) are dropped by skipPlatform before this fires,
+// so no double-ack. Delegates to fireAckEmotion to keep gate + skip rules single-sourced.
+func (s *HermesService) FireChannelStartEmotion(message, runID string) {
+	s.fireAckEmotion(runID, message)
 }

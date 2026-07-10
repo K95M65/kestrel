@@ -32,9 +32,11 @@ which brain is active.
 > (`onboarding.go`, keeps the OS-managed blocks in SOUL/AGENTS/HEARTBEAT current),
 > `StartSkillWatcher` (`skill_watcher.go`, CDN skill auto-update), identity
 > (`identity.go`: `WatchIdentity`/`UpdateIdentityName` read/write `IDENTITY.md` like
-> OpenClaw), and `ResetAgent` (`reset.go`, factory-reset wipe of `/root/.picoclaw` +
-> re-onboard) — all real (§1.1, §8).
-> Remaining gaps (an emotion-acknowledge hook, queue/steer pinning) are tracked
+> OpenClaw), `ResetAgent` (`reset.go`, factory-reset wipe of `/root/.picoclaw` +
+> re-onboard), and emotion-acknowledge (`emotion_ack.go`: channel turns fire a
+> "thinking" face on the observer hook's `agent:start`, capability-gated on
+> `expression` like OpenClaw/Hermes) — all real (§1.1, §8).
+> Remaining gaps (queue/steer pinning) are tracked
 > against the
 > [`adding-agent-runtime.md`](adding-agent-runtime.md) checklist — consult it before
 > raising PicoClaw to full parity.
@@ -309,9 +311,13 @@ Two things differ from Hermes and are owned by `internal/picoclaw/hooks.go`:
      - `agent.turn.end`   → `agent:end`, response = **`payload.FinalContent`** (the
        reply, WITH any `[HW:/…]` markers — `agent.turn.end` carries both the user
        message and the final reply, so **observe alone suffices; no intercept**).
-   - filters on `scope.channel` (allow-list `telegram`) AND drops internal senders
-     (`sender_id == heartbeat`) — device-local `pico` turns are already logged by
-     `sendChat`; the analogue of the Hermes hook's `skipPlatform(api_server/cli)`.
+   - forwards **every** channel by default (channel-agnostic, like the Hermes hook —
+     `OBSERVER_CHANNELS` is an optional allow-list, empty = all) and drops internal
+     senders (`sender_id == heartbeat`). The device-local `pico` turns os-server
+     already logs via `sendChat`/`session.message` are excluded downstream by
+     `skipPlatform` (`channelHookSkipPlatforms` now includes `pico`, alongside
+     `api_server`/`cli`) — so forwarding-all cannot double-count or double-fire the
+     ack. This is the exact analogue of how Hermes excludes its own `api_server` turns.
    - maps `scope` → the `ChannelTurn` payload (`platform=channel`, `chat_id`,
      `sender_id`→`user_id`, `session_key`→`session_id`). PicoClaw pairs the two
      forwards into one Flow turn by `session_key`.
