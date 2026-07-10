@@ -141,4 +141,32 @@ fi
 mv "$ENV_FILE.tmp" "$ENV_FILE"
 umask 022
 
+# ── §4 CLI LOGIN SHELL ENV ───────────────────────────────────────────────────
+# A bare `claude`/`codex` in an SSH/web-CLI login shell otherwise has no API key
+# (the .env is only injected into the systemd service), so it prompts login and
+# its /resume picker can't list sessions. Drop a profile.d snippet that sources
+# the ACTIVE runtime's .env into INTERACTIVE login shells — runtime is resolved
+# live from config.json so it stays correct across runtime switches without
+# rewriting. Guarded to interactive shells only (no leak into scripts/cron).
+write_cli_login_env() {
+  cat >/etc/profile.d/agent-cli-env.sh <<'PROFILE'
+# Managed by os-server runtime presync — do not edit.
+case "$-" in *i*) ;; *) return 2>/dev/null || exit 0 ;; esac
+_rt="$(sed -n 's/.*"agent_runtime"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' /root/config/config.json 2>/dev/null | head -1)"
+case "$_rt" in
+  claudecode)
+    if [ -f /root/.claudecode/.env ]; then set -a; . /root/.claudecode/.env; set +a; fi
+    export IS_SANDBOX=1
+    ;;
+  codex)
+    if [ -f /root/.codex/.env ]; then set -a; . /root/.codex/.env; set +a; fi
+    export CODEX_HOME=/root/.codex
+    ;;
+esac
+unset _rt
+PROFILE
+  chmod 0644 /etc/profile.d/agent-cli-env.sh
+}
+write_cli_login_env && log "wrote /etc/profile.d/agent-cli-env.sh (interactive CLI auto-login)"
+
 log "done — claudecode env + channel config synced"

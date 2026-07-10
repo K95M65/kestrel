@@ -212,4 +212,32 @@ umask 022
 # internal/codex/channels.go.
 log "channels: none supported under codex — nothing to sync"
 
+# ── CLI LOGIN SHELL ENV ──────────────────────────────────────────────────────
+# A bare `codex`/`claude` in an SSH/web-CLI login shell otherwise has no API key
+# / CODEX_HOME (the .env is only injected into the systemd service), so it
+# prompts login. Drop a profile.d snippet that sources the ACTIVE runtime's .env
+# into INTERACTIVE login shells — runtime resolved live from config.json so it
+# stays correct across runtime switches. Guarded to interactive shells only (no
+# leak into scripts/cron). Identical to the claudecode presync's writer.
+write_cli_login_env() {
+  cat >/etc/profile.d/agent-cli-env.sh <<'PROFILE'
+# Managed by os-server runtime presync — do not edit.
+case "$-" in *i*) ;; *) return 2>/dev/null || exit 0 ;; esac
+_rt="$(sed -n 's/.*"agent_runtime"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' /root/config/config.json 2>/dev/null | head -1)"
+case "$_rt" in
+  claudecode)
+    if [ -f /root/.claudecode/.env ]; then set -a; . /root/.claudecode/.env; set +a; fi
+    export IS_SANDBOX=1
+    ;;
+  codex)
+    if [ -f /root/.codex/.env ]; then set -a; . /root/.codex/.env; set +a; fi
+    export CODEX_HOME=/root/.codex
+    ;;
+esac
+unset _rt
+PROFILE
+  chmod 0644 /etc/profile.d/agent-cli-env.sh
+}
+write_cli_login_env && log "wrote /etc/profile.d/agent-cli-env.sh (interactive CLI auto-login)"
+
 log "done — codex config.toml + env synced"
