@@ -17,7 +17,7 @@ var _ domain.ChannelStartEmotioner = (*PicoclawService)(nil)
 // emotion-acknowledge parity for PicoClaw — shows a "thinking" face before the
 // reply lands. PicoClaw's channel I/O is gateway-owned (turns never reach sendChat
 // where OpenClaw/Hermes fire it), so we hang the ack off the observer's agent:start
-// via the optional channelStartEmotioner interface. Same skip rules + capability
+// via the optional domain.ChannelStartEmotioner interface. Same skip rules + capability
 // gate as the other two backends.
 const (
 	ackEmotionName      = "thinking"
@@ -46,7 +46,7 @@ func ackEmotionEnabled(deviceType string) bool {
 }
 
 // FireChannelStartEmotion drives the "thinking" face on the observer's agent:start
-// (see channelStartEmotioner). Fire-and-forget so the hook ACK never blocks on the
+// (see domain.ChannelStartEmotioner). Fire-and-forget so the hook ACK never blocks on the
 // HAL round-trip. runID is unused: channel turns are never realtime-voice replays,
 // so the silent-run skip on the sendChat path does not apply here.
 func (s *PicoclawService) FireChannelStartEmotion(message, _ string) {

@@ -94,7 +94,7 @@ func (s *HermesService) fireAckEmotion(runID, message string) {
 
 // FireChannelStartEmotion gives the "thinking" ack to gateway-owned channel turns
 // (native Telegram/Discord) that never reach sendChat. Called from the shared
-// ChannelTurn handler on agent:start (channelStartEmotioner). os-server-mediated
+// ChannelTurn handler on agent:start (domain.ChannelStartEmotioner). os-server-mediated
 // turns (Slack/web = api_server/cli) are dropped by skipPlatform before this fires,
 // so no double-ack. Delegates to fireAckEmotion to keep gate + skip rules single-sourced.
 func (s *HermesService) FireChannelStartEmotion(message, runID string) {
