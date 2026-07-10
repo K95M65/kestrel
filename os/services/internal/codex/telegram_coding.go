@@ -54,7 +54,7 @@ const codingHelpText = "🤖 Coding over Telegram\n\n" +
 	"/sessions <folder> — list every thread in one folder\n" +
 	"/new <folder> — start a new thread in a folder\n" +
 	"/here — show which thread you're in\n" +
-	"/device — return to the device assistant (the lamp)\n\n" +
+	"/device — return to the device assistant\n\n" +
 	"Once a thread is selected, a plain message runs codex in that folder and sends the result back here."
 
 // codingTarget is a chat's selected coding thread. SessionID is empty for a
@@ -212,7 +212,7 @@ func (s *CodexService) cmdNewSession(ctx context.Context, chatID, arg string) {
 func (s *CodexService) cmdWhere(ctx context.Context, chatID string) {
 	tgt, ok := s.getCodingTarget(chatID)
 	if !ok {
-		s.dmCoding(ctx, chatID, "On the device assistant (the lamp). /sessions to pick a coding thread.")
+		s.dmCoding(ctx, chatID, "On the device assistant. /sessions to pick a coding thread.")
 		return
 	}
 	sid := tgt.SessionID
