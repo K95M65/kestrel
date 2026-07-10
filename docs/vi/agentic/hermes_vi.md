@@ -186,7 +186,11 @@ endpoint loopback `POST /api/agent/channel-turn` (`handler_channel_turn.go`),
 nơi emit đúng các flow event như một turn bình thường:
 
 - `agent:start` → `chat_input` (source `channel`, kèm `sender` + `channel`) cùng
-  `lifecycle_start`.
+  `lifecycle_start`. Đồng thời bắn mặt **emotion-acknowledge** "thinking"
+  (`FireChannelStartEmotion` → `fireAckEmotion`) cho các lượt Telegram/Discord do
+  gateway sở hữu — chính là ack mà `sendChat` đã cấp cho lượt os-server trung gian,
+  còn lượt kênh native thì không bao giờ đi qua `sendChat`. Slack/web (`api_server`)
+  bị bỏ ở đây (xem dưới) nên chỉ nhận ack một lần từ `sendChat`, không double-fire.
 - `agent:end` → `lifecycle_end` cùng `tts_suppressed` mang text phản hồi **đã loại
   bỏ marker** (reply đi về channel chứ không ra loa thiết bị — cùng node mà đường
   channel của OpenClaw dùng, để web turn render được), hoặc `no_reply` cho lượt rỗng

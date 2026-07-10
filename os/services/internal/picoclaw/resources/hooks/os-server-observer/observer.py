@@ -25,9 +25,12 @@ We forward, per turn: agent:start (with UserMessage) on turn.start and agent:end
 shared handler already serves for Hermes (handler_channel_turn.go). PicoClaw pairs
 these into one Flow turn by session_key.
 
-Only channels in FORWARD_CHANNELS (default: telegram) are forwarded, and internal
-senders in SKIP_SENDERS (heartbeat) are dropped — device-local "pico" turns are
-already logged by os-server's own sendChat.
+By default every channel the gateway processes is forwarded (channel-agnostic, like
+the Hermes observer): os-server's skipPlatform drops the ones it already logs itself
+— chiefly the device-local "pico" WS channel (its own sendChat/session.message path)
+and cli/api_server. Set OBSERVER_CHANNELS to a comma list only to restrict forwarding
+to an explicit allowlist. Internal senders in SKIP_SENDERS (heartbeat) are always
+dropped.
 
 Besides POSTing, every forwarded payload is appended as one JSON line (JSONL) to
 OBSERVER_LOG (default /root/.picoclaw/logs/messages_hooks.log) — a local audit
@@ -47,9 +50,12 @@ import urllib.request
 OS_SERVER_TURN_URL = "__OS_SERVER_TURN_URL__"
 DEBUG = os.environ.get("OBSERVER_DEBUG") == "1"
 HOOK_LOG = os.environ.get("OBSERVER_LOG", "/root/.picoclaw/logs/messages_hooks.log")
+# OBSERVER_CHANNELS is an OPTIONAL allowlist. Empty/unset (the default) forwards
+# EVERY channel — the device-local "pico" WS channel is excluded downstream by
+# os-server's skipPlatform, not here. Set a comma list to restrict forwarding.
 FORWARD_CHANNELS = {
     c.strip().lower()
-    for c in os.environ.get("OBSERVER_CHANNELS", "telegram").split(",")
+    for c in os.environ.get("OBSERVER_CHANNELS", "").split(",")
     if c.strip()
 }
 # Internal senders whose turns ride a real channel (e.g. the heartbeat turn is
@@ -101,8 +107,11 @@ def _post(event, ctx):
 
 def _ctx(scope, message="", response=""):
     """Map a PicoClaw runtime-event scope → the ChannelTurn payload context."""
+    # platform must match `channel` in handle(): default to "" (NOT "telegram") so an
+    # event with no channel is dropped by os-server's skipPlatform, not mislabeled as
+    # a telegram turn now that forwarding is channel-agnostic.
     return {
-        "platform": str(scope.get("channel") or "telegram").lower(),
+        "platform": str(scope.get("channel") or "").lower(),
         "user_id": str(scope.get("sender_id") or ""),
         "chat_id": str(scope.get("chat_id") or ""),
         "session_id": str(scope.get("session_key") or ""),
@@ -137,8 +146,8 @@ def handle(msg):
     channel = str(scope.get("channel") or "").lower()
     sender = str(scope.get("sender_id") or "")
 
-    if channel not in FORWARD_CHANNELS:
-        return  # device-local "pico" (or other) turns — not ours
+    if FORWARD_CHANNELS and channel not in FORWARD_CHANNELS:
+        return  # an explicit allowlist is set and this channel is not on it
     if sender in SKIP_SENDERS or str(scope.get("session_key") or "") in SKIP_SENDERS:
         return  # heartbeat / internal turns riding the channel
 

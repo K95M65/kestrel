@@ -190,7 +190,11 @@ loopback endpoint `POST /api/agent/channel-turn` (`handler_channel_turn.go`),
 which emits the same flow events a normal turn does:
 
 - `agent:start` → `chat_input` (source `channel`, with `sender` + `channel`) plus
-  `lifecycle_start`.
+  `lifecycle_start`. It also fires the **emotion-acknowledge** "thinking" face
+  (`FireChannelStartEmotion` → `fireAckEmotion`) for these gateway-owned
+  Telegram/Discord turns — the same ack `sendChat` gives os-server-mediated turns,
+  which native channel turns never reach. Slack/web (`api_server`) are skipped here
+  (see below), so they get the ack once, from `sendChat`, with no double-fire.
 - `agent:end` → `lifecycle_end` plus `tts_suppressed` carrying the **marker-stripped**
   reply text (the reply went to the channel, not the device speaker — the same node
   the OpenClaw channel path uses, so the web turn renders it), or `no_reply` for an

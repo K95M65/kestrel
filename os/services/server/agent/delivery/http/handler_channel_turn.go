@@ -30,18 +30,17 @@ type channelTurnRequest struct {
 	} `json:"context"`
 }
 
-// channelHookSkipPlatforms are turns os-server already records itself: its own
-// /v1/responses calls reach the gateway as the api_server platform and the device
-// terminal as cli, both of which sendChat already logs to flow. Emitting here too
-// would double them. Everything else is a real messaging channel we want shown.
-// Matched case-insensitively with separators stripped (skipPlatform), so
-// "API_SERVER" / "api-server" / "apiserver" all hit regardless of the gateway's
-// exact enum spelling.
+// channelHookSkipPlatforms are turns os-server already logs itself via sendChat:
+// its own /v1/responses calls (api_server), the device terminal (cli), and PicoClaw's
+// device-local WS channel (pico). Now that the PicoClaw observer forwards every
+// channel, skipping "pico" here is what prevents double-counting / double-firing.
+// Matched case-insensitively with separators stripped (skipPlatform).
 var channelHookSkipPlatforms = map[string]bool{
 	"apiserver": true,
 	"api":       true,
 	"cli":       true,
 	"terminal":  true,
+	"pico":      true,
 }
 
 // skipPlatform reports whether a turn from this platform should NOT be emitted as
@@ -132,6 +131,10 @@ func (h *AgentHandler) ChannelTurn(c *gin.Context) {
 	switch req.Event {
 	case "agent:start":
 		runID := channelHook.start(ctx.Platform, sessionID)
+		// Fire the "thinking" ack for gateway-owned channel turns (ChannelStartEmotioner).
+		if e, ok := h.agentGateway.(domain.ChannelStartEmotioner); ok {
+			e.FireChannelStartEmotion(ctx.Message, runID)
+		}
 		flow.Log("chat_input", map[string]any{
 			"run_id":  runID,
 			"source":  "channel",
