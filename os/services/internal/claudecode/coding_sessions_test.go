@@ -54,8 +54,8 @@ func TestAllCodingSessionsAndFolders(t *testing.T) {
 	if all[0].SessionID != "cccc3333-0000-0000-0000-000000000003" {
 		t.Errorf("newest session = %s, want cccc3333…", all[0].SessionID)
 	}
-	if all[0].Folder != "/root" || all[0].Summary != "new" {
-		t.Errorf("meta wrong: folder=%q summary=%q", all[0].Folder, all[0].Summary)
+	if all[0].Folder != "/root" || all[0].label() != "new work" {
+		t.Errorf("meta wrong: folder=%q summary=%q", all[0].Folder, all[0].label())
 	}
 
 	// codingFolders collapses to newest-per-folder: /root (cccc) + /root/test.
@@ -91,8 +91,80 @@ func TestReadTranscriptMetaFallbackToFirstUser(t *testing.T) {
 	if len(sessions) != 1 {
 		t.Fatalf("want 1 session, got %d", len(sessions))
 	}
-	if sessions[0].Summary != "fix login bug many lines" { // oneLine collapses the newline
-		t.Errorf("summary = %q, want collapsed first-user text", sessions[0].Summary)
+	if sessions[0].label() != "fix login bug many lines" { // oneLine collapses the newline
+		t.Errorf("summary = %q, want collapsed first-user text", sessions[0].label())
+	}
+}
+
+func TestReadTranscriptMetaSkipsInjectedContext(t *testing.T) {
+	dir := t.TempDir()
+	// First user message is an injected env/system block; the real prompt
+	// follows and must be the summary.
+	subdir := filepath.Join(dir, "-root-app2")
+	if err := os.MkdirAll(subdir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(subdir, "eeee5555-0000-0000-0000-000000000005.jsonl")
+	body := `{"type":"user","cwd":"/root/app2","message":{"role":"user","content":"<environment_context>\n<cwd>/root/app2</cwd>\n</environment_context>"}}` + "\n" +
+		`{"type":"user","cwd":"/root/app2","message":{"role":"user","content":"build a snake game"}}` + "\n"
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s := &ClaudeCodeService{claudeProjectsDirPath: dir}
+	sessions := s.folderSessions("/root/app2")
+	if len(sessions) != 1 {
+		t.Fatalf("want 1 session, got %d", len(sessions))
+	}
+	if sessions[0].label() != "build a snake game" {
+		t.Errorf("summary = %q, want real prompt (env-context skipped)", sessions[0].label())
+	}
+}
+
+func TestRecentPromptsLast3MostRecentFirst(t *testing.T) {
+	dir := t.TempDir()
+	sub := filepath.Join(dir, "-root-many")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Four user prompts (+ an injected block); expect the last 3 real ones,
+	// most-recent first.
+	var body string
+	body += `{"type":"user","cwd":"/root/many","message":{"role":"user","content":"<environment_context>x</environment_context>"}}` + "\n"
+	for _, p := range []string{"first", "second", "third", "fourth"} {
+		body += `{"type":"user","cwd":"/root/many","message":{"role":"user","content":` + jsonStr(p) + `}}` + "\n"
+	}
+	if err := os.WriteFile(filepath.Join(sub, "ffff6666-0000-0000-0000-000000000006.jsonl"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s := &ClaudeCodeService{claudeProjectsDirPath: dir}
+	got := s.folderSessions("/root/many")
+	if len(got) != 1 {
+		t.Fatalf("want 1 session, got %d", len(got))
+	}
+	want := []string{"fourth", "third", "second"} // most-recent first, injected skipped
+	if len(got[0].Recent) != 3 {
+		t.Fatalf("Recent = %v, want 3 entries", got[0].Recent)
+	}
+	for i, w := range want {
+		if got[0].Recent[i] != w {
+			t.Errorf("Recent[%d] = %q, want %q", i, got[0].Recent[i], w)
+		}
+	}
+	if got[0].label() != "fourth" {
+		t.Errorf("label() = %q, want most recent 'fourth'", got[0].label())
+	}
+}
+
+func TestIsInjectedContext(t *testing.T) {
+	for _, s := range []string{"<environment_context>\n<cwd>/x</cwd>", "  <system-reminder>hi</system-reminder>", ""} {
+		if !isInjectedContext(s) {
+			t.Errorf("isInjectedContext(%q) = false, want true", s)
+		}
+	}
+	for _, s := range []string{"build a snake game", "fix the <div> tag"} {
+		if isInjectedContext(s) {
+			t.Errorf("isInjectedContext(%q) = true, want false", s)
+		}
 	}
 }
 

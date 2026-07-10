@@ -1,4 +1,4 @@
-package claudecode
+package codex
 
 import (
 	"bufio"
@@ -18,23 +18,26 @@ import (
 )
 
 // Telegram remote-coding: attach a Telegram chat to a folder's interactive
-// `claude` session and continue it from your phone (see coding_sessions.go for
+// `codex` thread and continue it from your phone (see coding_sessions.go for
 // discovery). Usecase: code on the device terminal at home, walk out, keep
-// going over Telegram — across multiple folders, each its own session.
+// going over Telegram — across multiple folders, each its own thread.
 //
-// Model = HAND-OFF, not co-editing. Each accepted turn spawns a fresh
-// `claude --print --output-format json [--resume <uuid>]` in the session's
-// folder, so history persists in the transcript and the bridge stays stateless.
-// A per-folder lock serializes turns, and a /proc check refuses to run while an
-// interactive TUI still holds the folder (two writers would corrupt the
-// transcript). This is separate from the device-main persona turn (the
-// persistent gatewayd child): a chat with NO coding selection still talks to
-// device-main as before.
+// Model = HAND-OFF, not co-editing. Each accepted turn spawns a fresh `codex
+// exec --json --cd <folder> [resume <thread>]`, so history persists in the
+// rollout and the bridge stays stateless. A per-folder lock serializes turns,
+// and a /proc check refuses to run while an interactive codex TUI still holds
+// the folder. This is separate from the device-main persona turn (the gatewayd
+// per-turn child): a chat with NO coding selection still talks to device-main.
+//
+// This mirrors internal/claudecode/telegram_coding.go 1:1; only the runtime
+// specifics differ — codex resumes by thread id via `codex exec resume` (cwd
+// set independently by --cd), its reply is parsed from the JSONL agent_message
+// items, and its env asserts CODEX_HOME (like the gatewayd's turnEnv).
 
 const (
-	// codingSelFileDefault persists chat→session selections so a restart keeps
-	// each chat in its session. Overridable via the codingSelPath test seam.
-	codingSelFileDefault = "/root/.claudecode/telegram_coding.json"
+	// codingSelFileDefault persists chat→thread selections so a restart keeps
+	// each chat in its thread. Overridable via the codingSelPath test seam.
+	codingSelFileDefault = "/root/.codex/telegram_coding.json"
 
 	// codingTurnTimeout caps one remote-coding turn (tool use can be slow).
 	codingTurnTimeout = 15 * time.Minute
@@ -45,17 +48,17 @@ const (
 )
 
 const codingHelpText = "🤖 Coding over Telegram\n\n" +
-	"/resume — list folders that have claude sessions\n" +
-	"/resume <n> — pick a session by its number in the last list\n" +
-	"/resume <folder> — pick the folder's newest session\n" +
-	"/sessions <folder> — list every session in one folder\n" +
-	"/new <folder> — start a new session in a folder\n" +
-	"/here — show which session you're in\n" +
+	"/resume — list folders that have codex threads\n" +
+	"/resume <n> — pick a thread by its number in the last list\n" +
+	"/resume <folder> — pick the folder's newest thread\n" +
+	"/sessions <folder> — list every thread in one folder\n" +
+	"/new <folder> — start a new thread in a folder\n" +
+	"/here — show which thread you're in\n" +
 	"/device — return to the device assistant\n\n" +
-	"Once a session is selected, a plain message runs claude in that folder and sends the result back here."
+	"Once a thread is selected, a plain message runs codex in that folder and sends the result back here."
 
-// codingTarget is a chat's selected coding session. SessionID is empty for a
-// freshly requested /new folder until its first turn captures the real uuid.
+// codingTarget is a chat's selected coding thread. SessionID is empty for a
+// freshly requested /new folder until its first turn captures the real thread id.
 type codingTarget struct {
 	Folder    string `json:"folder"`
 	SessionID string `json:"session_id"`
@@ -65,7 +68,7 @@ type codingTarget struct {
 // a chat that has an active coding selection. Returns true when it took the
 // update (caller then skips the default device-main injection). A chat with no
 // selection and no coding command returns false → device-main handles it.
-func (s *ClaudeCodeService) handleTelegramCoding(ctx context.Context, rawText, chatID string) bool {
+func (s *CodexService) handleTelegramCoding(ctx context.Context, rawText, chatID string) bool {
 	text := strings.TrimSpace(rawText)
 	if strings.HasPrefix(text, "/") {
 		return s.handleCodingCommand(ctx, text, chatID)
@@ -80,16 +83,16 @@ func (s *ClaudeCodeService) handleTelegramCoding(ctx context.Context, rawText, c
 
 // handleCodingCommand dispatches a /slash command. Returns true when consumed.
 // A KNOWN command is always consumed. An UNKNOWN slash is consumed only when a
-// coding session is active (passed through as a prompt); with no selection it
+// coding thread is active (passed through as a prompt); with no selection it
 // returns false so device-main still receives arbitrary slash text unchanged.
-func (s *ClaudeCodeService) handleCodingCommand(ctx context.Context, text, chatID string) bool {
+func (s *CodexService) handleCodingCommand(ctx context.Context, text, chatID string) bool {
 	fields := strings.Fields(text)
 	cmd := strings.ToLower(fields[0])
 	arg := strings.TrimSpace(strings.TrimPrefix(text, fields[0]))
 	switch cmd {
 	case "/resume":
-		// Mirrors the claude CLI's /resume: no arg lists sessions, an arg picks
-		// one (by number or folder).
+		// Mirrors the codex CLI's resume: no arg lists threads, an arg picks one
+		// (by number or folder).
 		if arg == "" {
 			s.cmdListSessions(ctx, chatID, "")
 		} else {
@@ -109,8 +112,6 @@ func (s *ClaudeCodeService) handleCodingCommand(ctx context.Context, text, chatI
 	case "/help", "/coding":
 		s.dmCoding(ctx, chatID, codingHelpText)
 	default:
-		// Unknown slash: pass through to an active coding session as a prompt;
-		// with no selection, let device-main handle it (return false).
 		tgt, ok := s.getCodingTarget(chatID)
 		if !ok {
 			return false
@@ -120,24 +121,24 @@ func (s *ClaudeCodeService) handleCodingCommand(ctx context.Context, text, chatI
 	return true
 }
 
-// cmdListSessions lists folders (no arg) or every session in one folder (arg),
+// cmdListSessions lists folders (no arg) or every thread in one folder (arg),
 // caches the listing for /use <n>, and DMs it.
-func (s *ClaudeCodeService) cmdListSessions(ctx context.Context, chatID, arg string) {
+func (s *CodexService) cmdListSessions(ctx context.Context, chatID, arg string) {
 	var (
 		sessions []codingSession
 		header   string
 	)
 	if strings.TrimSpace(arg) == "" {
 		sessions = s.codingFolders()
-		header = "📂 Coding sessions (most recent first):"
+		header = "📂 Coding threads (most recent first):"
 	} else {
 		folder := normalizeFolder(arg)
 		sessions = s.folderSessions(folder)
-		header = "📂 Sessions in " + folder + ":"
+		header = "📂 Threads in " + folder + ":"
 	}
 	s.setCodingList(chatID, sessions)
 	if len(sessions) == 0 {
-		s.dmCoding(ctx, chatID, "No coding sessions yet. Run `claude` in a folder from the terminal, or /new <folder> to start one.")
+		s.dmCoding(ctx, chatID, "No coding threads yet. Run `codex` in a folder from the terminal, or /new <folder> to start one.")
 		return
 	}
 	var b strings.Builder
@@ -162,9 +163,9 @@ func (s *ClaudeCodeService) cmdListSessions(ctx context.Context, chatID, arg str
 	s.dmCoding(ctx, chatID, b.String())
 }
 
-// cmdUseSession selects a session by index (into the last listing) or by folder
-// path (its newest session).
-func (s *ClaudeCodeService) cmdUseSession(ctx context.Context, chatID, arg string) {
+// cmdUseSession selects a thread by index (into the last listing) or by folder
+// path (its newest thread).
+func (s *CodexService) cmdUseSession(ctx context.Context, chatID, arg string) {
 	arg = strings.TrimSpace(arg)
 	if arg == "" {
 		s.dmCoding(ctx, chatID, "Usage: /resume <n>  or  /resume <folder>. /resume to list them.")
@@ -182,21 +183,21 @@ func (s *ClaudeCodeService) cmdUseSession(ctx context.Context, chatID, arg strin
 	cs, ok := s.latestSessionForFolder(arg)
 	if !ok {
 		folder := normalizeFolder(arg)
-		s.dmCoding(ctx, chatID, fmt.Sprintf("No session found in %s. Use /new %s to start one.", folder, folder))
+		s.dmCoding(ctx, chatID, fmt.Sprintf("No thread found in %s. Use /new %s to start one.", folder, folder))
 		return
 	}
 	s.selectCoding(ctx, chatID, cs)
 }
 
-// selectCoding stores a resolved session selection and confirms it.
-func (s *ClaudeCodeService) selectCoding(ctx context.Context, chatID string, cs codingSession) {
+// selectCoding stores a resolved thread selection and confirms it.
+func (s *CodexService) selectCoding(ctx context.Context, chatID string, cs codingSession) {
 	s.setCodingTarget(chatID, codingTarget{Folder: cs.Folder, SessionID: cs.SessionID})
-	s.dmCoding(ctx, chatID, fmt.Sprintf("✅ In session:\n📂 %s\n📝 %s\n\nSend a message to continue coding. /device to exit.", cs.Folder, cs.label()))
+	s.dmCoding(ctx, chatID, fmt.Sprintf("✅ In thread:\n📂 %s\n📝 %s\n\nSend a message to continue coding. /device to exit.", cs.Folder, cs.label()))
 }
 
-// cmdNewSession selects a folder for a brand-new session (no --resume). The
-// folder is created if missing; the real uuid is captured on the first turn.
-func (s *ClaudeCodeService) cmdNewSession(ctx context.Context, chatID, arg string) {
+// cmdNewSession selects a folder for a brand-new thread (no resume). The folder
+// is created if missing; the real thread id is captured on the first turn.
+func (s *CodexService) cmdNewSession(ctx context.Context, chatID, arg string) {
 	folder := normalizeFolder(arg)
 	if folder == "" {
 		s.dmCoding(ctx, chatID, "Usage: /new <folder>. Example: /new /root/myapp")
@@ -207,50 +208,50 @@ func (s *ClaudeCodeService) cmdNewSession(ctx context.Context, chatID, arg strin
 		return
 	}
 	s.setCodingTarget(chatID, codingTarget{Folder: folder, SessionID: ""})
-	s.dmCoding(ctx, chatID, "🆕 New session in "+folder+". Send your first request to begin.")
+	s.dmCoding(ctx, chatID, "🆕 New thread in "+folder+". Send your first request to begin.")
 }
 
 // cmdWhere reports the chat's current selection.
-func (s *ClaudeCodeService) cmdWhere(ctx context.Context, chatID string) {
+func (s *CodexService) cmdWhere(ctx context.Context, chatID string) {
 	tgt, ok := s.getCodingTarget(chatID)
 	if !ok {
-		s.dmCoding(ctx, chatID, "On the device assistant. /sessions to pick a coding session.")
+		s.dmCoding(ctx, chatID, "On the device assistant. /sessions to pick a coding thread.")
 		return
 	}
 	sid := tgt.SessionID
 	if sid == "" {
-		sid = "(new session, no turn run yet)"
+		sid = "(new thread, no turn run yet)"
 	}
 	s.dmCoding(ctx, chatID, fmt.Sprintf("📂 %s\n🔑 %s", tgt.Folder, sid))
 }
 
 // runTelegramCodingTurn executes one hand-off turn: serialize on the folder,
-// refuse if an interactive TUI holds it, run claude, persist any new session id,
+// refuse if an interactive TUI holds it, run codex, persist any new thread id,
 // and DM the reply. Runs in its own goroutine (called with `go`).
-func (s *ClaudeCodeService) runTelegramCodingTurn(ctx context.Context, chatID string, tgt codingTarget, prompt string) {
+func (s *CodexService) runTelegramCodingTurn(ctx context.Context, chatID string, tgt codingTarget, prompt string) {
 	unlock := s.lockCodingFolder(tgt.Folder)
 	defer unlock()
 
-	if s.liveClaudeHolds(tgt.Folder) {
-		s.dmCoding(ctx, chatID, "⚠️ An interactive claude session is open in the terminal at "+tgt.Folder+".\nClose it before continuing over Telegram (two writers would corrupt the transcript).")
+	if s.liveCodexHolds(tgt.Folder) {
+		s.dmCoding(ctx, chatID, "⚠️ An interactive codex session is open in the terminal at "+tgt.Folder+".\nClose it before continuing over Telegram (two writers would corrupt the rollout).")
 		return
 	}
 
 	stopTyping := s.startCodingTyping(ctx, chatID)
 	run := s.codingRunner
 	if run == nil {
-		run = s.runCodingClaude
+		run = s.runCodingCodex
 	}
-	reply, newSID, err := run(ctx, tgt.Folder, tgt.SessionID, prompt)
+	reply, newID, err := run(ctx, tgt.Folder, tgt.SessionID, prompt)
 	stopTyping()
 
 	if err != nil {
-		slog.Warn("telegram coding turn failed", "component", "claudecode", "folder", tgt.Folder, "error", err)
+		slog.Warn("telegram coding turn failed", "component", "codex", "folder", tgt.Folder, "error", err)
 		s.dmCoding(ctx, chatID, "❌ Turn failed:\n"+err.Error())
 		return
 	}
-	if newSID != "" && newSID != tgt.SessionID {
-		s.setCodingTarget(chatID, codingTarget{Folder: tgt.Folder, SessionID: newSID})
+	if newID != "" && newID != tgt.SessionID {
+		s.setCodingTarget(chatID, codingTarget{Folder: tgt.Folder, SessionID: newID})
 	}
 	if strings.TrimSpace(reply) == "" {
 		reply = "(turn finished with no reply text)"
@@ -258,88 +259,124 @@ func (s *ClaudeCodeService) runTelegramCodingTurn(ctx context.Context, chatID st
 	s.dmCoding(ctx, chatID, reply)
 }
 
-// runCodingClaude is the production runner: `claude --print --output-format json
-// [--resume <uuid>] --dangerously-skip-permissions` in the folder's cwd, prompt
-// on stdin. Returns the result text and the (possibly new) session id.
-func (s *ClaudeCodeService) runCodingClaude(ctx context.Context, folder, sessionID, prompt string) (string, string, error) {
+// runCodingCodex is the production runner: `codex exec --json
+// --dangerously-bypass-approvals-and-sandbox --cd <folder> [resume <thread>]
+// <prompt>` (flag order matters: --cd is rejected after `resume`, so it rides
+// before). Returns the accumulated agent_message text and the (possibly new)
+// thread id.
+func (s *CodexService) runCodingCodex(ctx context.Context, folder, threadID, prompt string) (string, string, error) {
 	cctx, cancel := context.WithTimeout(ctx, codingTurnTimeout)
 	defer cancel()
 
-	args := []string{"--print", "--output-format", "json", "--dangerously-skip-permissions"}
-	if sessionID != "" {
-		args = append(args, "--resume", sessionID)
+	argv := []string{"exec", "--json", "--dangerously-bypass-approvals-and-sandbox", "--cd", folder}
+	if threadID != "" {
+		argv = append(argv, "resume", threadID)
 	}
-	cmd := exec.CommandContext(cctx, "claude", args...)
+	argv = append(argv, prompt)
+
+	cmd := exec.CommandContext(cctx, "codex", argv...)
 	cmd.Dir = folder
 	cmd.Env = s.codingChildEnv()
-	cmd.Stdin = strings.NewReader(prompt)
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errb
-	if err := cmd.Run(); err != nil {
+	runErr := cmd.Run()
+
+	reply, newID, turnErr := parseCodexResult(out.Bytes())
+	if turnErr != "" && strings.TrimSpace(reply) == "" {
+		return "", newID, fmt.Errorf("%s", truncRunes(turnErr, 400))
+	}
+	if runErr != nil && strings.TrimSpace(reply) == "" {
 		if tail := strings.TrimSpace(errb.String()); tail != "" {
-			return "", "", fmt.Errorf("%s", truncRunes(tail, 400))
+			return "", newID, fmt.Errorf("%s", truncRunes(tail, 400))
 		}
-		return "", "", err
+		return "", newID, runErr
 	}
-	result, sid, isErr := parseClaudeJSONResult(out.Bytes())
-	if isErr && strings.TrimSpace(result) == "" {
-		return "", "", fmt.Errorf("claude turn errored")
-	}
-	return result, sid, nil
+	return reply, newID, nil
 }
 
-// parseClaudeJSONResult extracts result text, session id and error flag from
-// `--output-format json` output (a single result object; a stray leading line
-// is tolerated by scanning for the last JSON object).
-func parseClaudeJSONResult(b []byte) (result, sessionID string, isErr bool) {
-	type res struct {
-		Result    string `json:"result"`
-		SessionID string `json:"session_id"`
-		IsError   bool   `json:"is_error"`
-		Subtype   string `json:"subtype"`
-	}
-	parse := func(data []byte) (res, bool) {
-		var r res
-		if json.Unmarshal(bytes.TrimSpace(data), &r) == nil && (r.Result != "" || r.SessionID != "" || r.Subtype != "") {
-			return r, true
-		}
-		return res{}, false
-	}
-	if r, ok := parse(b); ok {
-		return r.Result, r.SessionID, r.IsError
-	}
-	// Fallback: last non-empty line (stream-json or noise before the object).
+// parseCodexResult scans `codex exec --json` JSONL: thread.started → thread id,
+// item.completed/agent_message → accumulated reply text, turn.completed → done,
+// turn.failed/error → error message. turnErr is non-empty only when the turn
+// did not complete (a top-level error/turn.failed with no reply).
+func parseCodexResult(b []byte) (reply, threadID, turnErr string) {
 	sc := bufio.NewScanner(bytes.NewReader(b))
 	sc.Buffer(make([]byte, 0, 64*1024), 8*1024*1024)
-	var last res
-	found := false
+	var parts []string
+	var lastErr string
+	completed := false
 	for sc.Scan() {
-		if r, ok := parse(sc.Bytes()); ok {
-			last, found = r, true
+		var f struct {
+			Type     string `json:"type"`
+			ThreadID string `json:"thread_id"`
+			Message  string `json:"message"`
+			Item     struct {
+				ItemType string `json:"item_type"`
+				Type     string `json:"type"`
+				Text     string `json:"text"`
+			} `json:"item"`
+		}
+		if json.Unmarshal(sc.Bytes(), &f) != nil {
+			continue
+		}
+		switch f.Type {
+		case "thread.started":
+			if f.ThreadID != "" {
+				threadID = f.ThreadID
+			}
+		case "item.completed":
+			kind := f.Item.ItemType
+			if kind == "" {
+				kind = f.Item.Type
+			}
+			if kind == "agent_message" && strings.TrimSpace(f.Item.Text) != "" {
+				parts = append(parts, f.Item.Text)
+			}
+		case "turn.completed":
+			completed = true
+		case "turn.failed", "error":
+			if f.Message != "" {
+				lastErr = f.Message
+			}
 		}
 	}
-	if found {
-		return last.Result, last.SessionID, last.IsError
+	reply = strings.Join(parts, "\n\n")
+	if !completed && strings.TrimSpace(reply) == "" {
+		if lastErr == "" {
+			lastErr = "codex turn did not complete"
+		}
+		turnErr = lastErr
 	}
-	return strings.TrimSpace(string(b)), "", false
+	return reply, threadID, turnErr
 }
 
-// codingChildEnv builds the exec env: the process env, the presync .env pairs
-// (ANTHROPIC_* creds), then IS_SANDBOX=1 + HOME=/root (root needs IS_SANDBOX for
-// --dangerously-skip-permissions; same as the gatewayd child).
-func (s *ClaudeCodeService) codingChildEnv() []string {
-	env := os.Environ()
-	env = append(env, loadEnvFilePairs(s.codingEnvFile())...)
-	env = append(env, "IS_SANDBOX=1", "HOME=/root")
-	return env
+// codingChildEnv mirrors the gatewayd's turnEnv: the process env with HOME and
+// CODEX_HOME asserted (deduped), plus the presync .env pairs (OPENAI_API_KEY in
+// API mode; omitted in subscription mode, where codex reads auth.json from
+// CODEX_HOME). This makes codex resolve the same config.toml + auth the gatewayd
+// uses, so remote coding works in either auth mode without runner changes.
+func (s *CodexService) codingChildEnv() []string {
+	base := os.Environ()
+	out := make([]string, 0, len(base)+8)
+	for _, kv := range base {
+		if strings.HasPrefix(kv, "HOME=") || strings.HasPrefix(kv, "CODEX_HOME=") {
+			continue
+		}
+		out = append(out, kv)
+	}
+	out = append(out, loadEnvFilePairs(s.codingEnvFile())...)
+	// HOME is codexHome's parent (/root); CODEX_HOME points codex at config.toml
+	// + auth.json — supports BOTH auth modes (OPENAI_API_KEY via config.toml, or
+	// the ChatGPT-subscription auth.json) with no runner change.
+	out = append(out, "HOME="+filepath.Dir(codexHome), "CODEX_HOME="+codexHome)
+	return out
 }
 
-func (s *ClaudeCodeService) codingEnvFile() string {
+func (s *CodexService) codingEnvFile() string {
 	if s.codingEnvFilePath != "" {
 		return s.codingEnvFilePath
 	}
-	return EnvFile
+	return codexHome + "/.env"
 }
 
 // loadEnvFilePairs parses a KEY=VALUE launch env file into "KEY=VALUE" entries
@@ -372,18 +409,17 @@ func loadEnvFilePairs(path string) []string {
 	return out
 }
 
-// liveClaudeHolds reports whether an interactive claude process currently has
-// folder as its cwd — the hand-off guard against concurrent transcript writers.
-func (s *ClaudeCodeService) liveClaudeHolds(folder string) bool {
-	if s.folderHasLiveClaude != nil {
-		return s.folderHasLiveClaude(folder)
+// liveCodexHolds reports whether an interactive codex process currently has
+// folder as its cwd — the hand-off guard against concurrent rollout writers.
+func (s *CodexService) liveCodexHolds(folder string) bool {
+	if s.folderHasLiveCodex != nil {
+		return s.folderHasLiveCodex(folder)
 	}
 	return procHoldsFolder(folder)
 }
 
-// procHoldsFolder scans /proc for a `claude` process whose cwd == folder. This
-// is the production implementation of the live-TUI guard (Linux-only; the
-// device is Linux). Best-effort: unreadable entries are skipped.
+// procHoldsFolder scans /proc for a `codex` process whose cwd == folder (Linux;
+// the device is Linux). Best-effort: unreadable entries are skipped.
 func procHoldsFolder(folder string) bool {
 	entries, err := os.ReadDir("/proc")
 	if err != nil {
@@ -395,7 +431,7 @@ func procHoldsFolder(folder string) bool {
 		if !e.IsDir() || pid == self || pid[0] < '0' || pid[0] > '9' {
 			continue
 		}
-		if !procIsClaude(pid) {
+		if !procIsCodex(pid) {
 			continue
 		}
 		cwd, err := os.Readlink(filepath.Join("/proc", pid, "cwd"))
@@ -406,13 +442,10 @@ func procHoldsFolder(folder string) bool {
 	return false
 }
 
-// procIsClaude checks whether /proc/<pid> is a claude CLI process (not this
-// gatewayd's headless child, which the caller can't distinguish — but the
-// headless child runs in the workspace, never a user coding folder, so a cwd
-// match already implies an interactive session).
-func procIsClaude(pid string) bool {
+// procIsCodex checks whether /proc/<pid> is a codex CLI process.
+func procIsCodex(pid string) bool {
 	comm, err := os.ReadFile(filepath.Join("/proc", pid, "comm"))
-	if err == nil && strings.TrimSpace(string(comm)) == "claude" {
+	if err == nil && strings.TrimSpace(string(comm)) == "codex" {
 		return true
 	}
 	cmdline, err := os.ReadFile(filepath.Join("/proc", pid, "cmdline"))
@@ -420,19 +453,19 @@ func procIsClaude(pid string) bool {
 		return false
 	}
 	first := string(bytes.SplitN(cmdline, []byte{0}, 2)[0])
-	return strings.Contains(filepath.Base(first), "claude")
+	return strings.Contains(filepath.Base(first), "codex")
 }
 
 // ── selection state (in-memory + persisted) ─────────────────────────────────
 
-func (s *ClaudeCodeService) codingSelFile() string {
+func (s *CodexService) codingSelFile() string {
 	if s.codingSelPath != "" {
 		return s.codingSelPath
 	}
 	return codingSelFileDefault
 }
 
-func (s *ClaudeCodeService) getCodingTarget(chatID string) (codingTarget, bool) {
+func (s *CodexService) getCodingTarget(chatID string) (codingTarget, bool) {
 	s.codingMu.Lock()
 	defer s.codingMu.Unlock()
 	if s.codingSel == nil {
@@ -442,7 +475,7 @@ func (s *ClaudeCodeService) getCodingTarget(chatID string) (codingTarget, bool) 
 	return tgt, ok
 }
 
-func (s *ClaudeCodeService) setCodingTarget(chatID string, tgt codingTarget) {
+func (s *CodexService) setCodingTarget(chatID string, tgt codingTarget) {
 	s.codingMu.Lock()
 	defer s.codingMu.Unlock()
 	if s.codingSel == nil {
@@ -452,7 +485,7 @@ func (s *ClaudeCodeService) setCodingTarget(chatID string, tgt codingTarget) {
 	s.saveCodingSelLocked()
 }
 
-func (s *ClaudeCodeService) clearCodingTarget(chatID string) {
+func (s *CodexService) clearCodingTarget(chatID string) {
 	s.codingMu.Lock()
 	defer s.codingMu.Unlock()
 	if s.codingSel == nil {
@@ -462,7 +495,7 @@ func (s *ClaudeCodeService) clearCodingTarget(chatID string) {
 	s.saveCodingSelLocked()
 }
 
-func (s *ClaudeCodeService) setCodingList(chatID string, list []codingSession) {
+func (s *CodexService) setCodingList(chatID string, list []codingSession) {
 	s.codingMu.Lock()
 	defer s.codingMu.Unlock()
 	if s.codingList == nil {
@@ -471,7 +504,7 @@ func (s *ClaudeCodeService) setCodingList(chatID string, list []codingSession) {
 	s.codingList[chatID] = list
 }
 
-func (s *ClaudeCodeService) getCodingList(chatID string) []codingSession {
+func (s *CodexService) getCodingList(chatID string) []codingSession {
 	s.codingMu.Lock()
 	defer s.codingMu.Unlock()
 	return s.codingList[chatID]
@@ -479,7 +512,7 @@ func (s *ClaudeCodeService) getCodingList(chatID string) []codingSession {
 
 // loadCodingSelLocked reads persisted selections (called under codingMu with a
 // nil map). A missing/corrupt file yields an empty map.
-func (s *ClaudeCodeService) loadCodingSelLocked() {
+func (s *CodexService) loadCodingSelLocked() {
 	s.codingSel = map[string]codingTarget{}
 	data, err := os.ReadFile(s.codingSelFile())
 	if err != nil {
@@ -492,7 +525,7 @@ func (s *ClaudeCodeService) loadCodingSelLocked() {
 }
 
 // saveCodingSelLocked persists selections atomically (called under codingMu).
-func (s *ClaudeCodeService) saveCodingSelLocked() {
+func (s *CodexService) saveCodingSelLocked() {
 	data, err := json.Marshal(s.codingSel)
 	if err != nil {
 		return
@@ -500,18 +533,18 @@ func (s *ClaudeCodeService) saveCodingSelLocked() {
 	path := s.codingSelFile()
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		slog.Warn("telegram coding: save selection failed", "component", "claudecode", "error", err)
+		slog.Warn("telegram coding: save selection failed", "component", "codex", "error", err)
 		return
 	}
 	if err := os.Rename(tmp, path); err != nil {
 		_ = os.Remove(tmp)
-		slog.Warn("telegram coding: rename selection failed", "component", "claudecode", "error", err)
+		slog.Warn("telegram coding: rename selection failed", "component", "codex", "error", err)
 	}
 }
 
 // lockCodingFolder returns an unlock func after acquiring the per-folder mutex,
 // so two turns for the same folder never run concurrently.
-func (s *ClaudeCodeService) lockCodingFolder(folder string) func() {
+func (s *CodexService) lockCodingFolder(folder string) func() {
 	s.codingMu.Lock()
 	if s.codingFolder == nil {
 		s.codingFolder = map[string]*sync.Mutex{}
@@ -529,7 +562,7 @@ func (s *ClaudeCodeService) lockCodingFolder(folder string) func() {
 // ── Telegram delivery ────────────────────────────────────────────────────────
 
 // dmCoding sends text to chatID, chunked to Telegram's per-message limit.
-func (s *ClaudeCodeService) dmCoding(ctx context.Context, chatID, text string) {
+func (s *CodexService) dmCoding(ctx context.Context, chatID, text string) {
 	token := s.config.TelegramBotToken
 	if token == "" {
 		return
@@ -544,7 +577,7 @@ func (s *ClaudeCodeService) dmCoding(ctx context.Context, chatID, text string) {
 }
 
 // postTelegramText POSTs one sendMessage (respects telegramAPIBase for tests).
-func (s *ClaudeCodeService) postTelegramText(ctx context.Context, base, token, chatID, text string) {
+func (s *CodexService) postTelegramText(ctx context.Context, base, token, chatID, text string) {
 	url := fmt.Sprintf("%s/bot%s/sendMessage", base, token)
 	payload, _ := json.Marshal(map[string]string{"chat_id": chatID, "text": text})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
@@ -555,7 +588,7 @@ func (s *ClaudeCodeService) postTelegramText(ctx context.Context, base, token, c
 	client := &http.Client{Timeout: 15 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		slog.Warn("telegram coding sendMessage failed", "component", "claudecode", "chatID", chatID, "error", err)
+		slog.Warn("telegram coding sendMessage failed", "component", "codex", "chatID", chatID, "error", err)
 		return
 	}
 	_ = resp.Body.Close()
@@ -563,7 +596,7 @@ func (s *ClaudeCodeService) postTelegramText(ctx context.Context, base, token, c
 
 // startCodingTyping keeps the chat's "typing…" indicator alive until the
 // returned stop func is called (indicator expires after ~5s).
-func (s *ClaudeCodeService) startCodingTyping(ctx context.Context, chatID string) func() {
+func (s *CodexService) startCodingTyping(ctx context.Context, chatID string) func() {
 	done := make(chan struct{})
 	go func() {
 		s.sendTelegramTyping(ctx, chatID)
@@ -598,7 +631,6 @@ func chunkString(s string, limit int) []string {
 			break
 		}
 		cut := limit
-		// Prefer a newline in the last quarter of the window for a clean break.
 		for i := limit - 1; i > limit*3/4; i-- {
 			if runes[i] == '\n' {
 				cut = i + 1

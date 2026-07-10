@@ -362,6 +362,47 @@ chấp nhận sẽ là fake success). Whatsapp không có đường nhận và t
 `domain.ErrChannelNotSupported`. Xem thêm
 [`adding-agent-runtime_vi.md`](adding-agent-runtime_vi.md).
 
+### Coding từ xa qua Telegram (`telegram_coding.go`, `coding_sessions.go`)
+
+Mirror `internal/claudecode/telegram_coding.go` 1:1 — một chat Telegram có thể
+**gắn vào thread `codex` interactive của một folder và code tiếp từ điện thoại**,
+nhiều folder mỗi folder một thread. Tách biệt với lượt persona device-main.
+
+- **Khám phá** (`coding_sessions.go`): codex lưu mỗi thread thành "rollout" JSONL
+  ở `~/.codex/sessions/YYYY/MM/DD/rollout-<ts>-<uuid>.jsonl`
+  (`/root/.codex/sessions`). `allCodingSessions` quét cây đó; **thread id
+  (`payload.id`) và cwd (`payload.cwd`) lấy từ record `session_meta` đầu tiên**;
+  danh sách hiện **3 prompt người dùng gần nhất** (mới nhất trước, bỏ khối
+  `<environment_context>` tổng hợp). Dedupe theo thread id (rollout mới nhất thắng).
+  Khác claude, codex resume **theo thread-id toàn cục**: `codex exec --cd <dir>
+  resume <id>` đặt cwd độc lập, không cần khớp cwd gốc (đã verify device —
+  resume thread cũ echo lại id; lỗi 404 trong test đó là do endpoint
+  campaign-api `/responses` chưa có, KHÔNG phải cơ chế resume).
+- **Lệnh** (chặn trong `handleTelegramUpdate` trước khi inject device-main):
+  `/resume` (giống CLI codex — không tham số thì liệt kê folder, `/resume <n>`
+  chọn theo số, `/resume <folder>` chọn mới nhất) · alias `/sessions` (liệt kê) +
+  `/use <n|folder>` (chọn) · `/sessions <folder>` (mọi thread trong 1 folder) ·
+  `/new <folder>` · `/here` · `/device` · `/help`. Chat chưa chọn và không phải
+  lệnh thì rơi xuống device-main như cũ.
+- **Mô hình hand-off.** Mỗi lượt spawn một `codex exec --json
+  --dangerously-bypass-approvals-and-sandbox --cd <folder> [resume <thread>]
+  <prompt>` (thứ tự cờ quan trọng — `--cd` bị từ chối sau `resume` nên phải đứng
+  trước). Reply là các item `agent_message` gộp lại, parse từ JSONL
+  (`parseCodexResult`: `thread.started`→id, `item.completed`/`agent_message`→
+  text, `turn.completed`→xong), DM chunk ở 4000 ký tự. Env exec **mirror
+  `turnEnv` của gatewayd** (env tiến trình + cặp `.env` presync + `HOME=/root` +
+  `CODEX_HOME=/root/.codex`), nên codex dùng đúng `config.toml` + auth — chạy
+  được **cả 2** auth mode (`OPENAI_API_KEY` qua `/responses`, hoặc `auth.json`
+  subscription ChatGPT) mà không phải sửa runner.
+- **Bảo vệ.** Mutex theo folder tuần tự hoá các lượt; lượt quét `/proc`
+  (`procHoldsFolder`) từ chối chạy khi còn TUI `codex` interactive giữ folder
+  (2 writer làm hỏng rollout). Chỉ `telegram_user_id` allowlist chạm được; coding
+  chạy `--dangerously-bypass-approvals-and-sandbox` nên allowlist là ranh giới
+  bảo mật.
+- **Trạng thái.** Lựa chọn mỗi chat persist vào `/root/.codex/telegram_coding.json`
+  (sống qua restart). Chạy thẳng trong os-server (mỗi lượt một `codex exec`
+  riêng), độc lập với child thường trú của gatewayd.
+
 ## 6. Hooks
 
 Codex không có hooks loader, nên hook `emotion-acknowledge` của OpenClaw được

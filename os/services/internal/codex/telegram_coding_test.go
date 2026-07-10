@@ -1,4 +1,4 @@
-package claudecode
+package codex
 
 import (
 	"context"
@@ -15,10 +15,8 @@ import (
 	"go.autonomous.ai/os/server/config"
 )
 
-// codingTestRig wires a service to a fake Bot API that records every outbound
-// sendMessage text, with the coding runner and live-TUI guard stubbed.
 type codingTestRig struct {
-	svc  *ClaudeCodeService
+	svc  *CodexService
 	dms  chan string
 	runs chan codingRunCall
 }
@@ -27,7 +25,7 @@ type codingRunCall struct {
 	folder, sessionID, prompt string
 }
 
-func newCodingRig(t *testing.T, projectsDir string) *codingTestRig {
+func newCodingRig(t *testing.T, sessionsDir string) *codingTestRig {
 	t.Helper()
 	dms := make(chan string, 16)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -45,16 +43,16 @@ func newCodingRig(t *testing.T, projectsDir string) *codingTestRig {
 	t.Cleanup(srv.Close)
 
 	rig := &codingTestRig{dms: dms, runs: make(chan codingRunCall, 8)}
-	rig.svc = &ClaudeCodeService{
-		config:                &config.Config{TelegramBotToken: "T", TelegramUserID: "9"},
-		telegramAPIBase:       srv.URL,
-		claudeProjectsDirPath: projectsDir,
-		codingSelPath:         filepath.Join(t.TempDir(), "sel.json"),
-		folderHasLiveClaude:   func(string) bool { return false },
+	rig.svc = &CodexService{
+		config:               &config.Config{TelegramBotToken: "T", TelegramUserID: "9"},
+		telegramAPIBase:      srv.URL,
+		codexSessionsDirPath: sessionsDir,
+		codingSelPath:        filepath.Join(t.TempDir(), "sel.json"),
+		folderHasLiveCodex:   func(string) bool { return false },
 	}
 	rig.svc.codingRunner = func(_ context.Context, folder, sessionID, prompt string) (string, string, error) {
 		rig.runs <- codingRunCall{folder, sessionID, prompt}
-		return "ok reply for " + prompt, "new-sid-1234", nil
+		return "ok reply for " + prompt, "new-thread-1234", nil
 	}
 	return rig
 }
@@ -72,37 +70,34 @@ func (r *codingTestRig) waitDM(t *testing.T) string {
 
 func TestCodingCommandsFlow(t *testing.T) {
 	proj := t.TempDir()
-	writeTranscript(t, proj, "-root-test", "aaaa1111-2222-3333-4444-555566667777", "/root/test", "Caro game", "make caro game", time.Now())
+	writeRollout(t, proj, "aaaa1111", "/root/test", "caro game", time.Now())
 	rig := newCodingRig(t, proj)
 	s := rig.svc
 	ctx := context.Background()
 	chat := "9"
 
-	// /sessions lists the folder; nothing selected yet → not device-main.
 	if !s.handleTelegramCoding(ctx, "/sessions", chat) {
 		t.Fatal("/sessions should be handled")
 	}
-	if dm := rig.waitDM(t); !strings.Contains(dm, "/root/test") || !strings.Contains(dm, "make caro game") {
+	if dm := rig.waitDM(t); !strings.Contains(dm, "/root/test") || !strings.Contains(dm, "caro game") {
 		t.Fatalf("/sessions DM missing folder/summary: %q", dm)
 	}
 
-	// /use 1 selects it and persists.
 	s.handleTelegramCoding(ctx, "/use 1", chat)
-	if dm := rig.waitDM(t); !strings.Contains(dm, "In session") {
+	if dm := rig.waitDM(t); !strings.Contains(dm, "In thread") {
 		t.Fatalf("/use DM = %q", dm)
 	}
 	tgt, ok := s.getCodingTarget(chat)
-	if !ok || tgt.Folder != "/root/test" || tgt.SessionID != "aaaa1111-2222-3333-4444-555566667777" {
+	if !ok || tgt.Folder != "/root/test" || tgt.SessionID != "aaaa1111" {
 		t.Fatalf("selection = %+v ok=%v", tgt, ok)
 	}
 
-	// A plain message now routes to the coding runner (not device-main).
 	if !s.handleTelegramCoding(ctx, "add undo button", chat) {
 		t.Fatal("plain msg with active selection should be handled")
 	}
 	select {
 	case call := <-rig.runs:
-		if call.folder != "/root/test" || call.sessionID != "aaaa1111-2222-3333-4444-555566667777" || call.prompt != "add undo button" {
+		if call.folder != "/root/test" || call.sessionID != "aaaa1111" || call.prompt != "add undo button" {
 			t.Fatalf("runner called with %+v", call)
 		}
 	case <-time.After(3 * time.Second):
@@ -111,12 +106,10 @@ func TestCodingCommandsFlow(t *testing.T) {
 	if dm := rig.waitDM(t); !strings.Contains(dm, "ok reply for add undo button") {
 		t.Fatalf("reply DM = %q", dm)
 	}
-	// The new session id from the runner was captured.
-	if tgt, _ := s.getCodingTarget(chat); tgt.SessionID != "new-sid-1234" {
-		t.Errorf("session id not updated: %+v", tgt)
+	if tgt, _ := s.getCodingTarget(chat); tgt.SessionID != "new-thread-1234" {
+		t.Errorf("thread id not updated: %+v", tgt)
 	}
 
-	// /device clears the selection → plain msg falls through to device-main.
 	s.handleTelegramCoding(ctx, "/device", chat)
 	rig.waitDM(t)
 	if s.handleTelegramCoding(ctx, "hi lamp", chat) {
@@ -126,44 +119,41 @@ func TestCodingCommandsFlow(t *testing.T) {
 
 func TestResumeCommand(t *testing.T) {
 	proj := t.TempDir()
-	writeTranscript(t, proj, "-root-test", "aaaa1111-2222-3333-4444-555566667777", "/root/test", "Caro game", "make caro game", time.Now())
+	writeRollout(t, proj, "aaaa1111", "/root/test", "caro game", time.Now())
 	rig := newCodingRig(t, proj)
 	s := rig.svc
 	ctx := context.Background()
 	chat := "9"
 
-	// /resume with no arg lists sessions (like /sessions).
 	s.handleTelegramCoding(ctx, "/resume", chat)
 	if dm := rig.waitDM(t); !strings.Contains(dm, "/root/test") {
 		t.Fatalf("/resume list DM = %q", dm)
 	}
-	// /resume <n> picks the session (like /use <n>).
 	s.handleTelegramCoding(ctx, "/resume 1", chat)
-	if dm := rig.waitDM(t); !strings.Contains(dm, "In session") {
+	if dm := rig.waitDM(t); !strings.Contains(dm, "In thread") {
 		t.Fatalf("/resume 1 DM = %q", dm)
 	}
-	if tgt, ok := s.getCodingTarget(chat); !ok || tgt.SessionID != "aaaa1111-2222-3333-4444-555566667777" {
+	if tgt, ok := s.getCodingTarget(chat); !ok || tgt.SessionID != "aaaa1111" {
 		t.Fatalf("/resume 1 did not select: %+v ok=%v", tgt, ok)
 	}
 }
 
 func TestCodingSelectionPersists(t *testing.T) {
 	proj := t.TempDir()
-	writeTranscript(t, proj, "-root-app", "sid0", "/root/app", "app", "x", time.Now())
+	writeRollout(t, proj, "th0", "/root/app", "app", time.Now())
 	rig := newCodingRig(t, proj)
-	rig.svc.setCodingTarget("9", codingTarget{Folder: "/root/app", SessionID: "sid0"})
+	rig.svc.setCodingTarget("9", codingTarget{Folder: "/root/app", SessionID: "th0"})
 
-	// A fresh service pointed at the same selection file must recover it.
-	s2 := &ClaudeCodeService{codingSelPath: rig.svc.codingSelPath}
+	s2 := &CodexService{codingSelPath: rig.svc.codingSelPath}
 	tgt, ok := s2.getCodingTarget("9")
-	if !ok || tgt.Folder != "/root/app" || tgt.SessionID != "sid0" {
+	if !ok || tgt.Folder != "/root/app" || tgt.SessionID != "th0" {
 		t.Fatalf("persisted selection not recovered: %+v ok=%v", tgt, ok)
 	}
 }
 
 func TestCodingLiveTUIGuard(t *testing.T) {
 	rig := newCodingRig(t, t.TempDir())
-	rig.svc.folderHasLiveClaude = func(string) bool { return true } // TUI holds the folder
+	rig.svc.folderHasLiveCodex = func(string) bool { return true }
 	ran := false
 	rig.svc.codingRunner = func(context.Context, string, string, string) (string, string, error) {
 		ran = true
@@ -179,22 +169,30 @@ func TestCodingLiveTUIGuard(t *testing.T) {
 	}
 }
 
-func TestParseClaudeJSONResult(t *testing.T) {
-	single := []byte(`{"type":"result","subtype":"success","is_error":false,"result":"done","session_id":"sid-9"}`)
-	res, sid, isErr := parseClaudeJSONResult(single)
-	if res != "done" || sid != "sid-9" || isErr {
-		t.Fatalf("single: res=%q sid=%q err=%v", res, sid, isErr)
+func TestParseCodexResult(t *testing.T) {
+	ok := []byte(`{"type":"thread.started","thread_id":"th-1"}
+{"type":"item.completed","item":{"type":"reasoning","text":"thinking"}}
+{"type":"item.completed","item":{"type":"agent_message","text":"done"}}
+{"type":"turn.completed","usage":{}}`)
+	reply, id, terr := parseCodexResult(ok)
+	if reply != "done" || id != "th-1" || terr != "" {
+		t.Fatalf("ok: reply=%q id=%q terr=%q", reply, id, terr)
 	}
 
-	// Noise line before the result object → fallback scan picks the object.
-	noisy := []byte("boot noise\n" + string(single))
-	if res, sid, _ := parseClaudeJSONResult(noisy); res != "done" || sid != "sid-9" {
-		t.Fatalf("noisy: res=%q sid=%q", res, sid)
+	// item_type discriminator variant + two agent messages accumulate.
+	multi := []byte(`{"type":"thread.started","thread_id":"th-2"}
+{"type":"item.completed","item":{"item_type":"agent_message","text":"part1"}}
+{"type":"item.completed","item":{"item_type":"agent_message","text":"part2"}}
+{"type":"turn.completed"}`)
+	if reply, id, _ := parseCodexResult(multi); reply != "part1\n\npart2" || id != "th-2" {
+		t.Fatalf("multi: reply=%q id=%q", reply, id)
 	}
 
-	errObj := []byte(`{"type":"result","subtype":"error_during_execution","is_error":true,"result":""}`)
-	if _, _, isErr := parseClaudeJSONResult(errObj); !isErr {
-		t.Fatal("error result should report isErr=true")
+	// Failed turn with no reply → turnErr surfaces the error message.
+	failed := []byte(`{"type":"thread.started","thread_id":"th-3"}
+{"type":"error","message":"404 boom"}`)
+	if reply, id, terr := parseCodexResult(failed); reply != "" || id != "th-3" || terr != "404 boom" {
+		t.Fatalf("failed: reply=%q id=%q terr=%q", reply, id, terr)
 	}
 }
 
@@ -204,12 +202,8 @@ func TestChunkString(t *testing.T) {
 	}
 	long := strings.Repeat("a", 100) + "\n" + strings.Repeat("b", 100)
 	parts := chunkString(long, 120)
-	if len(parts) < 2 {
-		t.Fatalf("want >=2 chunks, got %d", len(parts))
-	}
-	// Reassembled chunks equal the original (no data lost).
-	if strings.Join(parts, "") != long {
-		t.Fatal("chunks do not reassemble to the original")
+	if len(parts) < 2 || strings.Join(parts, "") != long {
+		t.Fatalf("chunks wrong: %d parts, reassembly mismatch", len(parts))
 	}
 	for _, p := range parts {
 		if len([]rune(p)) > 120 {
@@ -221,11 +215,11 @@ func TestChunkString(t *testing.T) {
 func TestLoadEnvFilePairs(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, ".env")
-	if err := os.WriteFile(path, []byte("# c\nANTHROPIC_API_KEY = \"sk-1\"\nbad line\nX=y\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte("# c\nOPENAI_API_KEY = \"sk-1\"\nbad line\nX=y\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	pairs := loadEnvFilePairs(path)
-	want := map[string]bool{"ANTHROPIC_API_KEY=sk-1": true, "X=y": true}
+	want := map[string]bool{"OPENAI_API_KEY=sk-1": true, "X=y": true}
 	if len(pairs) != len(want) {
 		t.Fatalf("pairs = %v", pairs)
 	}
