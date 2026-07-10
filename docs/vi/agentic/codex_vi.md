@@ -378,9 +378,11 @@ nhiều folder mỗi folder một thread. Tách biệt với lượt persona dev
   resume thread cũ echo lại id; lỗi 404 trong test đó là do endpoint
   campaign-api `/responses` chưa có, KHÔNG phải cơ chế resume).
 - **Lệnh** (chặn trong `handleTelegramUpdate` trước khi inject device-main):
-  `/sessions` · `/sessions <folder>` · `/use <n>` · `/use <folder>` · `/new
-  <folder>` · `/here` · `/device` · `/help`. Chat chưa chọn và không phải lệnh
-  thì rơi xuống device-main như cũ.
+  `/resume` (giống CLI codex — không tham số thì liệt kê folder, `/resume <n>`
+  chọn theo số, `/resume <folder>` chọn mới nhất) · alias `/sessions` (liệt kê) +
+  `/use <n|folder>` (chọn) · `/sessions <folder>` (mọi thread trong 1 folder) ·
+  `/new <folder>` · `/here` · `/device` · `/help`. Chat chưa chọn và không phải
+  lệnh thì rơi xuống device-main như cũ.
 - **Mô hình hand-off.** Mỗi lượt spawn một `codex exec --json
   --dangerously-bypass-approvals-and-sandbox --cd <folder> [resume <thread>]
   <prompt>` (thứ tự cờ quan trọng — `--cd` bị từ chối sau `resume` nên phải đứng

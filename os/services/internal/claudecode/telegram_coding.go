@@ -129,7 +129,7 @@ func (s *ClaudeCodeService) cmdListSessions(ctx context.Context, chatID, arg str
 	)
 	if strings.TrimSpace(arg) == "" {
 		sessions = s.codingFolders()
-		header = "📂 Coding sessions by folder (most recent first):"
+		header = "📂 Coding sessions (most recent first):"
 	} else {
 		folder := normalizeFolder(arg)
 		sessions = s.folderSessions(folder)
@@ -148,9 +148,10 @@ func (s *ClaudeCodeService) cmdListSessions(ctx context.Context, chatID, arg str
 		if summary == "" {
 			summary = "(no description)"
 		}
-		fmt.Fprintf(&b, "%d) %s\n    %s\n    ⏱ %s · id %s\n\n", i+1, cs.Folder, summary, humanizeAgo(cs.Modified), shortID(cs.SessionID))
+		// number → what you type; folder + summary + age → how you recognise it.
+		fmt.Fprintf(&b, "%d.  📂 %s\n     📝 %s\n     🕐 %s\n\n", i+1, cs.Folder, summary, humanizeAgo(cs.Modified))
 	}
-	b.WriteString("Use /use <n> to pick a session, /device to return to the device assistant.")
+	b.WriteString("👉 Reply /use <number> (e.g. /use 1) to pick one, /device for the assistant.")
 	s.dmCoding(ctx, chatID, b.String())
 }
 

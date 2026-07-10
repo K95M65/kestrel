@@ -386,9 +386,11 @@ device-main persona turn.
   resuming an old thread echoes its id back; a 404 in that test was the separate
   campaign-api `/responses` endpoint gap, not the resume mechanism).
 - **Commands** (intercepted in `handleTelegramUpdate` before the device-main
-  injection): `/sessions` · `/sessions <folder>` · `/use <n>` · `/use <folder>`
-  · `/new <folder>` · `/here` · `/device` · `/help`. A chat with no selection and
-  no command falls through to device-main unchanged.
+  injection): `/resume` (mirrors the codex CLI — no arg lists folders, `/resume
+  <n>` picks by number, `/resume <folder>` picks the newest) · aliases
+  `/sessions` (list) + `/use <n|folder>` (pick) · `/sessions <folder>` (all
+  threads in one folder) · `/new <folder>` · `/here` · `/device` · `/help`. A
+  chat with no selection and no command falls through to device-main unchanged.
 - **Hand-off model.** Each accepted turn spawns a fresh `codex exec --json
   --dangerously-bypass-approvals-and-sandbox --cd <folder> [resume <thread>]
   <prompt>` (flag order matters — `--cd` is rejected after `resume`, so it rides

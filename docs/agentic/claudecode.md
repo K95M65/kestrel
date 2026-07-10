@@ -309,12 +309,13 @@ Telegram, across multiple folders each with its own session.
   --resume <uuid>` only finds a session when run from its folder (device-proven:
   resuming from the wrong cwd returns `No conversation found`).
 - **Commands** (intercepted in `handleTelegramUpdate` before the device-main
-  injection): `/sessions` (folders, newest each) · `/sessions <folder>` (every
-  session in one folder) · `/use <n>` (index into the last listing) · `/use
-  <folder>` (its newest session) · `/new <folder>` (fresh session, folder
-  created if missing) · `/here` (current selection) · `/device` (back to the
-  device-main persona) · `/help`. A chat with no selection and no command falls
-  through to device-main unchanged.
+  injection): `/resume` (mirrors the claude CLI — no arg lists folders, `/resume
+  <n>` picks by number, `/resume <folder>` picks the folder's newest) · aliases
+  `/sessions` (list) + `/use <n|folder>` (pick) · `/sessions <folder>` (every
+  session in one folder) · `/new <folder>` (fresh session, folder created if
+  missing) · `/here` (current selection) · `/device` (back to the device-main
+  persona) · `/help`. A chat with no selection and no command falls through to
+  device-main unchanged.
 - **Hand-off model, NOT co-editing.** Each accepted turn spawns a fresh `claude
   --print --output-format json [--resume <uuid>] --dangerously-skip-permissions`
   with `cmd.Dir` = the session folder and the prompt on stdin; the reply's

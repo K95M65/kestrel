@@ -303,11 +303,12 @@ folder một phiên riêng.
   theo cwd**: `claude --resume <uuid>` chỉ tìm thấy phiên khi chạy đúng folder của
   nó (đã kiểm chứng trên device: resume sai cwd trả `No conversation found`).
 - **Lệnh** (chặn trong `handleTelegramUpdate` TRƯỚC khi inject device-main):
-  `/sessions` (liệt kê folder, mỗi folder phiên mới nhất) · `/sessions <folder>`
-  (mọi phiên trong 1 folder) · `/use <số>` (chọn theo số ở danh sách gần nhất) ·
-  `/use <folder>` (phiên mới nhất của folder) · `/new <folder>` (phiên mới, tạo
-  folder nếu chưa có) · `/here` (đang ở phiên nào) · `/device` (về persona
-  device-main) · `/help`. Chat chưa chọn phiên và không phải lệnh thì rơi xuống
+  `/resume` (giống CLI claude — không tham số thì liệt kê folder, `/resume <số>`
+  chọn theo số, `/resume <folder>` chọn phiên mới nhất) · alias `/sessions`
+  (liệt kê) + `/use <số|folder>` (chọn) · `/sessions <folder>` (mọi phiên trong 1
+  folder) · `/new <folder>` (phiên mới, tạo folder nếu chưa có) · `/here` (đang ở
+  phiên nào) · `/device` (về persona device-main) · `/help`. Chat chưa chọn phiên
+  và không phải lệnh thì rơi xuống
   device-main như cũ.
 - **Mô hình HAND-OFF, KHÔNG đồng-biên-tập.** Mỗi lượt được chấp nhận spawn một
   `claude --print --output-format json [--resume <uuid>]
