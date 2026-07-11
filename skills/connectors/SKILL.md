@@ -69,6 +69,8 @@ printf 'Authorization: Bearer %s' "$TOKEN" | curl -s -H @- \
   "https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=1"
 ```
 
+> ⚠️ **Anti-pattern:** a jq filter is NOT a shell command. Always invoke `jq` with the binary name, the flags, the quoted filter, AND the file path — `jq -r '.connectors.<code>.access_token' <file>`. Never run a bare `-r .connectors.<code>.access_token` (no `jq`, no file); the shell will try to exec `-r` and fail.
+
 - **`gmail` / `google_calendar` / `google_drive`** → token route (pattern above). Endpoints:
   - Gmail: `https://gmail.googleapis.com/gmail/v1/users/me/messages`
   - Gmail send: `POST https://gmail.googleapis.com/gmail/v1/users/me/messages/send` body `{"raw": <base64url RFC 822 message>}` (needs the `gmail.send` scope — HTTP 403 → see Errors); example below
