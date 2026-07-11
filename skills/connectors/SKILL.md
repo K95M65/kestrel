@@ -64,12 +64,10 @@ Branch on result:
 Read the token into a variable and pipe the auth header to `curl` via stdin (keeps the secret out of the process args / `/proc`) — never display `$TOKEN`:
 
 ```bash
-TOKEN=$(jq -r '.connectors.gmail.access_token' /root/.openclaw/workspace/configs/gmail_access_tokens.json)
-printf 'Authorization: Bearer %s' "$TOKEN" | curl -s -H @- \
-  "https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=1"
+TOKEN=$(jq -r '.connectors.gmail.access_token' /root/.openclaw/workspace/configs/gmail_access_tokens.json) && printf 'Authorization: Bearer %s' "$TOKEN" | curl -s -H @- "https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=1"
 ```
 
-> ⚠️ **Anti-pattern:** a jq filter is NOT a shell command. Always invoke `jq` with the binary name, the flags, the quoted filter, AND the file path — `jq -r '.connectors.<code>.access_token' <file>`. Never run a bare `-r .connectors.<code>.access_token` (no `jq`, no file); the shell will try to exec `-r` and fail.
+> ⚠️ **Keep it ONE `&&`-chained command — no blank line between the token capture and the request.** Write `TOKEN=$(jq -r '.connectors.<code>.access_token' <file>) && printf 'Authorization: Bearer %s' "$TOKEN" | curl -s -H @- "<url>"` on a single logical line (join extra steps with `&&`). Do **not** separate the `TOKEN=$(…)` assignment from the request with a blank line — the credential-redaction pass can mangle a multi-block command before it runs, so it fails with `syntax error near unexpected token ')'`. Everything else (`printf … | curl`, headers, `-X DELETE`, etc.) stays the same.
 
 - **`gmail` / `google_calendar` / `google_drive`** → token route (pattern above). Endpoints:
   - Gmail: `https://gmail.googleapis.com/gmail/v1/users/me/messages`
