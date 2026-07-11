@@ -69,6 +69,8 @@ TOKEN=$(jq -r '.connectors.gmail.access_token' /root/.openclaw/workspace/configs
 
 > ⚠️ **Keep it ONE `&&`-chained command — no blank line between the token capture and the request.** Write `TOKEN=$(jq -r '.connectors.<code>.access_token' <file>) && printf 'Authorization: Bearer %s' "$TOKEN" | curl -s -H @- "<url>"` on a single logical line (join extra steps with `&&`). Do **not** separate the `TOKEN=$(…)` assignment from the request with a blank line — the credential-redaction pass can mangle a multi-block command before it runs, so it fails with `syntax error near unexpected token ')'`. Everything else (`printf … | curl`, headers, `-X DELETE`, etc.) stays the same.
 
+> ⚠️ **jq gotcha when reshaping a response — parenthesize `//`.** Inside object construction `{…}`, always wrap the alternative operator in parens: `{start: (.start.dateTime // .start.date)}`, never the bare `{start: .start.dateTime // .start.date}` (that's a jq error: `syntax error, unexpected //, expecting '}'`). Guard array iteration with `?` so an empty/missing key doesn't error: `.items[]?`. Example that works: `jq '[.items[]? | {summary, start: (.start.dateTime // .start.date)}]'`.
+
 - **`gmail` / `google_calendar` / `google_drive`** → token route (pattern above). Endpoints:
   - Gmail: `https://gmail.googleapis.com/gmail/v1/users/me/messages`
   - Gmail send: `POST https://gmail.googleapis.com/gmail/v1/users/me/messages/send` body `{"raw": <base64url RFC 822 message>}` (needs the `gmail.send` scope — HTTP 403 → see Errors); example below
