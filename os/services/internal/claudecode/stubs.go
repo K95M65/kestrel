@@ -87,7 +87,7 @@ func (s *ClaudeCodeService) GetConfigJSON() (json.RawMessage, error) {
 // like OpenClaw does.
 
 // StartSkillWatcher lives in skill_watcher.go — it polls OTA metadata and
-// auto-updates workspace/.claude/skills from the CDN (capability-gated).
+// auto-updates the user-level ~/.claude/skills from the CDN (capability-gated).
 
 // StartModelSync — the model registry is fixed (ANTHROPIC_MODEL env, presync-
 // owned). No-op.

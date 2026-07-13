@@ -53,9 +53,24 @@ const (
 	osMandatoryMarker = "<!-- OS DO NOT REMOVE -->"
 
 	// claudecodeWorkspaceDir is the cwd the bridge runs Claude Code in. Claude
-	// auto-loads <cwd>/CLAUDE.md, <cwd>/.claude/skills, <cwd>/.mcp.json and
-	// <cwd>/.claude/settings.json from here.
+	// auto-loads <cwd>/CLAUDE.md, <cwd>/.mcp.json and <cwd>/.claude/settings.json
+	// from here. Skills are NOT installed here — see claudecodeSkillsDir.
 	claudecodeWorkspaceDir = claudecodeHome + "/workspace"
+
+	// claudeUserDir is Claude Code's user-level config dir. The gatewayd runs the
+	// claude child with HOME=/root (gatewayd.Config.Home), so this is $HOME/.claude.
+	claudeUserDir = "/root/.claude"
+
+	// claudecodeSkillsDir is where device skills are installed: USER-scoped, not
+	// project-scoped. Claude Code resolves PROJECT skills as <cwd>/.claude/skills,
+	// so a workspace-only install is invisible to any session whose cwd is not the
+	// workspace — notably the coding sessions the device spawns in /root, /root/myapp,
+	// … (coding_sessions.go). Those sessions then can't see the connectors skill and
+	// tell the user their Gmail/Calendar is "not connected" (or write their own
+	// send_email.py) while the credentials sit on disk. USER-level skills load in
+	// EVERY session regardless of cwd, so the device chat AND coding sessions both
+	// get them.
+	claudecodeSkillsDir = claudeUserDir + "/skills"
 
 	// claudeMDBlock is the OS-managed block injected at the top of
 	// workspace/CLAUDE.md. Two parts: (a) the persona @imports — CLAUDE.md is the
@@ -73,12 +88,12 @@ const (
 @MEMORY.md
 @KNOWLEDGE.md
 
-**MANDATORY (skills):** Your device skills are native Claude Code skills in ` + "`.claude/skills/<name>/`" + `. For ordinary chat or meta discussion with no action/hardware behavior and no connected-service data, do NOT invoke a skill — answer normally. A question ABOUT a linked third-party service (see Connectors) is NOT ordinary chat: it needs the skill even when phrased as a simple question.
+**MANDATORY (skills):** Your device skills are native Claude Code skills in ` + "`~/.claude/skills/<name>/`" + ` (user-scoped — available in every session, including coding sessions in any folder). For ordinary chat or meta discussion with no action/hardware behavior and no connected-service data, do NOT invoke a skill — answer normally. A question ABOUT a linked third-party service (see Connectors) is NOT ordinary chat: it needs the skill even when phrased as a simple question.
   - If the message contains ` + "`[skills: a, b, c]`" + `, treat it as an authoritative whitelist — use ONLY those skills. Do NOT scan other skills "just in case".
   - If no ` + "`[skills:]`" + ` hint is present and the user asks for a concrete action, hardware behavior, sensing/activity/emotion handling, data from a linked service, or a specialized workflow, choose the single most specific matching skill.
   - If multiple skills plausibly match, choose the most specific one. If none clearly match, answer normally without a skill.
 
-**Connectors (MANDATORY):** The user links third-party services (Gmail, Google Calendar, Google Drive, Notion, Figma, Asana, Linear, GitHub, Ahrefs, …) in the app, and the OS writes their credentials to this device at ` + "`/root/.openclaw/workspace/configs/<code>_access_tokens.json`" + `. ALWAYS use the ` + "`connectors`" + ` skill to answer or act on ANY of them — including "is my gmail connected?", "what's on my calendar", "list my events", "check my email". The skill lives at ` + "`.claude/skills/connectors/SKILL.md`" + ` (i.e. ` + "`/root/.claudecode/workspace/.claude/skills/connectors/SKILL.md`" + `): invoke it with the Skill tool, and if for any reason it is not offered to you, READ that file and follow it.
+**Connectors (MANDATORY):** The user links third-party services (Gmail, Google Calendar, Google Drive, Notion, Figma, Asana, Linear, GitHub, Ahrefs, …) in the app, and the OS writes their credentials to this device at ` + "`/root/.openclaw/workspace/configs/<code>_access_tokens.json`" + `. ALWAYS use the ` + "`connectors`" + ` skill to answer or act on ANY of them — including "is my gmail connected?", "what's on my calendar", "list my events", "check my email". The skill lives at ` + "`/root/.claude/skills/connectors/SKILL.md`" + `: invoke it with the Skill tool, and if for any reason it is not offered to you, READ that file and follow it. This holds in EVERY session — including a coding session started in ` + "`/root`" + `, ` + "`/root/myapp`" + `, or any other folder: the connectors are a property of the DEVICE, not of the folder you happen to be in. Never write your own script (` + "`send_email.py`" + `, gcalcli, …) to reach a service a connector already covers.
   - ` + "`.mcp.json`" + ` is NOT the connector list. Gmail/Calendar/Drive are token-based and have NO MCP server, so NEVER conclude a service is unconnected because it is missing from the MCP server list — check the credential files via the skill.
   - Never tell the user to set up an MCP server, OAuth app, or another CLI for these services: the credentials are already on disk. Read them only through the ` + "`connectors`" + ` skill, which knows how to keep the secrets safe.
 
@@ -150,12 +165,16 @@ func (s *ClaudeCodeService) EnsureOnboarding() error {
 		filepath.Join(claudecodeWorkspaceDir, "KNOWLEDGE.md"))
 	personaSeeded := ensurePersonaFiles()
 
+	// Lift any project-scoped skills left by an older os-server to user scope
+	// FIRST, so the prune/restore below see the real (post-migration) dir.
+	skillsMigrated := migrateSkillsToUserScope()
+
 	// Capability-gate skills; restore the supported set from the CDN when the
 	// skills dir is empty (factory reset wiped it / first boot).
 	s.pruneUnsupportedSkills()
 	skillsRestored := s.ensureSkills()
 
-	needRestart := presyncChanged || personaSeeded || skillsRestored
+	needRestart := presyncChanged || personaSeeded || skillsRestored || skillsMigrated
 
 	if modified, err := s.ensureSoulMDBlock(); err != nil {
 		slog.Error("ensure SOUL.md block failed", "component", "claudecode-onboarding", "error", err)
@@ -166,6 +185,12 @@ func (s *ClaudeCodeService) EnsureOnboarding() error {
 	if modified, err := s.ensureClaudeMDBlock(); err != nil {
 		slog.Error("ensure CLAUDE.md block failed", "component", "claudecode-onboarding", "error", err)
 	} else if modified {
+		needRestart = true
+	}
+
+	// User-level memory (~/.claude/CLAUDE.md): reaches coding sessions in any cwd,
+	// which never load the workspace CLAUDE.md.
+	if ensureUserClaudeMDBlock() {
 		needRestart = true
 	}
 
@@ -423,12 +448,12 @@ func isDefaultSoulHeading(trimmed string) bool {
 var claudecodeBuiltinSkills = map[string]bool{}
 
 // pruneUnsupportedSkills removes skill dirs the device can't use from
-// workspace/.claude/skills. A skill survives when it is EITHER (a) supported by
+// claudecodeSkillsDir. A skill survives when it is EITHER (a) supported by
 // this device's capabilities (skills.Supported — the same gate openclaw uses) OR
 // (b) a claudecode built-in. Fail-open: when DEVICE.md declares no capabilities,
 // skills.Supported returns the full catalog, so nothing is pruned.
 func (s *ClaudeCodeService) pruneUnsupportedSkills() {
-	skillsDir := filepath.Join(claudecodeWorkspaceDir, ".claude", "skills")
+	skillsDir := claudecodeSkillsDir
 	entries, err := os.ReadDir(skillsDir)
 	if err != nil {
 		if !os.IsNotExist(err) {
@@ -457,13 +482,13 @@ func (s *ClaudeCodeService) pruneUnsupportedSkills() {
 }
 
 // ensureSkills downloads all supported skills from the CDN into
-// workspace/.claude/skills when the directory is absent or empty. Covers factory
-// reset (which wipes the workspace) and first boot. Steady-state updates are
+// claudecodeSkillsDir when the directory is absent or empty. Covers factory
+// reset (which wipes it) and first boot. Steady-state updates are
 // handled by StartSkillWatcher (version-gated CDN polling). Returns true when
 // skills were restored so EnsureOnboarding includes a bridge restart. Mirrors
 // hermes.ensureSkills.
 func (s *ClaudeCodeService) ensureSkills() bool {
-	skillsDir := filepath.Join(claudecodeWorkspaceDir, ".claude", "skills")
+	skillsDir := claudecodeSkillsDir
 	entries, err := os.ReadDir(skillsDir)
 	if err == nil && len(entries) > 0 {
 		return false // skills present — watcher handles updates
@@ -477,6 +502,103 @@ func (s *ClaudeCodeService) ensureSkills() bool {
 	changed := s.downloadSkillsByName(names)
 	slog.Info("claudecode onboarding: skills restored", "component", "claudecode", "restored", len(changed))
 	return len(changed) > 0
+}
+
+// userClaudeMDBlock is the OS-managed block in the USER-level memory file
+// (~/.claude/CLAUDE.md), which Claude Code loads in EVERY session regardless of
+// cwd. The workspace CLAUDE.md only reaches the device-chat session, so without
+// this a coding session (/root, /root/myapp, …) has no idea the device's
+// connectors exist and tells the user Gmail/Calendar is "not connected". Kept
+// deliberately small — device persona//memory rules stay workspace-scoped; only
+// the device-wide facts that must survive a `cd` live here.
+const userClaudeMDBlock = `<!-- OS DO NOT REMOVE -->
+**This machine is an Autonomous device.** The facts below hold in EVERY folder and session — they describe the DEVICE, not the directory you are working in.
+
+**Connectors (MANDATORY).** The owner links third-party services (Gmail, Google Calendar, Google Drive, Notion, Figma, Asana, Linear, GitHub, Ahrefs, …) in the Autonomous app, and the OS writes their credentials to ` + "`/root/.openclaw/workspace/configs/<code>_access_tokens.json`" + `. To answer or act on ANY of them — "is my gmail connected?", "what's on my calendar", "send an email to …" — use the ` + "`connectors`" + ` skill (` + "`/root/.claude/skills/connectors/SKILL.md`" + `; invoke it with the Skill tool, or READ that file if it is not offered to you).
+  - NEVER conclude a service is unconnected because no MCP server or CLI is configured: the token connectors (Gmail/Calendar/Drive) have NO MCP server. Check the credential files via the skill before answering.
+  - NEVER install or write your own client for a service a connector already covers (no ` + "`send_email.py`" + `, no gcalcli, no OAuth setup) — the credentials are already on disk.
+---`
+
+// ensureUserClaudeMDBlock injects/refreshes the OS-managed block in
+// ~/.claude/CLAUDE.md (user-level memory, loaded in every session). Same
+// marker discipline as the workspace file: content below the block is the
+// owner's and is preserved. Returns true if modified.
+func ensureUserClaudeMDBlock() bool {
+	path := filepath.Join(claudeUserDir, "CLAUDE.md")
+
+	content, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		slog.Warn("ensure user CLAUDE.md: read failed", "component", "claudecode-onboarding", "error", err)
+		return false
+	}
+	text := string(content)
+
+	if strings.Contains(text, userClaudeMDBlock) {
+		return false // already current
+	}
+	if strings.Contains(text, osMandatoryMarker) {
+		text = stripMarkedBlock(text)
+	}
+
+	output := userClaudeMDBlock + "\n"
+	if strings.TrimSpace(text) != "" {
+		output += "\n" + strings.TrimLeft(text, " \t\r\n")
+	}
+	if err := os.MkdirAll(claudeUserDir, 0o755); err != nil {
+		slog.Warn("ensure user CLAUDE.md: mkdir failed", "component", "claudecode-onboarding", "error", err)
+		return false
+	}
+	if err := os.WriteFile(path, []byte(output), 0o644); err != nil {
+		slog.Warn("ensure user CLAUDE.md: write failed", "component", "claudecode-onboarding", "error", err)
+		return false
+	}
+	slog.Info("injected mandatory block into user CLAUDE.md", "component", "claudecode-onboarding", "path", path)
+	return true
+}
+
+// migrateSkillsToUserScope moves skills installed by an older os-server under
+// workspace/.claude/skills into the user-level claudecodeSkillsDir, then drops
+// the workspace copy. Without the move, devices already in the field would keep
+// project-scoped-only skills (invisible to coding sessions); without the drop,
+// Claude Code would register every skill twice (project + user) in the device
+// chat. Idempotent: a no-op once the legacy dir is gone. Returns true when
+// anything moved, so EnsureOnboarding restarts the bridge.
+func migrateSkillsToUserScope() bool {
+	legacyDir := filepath.Join(claudecodeWorkspaceDir, ".claude", "skills")
+	entries, err := os.ReadDir(legacyDir)
+	if err != nil {
+		return false // absent (already migrated / fresh device) — nothing to do
+	}
+
+	if err := os.MkdirAll(claudecodeSkillsDir, 0o755); err != nil {
+		slog.Warn("migrate skills: mkdir user skills dir failed", "component", "claudecode-onboarding", "error", err)
+		return false
+	}
+
+	var moved int
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		dst := filepath.Join(claudecodeSkillsDir, e.Name())
+		if _, err := os.Stat(dst); err == nil {
+			continue // already at user scope — the legacy copy is redundant
+		}
+		if err := os.Rename(filepath.Join(legacyDir, e.Name()), dst); err != nil {
+			slog.Warn("migrate skills: move failed", "component", "claudecode-onboarding", "skill", e.Name(), "error", err)
+			continue
+		}
+		moved++
+	}
+
+	// Drop the legacy dir even when nothing moved (every skill already existed at
+	// user scope) — leaving it would double-register each skill.
+	if err := os.RemoveAll(legacyDir); err != nil {
+		slog.Warn("migrate skills: remove legacy dir failed", "component", "claudecode-onboarding", "error", err)
+	}
+	slog.Info("migrated skills to user scope", "component", "claudecode-onboarding",
+		"moved", moved, "from", legacyDir, "to", claudecodeSkillsDir)
+	return true
 }
 
 // seedFileIfAbsent writes an embedded file to dst only when dst does not already
