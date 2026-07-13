@@ -362,8 +362,24 @@ Telegram, across multiple folders each with its own session.
   @KNOWLEDGE.md` — CLAUDE.md is the only file Claude loads by name) and the
   prompt discipline (skills whitelist rule, connectors rule, memory rules, user
   priority), adapted from picoclaw's AGENTS.md block.
-- **Connectors rule (in the CLAUDE.md block).** Claude Code auto-discovers the
-  `connectors` skill from `.claude/skills/`, but discovery alone is not enough:
+- **Skills are USER-scoped** (`/root/.claude/skills/`, `claudecodeSkillsDir`), not
+  project-scoped. Claude Code resolves *project* skills as `<cwd>/.claude/skills`,
+  so a workspace-only install is invisible to any session whose cwd is not the
+  workspace — notably the **coding sessions** the device spawns in `/root`,
+  `/root/myapp`, … (`coding_sessions.go`). Field symptom: a coding session
+  reported Gmail/Calendar "not connected" and wrote its own `send_email.py`,
+  while the device chat (workspace cwd) answered correctly from the same tokens.
+  User-level skills load in every session regardless of cwd.
+  `migrateSkillsToUserScope()` lifts skills left in the workspace by an older
+  os-server and deletes the legacy dir (leaving it would double-register every
+  skill). A factory reset wipes `/root/.claude/skills` explicitly.
+- **User-level memory** (`/root/.claude/CLAUDE.md`, `userClaudeMDBlock`): the
+  workspace `CLAUDE.md` only reaches the device-chat session, so the device-wide
+  connector rules are also injected here — Claude Code loads this file in every
+  session, in any folder. Kept small on purpose: persona/memory rules stay
+  workspace-scoped; only facts that must survive a `cd` live here.
+- **Connectors rule (in both CLAUDE.md blocks).** Claude Code auto-discovers the
+  `connectors` skill, but discovery alone is not enough:
   the model would not select it, and answered "no Gmail/Calendar connected" from
   `.mcp.json` while a valid `google_calendar` token sat on disk. The block
   therefore states the connector facts outright — credentials live in

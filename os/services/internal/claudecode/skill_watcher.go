@@ -97,16 +97,16 @@ func (s *ClaudeCodeService) skillsBaseURL() string {
 }
 
 // downloadSkillsByName downloads specific skill zips from the CDN, extracts each
-// atomically into workspace/.claude/skills/<name> (Claude Code's native skill
-// dir, auto-discovered), and returns the names that actually changed on disk
-// (version pre-filter + content hash). Mirrors openclaw.
+// atomically into claudecodeSkillsDir/<name> (Claude Code's USER-level skill dir,
+// auto-discovered in every session regardless of cwd), and returns the names that
+// actually changed on disk (version pre-filter + content hash). Mirrors openclaw.
 func (s *ClaudeCodeService) downloadSkillsByName(names []string) []string {
 	base := s.skillsBaseURL()
 	if base == "" {
 		slog.Info("skill download skipped: no ota_metadata_url configured", "component", "skill-watcher")
 		return nil
 	}
-	skillsDir := filepath.Join(claudecodeWorkspaceDir, ".claude", "skills")
+	skillsDir := claudecodeSkillsDir
 	var changed []string
 	for _, name := range names {
 		url := fmt.Sprintf("%s/%s.zip", base, name)
@@ -144,7 +144,7 @@ func (s *ClaudeCodeService) notifySkillChanges(changedSkills []string) {
 	}
 	list := ""
 	for _, name := range changedSkills {
-		list += fmt.Sprintf("\n- .claude/skills/%s/SKILL.md", name)
+		list += fmt.Sprintf("\n- %s/%s/SKILL.md", claudecodeSkillsDir, name)
 	}
 	msg := fmt.Sprintf("[system] The following skills have been updated. Re-read them now — files on disk have changed. Follow the updated instructions strictly. Keep your reply under 5 words.%s", list)
 	slog.Info("INBOUND from system → agent (skill update)",

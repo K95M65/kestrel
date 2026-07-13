@@ -15,9 +15,11 @@ import (
 // What is wiped vs kept:
 //
 //	WIPED — user data + creds:
-//	  /root/.claudecode/workspace     persona, memory, skills, CLAUDE.md, .mcp.json
+//	  /root/.claudecode/workspace     persona, memory, CLAUDE.md, .mcp.json
 //	  /root/.claudecode/.env          ANTHROPIC_* creds + channel launch flags
 //	  /root/.claudecode/session.json  bridge session-resume state
+//	  /root/.claude/skills            device skills (user-scoped — see claudecodeSkillsDir)
+//	  /root/.claude/CLAUDE.md         user-level OS block (device-wide connector rules)
 //	  /root/.claude/projects          Claude Code conversation transcripts
 //	  /root/.claude/channels          channel tokens, allowlists, inbox media
 //	  /root/.claude/todos             per-session todo state
@@ -46,6 +48,12 @@ var claudecodeWipePaths = []string{
 	claudecodeHome + "/workspace",
 	claudecodeHome + "/.env",
 	claudecodeHome + "/session.json",
+	// Skills + the user-level OS block live outside the workspace (user scope, so
+	// coding sessions in any cwd see them) — wipe them explicitly or a factory
+	// reset would leave stale skills behind. ensureSkills/ensureUserClaudeMDBlock
+	// rebuild both on the next onboarding pass.
+	claudecodeSkillsDir,
+	claudeUserDir + "/CLAUDE.md",
 	"/root/.claude/projects",
 	"/root/.claude/channels",
 	"/root/.claude/todos",

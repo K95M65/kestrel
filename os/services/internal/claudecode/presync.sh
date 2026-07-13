@@ -42,7 +42,10 @@ log() { echo "[claudecode-presync] $*"; }
 
 command -v jq >/dev/null 2>&1 || { log "ERROR: jq not found — cannot sync claudecode config" >&2; exit 1; }
 
-mkdir -p "$WS_DIR/.claude/skills" "$WS_DIR/memory"
+# Skills are USER-scoped (~/.claude/skills), not project-scoped: Claude Code
+# resolves project skills from the session cwd, so a workspace-only install is
+# invisible to the coding sessions the device spawns in other folders.
+mkdir -p "$CLAUDE_HOME/skills" "$WS_DIR/.claude" "$WS_DIR/memory"
 
 # read a field from the device config.json ("" when absent/empty).
 dev() { jq -r ".${1} // empty" "$CONFIG_JSON" 2>/dev/null || true; }

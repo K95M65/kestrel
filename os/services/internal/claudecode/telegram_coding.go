@@ -203,6 +203,14 @@ func (s *ClaudeCodeService) cmdNewSession(ctx context.Context, chatID, arg strin
 		s.dmCoding(ctx, chatID, "Usage: /new <folder>. Example: /new /root/myapp")
 		return
 	}
+	// The device-main workspace is off-limits: the bridge permanently holds a live
+	// headless claude there, so liveClaudeHolds() would refuse every turn and the
+	// chat would be stuck on a session that can never run. The session picker
+	// already excludes it (coding_sessions.go); /new must too.
+	if folder == deviceMainWorkspace {
+		s.dmCoding(ctx, chatID, "❌ "+deviceMainWorkspace+" is the device assistant's own folder — it can't be used as a coding session.\nUse another folder (e.g. /new /root/myapp), or /device to talk to the assistant.")
+		return
+	}
 	if err := os.MkdirAll(folder, 0o755); err != nil {
 		s.dmCoding(ctx, chatID, "❌ Could not create folder "+folder+": "+err.Error())
 		return

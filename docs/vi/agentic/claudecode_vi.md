@@ -355,8 +355,24 @@ folder một phiên riêng.
   @KNOWLEDGE.md` — CLAUDE.md là file duy nhất Claude nạp theo tên) và prompt
   discipline (rule whitelist skills, rule connectors, rule memory, ưu tiên
   user), phỏng theo khối AGENTS.md của picoclaw.
-- **Rule connectors (trong khối CLAUDE.md).** Claude Code tự phát hiện skill
-  `connectors` từ `.claude/skills/`, nhưng chỉ phát hiện thôi là chưa đủ: model
+- **Skills nằm ở phạm vi USER** (`/root/.claude/skills/`, `claudecodeSkillsDir`),
+  không phải phạm vi project. Claude Code phân giải skill *project* theo
+  `<cwd>/.claude/skills`, nên nếu chỉ cài trong workspace thì mọi session có cwd
+  khác workspace sẽ không thấy — điển hình là **coding session** mà thiết bị tạo
+  ở `/root`, `/root/myapp`, … (`coding_sessions.go`). Triệu chứng thực tế: một
+  coding session báo Gmail/Calendar "không kết nối" và tự viết `send_email.py`,
+  trong khi chat thiết bị (cwd = workspace) vẫn trả lời đúng từ cùng bộ token.
+  Skill ở phạm vi user được nạp trong MỌI session, bất kể cwd.
+  `migrateSkillsToUserScope()` chuyển các skill mà os-server cũ để lại trong
+  workspace sang phạm vi user rồi xoá thư mục cũ (nếu giữ lại, mỗi skill sẽ bị
+  đăng ký hai lần). Factory reset xoá hẳn `/root/.claude/skills`.
+- **Memory phạm vi user** (`/root/.claude/CLAUDE.md`, `userClaudeMDBlock`):
+  `CLAUDE.md` trong workspace chỉ đến được session chat thiết bị, nên các rule
+  connector ở mức thiết bị cũng được inject vào đây — Claude Code nạp file này ở
+  mọi session, trong mọi thư mục. Cố ý giữ nhỏ: rule persona/memory vẫn thuộc
+  phạm vi workspace; chỉ những sự thật phải "sống sót" qua một lệnh `cd` mới nằm ở đây.
+- **Rule connectors (trong cả hai khối CLAUDE.md).** Claude Code tự phát hiện
+  skill `connectors`, nhưng chỉ phát hiện thôi là chưa đủ: model
   không chọn skill đó, và trả lời "không có Gmail/Calendar nào được kết nối" dựa
   trên `.mcp.json` trong khi token `google_calendar` hợp lệ vẫn nằm trên đĩa. Vì
   vậy khối này nêu thẳng các sự thật về connector — credential nằm ở
