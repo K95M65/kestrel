@@ -61,6 +61,12 @@ const (
 	// claude child with HOME=/root (gatewayd.Config.Home), so this is $HOME/.claude.
 	claudeUserDir = "/root/.claude"
 
+	// claudeUserMDPath is the user-level memory file. Claude Code loads it in EVERY
+	// session regardless of cwd — unlike the workspace CLAUDE.md, which only the
+	// device-chat session (cwd = workspace) ever sees. The OS block lives here so
+	// persona + rules follow the agent into coding sessions.
+	claudeUserMDPath = claudeUserDir + "/CLAUDE.md"
+
 	// claudecodeSkillsDir is where device skills are installed: USER-scoped, not
 	// project-scoped. Claude Code resolves PROJECT skills as <cwd>/.claude/skills,
 	// so a workspace-only install is invisible to any session whose cwd is not the
@@ -72,21 +78,31 @@ const (
 	// get them.
 	claudecodeSkillsDir = claudeUserDir + "/skills"
 
-	// claudeMDBlock is the OS-managed block injected at the top of
-	// workspace/CLAUDE.md. Two parts: (a) the persona @imports — CLAUDE.md is the
-	// only file Claude Code loads by name, so SOUL/IDENTITY/USER/MEMORY/KNOWLEDGE
-	// reach the context through these import lines; (b) the backend-agnostic
-	// prompt discipline, derived from internal/picoclaw/onboarding.go
-	// agentsMDBlock with the paths/commands adjusted to Claude Code (native
-	// .claude/skills, `claude --version`).
+	// claudeMDBlock is the OS-managed block injected at the top of the USER-level
+	// memory file (~/.claude/CLAUDE.md — claudeUserMDPath), NOT the workspace one.
+	// Claude Code loads the user file in every session regardless of cwd, so the
+	// device's persona + rules follow the agent into the coding sessions it spawns
+	// in other folders (/root, /root/myapp, …); a workspace-scoped block only ever
+	// reached the device-chat session.
+	//
+	// Two parts: (a) the persona @imports — CLAUDE.md is the only file Claude Code
+	// loads by name, so SOUL/IDENTITY/USER/MEMORY/KNOWLEDGE reach the context
+	// through these import lines; (b) the backend-agnostic prompt discipline,
+	// derived from internal/picoclaw/onboarding.go agentsMDBlock with the
+	// paths/commands adjusted to Claude Code (native skills, `claude --version`).
+	//
+	// EVERY path here MUST be absolute. The block is read from sessions whose cwd
+	// is an arbitrary folder, so a relative `@SOUL.md` would resolve against that
+	// folder (persona silently missing) and a relative `memory/…` would scatter
+	// memory files into whatever project the user is coding in.
 	claudeMDBlock = `<!-- OS DO NOT REMOVE -->
 **Persona & memory (OS-managed imports):** the following files hold who you are and what you remember — they are part of your context on every session:
 
-@SOUL.md
-@IDENTITY.md
-@USER.md
-@MEMORY.md
-@KNOWLEDGE.md
+@/root/.claudecode/workspace/SOUL.md
+@/root/.claudecode/workspace/IDENTITY.md
+@/root/.claudecode/workspace/USER.md
+@/root/.claudecode/workspace/MEMORY.md
+@/root/.claudecode/workspace/KNOWLEDGE.md
 
 **MANDATORY (skills):** Your device skills are native Claude Code skills in ` + "`~/.claude/skills/<name>/`" + ` (user-scoped — available in every session, including coding sessions in any folder). For ordinary chat or meta discussion with no action/hardware behavior and no connected-service data, do NOT invoke a skill — answer normally. A question ABOUT a linked third-party service (see Connectors) is NOT ordinary chat: it needs the skill even when phrased as a simple question.
   - If the message contains ` + "`[skills: a, b, c]`" + `, treat it as an authoritative whitelist — use ONLY those skills. Do NOT scan other skills "just in case".
@@ -101,7 +117,7 @@ const (
 
 **Priority: Skills > Knowledge > memory/*.md > History.** A skill beats EVERYTHING (KNOWLEDGE.md, memory/*.md decisions, history). If memory says NO_REPLY but the skill says nudge, follow the skill. KNOWLEDGE.md is your personal observations — it can be wrong. Skills are the source of truth maintained by the developer. If you notice a conflict, update KNOWLEDGE.md to match the skill, not the other way around.
 
-**Memory:** After each turn on any channel (voice, Telegram, or others) that contains something worth remembering (decisions, bugs, insights, new preferences), write it immediately to ` + "`memory/YYYY-MM-DD.md`" + `. Do not wait — context may be dropped before then.
+**Memory:** After each turn on any channel (voice, Telegram, or others) that contains something worth remembering (decisions, bugs, insights, new preferences), write it immediately to ` + "`/root/.claudecode/workspace/memory/YYYY-MM-DD.md`" + `. Do not wait — context may be dropped before then. Always use that ABSOLUTE path: your memory belongs to the device, not to whatever folder you are working in — never create a ` + "`memory/`" + ` dir inside a project you happen to be coding in.
 
 **Memory writes — DESCRIBE, never PRESCRIBE.** Before writing any "decision/rule" to memory/*.md or KNOWLEDGE.md, re-check the relevant skill. Blanket forms like "X → always Y" / "X → NO_REPLY for all" are frequency disguised as rule — write what happened with conditions, not a blanket ban.
 
@@ -188,9 +204,9 @@ func (s *ClaudeCodeService) EnsureOnboarding() error {
 		needRestart = true
 	}
 
-	// User-level memory (~/.claude/CLAUDE.md): reaches coding sessions in any cwd,
-	// which never load the workspace CLAUDE.md.
-	if ensureUserClaudeMDBlock() {
+	// The OS block now lives in the user-level file (ensureClaudeMDBlock above);
+	// strip the legacy workspace copy so the device chat doesn't load it twice.
+	if dropWorkspaceClaudeMDBlock() {
 		needRestart = true
 	}
 
@@ -287,12 +303,13 @@ func ensurePersonaFiles() bool {
 	return created
 }
 
-// ensureClaudeMDBlock injects/refreshes the OS-managed block at the top of
-// workspace/CLAUDE.md. Unlike picoclaw's AGENTS.md (generated by the runtime,
-// skip-if-missing), CLAUDE.md is fully OS-owned here: created when absent, with
-// an owner-editable section preserved below the block. Returns true if modified.
+// ensureClaudeMDBlock injects/refreshes the OS-managed block at the top of the
+// USER-level ~/.claude/CLAUDE.md, which Claude Code loads in every session
+// whatever the cwd — so the device persona + rules reach the coding sessions too.
+// The file is OS-owned: created when absent, with an owner-editable section
+// preserved below the block. Returns true if modified.
 func (s *ClaudeCodeService) ensureClaudeMDBlock() (bool, error) {
-	claudeFile := filepath.Join(claudecodeWorkspaceDir, "CLAUDE.md")
+	claudeFile := claudeUserMDPath
 
 	content, err := os.ReadFile(claudeFile)
 	if err != nil && !os.IsNotExist(err) {
@@ -317,14 +334,49 @@ func (s *ClaudeCodeService) ensureClaudeMDBlock() (bool, error) {
 		output = claudeMDBlock + "\n\n" + strings.TrimLeft(text, " \t\r\n")
 	}
 
-	if err := os.MkdirAll(claudecodeWorkspaceDir, 0o755); err != nil {
-		return false, fmt.Errorf("mkdir workspace: %w", err)
+	if err := os.MkdirAll(claudeUserDir, 0o755); err != nil {
+		return false, fmt.Errorf("mkdir %s: %w", claudeUserDir, err)
 	}
 	if err := os.WriteFile(claudeFile, []byte(output), 0o644); err != nil {
 		return false, fmt.Errorf("write CLAUDE.md: %w", err)
 	}
-	slog.Info("injected mandatory block into CLAUDE.md", "component", "claudecode-onboarding", "path", claudeFile)
+	slog.Info("injected mandatory block into user CLAUDE.md", "component", "claudecode-onboarding", "path", claudeFile)
 	return true, nil
+}
+
+// dropWorkspaceClaudeMDBlock strips the OS block from the legacy workspace
+// CLAUDE.md now that it lives at user scope. Both files load in the device-chat
+// session (project + user memory), so leaving the old copy would duplicate the
+// whole block in context — and its RELATIVE @imports/memory paths are exactly
+// what the move to absolute paths fixed. Owner notes below the block survive; the
+// file is deleted only when nothing but the block was in it. Returns true when
+// modified.
+func dropWorkspaceClaudeMDBlock() bool {
+	path := filepath.Join(claudecodeWorkspaceDir, "CLAUDE.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return false // absent — already migrated / fresh device
+	}
+	text := string(content)
+	if !strings.Contains(text, osMandatoryMarker) {
+		return false // no OS block to strip (pure owner notes)
+	}
+
+	rest := strings.TrimSpace(stripMarkedBlock(text))
+	if rest == "" {
+		if err := os.Remove(path); err != nil {
+			slog.Warn("drop workspace CLAUDE.md failed", "component", "claudecode-onboarding", "error", err)
+			return false
+		}
+		slog.Info("removed workspace CLAUDE.md (OS block now user-scoped)", "component", "claudecode-onboarding", "path", path)
+		return true
+	}
+	if err := os.WriteFile(path, []byte(rest+"\n"), 0o644); err != nil {
+		slog.Warn("strip workspace CLAUDE.md block failed", "component", "claudecode-onboarding", "error", err)
+		return false
+	}
+	slog.Info("stripped OS block from workspace CLAUDE.md (kept owner notes)", "component", "claudecode-onboarding", "path", path)
+	return true
 }
 
 // ensureSoulMDBlock wraps this device's soul as a marker-delimited core block at
@@ -502,58 +554,6 @@ func (s *ClaudeCodeService) ensureSkills() bool {
 	changed := s.downloadSkillsByName(names)
 	slog.Info("claudecode onboarding: skills restored", "component", "claudecode", "restored", len(changed))
 	return len(changed) > 0
-}
-
-// userClaudeMDBlock is the OS-managed block in the USER-level memory file
-// (~/.claude/CLAUDE.md), which Claude Code loads in EVERY session regardless of
-// cwd. The workspace CLAUDE.md only reaches the device-chat session, so without
-// this a coding session (/root, /root/myapp, …) has no idea the device's
-// connectors exist and tells the user Gmail/Calendar is "not connected". Kept
-// deliberately small — device persona//memory rules stay workspace-scoped; only
-// the device-wide facts that must survive a `cd` live here.
-const userClaudeMDBlock = `<!-- OS DO NOT REMOVE -->
-**This machine is an Autonomous device.** The facts below hold in EVERY folder and session — they describe the DEVICE, not the directory you are working in.
-
-**Connectors (MANDATORY).** The owner links third-party services (Gmail, Google Calendar, Google Drive, Notion, Figma, Asana, Linear, GitHub, Ahrefs, …) in the Autonomous app, and the OS writes their credentials to ` + "`/root/.openclaw/workspace/configs/<code>_access_tokens.json`" + `. To answer or act on ANY of them — "is my gmail connected?", "what's on my calendar", "send an email to …" — use the ` + "`connectors`" + ` skill (` + "`/root/.claude/skills/connectors/SKILL.md`" + `; invoke it with the Skill tool, or READ that file if it is not offered to you).
-  - NEVER conclude a service is unconnected because no MCP server or CLI is configured: the token connectors (Gmail/Calendar/Drive) have NO MCP server. Check the credential files via the skill before answering.
-  - NEVER install or write your own client for a service a connector already covers (no ` + "`send_email.py`" + `, no gcalcli, no OAuth setup) — the credentials are already on disk.
----`
-
-// ensureUserClaudeMDBlock injects/refreshes the OS-managed block in
-// ~/.claude/CLAUDE.md (user-level memory, loaded in every session). Same
-// marker discipline as the workspace file: content below the block is the
-// owner's and is preserved. Returns true if modified.
-func ensureUserClaudeMDBlock() bool {
-	path := filepath.Join(claudeUserDir, "CLAUDE.md")
-
-	content, err := os.ReadFile(path)
-	if err != nil && !os.IsNotExist(err) {
-		slog.Warn("ensure user CLAUDE.md: read failed", "component", "claudecode-onboarding", "error", err)
-		return false
-	}
-	text := string(content)
-
-	if strings.Contains(text, userClaudeMDBlock) {
-		return false // already current
-	}
-	if strings.Contains(text, osMandatoryMarker) {
-		text = stripMarkedBlock(text)
-	}
-
-	output := userClaudeMDBlock + "\n"
-	if strings.TrimSpace(text) != "" {
-		output += "\n" + strings.TrimLeft(text, " \t\r\n")
-	}
-	if err := os.MkdirAll(claudeUserDir, 0o755); err != nil {
-		slog.Warn("ensure user CLAUDE.md: mkdir failed", "component", "claudecode-onboarding", "error", err)
-		return false
-	}
-	if err := os.WriteFile(path, []byte(output), 0o644); err != nil {
-		slog.Warn("ensure user CLAUDE.md: write failed", "component", "claudecode-onboarding", "error", err)
-		return false
-	}
-	slog.Info("injected mandatory block into user CLAUDE.md", "component", "claudecode-onboarding", "path", path)
-	return true
 }
 
 // migrateSkillsToUserScope moves skills installed by an older os-server under
