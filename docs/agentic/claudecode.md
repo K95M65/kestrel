@@ -360,8 +360,18 @@ Telegram, across multiple folders each with its own session.
   OS-managed block (marker-delimited, owner notes preserved below) holding the
   persona **@imports** (`@SOUL.md @IDENTITY.md @USER.md @MEMORY.md
   @KNOWLEDGE.md` — CLAUDE.md is the only file Claude loads by name) and the
-  prompt discipline (skills whitelist rule, memory rules, user priority),
-  adapted from picoclaw's AGENTS.md block.
+  prompt discipline (skills whitelist rule, connectors rule, memory rules, user
+  priority), adapted from picoclaw's AGENTS.md block.
+- **Connectors rule (in the CLAUDE.md block).** Claude Code auto-discovers the
+  `connectors` skill from `.claude/skills/`, but discovery alone is not enough:
+  the model would not select it, and answered "no Gmail/Calendar connected" from
+  `.mcp.json` while a valid `google_calendar` token sat on disk. The block
+  therefore states the connector facts outright — credentials live in
+  `/root/.openclaw/workspace/configs/<code>_access_tokens.json`, token
+  connectors (Gmail/Calendar/Drive) have **no** MCP server so `.mcp.json` is not
+  the connector list, and a question *about* a linked service is not "ordinary
+  chat" exempt from skills. It also disambiguates "my events" (Google Calendar)
+  from `/root/local/flow_events_*.jsonl` (device events).
 - **SOUL block**: same `soul_ref` device-soul injection as openclaw/picoclaw.
 - **Persona migration** (`migrate_persona/runtime_claudecode.go`): the layout is
   deliberately **identical to OpenClaw's** (IDENTITY.md its own slot, MEMORY.md
