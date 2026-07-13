@@ -353,8 +353,18 @@ folder một phiên riêng.
   OS-managed (giới hạn bằng marker, ghi chú của owner được giữ bên dưới) chứa
   các **@import** persona (`@SOUL.md @IDENTITY.md @USER.md @MEMORY.md
   @KNOWLEDGE.md` — CLAUDE.md là file duy nhất Claude nạp theo tên) và prompt
-  discipline (rule whitelist skills, rule memory, ưu tiên user), phỏng theo
-  khối AGENTS.md của picoclaw.
+  discipline (rule whitelist skills, rule connectors, rule memory, ưu tiên
+  user), phỏng theo khối AGENTS.md của picoclaw.
+- **Rule connectors (trong khối CLAUDE.md).** Claude Code tự phát hiện skill
+  `connectors` từ `.claude/skills/`, nhưng chỉ phát hiện thôi là chưa đủ: model
+  không chọn skill đó, và trả lời "không có Gmail/Calendar nào được kết nối" dựa
+  trên `.mcp.json` trong khi token `google_calendar` hợp lệ vẫn nằm trên đĩa. Vì
+  vậy khối này nêu thẳng các sự thật về connector — credential nằm ở
+  `/root/.openclaw/workspace/configs/<code>_access_tokens.json`, các connector
+  dạng token (Gmail/Calendar/Drive) **không** có MCP server nên `.mcp.json`
+  không phải danh sách connector, và câu hỏi *về* một dịch vụ đã liên kết không
+  phải "chat thường" được miễn dùng skill. Khối cũng phân biệt rõ "my events"
+  (Google Calendar) với `/root/local/flow_events_*.jsonl` (event của thiết bị).
 - **Khối SOUL**: cùng cơ chế inject device-soul theo `soul_ref` như
   openclaw/picoclaw.
 - **Migrate persona** (`migrate_persona/runtime_claudecode.go`): layout **cố ý

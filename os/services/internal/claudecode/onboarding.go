@@ -73,10 +73,14 @@ const (
 @MEMORY.md
 @KNOWLEDGE.md
 
-**MANDATORY (skills):** Your device skills are native Claude Code skills in ` + "`.claude/skills/<name>/`" + `. For ordinary chat, simple Q&A, or meta discussion with no action/event/hardware behavior, do NOT invoke a skill — answer normally.
+**MANDATORY (skills):** Your device skills are native Claude Code skills in ` + "`.claude/skills/<name>/`" + `. For ordinary chat or meta discussion with no action/hardware behavior and no connected-service data, do NOT invoke a skill — answer normally. A question ABOUT a linked third-party service (see Connectors) is NOT ordinary chat: it needs the skill even when phrased as a simple question.
   - If the message contains ` + "`[skills: a, b, c]`" + `, treat it as an authoritative whitelist — use ONLY those skills. Do NOT scan other skills "just in case".
-  - If no ` + "`[skills:]`" + ` hint is present and the user asks for a concrete action, hardware behavior, sensing/activity/emotion handling, or a specialized workflow, choose the single most specific matching skill.
+  - If no ` + "`[skills:]`" + ` hint is present and the user asks for a concrete action, hardware behavior, sensing/activity/emotion handling, data from a linked service, or a specialized workflow, choose the single most specific matching skill.
   - If multiple skills plausibly match, choose the most specific one. If none clearly match, answer normally without a skill.
+
+**Connectors (MANDATORY):** The user links third-party services (Gmail, Google Calendar, Google Drive, Notion, Figma, Asana, Linear, GitHub, Ahrefs, …) in the app, and the OS writes their credentials to this device at ` + "`/root/.openclaw/workspace/configs/<code>_access_tokens.json`" + `. ALWAYS use the ` + "`connectors`" + ` skill to answer or act on ANY of them — including "is my gmail connected?", "what's on my calendar", "list my events", "check my email". The skill lives at ` + "`.claude/skills/connectors/SKILL.md`" + ` (i.e. ` + "`/root/.claudecode/workspace/.claude/skills/connectors/SKILL.md`" + `): invoke it with the Skill tool, and if for any reason it is not offered to you, READ that file and follow it.
+  - ` + "`.mcp.json`" + ` is NOT the connector list. Gmail/Calendar/Drive are token-based and have NO MCP server, so NEVER conclude a service is unconnected because it is missing from the MCP server list — check the credential files via the skill.
+  - Never tell the user to set up an MCP server, OAuth app, or another CLI for these services: the credentials are already on disk. Read them only through the ` + "`connectors`" + ` skill, which knows how to keep the secrets safe.
 
 **Version check:** ` + "`os-server --version`" + ` (OS), ` + "`claude --version`" + ` (Claude Code), ` + "`curl -s http://127.0.0.1:5001/version`" + ` (HAL).
 
@@ -86,7 +90,7 @@ const (
 
 **Memory writes — DESCRIBE, never PRESCRIBE.** Before writing any "decision/rule" to memory/*.md or KNOWLEDGE.md, re-check the relevant skill. Blanket forms like "X → always Y" / "X → NO_REPLY for all" are frequency disguised as rule — write what happened with conditions, not a blanket ban.
 
-**Don't duplicate JSONL.** Per-event activity/mood/music data lives in ` + "`/root/local/users/{user}/{wellbeing,mood,music-suggestions}/*.jsonl`" + ` and ` + "`/root/local/flow_events_*.jsonl`" + `. If ` + "`cat`" + ` of a JSONL can answer it, DO NOT write to memory. Memory is for cross-day insights only.
+**Don't duplicate JSONL.** Per-event activity/mood/music data lives in ` + "`/root/local/users/{user}/{wellbeing,mood,music-suggestions}/*.jsonl`" + ` and ` + "`/root/local/flow_events_*.jsonl`" + `. If ` + "`cat`" + ` of a JSONL can answer it, DO NOT write to memory. Memory is for cross-day insights only. These JSONL files are DEVICE events (sensing, mood, sessions) — they are NOT the user's calendar. "My events", "my schedule", "what's on this week" mean their Google Calendar → use the ` + "`connectors`" + ` skill, not these files.
 
 **Mood awareness (MANDATORY): Follow the Mood skill.**
 
