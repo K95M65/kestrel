@@ -150,7 +150,7 @@ Injection fires when **all** of the following hold:
 
 There is no separate "minimum sedentary streak" gate and no separate "nudge cooldown" — the window itself is the rhythm. Window start requires sedentary, so when it completes the user has been at the computer for at least `POSE_WINDOW_DURATION_S`; the unconditional reset after each cycle means the next fire is naturally one window away.
 
-When the inject fires, both the per-label dedup check **and** the global event cooldown (`MOTION_EVENT_COOLDOWN_S`, default 360 s — the floor that bounds ordinary `motion.activity` emissions) are **bypassed** for that single event: a posture nudge is a meaningfully different signal from "user is still using computer", and losing it to dedup or cooldown would mean waiting another full window before the next attempt.
+When the inject fires, both the per-label dedup check **and** the global event cooldown (`MOTION_EVENT_COOLDOWN_S`, default 900 s — the floor that bounds ordinary `motion.activity` emissions) are **bypassed** for that single event: a posture nudge is a meaningfully different signal from "user is still using computer", and losing it to dedup or cooldown would mean waiting another full window before the next attempt.
 
 Window lifecycle:
 1. **Open** — `pose.start_window()` called by motion-side when a sedentary label first appears. Clears any pre-window samples and anchors `_window_start_ts = now`. Idempotent — calls while a window is already open are no-ops.
@@ -637,7 +637,7 @@ Emotion detected: Happy. (weak camera cue; confidence=0.78; bucket=positive; tre
 
 The raw `Emotion detected: <Label>.` prefix is preserved so `user-emotion-detection/SKILL.md`'s parser and the Fear→stressed / Sad→sad mood mapping keep working unchanged. The trailing parenthetical exists to stop the LLM from over-committing on noisy FER reads (the bug it fixed: Fear → "Oh hello there again" greeting). Hedge clauses by bucket: `negative` → "do not assume the user is distressed"; `positive` → "do not over-celebrate"; `other` → "do not over-react".
 
-**Polarity-bucket dedup** (`EMOTION_BUCKETS` in `os/hal/drivers/sensing/perceptions/processors/emotion.py`) collapses fine-grained labels into `positive` / `negative` / `other` and dedups by `(current_user, bucket)` over a 5-min window. Within-bucket noise (Fear↔Sad↔Anger) becomes one event per window; cross-bucket flips (Fear→Happy) still fire as a genuine mood change. Confidence in the message is averaged over instances of the dominant label only — other labels' scores don't dilute it.
+**Polarity-bucket dedup** (`EMOTION_BUCKETS` in `os/hal/drivers/sensing/perceptions/processors/emotion.py`) collapses fine-grained labels into `positive` / `negative` / `other` and dedups by `(current_user, bucket)` over a 5-min window. Within-bucket noise (Fear↔Sad↔Anger) becomes one event per window; cross-bucket flips (Fear→Happy) still fire as a genuine mood change. Confidence in the message is averaged over instances of the dominant label only — other labels' scores don't dilute it. The dedup map is persisted to a boot-scoped sidecar (`/tmp/hal-emotion-state.json`) so a HAL service restart doesn't re-fire the last-known emotion on the first flush; a full device reboot starts fresh.
 
 The sensing handler (`handler.go`) routes `emotion.detected` events to the agent. When the agent is busy, these events are queued and replayed when idle.
 
@@ -685,7 +685,7 @@ Labels (from emotion2vec_plus_large): `angry`, `disgusted`, `fearful`, `happy`, 
 2. Unknown speaker (`match=false` or `name=="unknown"`) dropped — no subject to attribute emotion to.
 3. Low-confidence inferences (`< SPEECH_EMOTION_CONFIDENCE_THRESHOLD`) dropped by the worker.
 4. Neutral labels dropped at flush time.
-5. `(user, bucket)` TTL dedup over `SPEECH_EMOTION_DEDUP_WINDOW_S` (default 5 min). Each bucket keeps an independent timer — sending a positive event does not reset the negative window.
+5. `(user, bucket)` TTL dedup over `SPEECH_EMOTION_DEDUP_WINDOW_S` (default 5 min). Each bucket keeps an independent timer — sending a positive event does not reset the negative window. The map is persisted to a boot-scoped sidecar (`/tmp/hal-ser-state.json`) so a HAL service restart doesn't re-fire the last-known speech emotion; a full device reboot starts fresh.
 
 The event payload carries `current_user` explicitly so the Lamp sensing handler doesn't need to look it up.
 

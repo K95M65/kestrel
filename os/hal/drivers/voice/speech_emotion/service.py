@@ -50,6 +50,7 @@ from typing import Optional
 import requests
 
 from hal import config
+from hal.dedup_sidecar import DedupStateSidecar
 from hal.drivers.voice.speech_emotion.base import (
     BaseSpeechEmotionRecognizer,
 )
@@ -87,6 +88,10 @@ _MIN_AUDIO_S: float = float(
 _API_URL: str = getattr(config, "SPEECH_EMOTION_API_URL", "") or ""
 _API_KEY: str = getattr(config, "SPEECH_EMOTION_API_KEY", "") or ""
 _SENSING_URL: str = config.OS_SENSING_URL
+
+# Boot-scoped dedup sidecar — survives HAL service restarts, cleared on a
+# full device reboot (tmpfs + boot_id).
+_SER_STATE_PATH = "/tmp/hal-ser-state.json"
 _AUDIO_DIR: str = getattr(config, "SPEECH_EMOTION_AUDIO_DIR", "") or ""
 _SAFE_NAME_RE = re.compile(r"[^a-zA-Z0-9_-]+")
 
@@ -153,7 +158,13 @@ class SpeechEmotionService:
         # mutable state — guarded by _lock
         self._lock: threading.RLock = threading.RLock()
         self._buffer: dict[str, list[_Inference]] = {}
-        self._last_sent_by_key: dict[tuple[str, str], float] = {}
+        # TTL dedup map restored from the boot-scoped sidecar so a HAL
+        # service restart doesn't re-fire the last-known speech emotion on
+        # the first flush (same pattern as the motion sidecar).
+        self._sidecar: DedupStateSidecar = DedupStateSidecar(
+            _SER_STATE_PATH, "speech_emotion"
+        )
+        self._last_sent_by_key: dict[tuple[str, str], float] = self._sidecar.load()
         self._last_flush_ts: float = 0.0
 
         self._stop_event: threading.Event = threading.Event()
@@ -444,6 +455,7 @@ class SpeechEmotionService:
                 )
                 return
             self._last_sent_by_key[key] = cur_ts
+            self._sidecar.save(self._last_sent_by_key)
 
         message = format_message(dominant_label, avg_confidence, bucket)
         logger.info(

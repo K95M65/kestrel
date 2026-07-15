@@ -14,6 +14,7 @@ import requests
 from typing_extensions import override
 
 import hal.config as config
+from hal.dedup_sidecar import DedupStateSidecar
 from hal.drivers.sensing.crypto import CryptoSession, resolve_public_key
 from hal.drivers.sensing.perceptions.models import (
     Face,
@@ -26,6 +27,12 @@ from hal.drivers.sensing.presence_service import PresenceState, PresenseService
 from .base import Perception
 
 logger = logging.getLogger(__name__)
+
+# Boot-scoped dedup sidecar — survives HAL service restarts so the first
+# flush after a deploy/OTA doesn't re-fire the last-known emotion as if it
+# were news (same pattern as the motion sidecar). tmpfs + boot_id: a full
+# device reboot starts fresh on purpose.
+_EMOTION_STATE_PATH = "/tmp/hal-emotion-state.json"
 
 EMOTIONS = [
     "Neutral",
@@ -197,7 +204,15 @@ class EmotionPerception(Perception[FaceDetectionData]):
         # window dropped even if other emotions were sent in between.
         # Last-key-only dedup let alternating sad/fear/sad/fear bypass the
         # window and spam the agent queue every flush.
-        self._last_sent_by_key: dict[tuple[str, str], float] = {}
+        # Restored from the boot-scoped sidecar so a service restart doesn't
+        # wipe the TTL map and re-fire the last emotion on the first flush.
+        # The debug-only _last_sent_key stays None after a restore — the
+        # reset_dedup user-change guard then no-ops, which is harmless: keys
+        # are (user, bucket), so a new user always forms fresh keys anyway.
+        self._sidecar: DedupStateSidecar = DedupStateSidecar(
+            _EMOTION_STATE_PATH, "activity.emotion"
+        )
+        self._last_sent_by_key: dict[tuple[str, str], float] = self._sidecar.load()
         self._last_sent_key: tuple[str, str] | None = None  # debug/to_dict
         self._last_sent_ts: float = 0.0  # debug/to_dict
         self._dedup_window_s: float = config.EMOTION_DEDUP_WINDOW_S
@@ -411,6 +426,7 @@ class EmotionPerception(Perception[FaceDetectionData]):
                 self._last_sent_by_key[key] = cur_ts
                 self._last_sent_key = key
                 self._last_sent_ts = cur_ts
+                self._sidecar.save(self._last_sent_by_key)
 
             logger.info("[activity.emotion] flushing: %s", message)
             self._send_event("emotion.detected", message, "emotion", snapshots, None)
@@ -441,6 +457,9 @@ class EmotionPerception(Perception[FaceDetectionData]):
             self._last_sent_by_key.clear()
             self._last_sent_key = None
             self._last_sent_ts = 0.0
+            # Sync the sidecar (unlinks it) so a restart can't resurrect the
+            # state this user-change reset just cleared.
+            self._sidecar.save(self._last_sent_by_key)
 
     def to_dict(self) -> dict[str, Any]:
         with self._state_lock:

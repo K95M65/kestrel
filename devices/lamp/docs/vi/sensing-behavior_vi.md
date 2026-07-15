@@ -150,7 +150,7 @@ Inject fire khi **tất cả** điều kiện sau đúng:
 
 Không có gate "minimum sedentary streak" riêng và không có "nudge cooldown" riêng — window chính là rhythm. Window-start yêu cầu sedentary nên khi complete, user đã ở máy tính ít nhất `POSE_WINDOW_DURATION_S`; unconditional reset sau mỗi cycle khiến lần fire kế tiếp tự nhiên cách 1 window.
 
-Khi inject fire, cả per-label dedup check **lẫn** global event cooldown (`MOTION_EVENT_COOLDOWN_S`, default 360 s — sàn giới hạn các `motion.activity` thông thường) đều được **bypass** cho event đó: posture nudge là tín hiệu khác hẳn "user vẫn đang dùng máy tính", và mất nó vì dedup hay cooldown sẽ phải chờ thêm cả một window đầy đủ trước khi có cơ hội tiếp.
+Khi inject fire, cả per-label dedup check **lẫn** global event cooldown (`MOTION_EVENT_COOLDOWN_S`, default 900 s — sàn giới hạn các `motion.activity` thông thường) đều được **bypass** cho event đó: posture nudge là tín hiệu khác hẳn "user vẫn đang dùng máy tính", và mất nó vì dedup hay cooldown sẽ phải chờ thêm cả một window đầy đủ trước khi có cơ hội tiếp.
 
 Lifecycle window:
 1. **Open** — `pose.start_window()` gọi từ motion-side khi label sedentary đầu tiên xuất hiện. Clear samples pre-window và anchor `_window_start_ts = now`. Idempotent — call thêm khi window đã mở là no-op.
@@ -595,7 +595,7 @@ Emotion detected: Happy. (weak camera cue; confidence=0.78; bucket=positive; tre
 
 Prefix `Emotion detected: <Label>.` được giữ nguyên để parser của `user-emotion-detection/SKILL.md` và mood mapping Fear→stressed / Sad→sad vẫn chạy như cũ. Phần ngoặc đơn phía sau là để LLM không over-commit khi FER read nhiễu (bug từng gặp: Fear → "Oh hello there again"). Hedge theo bucket: `negative` → "do not assume the user is distressed"; `positive` → "do not over-celebrate"; `other` → "do not over-react".
 
-**Dedup theo polarity bucket** (`EMOTION_BUCKETS` trong `os/hal/drivers/sensing/perceptions/processors/emotion.py`) gộp các label chi tiết thành `positive` / `negative` / `other` và dedup theo `(current_user, bucket)` trong window 5 phút. Nhiễu trong cùng bucket (Fear↔Sad↔Anger) gộp thành 1 event/window; flip giữa hai bucket (Fear→Happy) vẫn fire như mood change thật. Confidence trong message được average **chỉ trên các lần xuất hiện của dominant label** — confidence của label khác không pha loãng.
+**Dedup theo polarity bucket** (`EMOTION_BUCKETS` trong `os/hal/drivers/sensing/perceptions/processors/emotion.py`) gộp các label chi tiết thành `positive` / `negative` / `other` và dedup theo `(current_user, bucket)` trong window 5 phút. Nhiễu trong cùng bucket (Fear↔Sad↔Anger) gộp thành 1 event/window; flip giữa hai bucket (Fear→Happy) vẫn fire như mood change thật. Confidence trong message được average **chỉ trên các lần xuất hiện của dominant label** — confidence của label khác không pha loãng. Map dedup được persist vào sidecar boot-scoped (`/tmp/hal-emotion-state.json`) nên restart HAL service không re-fire emotion cuối cùng ở flush đầu tiên; reboot cả device thì bắt đầu sạch.
 
 Sensing handler (`handler.go`) route `emotion.detected` events tới agent. Khi agent đang bận, events được queue và replay khi agent rảnh.
 
@@ -643,7 +643,7 @@ Labels (từ emotion2vec_plus_large): `angry`, `disgusted`, `fearful`, `happy`, 
 2. Unknown speaker (`match=false` hoặc `name=="unknown"`) drop — không có subject để gán cảm xúc.
 3. Confidence thấp (`< CONFIDENCE_THRESHOLD_BY_LABEL[label]`, fallback `DEFAULT_CONFIDENCE_THRESHOLD` — đều ở `speech_emotion/constants.py`) bị worker drop.
 4. Neutral labels drop ở flush.
-5. TTL dedup `(user, bucket)` trong `SPEECH_EMOTION_DEDUP_WINDOW_S` (mặc định 5 phút). Mỗi bucket có timer riêng — gửi event positive KHÔNG reset window của negative.
+5. TTL dedup `(user, bucket)` trong `SPEECH_EMOTION_DEDUP_WINDOW_S` (mặc định 5 phút). Mỗi bucket có timer riêng — gửi event positive KHÔNG reset window của negative. Map được persist vào sidecar boot-scoped (`/tmp/hal-ser-state.json`) nên restart HAL service không re-fire speech emotion cuối cùng; reboot cả device thì bắt đầu sạch.
 
 Payload event gửi kèm `current_user` rõ ràng nên sensing handler Lamp không phải tra cứu lại.
 
