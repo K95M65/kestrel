@@ -553,6 +553,7 @@ Tùy chọn thay thế cho `MotionPerception` — chạy nhận diện hành đ�
 - Mỗi `face_id` có WS session riêng với backend action recognition.
 - Person detection luôn **tắt** trên các session này.
 - Dedup theo từng action riêng biệt cho mỗi face (mặc định 5 phút).
+- **Cooldown floor toàn cục chung cho MỌI face** — cùng semantics và cùng knobs với `MotionPerception`: cùng coarse class thì tối đa 1 `motion.activity` mỗi `MOTION_EVENT_COOLDOWN_S` (mặc định 15 phút); **transition** đổi coarse class bypass floor khi đã qua `MOTION_TRANSITION_MIN_GAP_S` (mặc định 60s); floor được xóa khi user thực sự đổi (`reset_dedup`), không xóa khi stranger chớp tắt. Không có floor này, N người trong frame = N event mỗi flush.
 - Session cần tối thiểu 4 frame trước khi gửi event đầu tiên.
 - Session bị xóa sau 30 giây không thấy face đó.
 

@@ -566,6 +566,14 @@ t=2:00  leo → {drinking, writing}            → SEND writing only (drinking s
 t=5:01  leo → {drinking}                     → SEND drinking (expired from window)
 ```
 
+The example shows the per-face layer in isolation — the global cooldown floor below applies on top of it.
+
+#### Global cooldown floor (shared across faces)
+
+One cooldown floor is shared across ALL face sessions, with the same semantics and the same knobs as `MotionPerception`: within the same coarse activity class, at most one `motion.activity` per `MOTION_EVENT_COOLDOWN_S` (default 15 min); a coarse-class **transition** bypasses the floor once `MOTION_TRANSITION_MIN_GAP_S` (default 60s) has passed since the last emission; the floor is cleared on a real user change (`reset_dedup`), not on stranger flicker.
+
+Without this floor, the per-face dedup alone would allow one event per person per flush — N people in frame = N events, and every newly detected face would fire immediately. With it, multi-person scenes still produce at most one same-class event per cooldown, no matter how many faces are tracked.
+
 #### Minimum frames gate
 
 A new face session must receive at least `MOTION_PER_FACE_MIN_FRAMES` frames (default 4) before its first event fires. This prevents noisy single-frame classifications from brief face detections.

@@ -114,3 +114,28 @@ INFO hal...motion: [motion] transition bypass: ['sedentary'] → ['eat'] (last e
 | Không bắt được hoạt động nào | Giảm `MOTION_CONFIDENCE_THRESHOLD` (0.3 → 0.2) |
 | Label hoạt động rác | Tăng `MOTION_CONFIDENCE_THRESHOLD` (0.3 → 0.4) |
 | Phản ứng chậm khi đổi hoạt động thật | Giảm `MOTION_FLUSH_S` (10 → 5) và/hoặc `MOTION_TRANSITION_MIN_GAP_S` — đổi class đã tự bypass cooldown |
+
+---
+
+## Nhận Diện Hoạt Động Per-Face (Per-Face Motion)
+
+**File:** `os/hal/config.py`
+
+```python
+MOTION_PER_FACE_ENABLED = false            # Bật nhận diện hành động per-face
+MOTION_PER_FACE_DEDUP_WINDOW_S = 300.0     # Cửa sổ dedup per-action (5 phút)
+MOTION_PER_FACE_SESSION_TTL_S = 30.0       # Xóa session sau bao lâu không thấy face
+MOTION_PER_FACE_MIN_FRAMES = 4             # Số frame tối thiểu trước event đầu tiên
+```
+
+Per-face motion mở WS session riêng cho từng khuôn mặt và chạy action recognition trên crop mở rộng quanh mặt. Mỗi action dedup độc lập theo face. Trên lớp dedup per-face có MỘT cooldown floor toàn cục chung cho mọi face — cùng semantics và cùng knobs với motion thường (`MOTION_EVENT_COOLDOWN_S` floor cùng-class, `MOTION_TRANSITION_MIN_GAP_S` gap tối thiểu cho bypass đổi class, floor xóa khi user thực sự đổi) — nên N mặt trong frame vẫn chỉ tối đa 1 `motion.activity` cùng-class mỗi cooldown, không phải N.
+
+**Tuning:**
+
+| Triệu chứng | Cách chỉnh |
+|-------------|------------|
+| Quá nhiều event cho một người | Tăng `MOTION_PER_FACE_DEDUP_WINDOW_S` (300 → 600) |
+| Quá nhiều event khi nhiều người | Tăng `MOTION_EVENT_COOLDOWN_S` — floor toàn cục dùng chung với motion thường |
+| Phân loại nhiễu từ frame đơn lẻ | Tăng `MOTION_PER_FACE_MIN_FRAMES` (4 → 8) |
+| Session tồn đọng cho face thoáng qua | Giảm `MOTION_PER_FACE_SESSION_TTL_S` (30 → 15) |
+| WS connection chồng chất khi nhiều người | Tắt bằng `MOTION_PER_FACE_ENABLED=false` |

@@ -193,13 +193,14 @@ MOTION_PER_FACE_SESSION_TTL_S = 30.0       # Evict face session after this long 
 MOTION_PER_FACE_MIN_FRAMES = 4             # Min frames before first event fires
 ```
 
-Per-face motion opens a separate WS session per detected face and runs action recognition on an expanded face crop. Each action is deduped independently per face.
+Per-face motion opens a separate WS session per detected face and runs action recognition on an expanded face crop. Each action is deduped independently per face. On top of the per-face dedup, ONE global cooldown floor is shared across all faces — same semantics and same knobs as regular motion (`MOTION_EVENT_COOLDOWN_S` same-class floor, `MOTION_TRANSITION_MIN_GAP_S` min gap on the class-transition bypass, floor cleared on a real user change) — so N faces in frame still produce at most one same-class `motion.activity` per cooldown, not N.
 
 **Tuning:**
 
 | Symptom | Fix |
 |---------|-----|
 | Too many events per person | Increase `MOTION_PER_FACE_DEDUP_WINDOW_S` (300 → 600) |
+| Too many events across people | Increase `MOTION_EVENT_COOLDOWN_S` — the global floor is shared with regular motion |
 | Noisy single-frame classifications | Increase `MOTION_PER_FACE_MIN_FRAMES` (4 → 8) |
 | Sessions accumulate for briefly-seen faces | Decrease `MOTION_PER_FACE_SESSION_TTL_S` (30 → 15) |
 | WS connections pile up in multi-person scenes | Disable with `MOTION_PER_FACE_ENABLED=false` |
