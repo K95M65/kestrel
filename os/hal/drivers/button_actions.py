@@ -125,10 +125,8 @@ def _announce_listening():
     # First attempt is immediate: when TTS is idle (the common case — mic
     # unmute path) the cue plays with zero added delay. Backoff only kicks
     # in when the lock is still held by winding-down playback.
-    # interruptible=True: the cue now fires on the FIRST tap of a burst
-    # (before triple-click resolution), so a follow-up gesture phrase —
-    # PHRASE_REBOOT on triple click — must be able to preempt it instead
-    # of being dropped by the busy-skip path.
+    # interruptible=True so any follow-up speech (agent reply, gesture
+    # announce) preempts a stale cue instead of being busy-skipped.
     for delay in (0, 0.15, 0.4, 0.8, 1.6, 3.0):
         if delay:
             time.sleep(delay)
@@ -162,8 +160,22 @@ def _wake_if_sleepy(source: str):
         logger.warning("Wake emotion call failed: %s", e)
 
 
-def single_click_action(source: str = "button"):
-    """Stop in-flight speech / unmute mic + speaker, then announce listening cue."""
+def announce_listening_cue(source: str = "button"):
+    """Fire the listening-cue TTS off-thread. Split from single_click_action
+    so callers that resolve gestures in two steps (GPIO button: floor-grab
+    on release, cue after the click window) can defer just the audible part
+    — a cue talking over the user mid-triple-click disrupts their rhythm."""
+    if _tts_available():
+        threading.Thread(
+            target=_announce_listening,
+            daemon=True,
+            name=f"{source}-single-click-tts",
+        ).start()
+
+
+def single_click_action(source: str = "button", announce: bool = True):
+    """Stop in-flight speech / unmute mic + speaker, then announce listening cue.
+    announce=False skips the cue (caller fires announce_listening_cue later)."""
     from hal.routes.music import audio_stop, unmute_speaker
     from hal.routes.voice import stop_tts, unmute_mic
 
@@ -186,18 +198,13 @@ def single_click_action(source: str = "button"):
         logger.info("%s single click -- stopping speaker", source)
         stop_tts()
         audio_stop()
-    # Always announce the listening cue so the user hears confirmation
-    # of the click — both for unmute (mic just opened) and for
-    # stop-speaker (the device was talking, user wants the floor). The cue
-    # itself preempts in-flight TTS via stop() + speak_cached retry,
-    # so calling stop_tts() above is fine — _announce_listening handles
-    # the lock handoff.
-    if _tts_available():
-        threading.Thread(
-            target=_announce_listening,
-            daemon=True,
-            name=f"{source}-single-click-tts",
-        ).start()
+    # Announce the listening cue so the user hears confirmation of the
+    # click — both for unmute (mic just opened) and for stop-speaker (the
+    # device was talking, user wants the floor). The cue itself preempts
+    # in-flight TTS via stop() + speak_cached retry, so calling stop_tts()
+    # above is fine — _announce_listening handles the lock handoff.
+    if announce:
+        announce_listening_cue(source)
 
 
 def triple_click_action(source: str = "button"):

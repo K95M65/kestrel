@@ -10,12 +10,14 @@ Destructive actions commit ON RELEASE, not on a timer firing while held,
 so the user can cancel mid-hold by releasing before crossing a threshold
 (or keep holding past 10s to escalate from shutdown → factory-reset).
 
-The single-click action fires on the FIRST tap of a burst without waiting
-for the click window — it's non-destructive, so eager firing just cuts
-latency. Double-click and 4+ rapid clicks add nothing on top of that —
-destructive actions (reboot/shutdown/factory-reset) need a deliberate
-gesture so a user panic-clicking the button to interrupt TTS doesn't
-accidentally reboot.
+The silent part of the single-click action (stop speaker / unmute mic)
+fires on the FIRST tap of a burst without waiting for the click window —
+it's non-destructive, so eager firing just cuts barge-in latency. The
+audible listening cue waits for the window to resolve so it never talks
+over a triple-click in progress. Double-click and 4+ rapid clicks add
+nothing on top of the floor-grab — destructive actions (reboot/shutdown/
+factory-reset) need a deliberate gesture so a user panic-clicking the
+button to interrupt TTS doesn't accidentally reboot.
 
 The actual action logic lives in `button_actions.py` so other input
 devices (touchpad, remote) can reuse the same gestures.
@@ -33,6 +35,7 @@ from hal.drivers.button_actions import (
     DOUBLE_CLICK_WINDOW,
     FACTORY_RESET_DURATION,
     LONG_PRESS_DURATION,
+    announce_listening_cue,
     factory_reset_action,
     long_press_action,
     single_click_action,
@@ -242,16 +245,15 @@ class GPIOButtonHandler:
             ).start()
             return
 
-        # Short tap → count toward triple-click resolution. The single-click
-        # action (stop speaker / unmute mic + listening cue) fires IMMEDIATELY
-        # on the first tap of a burst — it's a non-destructive "give me the
-        # floor" gesture, so there's nothing to gain by sitting out the
-        # click window, and firing now cuts perceived latency by 0.4s.
-        # Only the destructive triple-click (reboot) still waits for the
-        # window to resolve. If the burst turns out to be a triple, the
-        # floor-grab side effects (TTS stopped, mic unmuted) are harmless —
-        # the OS reboots moments later, and the reboot announce preempts
-        # the interruptible listening cue.
+        # Short tap → count toward triple-click resolution. The SILENT part
+        # of the single-click action (stop speaker / unmute mic) fires
+        # IMMEDIATELY on the first tap of a burst — it's a non-destructive
+        # "give me the floor" gesture, so firing now cuts perceived barge-in
+        # latency by 0.4s. The audible listening cue is deferred until the
+        # click window resolves: a cue talking over the user mid-triple-click
+        # disrupts their rhythm, and a resolved triple should only speak the
+        # reboot announce. If the burst turns out to be a triple, the silent
+        # floor-grab side effects are harmless — the OS reboots moments later.
         self._click_count += 1
         if self._click_count == 1:
             # Off-thread: stop_tts/audio_stop/unmute do blocking I/O; the
@@ -259,7 +261,7 @@ class GPIOButtonHandler:
             # long-press branches above).
             threading.Thread(
                 target=single_click_action,
-                kwargs={"source": "GPIO button"},
+                kwargs={"source": "GPIO button", "announce": False},
                 daemon=True,
                 name="gpio-button-single-click",
             ).start()
@@ -276,8 +278,12 @@ class GPIOButtonHandler:
         self._click_count = 0
         if count == 3:
             triple_click_action(source="GPIO button")
-        elif count != 1:
-            # count == 1 already fired on release (immediate single click).
+            return
+        if count != 1:
             # count == 2 → likely a slipped/panic double-tap of single
             # count >= 4 → panic-click; never trigger destructive actions
             logger.info("GPIO button %d clicks -- ignored (only 1=stop, 3=reboot)", count)
+        # Any non-triple burst already grabbed the floor silently on its
+        # first tap — now that it's resolved, speak the deferred cue so the
+        # user hears confirmation exactly once per burst.
+        announce_listening_cue(source="GPIO button")
