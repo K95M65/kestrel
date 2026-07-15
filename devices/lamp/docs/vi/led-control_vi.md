@@ -161,7 +161,7 @@ Mỗi emotion preset có LED color riêng:
 
 ### Tên emotion không nhận diện được
 
-`POST /emotion` (`os/hal/routes/emotion.py`) không bao giờ từ chối tên emotion khác rỗng — không còn trả 400 cho tên lạ. Tên không nhận diện được đi qua thang resolution: exact match → normalize (lowercase, trim, dash→underscore) → bảng alias nhỏ (vd `joy`→`happy`, `surprised`→`shock`) → fuzzy match (difflib, cutoff 0.75) → fallback về `idle`. Khi tên gửi lên được resolve sang emotion khác, HAL log warning, và toàn bộ downstream (sleep gate, servo, LED) dùng emotion đã resolve.
+`POST /emotion` (`os/hal/routes/emotion.py`) không bao giờ từ chối tên emotion khác rỗng. Tên được lowercase/trim; tên nào không có trong `EMOTION_PRESETS` sẽ fallback về `curious` (biểu cảm trung tính, luôn an toàn) kèm log warning — caller là AI agent đôi khi bịa tên emotion, trả 400 sẽ phí lượt mà thiết bị không hiển thị gì. Toàn bộ downstream (sleep gate, servo, LED) dùng emotion đã resolve.
 
 ## Override preset theo từng thiết bị
 

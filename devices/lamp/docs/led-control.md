@@ -151,7 +151,7 @@ See [emotion-led-mapping.md](emotion-led-mapping.md) for the full emotion → LE
 
 ### Unknown emotion names
 
-`POST /emotion` (`os/hal/routes/emotion.py`) never rejects a non-empty emotion name — there is no 400 for unknown names. Unrecognized names go through a resolution ladder: exact match → normalized (lowercase, trim, dashes→underscores) → a small alias map (e.g. `joy`→`happy`, `surprised`→`shock`) → fuzzy match (difflib, cutoff 0.75) → fallback to `idle`. When the incoming name resolves to a different emotion, HAL logs a warning, and everything downstream (sleep gate, servo, LED) uses the resolved emotion.
+`POST /emotion` (`os/hal/routes/emotion.py`) never rejects a non-empty emotion name. Names are lowercased/trimmed; anything not in `EMOTION_PRESETS` falls back to `curious` (a neutral, always-safe expression) with a warning logged — callers are AI agents that sometimes invent emotion names, and a 400 would waste their turn with nothing showing on the device. Everything downstream (sleep gate, servo, LED) uses the resolved emotion.
 
 ## Per-device preset overrides
 

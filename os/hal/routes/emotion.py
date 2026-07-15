@@ -2,7 +2,7 @@
 
 import threading
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
 import hal.app_state as state
 from hal.models import EmotionRequest, EmotionResponse
@@ -70,12 +70,18 @@ def list_emotion_presets():
 @router.post("/emotion", response_model=EmotionResponse)
 def express_emotion(req: EmotionRequest):
     """Express an emotion by coordinating servo animation + LED color simultaneously."""
-    preset = EMOTION_PRESETS.get(req.emotion)
+    emotion = (req.emotion or "").strip().lower()
+    preset = EMOTION_PRESETS.get(emotion)
     if not preset:
-        available = list(EMOTION_PRESETS.keys())
-        raise HTTPException(
-            400, f"Unknown emotion '{req.emotion}'. Available: {available}"
+        # Callers are AI agents that sometimes invent emotion names — a 400
+        # wastes their turn and nothing shows on the device. Fall back to
+        # curious (a neutral, always-safe expression) instead of rejecting.
+        state.logger.warning(
+            "POST /emotion: unknown '%s' — falling back to %s", req.emotion, EMO_CURIOUS
         )
+        emotion = EMO_CURIOUS
+        preset = EMOTION_PRESETS[EMO_CURIOUS]
+    req.emotion = emotion
 
     state.logger.info("POST /emotion: emotion=%s intensity=%s user_state=%s sleeping=%s",
                        req.emotion, req.intensity,
