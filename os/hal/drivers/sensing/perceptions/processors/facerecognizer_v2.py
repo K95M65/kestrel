@@ -2522,6 +2522,11 @@ class FacePerception(Perception[cv2.typing.MatLike]):
             # would restore the sidecar's stale last_seen and silently undo
             # this reset.
             self._persist_presence_state(time.time(), force=True)
+            # And re-arm the throttle so the NEXT detection persists its fresh
+            # last_seen right away — the force call above just stamped the
+            # save ts, which would otherwise leave a <30s window where a
+            # restart loses the first post-reset sighting and re-enters again.
+            self._last_presence_save_ts = 0.0
             _ = self._flush_stranger_buffer(time.time())
             logger.info("Face recognition cooldowns reset")
 
