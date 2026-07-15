@@ -82,7 +82,10 @@ func (s *Service) listNetworksIW() ([]domain.Network, error) {
 
 var (
 	reBSS    = regexp.MustCompile(`BSS ([0-9a-f:]+)`)
-	reSSID   = regexp.MustCompile(`SSID: (.+)`)
+	// Anchor with ^ so we match only "SSID: ..." lines, not "HESSID: ..." (802.11u
+	// metadata) which contains the substring "SSID:" and was overwriting the real
+	// SSID with the BSSID for routers that broadcast HESSID.
+	reSSID   = regexp.MustCompile(`^SSID: (.+)`)
 	reSignal = regexp.MustCompile(`signal: ([\d.-]+)`)
 	reTxRate = regexp.MustCompile(`tx bitrate:\s*([\d.]+)\s*MBit/s`)
 	reDS     = regexp.MustCompile(`DS Parameter set: channel (\d+)`)
@@ -151,7 +154,10 @@ func parseIWScan(out string) []domain.Network {
 			current.channel = 0
 			continue
 		}
-		if m := reSSID.FindStringSubmatch(line); len(m) > 1 {
+		// First SSID line wins per BSS block; defensive guard against any other
+		// future SSID-prefixed line (e.g. nested Neighbor Report fields) that
+		// might match after the real SSID.
+		if m := reSSID.FindStringSubmatch(line); len(m) > 1 && current.ssid == "" {
 			current.ssid = decodeIWSSIDEscape(strings.TrimSpace(m[1]))
 			continue
 		}
