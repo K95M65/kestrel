@@ -26,7 +26,7 @@ Cả hai handler đều detect board qua `/proc/device-tree/model`:
 
 | Cử chỉ | Nút GPIO | Touchpad TTP223 |
 |---|---|---|
-| **1 chạm** | Stop loa / unmute mic + speaker — fire ngay khi nhả nút (không đợi click window); cue "Mình nghe đây" phát sau khi click window 0.4 s phân giải xong | Y hệt — fire ~1.2 s sau khi nhả (chi phí decision-window, xem dưới) |
+| **1 chạm** | Stop loa / unmute mic + speaker — fire ngay khi nhả nút (không đợi click window); cue "Mình nghe đây" phát sau khi click window 0.4 s phân giải xong | Tách y hệt — TTS đang nói bị cắt ~0.2 s sau khi nhấc tay (session đầu kết thúc); unmute + cue đợi decision window 1.2 s (chi phí tap-vs-pet, xem dưới) |
 | **2 chạm** (≤ 0.4 s, nút) / (≤ 1.2 s, TTP223) | Không thêm gì ngoài single-click đã fire ở chạm 1 (panic-click guard) | Pet response — TTS chọn ngẫu nhiên 1 câu từ pool theo ngôn ngữ |
 | **3 chạm** (≤ 0.4 s, nút) | Reboot OS (TTS báo → `sudo reboot`) | n/a — TTP223 dừng ở 2 (chạm thêm bị cooldown nuốt) |
 | **Giữ 5–10 s rồi nhả** | Shutdown OS (TTS báo → release servo → `sudo shutdown -h now`). LED nháy đỏ khi đã arm. | n/a — phần cứng TTP223 không hold đáng tin được (xem "FastMode" dưới) |
@@ -97,7 +97,8 @@ Bất kỳ edge nào — rising hay falling, pad nào — đều restart timer 2
 Sau khi session kết thúc:
 
 1. Nếu **pet cooldown** đang active (head-pat vừa fire gần đây), session bị nuốt im lặng và cooldown được extend. Ngăn `single_click` chen ngang giữa các stroke liên tục.
-2. Khác thì increment session count rồi:
+2. Ngược lại tăng session count. Ở session **đầu tiên** của chuỗi, nếu TTS đang nói giữa chừng → cắt lời ngay lập tức (`_grab_floor_if_speaking`, chỉ TTS — nhạc, unmute và cue vẫn đợi phân giải). Trade-off có chủ đích: vuốt đầu Lamp lúc nó đang nói giờ sẽ cắt lời nó (câu giggle pet theo sau) — đổi lấy tap-to-interrupt tức thời.
+3. Rồi phân giải:
    - `count >= 2` → fire `head_pat_action` ngay lập tức, arm pet cooldown 1.5 s
    - `count < 2` → schedule decision timer 1.2 s. Khi timer fire với `count == 1`, fire `single_click_action`.
 
@@ -120,7 +121,7 @@ Các action sống ở một chỗ để nút GPIO, TTP223, và mọi input tư�
 | `triple_click_action(source)` | Nói "Đang khởi động lại" → đợi 5 s cho clip cached → `sudo reboot`. | Có |
 | `long_press_action(source)` | Nói "Đang tắt máy" → đợi 5 s → `release_servos()` (để đèn không slam xuống giữa pose) → `sudo shutdown -h now`. | Có |
 | `factory_reset_action(source)` | Nói "Đang khôi phục cài đặt gốc. Đang khởi động lại" → `release_servos()` → POST `/api/system/factory-reset` trên OS server (server lo phần wipe + reboot, xem dưới). | Có |
-| `head_pat_action(source)` | Chọn ngẫu nhiên 1 câu pet local, nói qua `speak_cached` trên daemon thread. **Không cắt**: nếu TTS đang nói, câu pet bị drop im lặng — vuốt giữa câu không được làm Lamp mất lời. | Không |
+| `head_pat_action(source)` | Chọn ngẫu nhiên 1 câu pet local, nói qua `speak_cached` trên daemon thread. **Không cắt**: nếu TTS vẫn busy thì câu pet bị drop im lặng. Thực tế trên TTP223, session chạm đầu tiên đã cắt lời đang nói (`_grab_floor_if_speaking`) nên tới lúc pet fire thì TTS thường rảnh và câu giggle phát được. | Không |
 
 ### Factory-reset: wipe những gì
 

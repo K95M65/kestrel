@@ -16,22 +16,31 @@ Gesture detection is two-layered:
    from one physical touch into a single "session". One session = one
    touch event from the user's POV.
 
-2. Pet vs tap: after a session ends, wait DECISION_WINDOW (400ms) for
-   more sessions. Three or more sessions in rapid succession = the user
-   is stroking the head → head_pat_action. One session that's not
-   followed by more = single tap → single_click_action. (Two sessions
-   are treated as a single tap for tolerance — TTP223 cross-talk
-   occasionally splits one physical touch.)
+2. Pet vs tap: after a session ends, wait DECISION_WINDOW (1.2s) for
+   more sessions. A second session inside the window = the user is
+   stroking the head → head_pat_action. One session that's not followed
+   by more = single tap → single_click_action.
 
-The 400ms decision delay is the cost of distinguishing the two gestures
+The 1.2s decision delay is the cost of distinguishing the two gestures
 on this hardware — TTP223 FastMode can't tell us "finger currently down",
 so we infer continuous stroking from session frequency.
+
+One part of the tap action escapes the wait: if TTS is mid-utterance
+when the FIRST session of a burst ends, speech is stopped immediately
+(~0.2s after the finger lifts) instead of after the decision window —
+stop latency is the part of the gesture users actually feel. Deliberate
+semantic change that comes with it: petting her head while she talks now
+cuts her off (the pet giggle follows) — touch means "attention here"
+either way. Only TTS is cut early; music keeps playing until the burst
+actually resolves as a tap, so petting during music never kills the
+playlist. Unmute + the listening cue also still wait for resolution.
 """
 
 import logging
 import threading
 import time
 
+import hal.app_state as state
 from hal.board.board import board_profile
 from hal.drivers.button_actions import (
     head_pat_action,
@@ -192,6 +201,7 @@ class TTP223Handler:
         # 3) Else schedule the decision timer to classify accumulated
         #    sessions as a single tap when the user stops touching.
         fire_pet = False
+        grab_floor = False
         with self._lock:
             self._session_end_timer = None
             now = time.monotonic()
@@ -208,6 +218,10 @@ class TTP223Handler:
                 return
             self._session_count += 1
             count = self._session_count
+            # First session of a burst: cut in-flight TTS NOW rather than
+            # after the decision window (see module docstring). Checked
+            # outside the lock — it does I/O.
+            grab_floor = count == 1
             logger.debug("TTP223 session ended (count=%d)", count)
             if count >= PET_SESSION_THRESHOLD:
                 if self._decision_timer is not None:
@@ -224,8 +238,32 @@ class TTP223Handler:
                 )
                 self._decision_timer.daemon = True
                 self._decision_timer.start()
+        if grab_floor:
+            self._grab_floor_if_speaking()
         if fire_pet:
             head_pat_action(source="TTP223")
+
+    def _grab_floor_if_speaking(self):
+        """Instant barge-in: stop TTS on the first touch session of a burst
+        when speech is actually in flight. TTS only — no unmute, no music
+        stop, no cue; those wait for tap-vs-pet resolution. Off-thread
+        because stop_tts does I/O and this is called from a Timer thread
+        that must go on to arm the decision timer promptly."""
+        tts = state.tts_service
+        if tts is None or not tts.speaking:
+            return
+        logger.info("TTP223 first touch during TTS -- stopping speech early")
+
+        def _stop():
+            try:
+                from hal.routes.voice import stop_tts
+                stop_tts()
+            except Exception as e:
+                logger.warning("TTP223 early TTS stop failed: %s", e)
+
+        threading.Thread(
+            target=_stop, daemon=True, name="ttp223-floor-grab"
+        ).start()
 
     def _on_decision(self):
         with self._lock:
