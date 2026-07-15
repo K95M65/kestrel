@@ -18,6 +18,7 @@ import os
 import queue
 import threading
 import time
+from collections import deque
 from dataclasses import dataclass, field
 from typing import Optional, Tuple
 
@@ -447,8 +448,19 @@ REINIT_COOLDOWN_S = 0.5
 LOST_CENTER_FRAC = 0.5
 
 # Ghost-lock detection via tracker confidence (ViT only).
+# Sliding window, NOT a consecutive-frame counter: ViT confidence on a dying
+# lock flickers around the threshold (0.12 → 0.16 → 0.13 …), and a consecutive
+# counter reset by every single above-threshold frame let ghost locks survive
+# indefinitely. Stop when LOW_CONF_STOP_COUNT of the last LOW_CONF_WINDOW
+# frames are below CONFIDENCE_THRESHOLD.
 CONFIDENCE_THRESHOLD = 0.15
-MAX_LOW_CONFIDENCE_FRAMES = 10
+LOW_CONF_WINDOW = 15
+LOW_CONF_STOP_COUNT = 8
+# Floor for firing the servo PID at all, even while the detector still
+# confirms the target. Without it, conf 0.15–0.4 with a fresh detector confirm
+# was a blind zone that kept the servo chasing a barely-held lock. Below this
+# → hold servo (tracker keeps updating; PID resumes when confidence recovers).
+SERVO_MIN_CONF = 0.25
 # When the detector (YuNet / YOLO) hasn't confirmed for TRUST_TRACKER_S, fall
 # back to ViT's own confidence: if it's above this threshold, keep firing PID
 # (the tracker still has a solid lock — common when face moves fast and YuNet
@@ -1175,6 +1187,24 @@ class TrackerService:
         with self._servo_lock:
             self._servo_goal = dict(target)
 
+    def _hold_servo_goal(self) -> None:
+        """Retarget the follow worker to the current pose so it settles in place.
+
+        Without this, entering a hold state (low confidence, WAIT-YOLO,
+        BLOAT-HOLD) only stopped publishing NEW goals — the worker kept gliding
+        toward the last stale goal, so the arm visibly chased a ghost for a
+        beat after the lock had already gone bad.
+        """
+        with self._servo_lock:
+            if self._servo_goal is None:
+                return
+            self._servo_goal = {
+                "base_yaw.pos":    self._track_yaw,
+                "base_pitch.pos":  self._track_base_pitch,
+                "elbow_pitch.pos": self._track_elbow_pitch,
+                "wrist_pitch.pos": self._track_wrist_pitch,
+            }
+
     def _servo_worker(self, animation_service, state) -> None:
         """Continuously glide servos toward the latest goal, decoupled from the
         vision loop.
@@ -1323,6 +1353,8 @@ class TrackerService:
         last_servo_t: float = 0.0         # timestamp of last servo fire (for cooldown)
         miss_count = 0
         yolo_miss_count = 0   # consecutive YOLO misses — ghost tracking detection
+        # Sliding window of below-threshold confidence flags (1 = low frame).
+        low_conf_window: deque = deque(maxlen=LOW_CONF_WINDOW)
         retry_count = 0
         MAX_TRACKING_RETRIES = 4
         frame_count = 0
@@ -1370,6 +1402,8 @@ class TrackerService:
             # Reset per-attempt state
             miss_count = 0
             yolo_miss_count = 0
+            low_conf_window.clear()   # fresh lock → stale conf history is meaningless
+            state.low_confidence_frames = 0
             ema_dx = ema_dy = None
             ab_filter.reset()   # tracker relocated → drop stale velocity/gate
             prev_dx = prev_dy = None
@@ -1411,21 +1445,28 @@ class TrackerService:
                 t_csrt_ms = (time.perf_counter() - t_csrt0) * 1000
                 t_csrt_acc += t_csrt_ms
 
-                # Confidence-based ghost-lock detection (ViT only).
+                # Confidence-based ghost-lock detection (ViT only) — sliding
+                # window, so a single above-threshold flicker no longer resets
+                # the count and keeps a ghost lock alive.
                 confidence = self._get_confidence()
                 state.confidence = confidence
-                if ok and confidence < CONFIDENCE_THRESHOLD:
-                    state.low_confidence_frames += 1
-                    logger.info("[conf] low %.3f (%d/%d) target='%s'",
-                                confidence, state.low_confidence_frames,
-                                MAX_LOW_CONFIDENCE_FRAMES, state.target_label)
-                    if state.low_confidence_frames >= MAX_LOW_CONFIDENCE_FRAMES:
-                        logger.warning("Tracker lost '%s' (conf=%.3f for %d frames) — stopping",
-                                       state.target_label, confidence, state.low_confidence_frames)
+                if ok:
+                    low_conf_window.append(1 if confidence < CONFIDENCE_THRESHOLD else 0)
+                    state.low_confidence_frames = sum(low_conf_window)
+                    if state.low_confidence_frames >= LOW_CONF_STOP_COUNT:
+                        logger.warning("Tracker lost '%s' (conf=%.3f, %d/%d low in last %d frames) — stopping",
+                                       state.target_label, confidence,
+                                       state.low_confidence_frames, LOW_CONF_STOP_COUNT,
+                                       len(low_conf_window))
                         break
-                    time.sleep(1.0 / FAST_LOOP_FPS)
-                    continue
-                state.low_confidence_frames = 0
+                    if confidence < CONFIDENCE_THRESHOLD:
+                        logger.info("[conf] low %.3f (%d/%d in window) target='%s'",
+                                    confidence, state.low_confidence_frames,
+                                    LOW_CONF_STOP_COUNT, state.target_label)
+                        # Don't glide on toward the stale goal while skipping.
+                        self._hold_servo_goal()
+                        time.sleep(1.0 / FAST_LOOP_FPS)
+                        continue
 
                 if not ok:
                     miss_count += 1
@@ -1573,6 +1614,7 @@ class TrackerService:
                     self._yaw_pid.reset()
                     self._pitch_pid.reset()
                     motion_state = "BLOAT-HOLD"
+                    self._hold_servo_goal()
                     if not yolo_running.is_set() and state.target_label:
                         last_yolo_t = 0  # force YOLO redetect ASAP to relock
                     logger.info("[bbox] untrusted (%s): area=%.0f%% cur_px=%.0f trust_px=%.0f — HOLD servo, await YOLO relock",
@@ -1585,12 +1627,22 @@ class TrackerService:
                     self._yaw_pid.reset()
                     self._pitch_pid.reset()
                     motion_state = "CENTERED"
+                elif confidence < SERVO_MIN_CONF:
+                    # Tracker barely holding the lock — don't chase, even with a
+                    # fresh detector confirm (conf 0.15–0.4 + confirm used to be
+                    # a blind zone that kept the servo hunting ghosts). Tracker
+                    # keeps updating; PID resumes once confidence recovers.
+                    self._yaw_pid.reset()
+                    self._pitch_pid.reset()
+                    motion_state = "LOW-CONF-HOLD"
+                    self._hold_servo_goal()
                 elif yolo_age >= TRUST_TRACKER_S and confidence < TRACKER_TRUST_CONF:
                     # Tracker AND detector both unsure — hold servo, don't chase
                     # phantom. If ViT confidence is high we trust the tracker
                     # even without detector confirm (face moving fast often makes
                     # YuNet miss while ViT keeps a good lock).
                     motion_state = "WAIT-YOLO"
+                    self._hold_servo_goal()
                 elif (now_t - last_servo_t) >= SERVO_COOLDOWN_S:
                     motion_state = "CHASING"
                     # Position PID on the soft-deadbanded error. Yaw sign: dx>0
