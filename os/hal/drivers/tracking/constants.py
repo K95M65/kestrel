@@ -16,16 +16,23 @@ one place.
 # width ≥ the camera width for a no-op.
 VISION_MAX_WIDTH = 640
 
-# Fast loop target FPS — tracker update on Pi runs ~15-25ms/frame. Lowered from
-# 15→10: Feetech STS3215 makes an audible click on each send_action (motor
-# accel/decel spike). At 15fps × 4 substeps that's ~60 writes/sec = audible
-# 60 Hz buzz. 10fps × 2 substeps ≈ 20 writes/sec → softer continuous motion.
-FAST_LOOP_FPS = 10
+# Fast loop target FPS — tracker update on Pi runs ~15-25ms/frame. Bus writes
+# are decoupled (the follow worker owns the ~33 Hz write cadence), so loop fps
+# no longer affects click noise; it only sets how often the goal/velocity
+# estimate refreshes. 15 gives finer velocity estimates and faster reaction on
+# quick targets at ~+50% ViT CPU (~20ms × 15 = 0.3 core).
+FAST_LOOP_FPS = 15
 
-# Hardware velocity limit for tracking (Feetech STS3215 Goal_Velocity register).
-# 0 = unlimited (default). Lower = slower, smoother camera pan → ViT stays locked.
-# Unit: steps/s. ~150 ≈ moderate tracking speed. Set to 0 to disable.
-TRACKING_GOAL_VELOCITY = 150
+# Hardware velocity limit for tracking (Feetech STS3215 Goal_Velocity register,
+# unit steps/s on a 4096-step revolution → 150 ≈ 13°/s!).
+# 0 = unlimited: the SmoothDamp profiles below own the speed envelope entirely.
+# The old 150 flattened every software ease curve into a constant ~13°/s crawl
+# — motion looked robotic AND fast targets were untrackable. The hardware
+# Acceleration ramp (below) still softens each tick.
+TRACKING_GOAL_VELOCITY = 0
+# Gentle hw velocity (steps/s) for the return-to-zero glide when tracking ends
+# (with Goal_Velocity unlimited the arm would snap back).
+TRACKING_RETURN_VELOCITY = 200
 
 # Hardware acceleration for tracking (Feetech STS3215 Acceleration register).
 # 254 = max (default, snappy). Lower = gentler ramp up/down → less jerk.
@@ -85,6 +92,13 @@ YOLO_REDETECT_S = 1.5
 # Raised: ViT honestly returns ok=False on transient low-confidence frames.
 YOLO_MAX_MISS = 30
 
+# Miss-coast: when ViT misses while the target was MOVING (fast phone wave,
+# motion blur), keep panning along the target's last alpha-beta velocity for
+# up to this many miss frames before falling back to the search sweep. A fast
+# target outruns ViT for a beat; panning ahead re-catches it, while stopping
+# dead (old behavior: immediate sweep) guarantees it exits the frame.
+MISS_COAST_FRAMES = 6
+
 # Cooldown after servo fire (seconds) — ignore motion detection while camera
 # stabilises after a move. Prevents servo shake → fake MOVE → immediate re-fire loop.
 SERVO_COOLDOWN_S = 0.10
@@ -116,12 +130,15 @@ SERVO_SUBSTEP_SLEEP = 0.030
 # One compromise profile did both badly: snappy enough to catch up = twitchy
 # when centered.
 SERVO_SMOOTH_TIME   = 0.32   # pursuit
-SERVO_MAX_SPEED_DPS = 40.0   # pursuit
+SERVO_MAX_SPEED_DPS = 55.0   # pursuit
 SACCADE_SMOOTH_TIME   = 0.20
-SACCADE_MAX_SPEED_DPS = 80.0
-# Offset (fraction of frame width) beyond which the loop switches to the
-# saccade profile.
+SACCADE_MAX_SPEED_DPS = 100.0
+# Profile switch with hysteresis: enter saccade when the offset exceeds
+# SACCADE_OFFSET_FRAC of frame width, drop back to pursuit only below
+# SACCADE_EXIT_FRAC. Without the gap, an offset hovering at the boundary
+# flip-flopped the speed cap 55↔100 every frame — visible speed wobble.
 SACCADE_OFFSET_FRAC = 0.22
+SACCADE_EXIT_FRAC = 0.12
 
 # Pitch distribution across 3 joints.
 # Empirical: only wrist_pitch is pure rotation. base+elbow primarily translate

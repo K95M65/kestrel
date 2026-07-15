@@ -57,7 +57,7 @@ The camera runs **1280×720**. Every heavy vision component — the ViT tracker 
 - COCO has no hand/face class, so `hand`/`face` intentionally fall through to YuNet/YOLOWorld instead of mapping to `person` (which locked onto the whole body).
 - On a local-YOLO miss the code falls back to remote YOLOWorld, **throttled** to at most one attempt per `REMOTE_FALLBACK_MIN_INTERVAL` (2.0 s) so a genuinely unseeable target doesn't hit remote every redetect.
 - Detection quality filters: confidence ≥ `DETECT_MIN_CONFIDENCE` (0.15), area between `DETECT_MIN_AREA_RATIO` (0.3%) and `DETECT_MAX_AREA_RATIO` (80%) of frame.
-- **Lookalike guard (local path)** — local YOLO detects **unrestricted** (no `classes=` filter) so competing classes stay visible, then: (a) the confusion cluster cell phone / mouse / remote needs conf ≥ 0.35 (`_CONFUSABLE_CONF_FLOOR`) instead of the global 0.15; (b) **cross-class disambiguation** — if a box of another class overlaps the candidate (IoU ≥ 0.5) with *higher* confidence, the candidate is rejected ("that's probably a mouse, not the phone you asked for") and the code falls through to the remote fallback.
+- **Lookalike guard (local path)** — local YOLO detects **unrestricted** (no `classes=` filter) so competing classes stay visible, then: (a) the confusion cluster cell phone / mouse / remote needs conf ≥ 0.35 (`_CONFUSABLE_CONF_FLOOR`) instead of the global 0.15; (b) **cross-class disambiguation** — if a box of another class overlaps the candidate (IoU ≥ 0.5) with *higher* confidence, the candidate is rejected ("that's probably a mouse, not the phone you asked for") and the code falls through to the remote fallback. The 0.35 floor applies only to the session-start detect (`strict=True`); mid-session redetects use the global 0.15 floor (a fast-moving phone reconfirms at conf 0.2–0.3, and the reinit gates already protect the lock) — cross-class disambiguation stays on in both modes.
 
 Weights are checked into the repo (`os/hal/drivers/tracking/models/`) so deploy is one rsync and the Pi never needs internet at boot to start tracking.
 
@@ -99,11 +99,12 @@ Each frame the loop turns the tracker bbox into an absolute servo goal:
 
 `ServoFollower` (`servo_follow.py`) runs a worker on its own thread and continuously eases the joints toward the latest goal using **SmoothDamp** (`smooth_damp`, a critically-damped follower): each joint carries its own velocity, so every move accelerates smoothly and eases out into the target, and a fresh goal arriving mid-move retargets without a restart jerk — the cinematic "film camera" motion. It issues **one bus write per `SERVO_SUBSTEP_SLEEP` (30 ms) tick**, the same click cadence as the old fixed-substep ramp (the Feetech STS3215 clicks on each write, so the write rate must stay bounded — SmoothDamp changes *what* is commanded per tick, not *how often*).
 
-Hardware motion limits during tracking: `TRACKING_GOAL_VELOCITY = 150` steps/s and `TRACKING_ACCELERATION = 30` (gentle ramp). Restored to snappy defaults when tracking ends.
+Hardware motion during tracking: `TRACKING_GOAL_VELOCITY = 0` (unlimited — the software profiles own the speed; the old 150 steps/s ≈ 13°/s cap flattened the SmoothDamp curves into a constant crawl) with `TRACKING_ACCELERATION = 30` as the gentle hw ramp. The return-to-zero glide is capped at `TRACKING_RETURN_VELOCITY` (200 steps/s); snappy defaults restored after.
 
 ### Drift correction & lock management
 
-- **Background YOLO re-detect** every `YOLO_REDETECT_S` (1.5 s) on a worker thread (never blocks the fast loop; result delivered via a `maxsize=1` queue). Forced immediately when the object nears a frame edge (>25 %) or on the first CSRT miss.
+- **Background YOLO re-detect** every `YOLO_REDETECT_S` (1.5 s) on a worker thread (never blocks the fast loop; result delivered via a `maxsize=1` queue). Forced immediately when the object nears a frame edge (>25 %) or on the first tracker miss.
+- **Miss-coast** — when the tracker misses while the target was moving (fast wave, motion blur), the loop keeps panning along the target's last alpha-beta velocity for up to `MISS_COAST_FRAMES` (6) miss frames (state `COAST`) before falling back to the search sweep. Stopping dead on the first miss guaranteed a fast target exited the frame before the redetect landed.
 - **Reinit gating (SORT/ByteTrack-style)** — a re-detect only reinitializes the tracker when it has clearly diverged, to avoid the reinit churn that whipsaws the servo:
   - **Area gate** `YOLO_AREA_GATE_MULT` (4.0) — reject a detection whose area is >4× or <¼ the median of the last 5; don't reinit to it.
   - **Reinit debounce** `REINIT_COOLDOWN_S` (0.5 s) — rate-limit reinits; bypassed only when the lock is clearly lost (`center_dist > frame_diag × LOST_CENTER_FRAC` = 0.5).
@@ -131,7 +132,7 @@ pitch_correction = clamp(PID(soft_deadband(dy)) + VFF·vy·deg_per_px·dt,  ±5�
 | Constant | Value | Description |
 |----------|-------|-------------|
 | `VISION_MAX_WIDTH` | 640 | Downscale width for ViT + detectors (0 = off) |
-| `FAST_LOOP_FPS` | 10 | Vision loop frequency |
+| `FAST_LOOP_FPS` | 15 | Vision loop frequency (writes decoupled — worker owns ~33 Hz cadence) |
 | `CAMERA_FOV_DEG` | 60 | Horizontal FOV, for px→deg |
 | `DEAD_ZONE_INNER_PCT` | 0.02 | True-zero band (servo rests) |
 | `DEAD_ZONE_YAW_PCT` / `_PITCH_PCT` | 0.07 / 0.05 | Outer dead-zone edge (creep band ends) |
@@ -144,11 +145,11 @@ pitch_correction = clamp(PID(soft_deadband(dy)) + VFF·vy·deg_per_px·dt,  ±5�
 | `VFF_GAIN` | 0.9 | Fraction of target velocity fed forward (primary command) |
 | `VFF_MAX_DT_S` | 0.20 | Cap on per-fire dt for feedforward |
 | `VFF_MOVING_MIN_PXS` | 40 | Target speed above which a centered target keeps panning |
-| `SERVO_SMOOTH_TIME` / `SERVO_MAX_SPEED_DPS` | 0.32 / 40 | Pursuit profile (heavy, fluid-head) |
-| `SACCADE_SMOOTH_TIME` / `SACCADE_MAX_SPEED_DPS` | 0.20 / 80 | Saccade profile (fast relocation) |
-| `SACCADE_OFFSET_FRAC` | 0.22 | Offset (fraction of frame width) that triggers saccade |
+| `SERVO_SMOOTH_TIME` / `SERVO_MAX_SPEED_DPS` | 0.32 / 55 | Pursuit profile (heavy, fluid-head) |
+| `SACCADE_SMOOTH_TIME` / `SACCADE_MAX_SPEED_DPS` | 0.20 / 100 | Saccade profile (fast relocation) |
+| `SACCADE_OFFSET_FRAC` / `SACCADE_EXIT_FRAC` | 0.22 / 0.12 | Saccade enter/exit thresholds (hysteresis — no speed-cap flip-flop at the boundary) |
 | `SERVO_SUBSTEP_SLEEP` | 0.030 | Servo-worker tick / bus-write period |
-| `TRACKING_GOAL_VELOCITY` | 150 | Hardware velocity limit (steps/s) |
+| `TRACKING_GOAL_VELOCITY` | 0 (unlimited) | Hardware velocity cap OFF — the SmoothDamp profiles own the speed envelope (150 steps/s ≈ 13°/s flattened every ease curve into a robotic crawl). `TRACKING_RETURN_VELOCITY` (200) caps only the return-to-zero glide |
 | `TRACKING_ACCELERATION` | 30 | Hardware acceleration ramp |
 | `PITCH_WEIGHT_BASE/ELBOW/WRIST` | 0.10 / 0.90 / 0.0 | Pitch distribution across joints |
 | `ELBOW_PITCH_SIGN` | -1.0 | Elbow polarity (hardware reversed) |

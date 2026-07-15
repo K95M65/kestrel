@@ -86,6 +86,18 @@ _CONFUSABLE_CONF_FLOOR = {64: 0.35, 65: 0.35, 67: 0.35}  # mouse, remote, cell p
 # not the phone you asked for").
 _CROSS_CLASS_IOU = 0.5
 
+# Remote YOLOWorld rivals. The remote detector is open-vocab and is queried by
+# text prompt — asked ONLY for "phone" it happily labels a mouse 'phone 0.5'
+# because that's the best name it was offered. Querying the confusable rivals
+# alongside the target gives it the correct name to prefer, and the same
+# cross-class IoU check then rejects the lookalike.
+_REMOTE_RIVALS = {
+    "phone": ["computer mouse", "remote control"],
+    "cell phone": ["computer mouse", "remote control"],
+    "mouse": ["cell phone", "remote control"],
+    "remote": ["cell phone", "computer mouse"],
+}
+
 # Remote API fallback (open vocabulary).
 _DETECT_MODEL = "yoloworld"
 _YOLO_ENDPOINT = f"/detect/{_DETECT_MODEL}"
@@ -241,9 +253,17 @@ class ObjectDetector:
             elif config.DL_ENCRYPTION_REQUIRED:
                 logger.error("Tracker: encryption required but no public key available")
 
-    def detect(self, frame: npt.NDArray[np.uint8], target: str) -> Optional[Tuple[int, int, int, int]]:
+    def detect(self, frame: npt.NDArray[np.uint8], target: str,
+               strict: bool = True) -> Optional[Tuple[int, int, int, int]]:
         """Detect an object by name. Tries local YOLOv8n first (fast, COCO classes),
         falls back to remote YOLOWorld API for open-vocab targets.
+
+        strict=True applies the confusable-class confidence floor (session
+        start: seeding the tracker on a mouse instead of the phone poisons the
+        whole session). strict=False (mid-session redetects) uses the global
+        floor — a fast-moving phone often reconfirms at conf 0.2–0.3, and the
+        reinit gates (area median, IoU, center distance) already protect the
+        lock; cross-class disambiguation stays on in both modes.
 
         Returns (x, y, w, h) top-left bbox in ORIGINAL camera coords, or None.
         """
@@ -280,8 +300,9 @@ class ObjectDetector:
                     t_ms = (time.perf_counter() - t_req) * 1000
                     h_fr, w_fr = frame.shape[:2]
                     frame_area = float(h_fr * w_fr)
-                    conf_floor = max(C.DETECT_MIN_CONFIDENCE,
-                                     _CONFUSABLE_CONF_FLOOR.get(coco_idx, 0.0))
+                    conf_floor = C.DETECT_MIN_CONFIDENCE
+                    if strict:
+                        conf_floor = max(conf_floor, _CONFUSABLE_CONF_FLOOR.get(coco_idx, 0.0))
                     boxes = []  # (cls, conf, x1, y1, x2, y2)
                     for r in results:
                         if r.boxes is None or len(r.boxes) == 0:
@@ -349,12 +370,16 @@ class ObjectDetector:
 
         url = DL_BACKEND_URL.rstrip("/") + "/" + _YOLO_ENDPOINT.strip("/")
         logger.info("[tracking_yolo_request] target='%s' url=%s", target, url)
+        # Offer the confusable rivals as competing prompts so the open-vocab
+        # model can name a lookalike correctly instead of rubber-stamping it
+        # with the only label it was given.
+        rivals = _REMOTE_RIVALS.get((target or "").lower().strip(), [])
         t_req = time.perf_counter()
         try:
             _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
             img_b64 = base64.b64encode(buf.tobytes()).decode()
 
-            payload = {"image_b64": img_b64, "classes": [target]}
+            payload = {"image_b64": img_b64, "classes": [target] + rivals}
             headers: dict[str, str] = {"Content-Type": "application/json"}
             if DL_API_KEY:
                 headers["X-API-Key"] = DL_API_KEY
@@ -385,13 +410,20 @@ class ObjectDetector:
                 return None
 
             frame_area = float(frame.shape[0] * frame.shape[1])
+            target_key = (target or "").lower().strip()
             valid = []
+            rival_boxes = []  # (cname, conf, xyxy) — competing-class detections
             for d in detections:
                 cx, cy, w, h = d["xywh"]
                 conf = d.get("confidence", 0)
                 area_ratio = (w * h) / frame_area if frame_area > 0 else 0.0
                 cname = d.get("class_name", "?")
-                if conf < C.DETECT_MIN_CONFIDENCE:
+                is_rival = cname.lower().strip() != target_key
+                if is_rival:
+                    reason = "RIVAL"
+                    rival_boxes.append((cname, conf,
+                                        (cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2)))
+                elif conf < C.DETECT_MIN_CONFIDENCE:
                     reason = "REJECTED (conf)"
                 elif not (C.DETECT_MIN_AREA_RATIO <= area_ratio <= C.DETECT_MAX_AREA_RATIO):
                     reason = "REJECTED (size)"
@@ -415,6 +447,18 @@ class ObjectDetector:
                 return None
 
             best = max(valid, key=lambda d: d.get("confidence", 0))
+            # Cross-class disambiguation (same rule as the local path): a rival
+            # box on the same spot with higher confidence means the model would
+            # rather call this object something else — don't lock onto it.
+            bcx, bcy, bw_, bh_ = best["xywh"]
+            best_rect = (bcx - bw_ / 2, bcy - bh_ / 2, bcx + bw_ / 2, bcy + bh_ / 2)
+            best_conf = best.get("confidence", 0)
+            for cname, conf, rect in rival_boxes:
+                if conf > best_conf and _iou_xyxy(best_rect, rect) >= _CROSS_CLASS_IOU:
+                    logger.info(
+                        "YOLOWorld: reject '%s' conf=%.3f — same spot is '%s' conf=%.3f (cross-class)",
+                        target, best_conf, cname, conf)
+                    return None
             cx, cy, w, h = best["xywh"]
             x = int(cx - w / 2)
             y = int(cy - h / 2)

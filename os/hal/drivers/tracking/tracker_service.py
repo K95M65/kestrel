@@ -96,9 +96,10 @@ class TrackerService:
             "confidence": s.confidence,
         }
 
-    def detect_object(self, frame: npt.NDArray[np.uint8], target: str) -> Optional[Tuple[int, int, int, int]]:
+    def detect_object(self, frame: npt.NDArray[np.uint8], target: str,
+                      strict: bool = True) -> Optional[Tuple[int, int, int, int]]:
         """Detect an object by name — see detection.ObjectDetector.detect."""
-        return self._detector.detect(frame, target)
+        return self._detector.detect(frame, target, strict=strict)
 
     def start(
         self,
@@ -348,6 +349,7 @@ class TrackerService:
         yolo_miss_count = 0   # consecutive YOLO misses — ghost tracking detection
         # Sliding window of below-threshold confidence flags (1 = low frame).
         low_conf_window: deque = deque(maxlen=C.LOW_CONF_WINDOW)
+        saccade_mode = False   # profile state with hysteresis (see constants)
         retry_count = 0
         frame_count = 0
         t_csrt_acc = 0.0   # accumulated tracker-update time
@@ -376,7 +378,7 @@ class TrackerService:
             # Try YOLO detect on fresh frame
             _f = camera_capture.last_frame
             if _f is not None:
-                _bbox = self.detect_object(_f, state.target_label)
+                _bbox = self.detect_object(_f, state.target_label, strict=False)
                 if _bbox is not None:
                     _t = create_tracker()
                     if _t is not None:
@@ -404,7 +406,7 @@ class TrackerService:
 
         def _fire_yolo(frame_snap: npt.NDArray[np.uint8]) -> None:
             t0_yolo = time.perf_counter()
-            result = self.detect_object(frame_snap, state.target_label)
+            result = self.detect_object(frame_snap, state.target_label, strict=False)
             t_yolo_ms = (time.perf_counter() - t0_yolo) * 1000
             logger.info("[yolo-bg] detect=%.0fms result=%s bbox=%s target='%s'",
                         t_yolo_ms, "found" if result is not None else "missed", result, state.target_label)
@@ -461,6 +463,24 @@ class TrackerService:
                     if miss_count == 1:
                         # First miss: force YOLO immediately instead of waiting for interval
                         last_yolo_t = 0
+                    coast_speed = (ab_filter.vx ** 2 + ab_filter.vy ** 2) ** 0.5
+                    if miss_count <= C.MISS_COAST_FRAMES and coast_speed > C.VFF_MOVING_MIN_PXS:
+                        # Target was moving when ViT lost it (fast wave, motion
+                        # blur) — coast along its last velocity to re-catch it
+                        # instead of stopping dead, which guarantees it exits
+                        # the frame before the redetect lands.
+                        dt_c = 1.0 / C.FAST_LOOP_FPS
+                        deg_per_px = C.CAMERA_FOV_DEG / w_fr
+                        _lim = C.PID_OUTPUT_MAX_DEG
+                        self._follower.command_pid(
+                            max(-_lim, min(_lim, C.VFF_GAIN * ab_filter.vx * deg_per_px * dt_c)),
+                            max(-_lim, min(_lim, C.VFF_GAIN * ab_filter.vy * deg_per_px * dt_c)),
+                        )
+                        motion_state = "COAST"
+                        logger.info("[coast] miss %d — panning along v=(%.0f,%.0f)px/s",
+                                    miss_count, ab_filter.vx, ab_filter.vy)
+                        time.sleep(1.0 / C.FAST_LOOP_FPS)
+                        continue
                     # Sweep base_yaw to search for object — alternates direction every 8 frames.
                     # Route through the servo goal so the follow worker drives it (one owner).
                     _sweep_dir = 1 if ((miss_count - 1) // 8) % 2 == 0 else -1
@@ -549,11 +569,16 @@ class TrackerService:
                 # --- PID + velocity-feedforward continuous-fire with detector-gated trust ---
                 now_t = time.perf_counter()
                 # Saccade vs pursuit: big offset → snappy relocation profile;
-                # small offset → heavy fluid-head pursuit profile (see constants).
-                saccade = offset_mag > C.SACCADE_OFFSET_FRAC * w_fr
+                # small offset → heavy fluid-head pursuit profile. Hysteresis
+                # so the boundary doesn't flip-flop the speed cap every frame.
+                if saccade_mode:
+                    if offset_mag < C.SACCADE_EXIT_FRAC * w_fr:
+                        saccade_mode = False
+                elif offset_mag > C.SACCADE_OFFSET_FRAC * w_fr:
+                    saccade_mode = True
                 self._follower.set_profile(
-                    C.SACCADE_SMOOTH_TIME if saccade else C.SERVO_SMOOTH_TIME,
-                    C.SACCADE_MAX_SPEED_DPS if saccade else C.SERVO_MAX_SPEED_DPS,
+                    C.SACCADE_SMOOTH_TIME if saccade_mode else C.SERVO_SMOOTH_TIME,
+                    C.SACCADE_MAX_SPEED_DPS if saccade_mode else C.SERVO_MAX_SPEED_DPS,
                 )
                 # Tiered dead zone: true zero inside INNER, lazy creep toward
                 # center up to the outer edge, full error beyond (continuous).
@@ -631,7 +656,7 @@ class TrackerService:
                     motion_state = "WAIT-YOLO"
                     self._follower.hold()
                 elif (now_t - last_servo_t) >= C.SERVO_COOLDOWN_S:
-                    motion_state = "SACCADE" if saccade else "CHASING"
+                    motion_state = "SACCADE" if saccade_mode else "CHASING"
                     # Position PID on the soft-deadbanded error. Yaw sign: dx>0
                     # (object on right) → base_yaw must INCREASE to chase right
                     # (verified empirically vs legacy gimbal path).
@@ -815,10 +840,14 @@ class TrackerService:
             self._follower.clear_goal()
 
             try:
-                # Return to zero at tracking speed — keep velocity+accel low so
-                # arm glides back instead of snapping.
+                # Return to zero gently: tracking runs Goal_Velocity unlimited
+                # (software profiles own the envelope), so cap the hw velocity
+                # for this one big move or the arm snaps back.
                 time.sleep(0.8)
                 with animation_service.bus_lock:
+                    animation_service.robot.bus.sync_write(
+                        "Goal_Velocity", {m: C.TRACKING_RETURN_VELOCITY for m in _tracking_motors}
+                    )
                     animation_service.robot.send_action({
                         "base_yaw.pos": 0.0,
                         "base_pitch.pos": 0.0,
@@ -830,10 +859,9 @@ class TrackerService:
                 # Restore full speed after arm has started moving to zero.
                 time.sleep(1.0)
                 with animation_service.bus_lock:
-                    if C.TRACKING_GOAL_VELOCITY > 0:
-                        animation_service.robot.bus.sync_write(
-                            "Goal_Velocity", {m: 0 for m in _tracking_motors}
-                        )
+                    animation_service.robot.bus.sync_write(
+                        "Goal_Velocity", {m: 0 for m in _tracking_motors}
+                    )
                     animation_service.robot.bus.sync_write(
                         "Acceleration", {m: 254 for m in _tracking_motors}
                     )
