@@ -144,6 +144,15 @@ class ContextManagerBase(ABC):
                 )
                 new_summary: str = self._summarizer.summarize(to_summarize)
                 if new_summary:
+                    # Enforce the floor cap at WRITE time — the summary is
+                    # billed every turn and re-fed as [Previous summary] input
+                    # to the next summarize, so an uncapped write compounds.
+                    if len(new_summary) > self._summary_max_chars:
+                        logger.warning(
+                            "[realtime] summary truncated %d → %d chars",
+                            len(new_summary), self._summary_max_chars,
+                        )
+                        new_summary = new_summary[: self._summary_max_chars]
                     with self._realtime_memory_lock:
                         self._summary_path.write_text(
                             new_summary + "\n", encoding="utf-8"
