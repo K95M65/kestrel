@@ -638,6 +638,17 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"BT route restore scheduling failed: {e}")
 
+    # Re-apply the scene that was active before a service restart (boot-scoped
+    # sidecar) so the agent's belief ("focus mode is on") stays true across
+    # HAL restarts instead of desyncing from a scene-less HAL.
+    try:
+        from hal.routes.scene import restore_persisted_scene
+        threading.Thread(
+            target=restore_persisted_scene, daemon=True, name="scene-restore"
+        ).start()
+    except Exception as e:
+        logger.warning(f"Scene restore scheduling failed: {e}")
+
     # Thermal fail-safe monitor (only when `thermal` bounds are declared).
     if _safety and _safety.thermal:
         threading.Thread(

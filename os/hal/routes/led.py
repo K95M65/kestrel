@@ -78,7 +78,11 @@ def set_led_solid(req: LEDSolidRequest):
     color = tuple(req.color) if isinstance(req.color, list) else req.color
     state._stop_current_effect()
     state.rgb_service.dispatch(RGB_CMD_SOLID, color)
-    state._active_scene = None
+    # Transient = temporary overlay that gets restored — it must not exit the
+    # active scene (the boot-time breathing effect was silently killing the
+    # scene re-activated after a HAL restart).
+    if not req.transient:
+        state._active_scene = None
     if state.sensing_service and isinstance(color, tuple):
         state.sensing_service.presence.set_last_color(color)
     if req.transient:
@@ -106,7 +110,8 @@ def turn_off_leds(req: Optional[LEDOffRequest] = Body(default=None)):
     transient = req.transient if req else False
     state._stop_current_effect()
     state.rgb_service.clear()
-    state._active_scene = None
+    if not transient:
+        state._active_scene = None
     if state.sensing_service:
         state.sensing_service.presence.set_last_color((0, 0, 0))
     if transient:
@@ -131,7 +136,8 @@ def start_led_effect(req: LEDEffectRequest):
         return {"status": "ok", "effect": req.effect, "speed": req.speed}
 
     state._stop_current_effect()
-    state._active_scene = None
+    if not req.transient:
+        state._active_scene = None
 
     base_color = tuple(req.color) if req.color else (255, 180, 100)
     # Transient effects (e.g. Buddy's Busy pulse) overlay on the user's
