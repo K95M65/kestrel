@@ -35,19 +35,24 @@ INFO lelamp.service.sensing.sensing_service: [sensing] motion: Small movement de
 **File:** `os/hal/config.py`
 
 ```python
-MOTION_CONFIDENCE_THRESHOLD = 0.3   # min action-recognition confidence to buffer a label
-MOTION_FLUSH_S = 10.0               # buffer drain cadence — at most one flush per 10s
-MOTION_EVENT_COOLDOWN_S = 360.0     # global floor between motion.activity emissions (6 min)
+MOTION_CONFIDENCE_THRESHOLD = 0.3    # min action-recognition confidence to buffer a label
+MOTION_FLUSH_S = 10.0                # buffer drain cadence — at most one flush per 10s
+MOTION_EVENT_COOLDOWN_S = 900.0      # same-class heartbeat floor between emissions (15 min)
+MOTION_TRANSITION_MIN_GAP_S = 60.0   # min gap for the class-transition cooldown bypass
 ```
 
 **Emission gates (in order, `motion.py`):**
 
 1. **Flush cadence** — buffered detections are drained at most once per `MOTION_FLUSH_S`.
 2. **Presence gate** — no event unless presence == PRESENT.
-3. **Global cooldown** — no `motion.activity` more than once per `MOTION_EVENT_COOLDOWN_S`,
-   regardless of label changes. Bypassed by a posture nudge (already time-gated by the
-   pose window) and by a user change (a new user/session sees a fresh event immediately).
-4. **Per-label dedup** — even within cooldown is cleared, the same `(user, label-set)`
+3. **Global cooldown** — no `motion.activity` more than once per `MOTION_EVENT_COOLDOWN_S`
+   while the **coarse activity class** (the `ACTIVITY_GROUP` set: sedentary/eat/drink/…)
+   stays the same. Same-class raw-label flips (`writing → drawing`) stay floored — that's
+   noise. Bypassed by: a **class transition** (`computer → eat` is real information,
+   emitted as soon as `MOTION_TRANSITION_MIN_GAP_S` has passed, which stops a flickering
+   detection from re-opening every-flush spam), a posture nudge (already time-gated by the
+   pose window), and a user change (a new user/session sees a fresh event immediately).
+4. **Per-label dedup** — even when cooldown is cleared, the same `(user, label-set)`
    within a 5-min window is dropped. Noisy Kinetics labels flip the set often, so the
    global cooldown above is the dominant gate.
 
@@ -56,17 +61,19 @@ MOTION_EVENT_COOLDOWN_S = 360.0     # global floor between motion.activity emiss
 ```
 INFO hal...motion: [motion] raw actions in window: ['writing', 'typing']
 INFO hal...motion: [motion] flushing: Activity detected: writing.
-INFO hal...motion: [motion] cooldown drop: ... (last event 42.1s ago < 360s floor)
+INFO hal...motion: [motion] cooldown drop: ... (last event 42.1s ago < 900s floor, class unchanged)
+INFO hal...motion: [motion] transition bypass: ['sedentary'] → ['eat'] (last event 312.4s ago)
 ```
 
 **Tuning:**
 
 | Symptom | Fix |
 |---------|-----|
-| `motion.activity` fires constantly (every ~10s) | Increase `MOTION_EVENT_COOLDOWN_S` (360 → 600+) — this is the global floor |
+| `motion.activity` fires constantly (every ~10s) | Increase `MOTION_EVENT_COOLDOWN_S` — this is the same-class floor |
+| Repeated events from a blinking detection (drink in/out of frame) | Increase `MOTION_TRANSITION_MIN_GAP_S` (60 → 120+) |
 | Activity not picked up at all | Decrease `MOTION_CONFIDENCE_THRESHOLD` (0.3 → 0.2) |
 | Spurious activity labels | Increase `MOTION_CONFIDENCE_THRESHOLD` (0.3 → 0.4) |
-| Reaction lags a real activity change | Decrease `MOTION_FLUSH_S` (10 → 5) and/or `MOTION_EVENT_COOLDOWN_S` |
+| Reaction lags a real activity change | Decrease `MOTION_FLUSH_S` (10 → 5) and/or `MOTION_TRANSITION_MIN_GAP_S` — class changes already bypass the cooldown |
 
 ---
 

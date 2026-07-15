@@ -359,16 +359,21 @@ class MotionPerception(Perception[cv2.typing.MatLike]):
         self._last_sent_ts: float = 0.0
         self._dedup_window_s: float = 300.0  # 5 min
 
-        # Global cooldown floor between ANY two motion.activity emissions,
-        # independent of the per-label dedup above. The dedup keys on the exact
-        # label set, but noisy Kinetics labels (sedentary/eat keep their raw
-        # label) flip the key almost every flush, so the dedup alone lets the
-        # event fire every ~MOTION_FLUSH_S (~10s). This floor bounds that.
-        # Bypassed by posture nudges (already time-gated by the pose window) and
-        # by a user change (reset_dedup nulls _last_sent_key on presence.enter),
-        # so a new user/session still sees a fresh event immediately.
+        # Global cooldown floor between two SAME-CLASS motion.activity
+        # emissions, independent of the per-label dedup above. The dedup keys
+        # on the exact label set, but noisy Kinetics labels (sedentary/eat keep
+        # their raw label) flip the key almost every flush, so the dedup alone
+        # lets the event fire every ~MOTION_FLUSH_S (~10s). This floor bounds
+        # that. Bypassed by: posture nudges (already time-gated by the pose
+        # window), a user change (reset_dedup nulls _last_sent_key on
+        # presence.enter), and a COARSE-CLASS transition (computer→eat is real
+        # information; writing→drawing is same-class noise and stays floored) —
+        # the transition bypass itself is min-gapped so a flickering detection
+        # can't turn it back into every-flush spam.
         self._event_cooldown_s: float = config.MOTION_EVENT_COOLDOWN_S
+        self._transition_min_gap_s: float = config.MOTION_TRANSITION_MIN_GAP_S
         self._last_event_ts: float = 0.0
+        self._last_sent_class: frozenset[str] | None = None
 
         self._state_lock: threading.RLock = threading.RLock()
 
@@ -642,23 +647,49 @@ class MotionPerception(Perception[cv2.typing.MatLike]):
             # sit-down would evaluate stale data from the previous cycle.
             self._pose_perception.reset_window()
 
-        # Global cooldown floor: regardless of label changes, don't emit more
-        # than once per _event_cooldown_s. This is the dominant gate — it stops
-        # noisy label flips from re-firing the event every flush. Skipped when
-        # there is no prior send (_last_sent_key is None: first event ever, or
-        # just reset by a user change) and for posture nudges (time-gated).
+        # Global cooldown floor: within the same coarse activity class, don't
+        # emit more than once per _event_cooldown_s. This is the dominant gate
+        # — it stops noisy same-class label flips (writing→drawing) from
+        # re-firing the event every flush. Skipped when there is no prior send
+        # (_last_sent_key is None: first event ever, or just reset by a user
+        # change), for posture nudges (time-gated), and for a coarse-class
+        # TRANSITION (computer→eat) — that's real information the agent should
+        # react to now, not up to a cooldown later. The transition bypass has
+        # its own min gap so a flickering detection (drink blinking in and out
+        # of the frame every ~10s flush) can't re-open the spam faucet.
+        classes: frozenset[str] = frozenset(
+            ACTIVITY_GROUP.get(label, label) for label in labels
+        )
+        class_changed: bool = (
+            self._last_sent_class is not None and classes != self._last_sent_class
+        )
+        transition_bypass: bool = class_changed and (
+            (cur_ts - self._last_event_ts) >= self._transition_min_gap_s
+        )
         if (
             not posture_injected
+            and not transition_bypass
             and self._last_sent_key is not None
             and (cur_ts - self._last_event_ts) < self._event_cooldown_s
         ):
             logger.info(
-                "[motion] cooldown drop: %s (last event %.1fs ago < %.0fs floor)",
+                "[motion] cooldown drop: %s (last event %.1fs ago < %.0fs floor, "
+                "class %s)",
                 message,
                 cur_ts - self._last_event_ts,
                 self._event_cooldown_s,
+                "changed but < %.0fs transition gap" % self._transition_min_gap_s
+                if class_changed
+                else "unchanged",
             )
             return
+        if transition_bypass:
+            logger.info(
+                "[motion] transition bypass: %s → %s (last event %.1fs ago)",
+                sorted(self._last_sent_class or ()),
+                sorted(classes),
+                cur_ts - self._last_event_ts,
+            )
 
         # Dedup: drop if the outbound state (user + outbound labels) hasn't
         # changed since the last send AND we're still within the dedup window.
@@ -687,6 +718,7 @@ class MotionPerception(Perception[cv2.typing.MatLike]):
         self._last_sent_key = key
         self._last_sent_ts = cur_ts
         self._last_event_ts = cur_ts
+        self._last_sent_class = classes
 
         # Log each outbound label to the OS server wellbeing BEFORE firing the event.
         # Log-first means when the agent reads history on motion.activity,
@@ -759,6 +791,7 @@ class MotionPerception(Perception[cv2.typing.MatLike]):
         self._last_sent_key = None
         self._last_sent_ts = 0.0
         self._last_event_ts = 0.0
+        self._last_sent_class = None
         self._sedentary_streak_start_ts = 0.0
 
     def to_dict(self) -> dict[str, Any]:

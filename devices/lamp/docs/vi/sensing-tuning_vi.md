@@ -64,3 +64,53 @@ Dòng `flushing` hiển thị danh sách label thô — đó là mode trên các
 ### Áp dụng thay đổi
 
 Sau khi sửa `os/hal/config.py` hoặc `voice_service.py` trên Pi: restart service HAL (xem [os-server_vi.md](os-server_vi.md)).
+
+---
+
+## Nhận Diện Hoạt Động (Motion / Activity Recognition)
+
+`MotionPerception` chạy nhận diện hành động Kinetics (qua dlbackend) và phát event
+`motion.activity` kèm các label hoạt động nhận được.
+
+**File:** `os/hal/config.py`
+
+```python
+MOTION_CONFIDENCE_THRESHOLD = 0.3    # confidence tối thiểu để buffer 1 label
+MOTION_FLUSH_S = 10.0                # nhịp xả buffer — tối đa 1 flush mỗi 10s
+MOTION_EVENT_COOLDOWN_S = 900.0      # floor heartbeat cùng-class giữa 2 lần phát (15 phút)
+MOTION_TRANSITION_MIN_GAP_S = 60.0   # gap tối thiểu cho bypass khi đổi class
+```
+
+**Các gate phát event (theo thứ tự, `motion.py`):**
+
+1. **Nhịp flush** — detection buffer xả tối đa 1 lần mỗi `MOTION_FLUSH_S`.
+2. **Gate presence** — không phát event nếu presence != PRESENT.
+3. **Cooldown toàn cục** — không phát `motion.activity` quá 1 lần mỗi `MOTION_EVENT_COOLDOWN_S`
+   khi **coarse activity class** (tập `ACTIVITY_GROUP`: sedentary/eat/drink/…) không đổi.
+   Label thô flip cùng class (`writing → drawing`) vẫn bị floor đè — đó là nhiễu.
+   Bypass khi: **đổi class** (`computer → eat` là thông tin thật, phát ngay khi đã qua
+   `MOTION_TRANSITION_MIN_GAP_S` — gap này chặn detection chớp tắt mở lại spam mỗi flush),
+   posture nudge (đã time-gate bởi pose window), và đổi user (user/phiên mới thấy event
+   mới ngay lập tức).
+4. **Dedup per-label** — kể cả khi qua được cooldown, cùng `(user, label-set)` trong
+   cửa sổ 5 phút vẫn bị drop. Label Kinetics nhiễu flip set thường xuyên nên cooldown
+   toàn cục ở trên mới là gate chính.
+
+**Đọc log:**
+
+```
+INFO hal...motion: [motion] raw actions in window: ['writing', 'typing']
+INFO hal...motion: [motion] flushing: Activity detected: writing.
+INFO hal...motion: [motion] cooldown drop: ... (last event 42.1s ago < 900s floor, class unchanged)
+INFO hal...motion: [motion] transition bypass: ['sedentary'] → ['eat'] (last event 312.4s ago)
+```
+
+**Tuning:**
+
+| Triệu chứng | Cách chỉnh |
+|-------------|------------|
+| `motion.activity` fire liên tục (mỗi ~10s) | Tăng `MOTION_EVENT_COOLDOWN_S` — đây là floor cùng-class |
+| Event lặp do detection chớp tắt (drink lúc có lúc không) | Tăng `MOTION_TRANSITION_MIN_GAP_S` (60 → 120+) |
+| Không bắt được hoạt động nào | Giảm `MOTION_CONFIDENCE_THRESHOLD` (0.3 → 0.2) |
+| Label hoạt động rác | Tăng `MOTION_CONFIDENCE_THRESHOLD` (0.3 → 0.4) |
+| Phản ứng chậm khi đổi hoạt động thật | Giảm `MOTION_FLUSH_S` (10 → 5) và/hoặc `MOTION_TRANSITION_MIN_GAP_S` — đổi class đã tự bypass cooldown |

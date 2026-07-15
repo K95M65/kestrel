@@ -182,8 +182,18 @@ MOTION_CONFIDENCE_THRESHOLD = float(
     os.environ.get("HAL_MOTION_CONFIDENCE_THRESHOLD", "0.3")
 )
 MOTION_FLUSH_S = float(os.environ.get("HAL_MOTION_FLUSH_S", "10.0"))
+# Same-activity heartbeat: floor between two motion.activity emissions while
+# the coarse activity class hasn't changed. A class TRANSITION (computer→eat,
+# …) bypasses this floor, so it can sit at habit-tracking resolution instead
+# of reaction latency.
 MOTION_EVENT_COOLDOWN_S = float(
-    os.environ.get("HAL_MOTION_EVENT_COOLDOWN_S", "360.0")
+    os.environ.get("HAL_MOTION_EVENT_COOLDOWN_S", "900.0")
+)
+# Min gap for the class-transition bypass above. Guards against a flickering
+# detection (drink appearing/vanishing every ~10s flush) turning the bypass
+# back into the old every-flush spam.
+MOTION_TRANSITION_MIN_GAP_S = float(
+    os.environ.get("HAL_MOTION_TRANSITION_MIN_GAP_S", "60.0")
 )
 MOTION_PERSON_DETECTION_ENABLED = os.environ.get("HAL_MOTION_PERSON_DETECTION_ENABLED", "true").lower() == "true"
 MOTION_PERSON_MIN_AREA_RATIO = float(
