@@ -6,7 +6,8 @@
 # this run). The bridge itself ships inside the os-server binary (`os-server
 # codex-gatewayd`) — nothing to materialize here. It OWNS everything stateful:
 #
-#   §1 MIGRATE — one-time persona/memory/skills copy from the openclaw
+#   §1 MIGRATE — one-time persona/memory copy → workspace/, and skills copy →
+#      $CODEX_DIR/skills (codex's native discovery root), from the openclaw
 #      workspace (marker /root/.codex/.openclaw-migrated; a factory reset that
 #      wipes /root/.codex clears it so migrate re-runs on the next switch).
 #   §2 CONFIG  — ~/.codex/config.toml model-provider wiring from config.json
@@ -30,6 +31,7 @@ set -euo pipefail
 CONFIG_JSON="${CONFIG_JSON:-/root/config/config.json}"   # device/project config (source of truth)
 CODEX_DIR="${CODEX_DIR:-/root/.codex}"
 WS_DIR="$CODEX_DIR/workspace"
+SKILLS_DIR="$CODEX_DIR/skills"   # codex NATIVE skill discovery root ($CODEX_HOME/skills)
 ENV_FILE="$CODEX_DIR/.env"
 CODEX_CONFIG="$CODEX_DIR/config.toml"
 AUTH_JSON="$CODEX_DIR/auth.json"
@@ -81,13 +83,18 @@ if [ ! -f "$MIGRATE_MARKER" ] && [ -d "$OC_WS" ]; then
         log "copied $f from openclaw"
       fi
     done
-    # memory/ + skills/ — only when the destination is absent, so a re-run
-    # never clobbers local edits.
-    for d in memory skills; do
-      if [ -d "$OC_WS/$d" ] && [ ! -d "$WS_DIR/$d" ]; then
-        cp -a "$OC_WS/$d" "$WS_DIR/$d" && log "copied $d/ from openclaw"
-      fi
-    done
+    # memory/ → workspace/memory — only when absent, so a re-run never clobbers
+    # local edits.
+    if [ -d "$OC_WS/memory" ] && [ ! -d "$WS_DIR/memory" ]; then
+      cp -a "$OC_WS/memory" "$WS_DIR/memory" && log "copied memory/ from openclaw"
+    fi
+    # skills/ → $CODEX_DIR/skills (codex's NATIVE discovery root — codex-cli
+    # auto-discovers every <name>/SKILL.md there in every session and lists them
+    # in the `@` picker; workspace/skills is NEVER scanned by codex). Only when
+    # the destination is absent, so a re-run never clobbers local edits.
+    if [ -d "$OC_WS/skills" ] && [ ! -d "$SKILLS_DIR" ]; then
+      cp -a "$OC_WS/skills" "$SKILLS_DIR" && log "copied skills/ from openclaw → $SKILLS_DIR"
+    fi
   ); then
     touch "$MIGRATE_MARKER"
     log "openclaw migration complete (marker written)"

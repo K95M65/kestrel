@@ -67,13 +67,36 @@ const (
 	// the data dir ever needs to be overridable.
 	codexWorkspaceDir = "/root/.codex/workspace"
 
+	// codexSkillsDir is the on-device skill store. It is codex's NATIVE skill
+	// discovery root ($CODEX_HOME/skills — codex-cli 0.142.5 auto-discovers every
+	// <name>/SKILL.md here, in EVERY session regardless of cwd, and lists them in
+	// the `@` picker), NOT workspace/skills, which codex never scans. This mirrors
+	// the claudecode fix (skills moved to Claude Code's native ~/.claude/skills):
+	// a coding session runs `codex exec --cd <folder>` (telegram_coding.go) whose
+	// project-AGENTS.md walk never reaches the workspace, but native $CODEX_HOME
+	// skills load anyway. Skills are ALSO referenced by this absolute path in
+	// AGENTS.md (workspace + user block) so a read-by-path fallback resolves from
+	// any cwd.
+	codexSkillsDir = codexHome + "/skills"
+
+	// codexUserAgentsMD is codex's GLOBAL user-instructions file
+	// ($CODEX_HOME/AGENTS.md). Codex loads it in EVERY session regardless of cwd
+	// (codex-rs CodexHomeUserInstructionsProvider), merged BEFORE the repo-root→cwd
+	// AGENTS.md walk. The workspace AGENTS.md only reaches the device-chat session
+	// (gatewayd runs `codex exec --cd <workspace>`); a coding session started in
+	// /root, /root/myapp, … never loads it, so the device-wide connector + skill
+	// rules must ALSO live here or coding sessions can't see the connectors and
+	// tell the user Gmail/Calendar is "not connected". Wiped whole by ResetAgent
+	// (it lives under codexHome).
+	codexUserAgentsMD = codexHome + "/AGENTS.md"
+
 	// agentsMDBlock is the OS-managed block injected into workspace/AGENTS.md.
 	// Derived from internal/openclaw/onboarding.go agentsMDBlock with OpenClaw-only
 	// content removed (hooks/handler.ts; `openclaw --version`; the injected
 	// `<available_skills>` wording).
 	agentsMDBlock = `<!-- OS DO NOT REMOVE -->
-**MANDATORY (skills):** Before any skill-driven action, determine the skill scope without doing broad filesystem scans. For ordinary chat, simple Q&A, or meta discussion with no action/event/hardware behavior, do NOT read a SKILL.md — answer normally.
-  - If the message contains ` + "`[skills: a, b, c]`" + `, treat it as an authoritative whitelist — read ONLY those ` + "`skills/<name>/SKILL.md`" + ` files. Do NOT scan other skill directories "just in case".
+**MANDATORY (skills):** Your device skills live at ` + "`/root/.codex/skills/<name>/SKILL.md`" + ` (absolute path — reachable from any cwd, including coding sessions in another folder). Before any skill-driven action, determine the skill scope without doing broad filesystem scans. For ordinary chat, simple Q&A, or meta discussion with no action/event/hardware behavior and no connected-service data, do NOT read a SKILL.md — answer normally. A question ABOUT a linked third-party service (see Connectors) is NOT ordinary chat: it needs the skill even when phrased as a simple question.
+  - If the message contains ` + "`[skills: a, b, c]`" + `, treat it as an authoritative whitelist — read ONLY those ` + "`/root/.codex/skills/<name>/SKILL.md`" + ` files. Do NOT scan other skill directories "just in case".
   - If no ` + "`[skills:]`" + ` hint is present and the user asks for a concrete action, hardware behavior, sensing/activity/emotion handling, or a specialized workflow, choose the single most specific matching skill, then read only that SKILL.md.
   - If multiple skills plausibly match, choose the most specific one. If none clearly match, do not read any SKILL.md and answer normally.
   - Never fall back to reading every skill directory. Broad scans are slow and usually reduce quality.
@@ -96,12 +119,35 @@ Follow the instructions in whichever file you read.
 
 **User priority (MANDATORY):** When the turn batches multiple messages, ` + "`[user] ...`" + ` messages are direct human input (voice command or typed chat). Always answer the most recent ` + "`[user]`" + ` message first; treat ` + "`[activity]`" + ` / ` + "`[emotion]`" + ` / ` + "`[speech_emotion]`" + ` / ` + "`[ambient]`" + ` / ` + "`[sensing:*]`" + ` as supporting context, never as the primary prompt. A user who asked a question must get their answer even when sensing events queued alongside look more interesting.
 
+**Connectors (MANDATORY):** The user links third-party services (Gmail, Google Calendar, Google Drive, Notion, Figma, Asana, Linear, GitHub, Ahrefs, …) in the app, and the OS writes their credentials to this device at ` + "`/root/.openclaw/workspace/configs/<code>_access_tokens.json`" + `. ALWAYS use the ` + "`connectors`" + ` skill to answer or act on ANY of them — including "is my gmail connected?", "what's on my calendar", "list my events", "check my email". Read ` + "`/root/.codex/skills/connectors/SKILL.md`" + ` and follow it. This holds in EVERY session — including a coding session started in ` + "`/root`" + `, ` + "`/root/myapp`" + `, or any other folder: the connectors are a property of the DEVICE, not of the folder you happen to be in. Never write your own script (` + "`send_email.py`" + `, gcalcli, …) to reach a service a connector already covers.
+  - ` + "`config.toml`" + `/` + "`mcp_servers`" + ` is NOT the connector list. Gmail/Calendar/Drive are token-based and have NO MCP server, so NEVER conclude a service is unconnected because it is missing from the MCP server list — check the credential files via the skill.
+  - Never tell the user to set up an MCP server, OAuth app, or another CLI for these services: the credentials are already on disk. Read them only through the ` + "`connectors`" + ` skill, which knows how to keep the secrets safe.
+
 ---`
 
 	// heartbeatMDBlock is the OS-managed knowledge-synthesis block injected at the top
 	// of workspace/HEARTBEAT.md. Backend-agnostic — verbatim from openclaw.
 	heartbeatMDBlock = `<!-- OS DO NOT REMOVE -->
 **Knowledge synthesis (once daily at 21:00):** If current time is >= 21:00 AND you have NOT already done this today (check ` + "`KNOWLEDGE.md`" + ` for today's date header), read today's ` + "`memory/YYYY-MM-DD.md`" + `, extract important insights, and append them to ` + "`KNOWLEDGE.md`" + ` under a ` + "`## YYYY-MM-DD`" + ` header. Only write new learnings — do not repeat what is already there. If already done today or before 21:00, skip silently.
+
+---`
+
+	// userAgentsMDBlock is the OS-managed block in codex's GLOBAL user-instructions
+	// file (codexUserAgentsMD = $CODEX_HOME/AGENTS.md), which codex loads in EVERY
+	// session regardless of cwd (codex-rs CodexHomeUserInstructionsProvider). The
+	// workspace AGENTS.md only reaches the device-chat session (cwd=workspace); a
+	// Telegram coding session runs `codex exec --cd <folder>` and never loads it,
+	// so without this block a coding session has no idea the device's connectors
+	// exist and tells the user Gmail/Calendar is "not connected". Kept deliberately
+	// small — device persona/memory rules stay workspace-scoped; only the
+	// device-wide facts that must survive a `cd` live here. Skill references are
+	// ABSOLUTE so they resolve from any cwd.
+	userAgentsMDBlock = `<!-- OS DO NOT REMOVE -->
+**This machine is an Autonomous device.** The facts below hold in EVERY folder and session — they describe the DEVICE, not the directory you are working in.
+
+**Connectors (MANDATORY).** The owner links third-party services (Gmail, Google Calendar, Google Drive, Notion, Figma, Asana, Linear, GitHub, Ahrefs, …) in the Autonomous app, and the OS writes their credentials to ` + "`/root/.openclaw/workspace/configs/<code>_access_tokens.json`" + `. To answer or act on ANY of them — "is my gmail connected?", "what's on my calendar", "send an email to …" — read ` + "`/root/.codex/skills/connectors/SKILL.md`" + ` and follow it.
+  - NEVER conclude a service is unconnected because no MCP server or CLI is configured: the token connectors (Gmail/Calendar/Drive) have NO MCP server. Check the credential files via the skill before answering.
+  - NEVER install or write your own client for a service a connector already covers (no ` + "`send_email.py`" + `, no gcalcli, no OAuth setup) — the credentials are already on disk.
 
 ---`
 )
@@ -139,6 +185,10 @@ func (s *CodexService) EnsureOnboarding() error {
 	seedFileIfAbsent(knowledgeFS, "resources/KNOWLEDGE.md",
 		filepath.Join(codexWorkspaceDir, "KNOWLEDGE.md"))
 
+	// Lift any workspace-scoped skills left by an older os-server into codex's
+	// native discovery root FIRST, so the prune below sees the post-migration dir.
+	migrateSkillsToCodexHome()
+
 	// Capability-gate skills: drop platform skills this device can't use (e.g.
 	// servo-control on a motionless device). Skill dirs are read per-turn from
 	// disk, so no gateway reload is needed.
@@ -165,6 +215,10 @@ func (s *CodexService) EnsureOnboarding() error {
 	if _, err := s.ensureHeartbeatMDBlock(); err != nil {
 		slog.Error("ensure HEARTBEAT.md block failed", "component", "codex-onboarding", "error", err)
 	}
+	// Global user AGENTS.md ($CODEX_HOME/AGENTS.md): reaches coding sessions in any
+	// cwd, which never load the workspace AGENTS.md. Not a restart signal — codex
+	// re-reads it per turn, same as the workspace blocks above.
+	ensureUserAgentsMDBlock()
 
 	needRestart := false
 
@@ -566,16 +620,106 @@ func (s *CodexService) ensureHeartbeatMDBlock() (bool, error) {
 	return true, nil
 }
 
+// ensureUserAgentsMDBlock injects/refreshes the OS-managed block in codex's
+// GLOBAL user-instructions file (codexUserAgentsMD = $CODEX_HOME/AGENTS.md),
+// which codex loads in every session regardless of cwd. Same marker discipline
+// as the workspace AGENTS.md: content below the block is the owner's and is
+// preserved. Returns true if modified. No gateway restart is needed — each
+// `codex exec` (device chat AND coding sessions) re-reads this file at turn
+// start, so the next turn sees the change.
+func ensureUserAgentsMDBlock() bool {
+	return ensureUserAgentsMDBlockAt(codexUserAgentsMD)
+}
+
+// ensureUserAgentsMDBlockAt is the path-parameterized body of
+// ensureUserAgentsMDBlock (codexUserAgentsMD is a hardcoded const — the parameter
+// exists so tests can point it at a temp dir).
+func ensureUserAgentsMDBlockAt(path string) bool {
+	content, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		slog.Warn("ensure user AGENTS.md: read failed", "component", "codex-onboarding", "error", err)
+		return false
+	}
+	text := string(content)
+
+	if strings.Contains(text, userAgentsMDBlock) {
+		return false // already current
+	}
+	if strings.Contains(text, osMandatoryMarker) {
+		text = stripMarkedBlock(text)
+	}
+
+	output := userAgentsMDBlock + "\n"
+	if strings.TrimSpace(text) != "" {
+		output += "\n" + strings.TrimLeft(text, " \t\r\n")
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		slog.Warn("ensure user AGENTS.md: mkdir failed", "component", "codex-onboarding", "error", err)
+		return false
+	}
+	if err := os.WriteFile(path, []byte(output), 0o644); err != nil {
+		slog.Warn("ensure user AGENTS.md: write failed", "component", "codex-onboarding", "error", err)
+		return false
+	}
+	slog.Info("injected mandatory block into user AGENTS.md", "component", "codex-onboarding", "path", path)
+	return true
+}
+
+// migrateSkillsToCodexHome moves skills installed by an older os-server under
+// workspace/skills into codex's NATIVE discovery root (codexSkillsDir =
+// $CODEX_HOME/skills), then drops the workspace copy. Without the move, devices
+// already in the field keep their skills in a dir codex never scans — invisible
+// to the `@` picker and to native skill loading in every session. Idempotent: a
+// no-op once the legacy dir is gone. Returns true when anything moved. Mirrors
+// claudecode.migrateSkillsToUserScope.
+func migrateSkillsToCodexHome() bool {
+	legacyDir := filepath.Join(codexWorkspaceDir, "skills")
+	entries, err := os.ReadDir(legacyDir)
+	if err != nil {
+		return false // absent (already migrated / fresh device) — nothing to do
+	}
+
+	if err := os.MkdirAll(codexSkillsDir, 0o755); err != nil {
+		slog.Warn("migrate skills: mkdir codex-home skills dir failed", "component", "codex-onboarding", "error", err)
+		return false
+	}
+
+	var moved int
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		dst := filepath.Join(codexSkillsDir, e.Name())
+		if _, err := os.Stat(dst); err == nil {
+			continue // already at codex-home scope — the legacy copy is redundant
+		}
+		if err := os.Rename(filepath.Join(legacyDir, e.Name()), dst); err != nil {
+			slog.Warn("migrate skills: move failed", "component", "codex-onboarding", "skill", e.Name(), "error", err)
+			continue
+		}
+		moved++
+	}
+
+	// Drop the legacy dir even when nothing moved (every skill already existed at
+	// the codex-home scope) — leaving it wastes disk and confuses future audits.
+	if err := os.RemoveAll(legacyDir); err != nil {
+		slog.Warn("migrate skills: remove legacy dir failed", "component", "codex-onboarding", "error", err)
+	}
+	slog.Info("migrated skills to codex-home discovery root", "component", "codex-onboarding",
+		"moved", moved, "from", legacyDir, "to", codexSkillsDir)
+	return true
+}
+
 // pruneUnsupportedSkills removes platform-catalog skill dirs the device can't use
-// (skills.Supported — the same capability gate openclaw uses). Codex ships NO
-// built-in skills (the CLI has no onboarding step that seeds any): workspace/skills
-// comes solely from the openclaw migration (presync.sh §1) plus the CDN skill
-// watcher, so only skills.Catalog names are OS-owned — unknown dirs (e.g.
-// user-created skills) are left alone, matching openclaw's prune semantics.
-// Fail-open: when DEVICE.md declares no capabilities, skills.Supported returns
-// the full catalog, so nothing is pruned.
+// from codexSkillsDir ($CODEX_HOME/skills, codex's native discovery root — same
+// capability gate openclaw uses). The device skill set comes from the openclaw
+// migration (presync.sh §1) plus the CDN skill watcher, so only skills.Catalog
+// names are OS-owned — unknown dirs (e.g. user-created skills, or codex's own
+// bundled skills) are left alone, matching openclaw's prune semantics. Fail-open:
+// when DEVICE.md declares no capabilities, skills.Supported returns the full
+// catalog, so nothing is pruned.
 func (s *CodexService) pruneUnsupportedSkills() {
-	skillsDir := filepath.Join(codexWorkspaceDir, "skills")
+	skillsDir := codexSkillsDir
 	entries, err := os.ReadDir(skillsDir)
 	if err != nil {
 		if !os.IsNotExist(err) {

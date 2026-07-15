@@ -16,7 +16,7 @@ import (
 const skillWatchInterval = 5 * time.Minute
 
 // StartSkillWatcher polls OTA metadata for per-skill version changes and auto-updates
-// the workspace skills from the CDN. Mirrors internal/openclaw/skill_watcher.go: the
+// the codex-home skills ($CODEX_HOME/skills) from the CDN. Mirrors internal/openclaw/skill_watcher.go: the
 // CDN fetch / atomic extract / content-hash plumbing is runtime-agnostic and lives in
 // internal/skills; this file holds only the codex-specific loop, target dir, and
 // notify. Capability-gated so a CDN version bump never re-adds a skill this device
@@ -97,7 +97,7 @@ func (s *CodexService) skillsBaseURL() string {
 }
 
 // downloadSkillsByName downloads specific skill zips from the CDN, extracts each
-// atomically into workspace/skills/<name>, and returns the names that actually
+// atomically into codexSkillsDir/<name> ($CODEX_HOME/skills), and returns the names that actually
 // changed on disk (version pre-filter + content hash). Mirrors openclaw.
 func (s *CodexService) downloadSkillsByName(names []string) []string {
 	base := s.skillsBaseURL()
@@ -105,7 +105,7 @@ func (s *CodexService) downloadSkillsByName(names []string) []string {
 		slog.Info("skill download skipped: no ota_metadata_url configured", "component", "skill-watcher")
 		return nil
 	}
-	skillsDir := filepath.Join(codexWorkspaceDir, "skills")
+	skillsDir := codexSkillsDir
 	var changed []string
 	for _, name := range names {
 		url := fmt.Sprintf("%s/%s.zip", base, name)
@@ -143,7 +143,7 @@ func (s *CodexService) notifySkillChanges(changedSkills []string) {
 	}
 	list := ""
 	for _, name := range changedSkills {
-		list += fmt.Sprintf("\n- skills/%s/SKILL.md", name)
+		list += fmt.Sprintf("\n- %s/%s/SKILL.md", codexSkillsDir, name)
 	}
 	msg := fmt.Sprintf("[system] The following skills have been updated. Re-read them now — files on disk have changed. Follow the updated instructions strictly. Keep your reply under 5 words.%s", list)
 	slog.Info("INBOUND from system → agent (skill update)",

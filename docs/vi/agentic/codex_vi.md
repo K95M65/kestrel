@@ -126,9 +126,10 @@ Trên nền lần chạy presync, `EnsureOnboarding` (`onboarding.go`) làm cùn
 reconcile workspace như các backend khác: seed `KNOWLEDGE.md` từ template nhúng
 chỉ khi chưa có, inject các khối OS-managed `<!-- OS DO NOT REMOVE -->` vào
 `SOUL.md` / `AGENTS.md` / `HEARTBEAT.md` (gốc OpenClaw, lược phần
-chỉ-OpenClaw), và capability-gate skills. Thay đổi chỉ-markdown không bao giờ
-restart gateway — mỗi `codex exec` đọc lại workspace; chỉ presync đổi config
-hoặc self-heal unit mới restart.
+chỉ-OpenClaw), refresh khối AGENTS.md **toàn cục** ở tầng user
+(`ensureUserAgentsMDBlock`, xem bên dưới), và capability-gate skills. Thay đổi
+chỉ-markdown không bao giờ restart gateway — mỗi `codex exec` đọc lại
+workspace; chỉ presync đổi config hoặc self-heal unit mới restart.
 
 **Khối persona inline (AGENTS.md).** Codex chỉ tự nạp DUY NHẤT `AGENTS.md` vào
 context; chỉ dẫn "Session Startup" bảo đọc `SOUL.md`/`IDENTITY.md` là tự
@@ -145,6 +146,43 @@ khối OS mandatory), gồm phần mở đầu "Who you are" bắt buộc, tên 
 lần `EnsureOnboarding` và ngay sau khi đổi tên (`UpdateIdentityName`), nên
 turn kế tiếp thấy tên mới luôn; `SOUL.md` biến mất thì khối bị gỡ. Ghi atomic
 (tmp+rename), và chỉ ghi khi byte thực sự khác.
+
+### Skills — discovery native `$CODEX_HOME/skills` (`codexSkillsDir`)
+
+Skills của thiết bị nằm ở **`/root/.codex/skills/<name>/SKILL.md`** — thư mục
+discovery **native** của codex-cli (`$CODEX_HOME/skills` trên 0.142.x). Codex tự
+phát hiện mọi `<name>/SKILL.md` có YAML frontmatter hợp lệ ở đây, trong **mọi**
+phiên bất kể cwd, và liệt kê trong picker skill `@` tương tác. Điều này giống fix
+của claudecode (skills chuyển sang thư mục native `~/.claude/skills` của Claude
+Code). KHÔNG đặt ở `workspace/skills` — codex không bao giờ quét nó; thiết bị để
+skills ở đó sẽ có picker `@` rỗng và không nạp skill native. Mọi nơi tạo skill đều
+trỏ tới `codexSkillsDir`: `presync.sh` §1 (migrate từ openclaw → `$CODEX_DIR/skills`),
+`skill_watcher.go` (tải CDN + thông điệp `notifySkillChanges`), và
+`pruneUnsupportedSkills` (capability gate). `migrateSkillsToCodexHome` nâng bất kỳ
+`workspace/skills` cũ do os-server đời trước để lại vào thư mục native rồi xoá bản
+workspace (idempotent); factory reset xoá toàn bộ `/root/.codex`, nên bộ skills
+được migrate lại từ openclaw ở lần `EnsureOnboarding` kế tiếp.
+
+**AGENTS.md toàn cục — luật cấp thiết bị cho phiên coding.** `AGENTS.md` trong
+workspace chỉ tới được phiên **device-chat**: gatewayd chạy
+`codex exec --cd /root/.codex/workspace` (`gatewayd/turn.go`), nên vòng quét
+AGENTS.md từ repo-root→cwd của codex tìm thấy nó. Một **phiên coding Telegram**
+(`telegram_coding.go`, mục "Telegram remote coding-sessions") chạy
+`codex exec --cd <folder>` ở thư mục tuỳ ý (`/root`, `/root/myapp`, …), vòng
+quét không bao giờ chạm file trong workspace. Codex còn nạp thêm một file
+user-instructions **toàn cục**, `$CODEX_HOME/AGENTS.md` = `/root/.codex/AGENTS.md`,
+trong **mọi** phiên bất kể cwd (codex-rs `CodexHomeUserInstructionsProvider`,
+merge trước vòng quét project). `ensureUserAgentsMDBlock` (`codexUserAgentsMD`)
+inject một khối OS ở đó — cùng kỷ luật marker như file workspace — mang luật
+**Connectors (BẮT BUỘC)** và ghi chú rằng skills của thiết bị nằm ở đường dẫn
+**tuyệt đối** `/root/.codex/skills/<name>/SKILL.md`. Không có nó, phiên coding
+không biết connectors của thiết bị tồn tại và báo chủ máy rằng Gmail/Calendar
+"chưa kết nối". Như một fallback đọc-theo-path (độc lập với discovery native), khối
+`AGENTS.md` workspace và `notifySkillChanges` đều dẫn skill bằng đường dẫn
+**tuyệt đối** đó, không bao giờ dùng `skills/…` tương đối — vốn sẽ resolve dưới
+`<folder>` của phiên coding. Không cần restart gateway (đọc lại mỗi turn); factory
+reset xoá toàn bộ `/root/.codex`, nên file toàn cục được dựng lại ở lần
+`EnsureOnboarding` kế tiếp.
 
 ## 2. Transport & gửi một turn
 

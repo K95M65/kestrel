@@ -73,7 +73,7 @@ func (s *CodexService) GetConfigJSON() (json.RawMessage, error) {
 // `**Name:**` card line just like OpenClaw does.
 
 // StartSkillWatcher lives in skill_watcher.go — it polls OTA metadata and
-// auto-updates workspace skills from the CDN (capability-gated), mirroring openclaw.
+// auto-updates the codex-home skills ($CODEX_HOME/skills) from the CDN (capability-gated), mirroring openclaw.
 
 // StartModelSync — model registry is owned by Codex. No-op.
 func (s *CodexService) StartModelSync(ctx context.Context) {
