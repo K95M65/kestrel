@@ -404,8 +404,13 @@ class FireHazardPerception(Perception[cv2t.MatLike]):
         return vis
 
     def reset_dedup(self, new_user: str = "") -> None:
-        with self._state_lock:
-            self._last_sent_by_type.clear()
+        # Deliberate no-op: hazard alerts are about the ENVIRONMENT, not the
+        # viewer — a presence.enter (including stranger-ID flicker, which
+        # fires this on every processor) doesn't make the same candle news
+        # again. Clearing here re-armed the alert on every enter and turned a
+        # steady hazard into an event stream. Re-alerts pace on the dedup
+        # window; a NEW hazard type always alerts immediately regardless.
+        pass
 
     @override
     def to_dict(self) -> dict[str, Any]:

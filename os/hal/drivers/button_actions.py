@@ -40,26 +40,45 @@ FACTORY_RESET_DURATION = 10.0  # seconds held → factory-reset on release (supe
 # conversation history without speaking back.
 OS_SENSING_URL = "http://127.0.0.1:5000/api/sensing/event"
 
+# Agent-notify batching for petting. Every notify is a full LLM turn on the
+# OS server side (the NO_REPLY hint suppresses speech, not the turn), and the
+# local phrase playback alone would allow one notify every ~2-4s during a
+# sustained petting session. One turn per window carries the same
+# information; extra pats ride along as a count on the next notify.
+HEAD_PAT_NOTIFY_WINDOW_S = 60.0
+_head_pat_lock = threading.Lock()
+_head_pat_last_notify_ts: float = 0.0
+_head_pat_suppressed: int = 0
+
 
 def _notify_head_pat(spoken: str):
     """Tell the OS server that the device was just stroked. Called from the
-    head-pat TTS thread *after* speak_cached actually played a phrase,
-    so the rate is bounded by phrase playback (~1-3s) — no extra
-    debounce needed. TTS-busy strokes are dropped silently and never
-    notify, which is the right behaviour: the agent only learns about
-    petting moments the user actually heard a response to.
+    head-pat TTS thread *after* speak_cached actually played a phrase.
+    TTS-busy strokes are dropped silently and never notify, which is the
+    right behaviour: the agent only learns about petting moments the user
+    actually heard a response to. At most one notify per
+    HEAD_PAT_NOTIFY_WINDOW_S — pats in between are batched into a count.
 
     `spoken` is the exact phrase the agent just said (incl. eleven_v3 audio
     tags like [laughs] / [whispers]) so the agent can read its own tone
     and weave it into memory — "I laughed and said tickles" lands
     differently than "I sighed and asked them to stop"."""
+    global _head_pat_last_notify_ts, _head_pat_suppressed
+    with _head_pat_lock:
+        now = time.monotonic()
+        if (now - _head_pat_last_notify_ts) < HEAD_PAT_NOTIFY_WINDOW_S:
+            _head_pat_suppressed += 1
+            return
+        batched = _head_pat_suppressed
+        _head_pat_suppressed = 0
+        _head_pat_last_notify_ts = now
+    message = f'You were petted and responded: "{spoken}"'
+    if batched:
+        message += f" (and {batched} more pat(s) since the last report)"
     try:
         requests.post(
             OS_SENSING_URL,
-            json={
-                "type": "touch.head_pat",
-                "message": f'You were petted and responded: "{spoken}"',
-            },
+            json={"type": "touch.head_pat", "message": message},
             timeout=0.5,
         )
     except Exception:
