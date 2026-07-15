@@ -103,6 +103,8 @@ Transcript gửi OS server vẫn có thể là `Unknown Speaker:` trong khi SER 
 | Label neutral sau flush | Không POST OS server |
 | Dedup `(user, bucket)` | Trong cửa sổ `SPEECH_EMOTION_DEDUP_WINDOW_S` |
 
+Map TTL dedup được persist vào sidecar boot-scoped (`/tmp/hal-ser-state.json`, `hal/dedup_sidecar.py`): restart HAL service khôi phục lại cửa sổ dedup thay vì re-fire emotion cuối cùng ở flush đầu sau deploy/OTA; reboot cả device thì bắt đầu sạch (tmpfs + check `boot_id` kernel). Emotion khuôn mặt dùng cùng cơ chế với file riêng (`/tmp/hal-emotion-state.json`).
+
 **VAD:** chỉ mở phiên mic phía trước (`_vad_loop`); không có VAD thứ hai trước SER. Cuối phiên (im lặng 2.5s) đóng mic → SER tự kích hoạt từ finally block, **không cần STT có transcript**.
 
 **Speaker fail vs unknown:** Lỗi speaker chỉ ảnh hưởng `user` field; SER vẫn enqueue với `"unknown"` nếu audio đủ dài (`>= SPEAKER_MIN_AUDIO_S` cho build WAV và `>= SPEECH_EMOTION_MIN_AUDIO_S` cho `submit()`).

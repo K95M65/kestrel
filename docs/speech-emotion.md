@@ -199,6 +199,8 @@ Layered, matched 1-to-1 with the facial emotion processor:
 
 Each bucket keeps its own independent TTL entry in `_last_sent_by_key`. Sending a positive event does NOT reset the negative window (and vice versa). Same semantics as facial emotion.
 
+The TTL map is persisted to a boot-scoped sidecar (`/tmp/hal-ser-state.json`, `hal/dedup_sidecar.py`) so a HAL service restart restores the dedup window instead of re-firing the last-known emotion on the first flush after a deploy/OTA. A full device reboot starts fresh (tmpfs + kernel `boot_id` check). Facial emotion uses the same mechanism with its own file (`/tmp/hal-emotion-state.json`).
+
 ---
 
 ## Configuration
