@@ -3,7 +3,7 @@ import csv
 import time
 import logging
 import threading
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 from hal.follower import LeLampFollowerConfig, LeLampFollower
 from hal.presets import EMO_SLEEPY, SERVO_CMD_PLAY, SERVO_CMD_MUSIC_START, SERVO_CMD_MUSIC_STOP, SERVO_IDLE, SERVO_MUSIC_GROOVE
 
@@ -35,6 +35,11 @@ RESUME_STARTUP_RAW = {
 
 # Duration for the startup/resume move (seconds)
 STARTUP_MOVE_DURATION = 5.0
+
+# Internal event: wake move + state sync, queued by start() so the 5s
+# interpolation runs in the event thread instead of blocking the caller
+# (server lifespan Phase 3 joins the servo init thread).
+SERVO_CMD_STARTUP_MOVE = "__startup_move__"
 
 # Recordings that hold final pose instead of returning to idle
 # (e.g. sleepy — lamp stays still until woken by presence/wake-word)
@@ -172,21 +177,14 @@ class AnimationService:
 
         logger.info(f"Animation service connected to {self.port}")
 
-        # Move all joints to wake/startup position (includes wrist_pitch outside calib range)
-        try:
-            self.move_to_raw(RESUME_STARTUP_RAW, duration=STARTUP_MOVE_DURATION)
-            logger.info("Servos moved to startup position")
-        except Exception as e:
-            logger.warning(f"Failed to move to startup position: {e}")
-
-        # Full joint state from hardware. move_to() only targets 2 joints; interpolation
-        # used to assume missing joints were at 0° → large erratic moves and servo stall on device.
-        self._sync_state_from_hardware()
-
-        # Start event processing thread
+        # Start the event thread first, then queue wake move + idle. The startup
+        # move is the first event so any command dispatched during it queues
+        # behind — same physical order as the old synchronous version, but
+        # start() returns in ~0.3s instead of ~5.5s.
         self._running.set()
         self._event_thread = threading.Thread(target=self._event_loop, daemon=True)
         self._event_thread.start()
+        self.dispatch(SERVO_CMD_STARTUP_MOVE, None)
 
         # Auto-play idle (same as upstream) so lamp moves immediately after boot
         self.dispatch(SERVO_CMD_PLAY, self.idle_recording)
@@ -256,8 +254,33 @@ class AnimationService:
             else:
                 time.sleep(1.0 / self.fps)  # full FPS for active animations
     
+    def _handle_startup_move(self):
+        """Wake move to startup pose + hardware state sync.
+
+        _sync_state_from_hardware must run after the move: the following idle
+        interpolation starts from _current_state, and missing/stale joints
+        treated as 0° cause violent corrections and servo stall.
+        """
+        # Move all joints to wake/startup position (includes wrist_pitch outside calib range).
+        # should_abort ties the move to _running: a stop/restart of the event
+        # loop (aim_servo, shutdown release) interrupts it within one frame, so
+        # join() succeeds instead of timing out into a second event thread, and
+        # no goal writes land after a torque-off.
+        try:
+            self.move_to_raw(
+                RESUME_STARTUP_RAW,
+                duration=STARTUP_MOVE_DURATION,
+                should_abort=lambda: not self._running.is_set(),
+            )
+            logger.info("Servos moved to startup position")
+        except Exception as e:
+            logger.warning(f"Failed to move to startup position: {e}")
+        self._sync_state_from_hardware()
+
     def handle_event(self, event_type: str, payload: Any):
-        if event_type == SERVO_CMD_PLAY:
+        if event_type == SERVO_CMD_STARTUP_MOVE:
+            self._handle_startup_move()
+        elif event_type == SERVO_CMD_PLAY:
             self._handle_play(payload)
         elif event_type == SERVO_CMD_MUSIC_START:
             self._handle_music_start(payload)
@@ -638,7 +661,12 @@ class AnimationService:
             except Exception:
                 self._current_state = dict(target_positions)
 
-    def move_to_raw(self, target_raw: Dict[str, int], duration: float = DEFAULT_MOVE_DURATION):
+    def move_to_raw(
+        self,
+        target_raw: Dict[str, int],
+        duration: float = DEFAULT_MOVE_DURATION,
+        should_abort: Optional[Callable[[], bool]] = None,
+    ):
         """Smoothly move servos to raw encoder positions via direct STS3215 register writes.
 
         Bypasses lerobot calibration range limits entirely. Use for release/collapse
@@ -648,6 +676,8 @@ class AnimationService:
         Args:
             target_raw: motor_name → raw encoder value (0-4095), e.g. {"base_pitch": 1456}
             duration: seconds to reach the target
+            should_abort: checked every frame; True stops the move mid-flight.
+                The release/park path passes None — parking must always finish.
         """
         if not self.robot:
             raise RuntimeError("Robot not connected")
@@ -669,6 +699,9 @@ class AnimationService:
         total_frames = max(1, int(duration * self.fps))
 
         for frame in range(1, total_frames + 1):
+            if should_abort and should_abort():
+                logger.info("move_to_raw aborted at frame %d/%d", frame, total_frames)
+                return
             t0 = time.perf_counter()
             progress = frame / total_frames
 

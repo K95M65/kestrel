@@ -54,22 +54,82 @@ from hal.server_support.log_setup import setup_logging
 
 logger = setup_logging()
 
-# --- Lazy imports for hardware drivers (may not be available on dev machines) ---
+
+# --- Device declaration first: DEVICE.md decides which drivers we even import ---
+# Driver imports are the expensive part of boot (cv2, onnx/torch model stacks —
+# several seconds on an A523). Resolving the profile before them lets every
+# import below be gated on the declared routes, so a device without the hardware
+# never pays the import cost. plan_mounts semantics are unchanged: undeclared
+# routes were skipped anyway; declared routes still use import success ==
+# availability.
+
+
+def _resolve_device_type() -> str:
+    dev = os.environ.get("DEVICE_TYPE")
+    if dev:
+        return dev
+    try:
+        from hal.config import _os_cfg_get
+        cfg = _os_cfg_get("device_type")
+    except Exception:
+        cfg = None
+    if cfg:
+        return cfg
+    # No "lamp" fallback — refuse to boot the wrong body's drivers/soul/OTA.
+    raise RuntimeError(
+        "DEVICE_TYPE unresolved: set the DEVICE_TYPE env (provisioning) or "
+        "config.json device_type — refusing to assume 'lamp'"
+    )
+
+
+def _devices_dir() -> str:
+    return os.environ.get("DEVICES_DIR") or os.path.normpath(
+        os.path.join(os.path.dirname(__file__), "..", "..", "..", "devices")
+    )
+
+
+def _device_profile():
+    """This device's DeviceProfile. DEVICE.md is REQUIRED — a missing/unparseable
+    one is a deploy fault, so fail loudly (no legacy "mount everything" fallback)."""
+    from hal.board.device import load_device
+    devices_dir = _devices_dir()
+    try:
+        return load_device(_resolve_device_type(), devices_dir)
+    except Exception as e:
+        raise RuntimeError(
+            f"DEVICE.md required but not loaded for device '{_resolve_device_type()}' "
+            f"(devices_dir={devices_dir}): {e}"
+        ) from e
+
+
+# DEVICE.md is required — _device_profile() fail-louds if it's missing/unparseable.
+_profile = _device_profile()
+# Full declared route surface (incl. `speaker`), keys usable with `in`.
+_declared = _profile.declared_routes()
+
+# --- Lazy imports for hardware drivers (may not be available on dev machines),
+# gated on the declared routes so undeclared hardware costs zero import time ---
 
 AnimationService = None
 RGBService = None
 sd = None
 np = None
 
-try:
-    from hal.drivers.motors.animation_service import AnimationService
-except ImportError as e:
-    logger.warning(f"Servo drivers not available: {e}")
+if "servo" in _declared:
+    try:
+        from hal.drivers.motors.animation_service import AnimationService
+    except ImportError as e:
+        logger.warning(f"Servo drivers not available: {e}")
+else:
+    logger.info("Servo drivers skipped — 'servo' not declared in DEVICE.md")
 
-try:
-    from hal.drivers.rgb.rgb_service import RGBService
-except ImportError as e:
-    logger.warning(f"LED drivers not available: {e}")
+if "led" in _declared:
+    try:
+        from hal.drivers.rgb.rgb_service import RGBService
+    except ImportError as e:
+        logger.warning(f"LED drivers not available: {e}")
+else:
+    logger.info("LED drivers skipped — 'led' not declared in DEVICE.md")
 
 try:
     import numpy as np
@@ -78,60 +138,79 @@ except ImportError as e:
     logger.warning(f"Audio drivers not available: {e}")
 
 cv2 = None
-try:
-    import cv2
-except ImportError as e:
-    logger.warning(f"Camera drivers (opencv) not available: {e}")
-
 LocalVideoCaptureDevice = None
 VideoCaptureDeviceInfo = None
-try:
-    from hal.devices.models import VideoCaptureDeviceInfo
-    from hal.devices.video_capture_device import LocalVideoCaptureDevice
-except ImportError as e:
-    logger.warning(f"Video capture device not available: {e}")
+if "camera" in _declared:
+    try:
+        import cv2
+    except ImportError as e:
+        logger.warning(f"Camera drivers (opencv) not available: {e}")
+
+    try:
+        from hal.devices.models import VideoCaptureDeviceInfo
+        from hal.devices.video_capture_device import LocalVideoCaptureDevice
+    except ImportError as e:
+        logger.warning(f"Video capture device not available: {e}")
+else:
+    logger.info("Camera drivers skipped — 'camera' not declared in DEVICE.md")
 
 SensingService = None
 FacePerception = None
-try:
-    from hal.drivers.sensing.perceptions.processors.facerecognizer_v2 import FacePerception
-    from hal.drivers.sensing.sensing_service import SensingService
-except ImportError as e:
-    logger.warning(f"Sensing service not available: {e}")
-    SensingService = None
-    FacePerception = None
+if "sensing" in _declared:
+    try:
+        from hal.drivers.sensing.perceptions.processors.facerecognizer_v2 import FacePerception
+        from hal.drivers.sensing.sensing_service import SensingService
+    except ImportError as e:
+        logger.warning(f"Sensing service not available: {e}")
+        SensingService = None
+        FacePerception = None
+else:
+    logger.info("Sensing service skipped — 'sensing' not declared in DEVICE.md")
 
 VoiceService = None
 DeepgramSTT = None
 AutonomousSTT = None
 TTSService = None
-try:
-    from hal.drivers.voice.stt import AutonomousSTT
-    from hal.drivers.voice.stt import DeepgramSTT
-    from hal.drivers.voice.voice_service import VoiceService
-except ImportError as e:
-    logger.warning(f"Voice service not available: {e}")
+PROVIDER_OPENAI = "openai"  # fallback when the TTS import below is skipped/unavailable
+if "voice" in _declared:
+    try:
+        from hal.drivers.voice.stt import AutonomousSTT
+        from hal.drivers.voice.stt import DeepgramSTT
+        from hal.drivers.voice.voice_service import VoiceService
+    except ImportError as e:
+        logger.warning(f"Voice service not available: {e}")
+else:
+    logger.info("Voice service skipped — 'voice' not declared in DEVICE.md")
 
-try:
-    from hal.drivers.voice.tts import TTSService
-    from hal.drivers.voice.tts import PROVIDER_OPENAI
-except ImportError as e:
-    logger.warning(f"TTS service not available: {e}")
+# TTS serves more than the voice route (music backchannel, sensing announcements,
+# shutdown cue), so any declared audio-producing route pulls it in.
+if {"voice", "audio", "music"} & set(_declared):
+    try:
+        from hal.drivers.voice.tts import TTSService
+        from hal.drivers.voice.tts import PROVIDER_OPENAI
+    except ImportError as e:
+        logger.warning(f"TTS service not available: {e}")
 
 MusicService = None
-try:
-    from hal.drivers.voice.music_service import MusicService
-except ImportError as e:
-    logger.warning(f"Music service not available: {e}")
+if "music" in _declared:
+    try:
+        from hal.drivers.voice.music_service import MusicService
+    except ImportError as e:
+        logger.warning(f"Music service not available: {e}")
 
 DisplayService = None
-try:
-    from hal.drivers.display.display_service import DisplayService
-except ImportError as e:
-    logger.warning(f"Display service not available: {e}")
+if "display" in _declared:
+    try:
+        from hal.drivers.display.display_service import DisplayService
+    except ImportError as e:
+        logger.warning(f"Display service not available: {e}")
 
 _gpio_button_handler = None
 _ttp223_handler = None
+
+# Set the moment lifespan shutdown begins — late async initializers (sensing-init)
+# check it so they don't start services nobody will stop.
+_lifespan_stopping = threading.Event()
 
 
 @asynccontextmanager
@@ -415,11 +494,13 @@ async def lifespan(app: FastAPI):
         "1",
         "yes",
     )
-    if SensingService and sensing_enabled:
+    # Constructing SensingService opens the remote perception WS channels
+    # (motion/pose/fire-hazard/emotion encryption handshakes) sequentially —
+    # ~4-5s on device. Run it in a background thread so it doesn't hold up
+    # "Application startup complete"; every /sensing route already degrades
+    # gracefully while state.sensing_service is still None.
+    def _start_sensing():
         try:
-            from hal.routes.servo import aim_servo
-            from hal.models import ServoAimRequest
-
             def _presence_restore_aim():
                 """Re-aim the device to active scene direction when presence restores light."""
                 if not state._active_scene:
@@ -428,6 +509,11 @@ async def lifespan(app: FastAPI):
                 if not state.animation_service:
                     logger.warning("Presence aim restore: animation_service not available")
                     return
+                # Imported here, not at _start_sensing top: on sensing devices
+                # without a servo this pulls the whole motors stack (and an
+                # import failure there must not kill SensingService).
+                from hal.routes.servo import aim_servo
+                from hal.models import ServoAimRequest
                 preset = SCENE_PRESETS.get(state._active_scene)
                 aim_dir = preset.get("aim") if preset else None
                 if aim_dir:
@@ -446,7 +532,10 @@ async def lifespan(app: FastAPI):
             # device with a camera but no `presence` (it only streams / does
             # motion) must not run those models. Declaration-driven, not env.
             _has_presence = "presence" in _profile.capabilities
-            state.sensing_service = SensingService(
+            if _lifespan_stopping.is_set():
+                logger.info("sensing-init: shutdown already in progress — skipping")
+                return
+            svc = SensingService(
                 camera_capture=state.camera_capture,
                 input_device=AUDIO_SENSING_DEVICE if AUDIO_SENSING_DEVICE is not None else state.audio_input_device,
                 poll_interval=float(os.environ.get("HAL_SENSING_INTERVAL", "2.0")),
@@ -457,11 +546,21 @@ async def lifespan(app: FastAPI):
                 is_sleeping=lambda: state._sleeping,
                 enable_people_perception=_has_presence,
             )
-            state.sensing_service.start()
+            # The ~4-5s constructor may finish after shutdown began — the
+            # shutdown path's `if state.sensing_service` check has already
+            # passed by then, so nobody would stop it. Don't start it.
+            if _lifespan_stopping.is_set():
+                logger.info("sensing-init: shutdown began during construction — not starting")
+                return
+            state.sensing_service = svc
+            svc.start()
             logger.info("SensingService started (people_perception=%s via presence capability)", _has_presence)
         except Exception as e:
             logger.warning(f"SensingService failed to start: {e}")
             state.sensing_service = None
+
+    if SensingService and sensing_enabled:
+        threading.Thread(target=_start_sensing, daemon=True, name="sensing-init").start()
 
     # Start display (GC9A01 eyes)
     if DisplayService:
@@ -473,10 +572,15 @@ async def lifespan(app: FastAPI):
             logger.warning(f"DisplayService failed to start: {e}")
             state.display_service = None
 
-    # Object tracker (servo follow)
-    from hal.drivers.tracking import TrackerService
-    state.tracker_service = TrackerService()
-    logger.info("TrackerService initialized")
+    # Object tracker (servo follow) — needs both a camera to see with and a
+    # servo to follow with; every route touching state.tracker_service is
+    # None-tolerant, so devices without either never load the tracker stack.
+    if "servo" in _plan.mounted and "camera" in _plan.mounted:
+        from hal.drivers.tracking import TrackerService
+        state.tracker_service = TrackerService()
+        logger.info("TrackerService initialized")
+    else:
+        logger.info("TrackerService skipped — needs servo+camera routes mounted")
 
     # GPIO17 button (single=stop/unmute, triple=reboot, long=shutdown)
     try:
@@ -530,6 +634,7 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    _lifespan_stopping.set()
     _thermal_stop.set()
 
     # Shutdown — announce + park servos first (only when OS is actually
@@ -555,7 +660,10 @@ async def lifespan(app: FastAPI):
     for t in _shutdown_threads:
         t.start()
     for t in _shutdown_threads:
-        t.join(timeout=6)
+        # Best-effort grace only — systemd kills the whole cgroup (arecord
+        # included) right after, so a slow voice/sensing stop must not add
+        # seconds to every restart.
+        t.join(timeout=3)
 
     if state.animation_service:
         state.animation_service._running.clear()
@@ -607,71 +715,36 @@ app = FastAPI(
 # Falls back to mounting everything when no DEVICE.md is found, so existing
 # deployments are unaffected. See contract/DEVICE-SPEC.md and hal/board/device.py.
 
-from hal.routes import servo, led, camera, audio, emotion, scene, sensing, display, voice, music, system, bluetooth
+# Route modules import their own driver stacks, so importing all 12
+# unconditionally would defeat the declaration-gated driver imports above.
+# Undeclared hardware routes are never mounted (plan_mounts only consults
+# declared routes), so skipping their module import changes nothing else.
+# The driverless routes (emotion/scene/system/bluetooth) import cheaply and
+# other code calls into them in-process, so they always load.
+import importlib
 
-_ROUTERS_BY_NAME = {
-    "servo": servo.router,
-    "led": led.router,
-    "camera": camera.router,
-    "audio": audio.router,
-    "emotion": emotion.router,
-    "scene": scene.router,
-    "sensing": sensing.router,
-    "display": display.router,
-    "voice": voice.router,
-    "music": music.router,
-    "system": system.router,
-    "bluetooth": bluetooth.router,
-}
+_ALWAYS_ROUTES = ("audio", "emotion", "scene", "system", "bluetooth")
+_ROUTERS_BY_NAME = {}
+for _rname in (
+    "servo", "led", "camera", "audio", "emotion", "scene", "sensing",
+    "display", "voice", "music", "system", "bluetooth",
+):
+    if _rname not in _declared and _rname not in _ALWAYS_ROUTES:
+        logger.info("Route module '%s' skipped — not declared in DEVICE.md", _rname)
+        continue
+    _ROUTERS_BY_NAME[_rname] = importlib.import_module(f"hal.routes.{_rname}").router
 
 # Speaker recognition imports separately — its deps (face/speaker embedding
 # models) are heavy and may be absent. It's a declared `speaker` route under the
 # audio capability (devices/*/DEVICE.md), so it joins the SAME declaration gate
 # below: import success == availability, no separate bypass mount.
-try:
-    from hal.routes.speaker import router as _speaker_router
-
-    _ROUTERS_BY_NAME["speaker"] = _speaker_router
-except Exception as _speaker_import_err:  # noqa: BLE001
-    logger.warning("Speaker recognition router unavailable: %s", _speaker_import_err)
-
-
-def _resolve_device_type() -> str:
-    dev = os.environ.get("DEVICE_TYPE")
-    if dev:
-        return dev
+if "speaker" in _declared:
     try:
-        from hal.config import _os_cfg_get
-        cfg = _os_cfg_get("device_type")
-    except Exception:
-        cfg = None
-    if cfg:
-        return cfg
-    # No "lamp" fallback — refuse to boot the wrong body's drivers/soul/OTA.
-    raise RuntimeError(
-        "DEVICE_TYPE unresolved: set the DEVICE_TYPE env (provisioning) or "
-        "config.json device_type — refusing to assume 'lamp'"
-    )
+        from hal.routes.speaker import router as _speaker_router
 
-
-def _devices_dir() -> str:
-    return os.environ.get("DEVICES_DIR") or os.path.normpath(
-        os.path.join(os.path.dirname(__file__), "..", "..", "..", "devices")
-    )
-
-
-def _device_profile():
-    """This device's DeviceProfile. DEVICE.md is REQUIRED — a missing/unparseable
-    one is a deploy fault, so fail loudly (no legacy "mount everything" fallback)."""
-    from hal.board.device import load_device
-    devices_dir = _devices_dir()
-    try:
-        return load_device(_resolve_device_type(), devices_dir)
-    except Exception as e:
-        raise RuntimeError(
-            f"DEVICE.md required but not loaded for device '{_resolve_device_type()}' "
-            f"(devices_dir={devices_dir}): {e}"
-        ) from e
+        _ROUTERS_BY_NAME["speaker"] = _speaker_router
+    except Exception as _speaker_import_err:  # noqa: BLE001
+        logger.warning("Speaker recognition router unavailable: %s", _speaker_import_err)
 
 
 # Mount-time driver availability: "is this route's driver code importable on this
@@ -692,9 +765,6 @@ _route_available = {
     "emotion": True, "scene": True, "system": True, "bluetooth": True,
     "speaker": "speaker" in _ROUTERS_BY_NAME,
 }
-
-# DEVICE.md is required — _device_profile() fail-louds if it's missing/unparseable.
-_profile = _device_profile()
 
 # Safety bounds (SAFETY.md front matter) resolved once at boot, below the brain.
 # Pass-through when absent (light fail-safe); a present-but-malformed schema
@@ -809,8 +879,8 @@ logger.info("Board gate: device=%s board=%s declared=%s", _resolve_device_type()
 
 from hal.board.device import plan_mounts
 
-# Full declared surface (incl. `speaker`). Availability = driver importable.
-_declared = _profile.declared_routes()
+# _declared (full surface incl. `speaker`) resolved at the top of this file,
+# before the driver imports it gates. Availability = driver importable.
 _available = {r: _route_available.get(r, False) for r in _declared}
 _plan = plan_mounts(_declared, _available)
 logger.info(

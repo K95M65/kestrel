@@ -456,7 +456,10 @@ Environment="PYTHONPATH=/opt"
 # Anonymous PulseAudio socket — see /etc/pulse/default.pa. Lets root reach the
 # desktop user's PulseAudio so the Bluetooth headset routing works.
 Environment="PULSE_SERVER=unix:/tmp/pulse-anon-${DEVICE_TYPE}"
-ExecStart=$HAL_DIR/.venv/bin/uvicorn hal.server:app --host 127.0.0.1 --port 5001
+# --timeout-graceful-shutdown: without it uvicorn waits forever for open
+# connections (an SSE/MJPEG stream holds SIGTERM until systemd's 90s SIGKILL).
+ExecStart=$HAL_DIR/.venv/bin/uvicorn hal.server:app --host 127.0.0.1 --port 5001 --timeout-graceful-shutdown 5
+TimeoutStopSec=30
 Restart=always
 RestartSec=5
 StandardOutput=journal

@@ -94,10 +94,15 @@ def announce_os_shutdown():
     logger.info("lifespan announce: kind=%s text=%r", kind, text)
 
     if state.tts_service and state.tts_service.available and not state._speaker_muted and text:
-        # speak_cached is async — sleep covers playback of the cached clip
-        # (matches the 5s used by long_press_action).
+        # speak_cached is async — poll the speaking flag instead of a fixed 5s
+        # sleep: the service-restart clip is ~1.5s, so a hard sleep(5) added
+        # ~3.5s of dead time to every HAL restart. 5s stays the worst-case cap.
         state.tts_service.speak_cached(text)
-        time.sleep(5)
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline and not state._tts_speaking:
+            time.sleep(0.1)
+        while time.monotonic() < deadline and state._tts_speaking:
+            time.sleep(0.1)
 
     # Park servo before systemd kills the process, otherwise the body
     # slams down mid-pose. Same reasoning as long_press_action Step 2.
