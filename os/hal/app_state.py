@@ -166,12 +166,63 @@ def _cancel_pending_restore():
         _restore_timer = None
 
 
+# Boot-scoped sidecar for the user LED state — same pattern as the scene /
+# presence / motion sidecars. Without it a HAL service restart wipes
+# _user_led_state, and the os-server's post-boot POST /led/restore then finds
+# "no user state" and CLEARS the strip — the lamp goes dark for ~45s until
+# ambient breathing kicks in, instead of coming back in the user's color.
+_LED_STATE_PATH = "/tmp/hal-led-state.json"
+
+
+def _boot_id() -> str:
+    try:
+        with open("/proc/sys/kernel/random/boot_id") as f:
+            return f.read().strip()
+    except Exception:
+        return ""
+
+
+def _load_user_led_state() -> Optional[dict]:
+    import json
+    try:
+        with open(_LED_STATE_PATH) as f:
+            data = json.load(f)
+        if data.get("boot_id") != _boot_id():
+            os.unlink(_LED_STATE_PATH)
+            return None
+        saved = data.get("state")
+        if saved:
+            logger.info("User LED state restored from sidecar: %s", saved)
+        return saved or None
+    except FileNotFoundError:
+        return None
+    except Exception as e:
+        logger.warning("User LED state load failed: %s", e)
+        return None
+
+
+# Restore across service restarts (boot-scoped; a device reboot starts fresh).
+_user_led_state = _load_user_led_state()
+
+
 def _save_user_led_state(state: dict):
     """Save the user-set LED state and cancel any pending emotion restore."""
     global _user_led_state
+    import json
     logger.info("User LED state saved: %s", state)
     _user_led_state = state
     _cancel_pending_restore()
+    try:
+        if state is None:
+            try:
+                os.unlink(_LED_STATE_PATH)
+            except FileNotFoundError:
+                pass
+        else:
+            with open(_LED_STATE_PATH, "w") as f:
+                json.dump({"boot_id": _boot_id(), "state": state}, f)
+    except Exception as e:
+        logger.warning("User LED state save failed: %s", e)
 
 
 def _get_recording_duration(recording_name: str) -> float:
