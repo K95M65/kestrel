@@ -26,7 +26,7 @@ Board detection in both handlers reads `/proc/device-tree/model`:
 
 | Gesture | GPIO button | TTP223 touchpad |
 |---|---|---|
-| **1 tap** | Stop speaker / unmute mic + speaker — fires immediately on release (no click-window wait); the "I'm listening" cue plays once the 0.4 s click window resolves | Same, split the same way — in-flight TTS is cut ~0.2 s after the finger lifts (first session end); unmute + cue wait for the 1.2 s decision window (tap-vs-pet cost, see below) |
+| **1 tap** | Stop speaker / unmute mic + speaker + ack chime (~120 ms ping) — all fire immediately on release (no click-window wait); the "I'm listening" cue plays once the 0.4 s click window resolves | Same, split the same way — in-flight TTS is cut and the ack chime plays ~0.2 s after the finger lifts (first session end); unmute + cue wait for the 1.2 s decision window (tap-vs-pet cost, see below) |
 | **2 taps** (≤ 0.4 s apart, button) / (≤ 1.2 s apart, TTP223) | Nothing beyond the single-click already fired on tap 1 (panic-click guard) | Pet response — TTS picks a random phrase from the language pool |
 | **3 taps** (≤ 0.4 s apart, button) | Reboot OS (TTS announce → `sudo reboot`) | n/a — TTP223 stops at 2 (any further taps absorbed by cooldown) |
 | **Hold 5–10 s, then release** | Shutdown OS (TTS announce → release servos → `sudo shutdown -h now`). LED blinks red while armed. | n/a — TTP223 hardware cannot reliably hold (see "FastMode" below) |
@@ -97,7 +97,7 @@ Any edge — rising or falling, any pad — restarts a 200 ms timer. When the ti
 After a session ends:
 
 1. If a **pet cooldown** is active (a head-pat fired recently), the session is silently absorbed and the cooldown is extended. Prevents stuttering `single_click` interjections between continuous strokes.
-2. Otherwise increment the session count. On the **first** session of a burst, if TTS is mid-utterance, speech is stopped immediately (`_grab_floor_if_speaking`, TTS only — music, unmute and the listening cue still wait for resolution). Deliberate trade-off: petting Lamp while she talks now cuts her off (the pet giggle follows) in exchange for instant tap-to-interrupt.
+2. Otherwise increment the session count. On the **first** session of a burst (`_ack_first_session`): if TTS is mid-utterance, speech is stopped immediately, then a short ack chime plays (gesture-neutral — valid for a tap or the first stroke of a pet). TTS stop + chime only — music, unmute and the listening cue still wait for resolution. Deliberate trade-off: petting Lamp while she talks now cuts her off (the pet giggle follows) in exchange for instant tap-to-interrupt.
 3. Then resolve:
    - `count >= 2` → fire `head_pat_action` immediately, arm 1.5 s pet cooldown
    - `count < 2` → schedule a 1.2 s decision timer. When that timer fires with `count == 1`, fire `single_click_action`.

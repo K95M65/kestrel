@@ -160,6 +160,22 @@ def _wake_if_sleepy(source: str):
         logger.warning("Wake emotion call failed: %s", e)
 
 
+def play_ack_chime(source: str = "button"):
+    """Instant audible acknowledgment (~120ms ping) that a physical gesture
+    registered. Humans need sub-200ms feedback to feel 'it heard me' — the
+    spoken cue can never get there (it waits out gesture disambiguation
+    windows), the chime can. Neutral by design: valid ack for a tap, the
+    first stroke of a pet, or the start of a triple-click burst. Silent
+    no-op when TTS is unavailable or the speaker is muted."""
+    tts = state.tts_service
+    if tts is None:
+        return
+    try:
+        tts.play_ack_chime()
+    except Exception as e:
+        logger.debug("%s ack chime failed: %s", source, e)
+
+
 def announce_listening_cue(source: str = "button"):
     """Fire the listening-cue TTS off-thread. Split from single_click_action
     so callers that resolve gestures in two steps (GPIO button: floor-grab
@@ -173,9 +189,10 @@ def announce_listening_cue(source: str = "button"):
         ).start()
 
 
-def single_click_action(source: str = "button", announce: bool = True):
+def single_click_action(source: str = "button", announce: bool = True, chime: bool = True):
     """Stop in-flight speech / unmute mic + speaker, then announce listening cue.
-    announce=False skips the cue (caller fires announce_listening_cue later)."""
+    announce=False skips the cue (caller fires announce_listening_cue later).
+    chime=False skips the ack ping (caller already chimed at gesture start)."""
     from hal.routes.music import audio_stop, unmute_speaker
     from hal.routes.voice import stop_tts, unmute_mic
 
@@ -198,6 +215,10 @@ def single_click_action(source: str = "button", announce: bool = True):
         logger.info("%s single click -- stopping speaker", source)
         stop_tts()
         audio_stop()
+    # Ack ping AFTER the stop: stop_tts frees the persistent stream lock
+    # within ~10ms, so the chime sounds effectively at gesture time.
+    if chime:
+        play_ack_chime(source)
     # Announce the listening cue so the user hears confirmation of the
     # click — both for unmute (mic just opened) and for stop-speaker (the
     # device was talking, user wants the floor). The cue itself preempts

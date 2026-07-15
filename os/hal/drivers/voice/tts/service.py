@@ -210,6 +210,9 @@ class TTSService:
         self._stream_rate: Optional[int] = None
         self._stream_lock = threading.Lock()
         self._write_started_ts: Optional[float] = None
+        # Pre-rendered gesture-ack ping, cached per stream rate (see
+        # play_ack_chime). Generated in-memory — no binary asset to ship.
+        self._ack_chime_cache = None
         if self._sd and self._device_rate:
             try:
                 self._ensure_stream(self._device_rate)
@@ -1339,6 +1342,51 @@ class TTSService:
             "HIT" if hit else "MISS-played",
             len(samples), dst_rate, (time.perf_counter() - t0) * 1000.0, path.name,
         )
+
+    def _ack_chime_samples(self, rate: int):
+        """Pre-rendered acknowledgment ping: E6 + E7 sine partials, ~120ms,
+        exponential decay, 5ms attack ramp (no onset click). Cached per
+        stream rate; regenerated only if the device rate changes."""
+        cached = self._ack_chime_cache
+        if cached is not None and cached[0] == rate:
+            return cached[1]
+        np = self._np
+        t = np.arange(int(rate * 0.12)) / rate
+        envelope = np.exp(-t * 28.0)
+        tone = 0.28 * envelope * (
+            np.sin(2 * np.pi * 1318.5 * t) + 0.5 * np.sin(2 * np.pi * 2637.0 * t)
+        )
+        samples = tone.astype(np.float32).reshape(-1, 1)
+        attack = max(1, int(rate * 0.005))
+        samples[:attack, 0] *= np.linspace(0.0, 1.0, attack, dtype=np.float32)
+        self._ack_chime_cache = (rate, samples)
+        return samples
+
+    def play_ack_chime(self) -> bool:
+        """Physical-gesture acknowledgment: write a short ping straight into
+        the persistent output stream. Deliberately bypasses self._lock (the
+        speak-level lock) — the ack must sound the instant a button/touch
+        registers, not after the current utterance winds down. Callers stop
+        TTS first; the playback loop then releases _stream_lock within one
+        10ms block, so the chime serializes on _stream_lock only. Doesn't
+        touch _speaking/_stop_event: 120ms of audio needs no stop support
+        and must survive the just-set stop event. Returns False when the
+        chime can't play (no audio, speaker muted, stream unopenable —
+        e.g. while a music aplay owns the ALSA device exclusively)."""
+        if not self.available or self._speaker_muted():
+            return False
+        if self._np is None or self._sd is None:
+            return False
+        try:
+            rate = self._device_rate or TTS_SAMPLE_RATE
+            samples = self._ack_chime_samples(rate)
+            with self._stream_lock:
+                stream = self._ensure_stream(rate)
+                stream.write(samples)
+            return True
+        except Exception as e:
+            logger.debug("Ack chime failed: %s", e)
+            return False
 
     def _render_and_save_wav(self, text: str, cache_path: Path) -> None:
         """Pull all PCM from backend and write WAV atomically. Synchronous."""

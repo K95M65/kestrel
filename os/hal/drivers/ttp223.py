@@ -25,10 +25,10 @@ The 1.2s decision delay is the cost of distinguishing the two gestures
 on this hardware — TTP223 FastMode can't tell us "finger currently down",
 so we infer continuous stroking from session frequency.
 
-One part of the tap action escapes the wait: if TTS is mid-utterance
-when the FIRST session of a burst ends, speech is stopped immediately
-(~0.2s after the finger lifts) instead of after the decision window —
-stop latency is the part of the gesture users actually feel. Deliberate
+Two parts of the tap action escape the wait, both at the FIRST session
+end of a burst (~0.2s after the finger lifts): in-flight TTS is stopped
+immediately, and a short ack chime plays — stop latency and "did it hear
+me" feedback are the parts of the gesture users actually feel. Deliberate
 semantic change that comes with it: petting her head while she talks now
 cuts her off (the pet giggle follows) — touch means "attention here"
 either way. Only TTS is cut early; music keeps playing until the burst
@@ -44,6 +44,7 @@ import hal.app_state as state
 from hal.board.board import board_profile
 from hal.drivers.button_actions import (
     head_pat_action,
+    play_ack_chime,
     single_click_action,
 )
 
@@ -239,30 +240,33 @@ class TTP223Handler:
                 self._decision_timer.daemon = True
                 self._decision_timer.start()
         if grab_floor:
-            self._grab_floor_if_speaking()
+            self._ack_first_session()
         if fire_pet:
             head_pat_action(source="TTP223")
 
-    def _grab_floor_if_speaking(self):
-        """Instant barge-in: stop TTS on the first touch session of a burst
-        when speech is actually in flight. TTS only — no unmute, no music
-        stop, no cue; those wait for tap-vs-pet resolution. Off-thread
-        because stop_tts does I/O and this is called from a Timer thread
-        that must go on to arm the decision timer promptly."""
-        tts = state.tts_service
-        if tts is None or not tts.speaking:
-            return
-        logger.info("TTP223 first touch during TTS -- stopping speech early")
+    def _ack_first_session(self):
+        """Instant ack for the first touch session of a burst: cut in-flight
+        TTS (barge-in), then sound the ack chime so the user gets sub-250ms
+        confirmation the touch registered. Chime is gesture-neutral, so it
+        fires for taps AND the first stroke of a pet; the spoken cue / pet
+        phrase still waits for tap-vs-pet resolution. TTS stop only — no
+        unmute, no music stop; those wait for resolution too. Off-thread
+        because stop_tts and the chime write do I/O and this is called from
+        a Timer thread that must go on to arm the decision timer promptly."""
 
-        def _stop():
+        def _run():
             try:
-                from hal.routes.voice import stop_tts
-                stop_tts()
+                tts = state.tts_service
+                if tts is not None and tts.speaking:
+                    logger.info("TTP223 first touch during TTS -- stopping speech early")
+                    from hal.routes.voice import stop_tts
+                    stop_tts()
+                play_ack_chime(source="TTP223")
             except Exception as e:
-                logger.warning("TTP223 early TTS stop failed: %s", e)
+                logger.warning("TTP223 first-session ack failed: %s", e)
 
         threading.Thread(
-            target=_stop, daemon=True, name="ttp223-floor-grab"
+            target=_run, daemon=True, name="ttp223-touch-ack"
         ).start()
 
     def _on_decision(self):
@@ -279,5 +283,7 @@ class TTP223Handler:
             # _on_session_end and never reaches this branch.
             # Disabled: TTP223 false-triggers on this HW → a phantom tap would
             # stop_tts and cut speech mid-sentence. Re-enable once touch is fixed.
-            single_click_action(source="TTP223")
+            # chime=False: the ack chime already sounded at the first
+            # session end (_ack_first_session) — don't ping twice.
+            single_click_action(source="TTP223", chime=False)
             # pass
