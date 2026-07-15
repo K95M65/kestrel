@@ -209,6 +209,13 @@ type Config struct {
 	// instead of being spoken via TTS.
 	GuardMode *bool `json:"guard_mode,omitempty" yaml:"guardMode"`
 
+	// SensingTurnFloorS is the minimum gap in seconds between two agent turns
+	// initiated by ambient sensing events (motion/emotion/speech-emotion/sound/
+	// away/light), across ALL event types. Per-event gates live in HAL; this is
+	// the cross-type floor that stops a burst of different event types from
+	// consuming several agent turns within seconds. 0 disables. Default 120.
+	SensingTurnFloorS *int `json:"sensing_turn_floor_s,omitempty" yaml:"sensingTurnFloorS"`
+
 	// GuardInstruction is a custom instruction the owner provides when enabling guard mode.
 	// Injected into sensing events so the agent follows it (e.g. "play scary sound when stranger detected").
 	GuardInstruction string `json:"guard_instruction,omitempty" yaml:"guardInstruction"`
@@ -542,6 +549,15 @@ func (c *Config) GuardModeEnabled() bool {
 		return false
 	}
 	return *c.GuardMode
+}
+
+// SensingTurnFloorSeconds returns the minimum gap in seconds between two
+// ambient-sensing-initiated agent turns (default 120, 0 = disabled).
+func (c *Config) SensingTurnFloorSeconds() int {
+	if c.SensingTurnFloorS == nil {
+		return 120
+	}
+	return *c.SensingTurnFloorS
 }
 
 func (c *Config) GetNotifyChannel() chan bool {

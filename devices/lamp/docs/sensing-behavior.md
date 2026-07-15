@@ -18,6 +18,15 @@ Sends POST                                            - speaks or NO_REPLY
 
 HAL owns per-type tracker logic (sound escalation, motion filtering). Go is the gatekeeper — it drops stale events if the agent is busy, then forwards. The agent decides *how* to react, constrained by `SOUL.md`.
 
+### Global ambient turn floor (cross-type)
+
+All per-type gates above are independent — without a cross-type gate, a burst of *different* event types (emotion + sound + motion within seconds, typical right after a presence change or a HAL restart) still costs several agent turns. The Go `SensingHandler` therefore enforces ONE floor across all **ambient** types: at most one agent turn per `sensing_turn_floor_s` seconds (config key in `config/config.json`, default **120**, `0` disables) for `motion.activity`, `emotion.detected`, `speech_emotion.detected`, `sound`, `presence.away`, `light.level`.
+
+- The floor clock is updated by **every** agent turn the sensing handler creates — voice, web chat, presence, fire included — so ambient events also stay quiet for the floor window after any interaction.
+- **Never floored:** user-initiated types (`voice`, `voice_command`, `voice_agent_handled`, `web_chat`, `touch.head_pat`), safety (`fire_hazard.detected`), and `presence.enter`/`presence.leave` (greeting UX + session bookkeeping).
+- Guard mode bypasses the floor entirely (surveillance wants every event).
+- A floored event is dropped, not queued (`sensing_drop` with reason `ambient_floor` in the Flow Monitor). Every ambient emitter re-offers on its own heartbeat, so a drop only delays awareness — it never loses a user-facing interaction.
+
 ---
 
 ## Sound

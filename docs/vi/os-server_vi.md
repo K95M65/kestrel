@@ -119,9 +119,10 @@ Config field: `guard_mode` trong `config/config.json` (bool, mặc định `fals
 
 **Flow xử lý:**
 1. `voice_command` hoặc `voice` + local intent enabled → match intent → thực thi trực tiếp (~50ms). `web_chat` skip local intent (text gõ ≠ wake-word voice).
-2. Không match → forward OpenClaw qua WebSocket `chat.send`
-3. Nếu event có `image` → gọi `SendChatMessageWithImage` → gửi ảnh kèm text cho AI vision phân tích. Với `web_chat`, ảnh attach được lưu vào `/tmp/web-chat-*.jpg` và gắn tag `[image: <path>]` để agent reference (vd: face enrollment).
-4. `web_chat` runs được mark qua `MarkWebChatRun(runID)` để SSE handler suppress TTS lúc lifecycle end — reply chỉ hiện trong web UI.
+2. Ambient turn floor: `motion.activity`, `emotion.detected`, `speech_emotion.detected`, `sound`, `presence.away`, `light.level` bị drop khi agent turn gần nhất mà handler này tạo (bất kể type) cách đây chưa tới `sensing_turn_floor_s` giây (key config, mặc định `120`, `0` = tắt; guard mode bypass). Một floor xuyên-type đè trên các gate per-type độc lập của HAL — một loạt event khác type chỉ tốn tối đa 1 agent turn mỗi window. Event bị drop hiện thành `sensing_drop` (reason `ambient_floor`) trong Flow Monitor.
+3. Không match → forward OpenClaw qua WebSocket `chat.send`
+4. Nếu event có `image` → gọi `SendChatMessageWithImage` → gửi ảnh kèm text cho AI vision phân tích. Với `web_chat`, ảnh attach được lưu vào `/tmp/web-chat-*.jpg` và gắn tag `[image: <path>]` để agent reference (vd: face enrollment).
+5. `web_chat` runs được mark qua `MarkWebChatRun(runID)` để SSE handler suppress TTS lúc lifecycle end — reply chỉ hiện trong web UI.
 
 ### OpenClaw
 
