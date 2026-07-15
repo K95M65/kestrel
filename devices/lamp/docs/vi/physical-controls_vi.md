@@ -26,8 +26,8 @@ Cả hai handler đều detect board qua `/proc/device-tree/model`:
 
 | Cử chỉ | Nút GPIO | Touchpad TTP223 |
 |---|---|---|
-| **1 chạm** | Stop loa / unmute mic + speaker + báo "Mình nghe đây" | Y hệt — fire ~1.2 s sau khi nhả (chi phí decision-window, xem dưới) |
-| **2 chạm** (≤ 0.4 s, nút) / (≤ 1.2 s, TTP223) | Bỏ qua (panic-click guard) | Pet response — TTS chọn ngẫu nhiên 1 câu từ pool theo ngôn ngữ |
+| **1 chạm** | Stop loa / unmute mic + speaker + báo "Mình nghe đây" — fire ngay khi nhả nút (không đợi click window) | Y hệt — fire ~1.2 s sau khi nhả (chi phí decision-window, xem dưới) |
+| **2 chạm** (≤ 0.4 s, nút) / (≤ 1.2 s, TTP223) | Không thêm gì ngoài single-click đã fire ở chạm 1 (panic-click guard) | Pet response — TTS chọn ngẫu nhiên 1 câu từ pool theo ngôn ngữ |
 | **3 chạm** (≤ 0.4 s, nút) | Reboot OS (TTS báo → `sudo reboot`) | n/a — TTP223 dừng ở 2 (chạm thêm bị cooldown nuốt) |
 | **Giữ 5–10 s rồi nhả** | Shutdown OS (TTS báo → release servo → `sudo shutdown -h now`). LED nháy đỏ khi đã arm. | n/a — phần cứng TTP223 không hold đáng tin được (xem "FastMode" dưới) |
 | **Giữ 10 s+ rồi nhả** | Factory-reset: wipe state thiết bị + reboot vào AP setup (TTS báo → release servo → POST `/api/system/factory-reset` trên OS server). LED đỏ đứng khi đã arm. | n/a |
@@ -59,10 +59,10 @@ Driver đếm edge nơi **mọi destructive action commit ở rising edge (nhả
 2. **Rising edge (nhả):** dừng LED watcher, tính `held = now − press_start` rồi rẽ nhánh:
    - `held >= 10 s` (`FACTORY_RESET_DURATION`) → scrub mọi click đang chờ, khoá LED đỏ đứng, chạy `factory_reset_action` off-thread.
    - `held >= 5 s` (`LONG_PRESS_DURATION`) → scrub click đang chờ, freeze LED đỏ, chạy `long_press_action` (shutdown) off-thread.
-   - khác (tap ngắn) → `click_count += 1` và (re)start click-window timer 0.4 s.
+   - khác (tap ngắn) → `click_count += 1` và (re)start click-window timer 0.4 s. Ở tap **đầu tiên** của chuỗi, `single_click_action` fire ngay off-thread — nó không phá huỷ ("cho tôi nói"), nên không cần đợi window. Nếu chuỗi hoá ra là triple thì announce reboot preempt cue "Mình nghe đây" (cue giờ interruptible).
 3. Khi click window hết:
-   - `count == 1` → `single_click_action`
    - `count == 3` → `triple_click_action`
+   - `count == 1` → không làm gì (đã fire lúc nhả nút)
    - `count == 2` hoặc `>= 4` → bỏ qua (panic-click guard)
 
 Release edge không có press khớp (press bị debounce nuốt) thì bỏ qua — `press_start` có thể là cũ, hành động theo nó có thể fire destructive action trên timestamp cũ vài phút. Destructive action chạy trên daemon thread riêng vì callback `lgpio` phải return ngay, nếu không các edge sau sẽ dồn hàng.
