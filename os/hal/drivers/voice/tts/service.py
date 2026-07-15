@@ -1353,7 +1353,11 @@ class TTSService:
         np = self._np
         t = np.arange(int(rate * 0.12)) / rate
         envelope = np.exp(-t * 28.0)
-        tone = 0.28 * envelope * (
+        # 0.4 base: pure-sine pings read perceptually quieter than speech at
+        # equal peak, so sit above typical TTS RMS. Backend volume_boost is
+        # applied at play time (not baked in) so runtime boost changes and
+        # this cache never disagree.
+        tone = 0.4 * envelope * (
             np.sin(2 * np.pi * 1318.5 * t) + 0.5 * np.sin(2 * np.pi * 2637.0 * t)
         )
         samples = tone.astype(np.float32).reshape(-1, 1)
@@ -1380,6 +1384,12 @@ class TTSService:
         try:
             rate = self._device_rate or TTS_SAMPLE_RATE
             samples = self._ack_chime_samples(rate)
+            # Same software gain TTS playback applies (_play_wav_inline) so
+            # the chime tracks perceived speech loudness, not just ALSA volume.
+            if self._backend is not None:
+                samples = self._np.clip(
+                    samples * self._backend.volume_boost, -1.0, 1.0
+                )
             with self._stream_lock:
                 stream = self._ensure_stream(rate)
                 stream.write(samples)
