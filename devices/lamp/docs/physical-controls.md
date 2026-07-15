@@ -26,8 +26,8 @@ Board detection in both handlers reads `/proc/device-tree/model`:
 
 | Gesture | GPIO button | TTP223 touchpad |
 |---|---|---|
-| **1 tap** | Stop speaker / unmute mic + speaker + announce "I'm listening" | Same — fires ~1.2 s after release (decision-window cost, see below) |
-| **2 taps** (≤ 0.4 s apart, button) / (≤ 1.2 s apart, TTP223) | Ignored (panic-click guard) | Pet response — TTS picks a random phrase from the language pool |
+| **1 tap** | Stop speaker / unmute mic + speaker + announce "I'm listening" — fires immediately on release (no click-window wait) | Same — fires ~1.2 s after release (decision-window cost, see below) |
+| **2 taps** (≤ 0.4 s apart, button) / (≤ 1.2 s apart, TTP223) | Nothing beyond the single-click already fired on tap 1 (panic-click guard) | Pet response — TTS picks a random phrase from the language pool |
 | **3 taps** (≤ 0.4 s apart, button) | Reboot OS (TTS announce → `sudo reboot`) | n/a — TTP223 stops at 2 (any further taps absorbed by cooldown) |
 | **Hold 5–10 s, then release** | Shutdown OS (TTS announce → release servos → `sudo shutdown -h now`). LED blinks red while armed. | n/a — TTP223 hardware cannot reliably hold (see "FastMode" below) |
 | **Hold 10 s+, then release** | Factory-reset: wipe device state + reboot into AP setup (TTS announce → release servos → POST `/api/system/factory-reset` on the OS server). LED goes solid red while armed. | n/a |
@@ -59,10 +59,10 @@ Edge-counting driver where **all destructive actions commit on the release edge 
 2. **Rising edge (release):** stop the LED watcher, then compute `held = now − press_start` and branch:
    - `held >= 10 s` (`FACTORY_RESET_DURATION`) → scrub any pending clicks, lock LED solid red, run `factory_reset_action` off-thread.
    - `held >= 5 s` (`LONG_PRESS_DURATION`) → scrub pending clicks, freeze LED red, run `long_press_action` (shutdown) off-thread.
-   - else (short tap) → increment `click_count` and (re)start a 0.4 s click-window timer.
+   - else (short tap) → increment `click_count` and (re)start a 0.4 s click-window timer. On the **first** tap of a burst, `single_click_action` fires immediately off-thread — it's non-destructive ("give me the floor"), so it doesn't wait for the window. The reboot announce preempts the (interruptible) listening cue if the burst turns out to be a triple.
 3. When the click window expires:
-   - `count == 1` → `single_click_action`
    - `count == 3` → `triple_click_action`
+   - `count == 1` → nothing (already fired on release)
    - `count == 2` or `>= 4` → ignored (panic-click guard)
 
 A release edge with no matching press (the press was debounce-dropped) is ignored — `press_start` could be stale, so acting on it could fire a destructive action against a minutes-old timestamp. Destructive actions run on their own daemon threads because the `lgpio` callback must return promptly or subsequent edges queue up.

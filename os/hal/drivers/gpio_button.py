@@ -1,8 +1,8 @@
 """GPIO button handler for pin 17.
 
 Supports four actions on a single button:
-- Single click: stop speaker / unmute mic
-- Triple click: reboot OS
+- Single click: stop speaker / unmute mic (fires immediately on release)
+- Triple click: reboot OS (resolved after the click window)
 - Hold + release (5–10s):  shutdown OS
 - Hold + release (10s+):   factory-reset (wipe state, reboot to AP setup)
 
@@ -10,10 +10,12 @@ Destructive actions commit ON RELEASE, not on a timer firing while held,
 so the user can cancel mid-hold by releasing before crossing a threshold
 (or keep holding past 10s to escalate from shutdown → factory-reset).
 
-Double-click and 4+ rapid clicks are intentional no-ops — destructive
-actions (reboot/shutdown/factory-reset) need a deliberate gesture so a
-user panic-clicking the button to interrupt TTS doesn't accidentally
-reboot.
+The single-click action fires on the FIRST tap of a burst without waiting
+for the click window — it's non-destructive, so eager firing just cuts
+latency. Double-click and 4+ rapid clicks add nothing on top of that —
+destructive actions (reboot/shutdown/factory-reset) need a deliberate
+gesture so a user panic-clicking the button to interrupt TTS doesn't
+accidentally reboot.
 
 The actual action logic lives in `button_actions.py` so other input
 devices (touchpad, remote) can reuse the same gestures.
@@ -240,8 +242,27 @@ class GPIOButtonHandler:
             ).start()
             return
 
-        # Short tap → count toward single / triple click resolution.
+        # Short tap → count toward triple-click resolution. The single-click
+        # action (stop speaker / unmute mic + listening cue) fires IMMEDIATELY
+        # on the first tap of a burst — it's a non-destructive "give me the
+        # floor" gesture, so there's nothing to gain by sitting out the
+        # click window, and firing now cuts perceived latency by 0.4s.
+        # Only the destructive triple-click (reboot) still waits for the
+        # window to resolve. If the burst turns out to be a triple, the
+        # floor-grab side effects (TTS stopped, mic unmuted) are harmless —
+        # the OS reboots moments later, and the reboot announce preempts
+        # the interruptible listening cue.
         self._click_count += 1
+        if self._click_count == 1:
+            # Off-thread: stop_tts/audio_stop/unmute do blocking I/O; the
+            # lgpio callback must return promptly (same reasoning as the
+            # long-press branches above).
+            threading.Thread(
+                target=single_click_action,
+                kwargs={"source": "GPIO button"},
+                daemon=True,
+                name="gpio-button-single-click",
+            ).start()
         if self._click_timer:
             self._click_timer.cancel()
         self._click_timer = threading.Timer(
@@ -253,11 +274,10 @@ class GPIOButtonHandler:
     def _on_click_timeout(self):
         count = self._click_count
         self._click_count = 0
-        if count == 1:
-            single_click_action(source="GPIO button")
-        elif count == 3:
+        if count == 3:
             triple_click_action(source="GPIO button")
-        else:
+        elif count != 1:
+            # count == 1 already fired on release (immediate single click).
             # count == 2 → likely a slipped/panic double-tap of single
             # count >= 4 → panic-click; never trigger destructive actions
             logger.info("GPIO button %d clicks -- ignored (only 1=stop, 3=reboot)", count)

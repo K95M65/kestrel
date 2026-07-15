@@ -103,9 +103,17 @@ def _announce_listening():
     giving up silently."""
     text = _phrase(PHRASE_LISTENING)
     state.tts_service.stop()
-    for delay in (0.15, 0.4, 0.8, 1.6, 3.0):
-        time.sleep(delay)
-        if state.tts_service.speak_cached(text):
+    # First attempt is immediate: when TTS is idle (the common case — mic
+    # unmute path) the cue plays with zero added delay. Backoff only kicks
+    # in when the lock is still held by winding-down playback.
+    # interruptible=True: the cue now fires on the FIRST tap of a burst
+    # (before triple-click resolution), so a follow-up gesture phrase —
+    # PHRASE_REBOOT on triple click — must be able to preempt it instead
+    # of being dropped by the busy-skip path.
+    for delay in (0, 0.15, 0.4, 0.8, 1.6, 3.0):
+        if delay:
+            time.sleep(delay)
+        if state.tts_service.speak_cached(text, interruptible=True):
             return
     logger.warning("listening cue dropped: TTS busy after retries")
 
