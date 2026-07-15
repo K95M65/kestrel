@@ -567,11 +567,7 @@ func (h *AgentHandler) handleAgentStreamEvent(evt domain.WSEvent) error {
 					slog.Info("intercepted built-in tts tool, routing to HAL", "component", "agent", "run_id", flowRunID, "text", ttsText[:min(len(ttsText), 80)], "channel_run", isChannelRun, "web_chat", isWebChat, "silent", isSilent)
 					flow.Log("tts_send", map[string]any{"run_id": flowRunID, "text": ttsText, "source": "tts_tool_intercept"}, flowRunID)
 					if !isChannelRun && !isWebChat && !isSilent {
-						go func(t string) {
-							if err := h.agentGateway.SendToHALTTS(t); err != nil {
-								slog.Error("TTS intercept delivery failed", "component", "agent", "error", err)
-							}
-						}(ttsText)
+						h.deliverTTS(h.agentGateway.SendToHALTTS, ttsText, flowRunID, "TTS intercept delivery failed")
 					}
 					// Mark this turn as already spoken so lifecycle_end won't double-speak.
 					h.suppressTTS(payload.RunID, "already_spoken")
@@ -706,11 +702,7 @@ func (h *AgentHandler) handleAgentStreamEvent(evt domain.WSEvent) error {
 						"run_id", flowRunID,
 						"sentence", cleaned[:min(len(cleaned), 100)])
 					flow.Log("tts_stream_send", map[string]any{"run_id": flowRunID, "text": cleaned}, flowRunID)
-					go func(s string) {
-						if err := h.agentGateway.SendToHALTTSQueue(s); err != nil {
-							slog.Error("streaming TTS delivery failed", "component", "agent", "error", err)
-						}
-					}(cleaned)
+					h.deliverTTS(h.agentGateway.SendToHALTTSQueue, cleaned, flowRunID, "streaming TTS delivery failed")
 				}
 			}
 		}
@@ -1016,11 +1008,7 @@ func (h *AgentHandler) handleAgentStreamEvent(evt domain.WSEvent) error {
 					// can display the complete reply — it only reads tts_send and would
 					// otherwise drop sentence 1 (logged separately as tts_stream_send).
 					flow.Log("tts_send", map[string]any{"run_id": flowRunID, "text": remainderText, "full_text": text, "streamed_len": streamedLen}, flowRunID)
-					go func(t string) {
-						if err := h.agentGateway.SendToHALTTSQueue(t); err != nil {
-							slog.Error("TTS delivery failed", "component", "agent", "error", err)
-						}
-					}(remainderText)
+					h.deliverTTS(h.agentGateway.SendToHALTTSQueue, remainderText, flowRunID, "TTS delivery failed")
 				}
 				// Guard broadcast is handled above (before the if/else) to ensure
 				// it fires even on NO_REPLY / empty / suppressed paths.

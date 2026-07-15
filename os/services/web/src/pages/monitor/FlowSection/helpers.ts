@@ -942,6 +942,10 @@ export function extractNodeInfo(events: DisplayEvent[]): NodeInfoMap {
         info.agent_response.push(`"${text}"`);
       }
     }
+    // tts_muted: reply text already shown via tts_send on the same run — only note the muted playback
+    if (ev.type === "flow_event" && ev.detail?.node === "tts_muted") {
+      if (info.tts_speak.length < 3) info.tts_speak.push("🔇 speaker muted — reply not spoken");
+    }
     if (ev.type === "flow_event" && ev.detail?.node === "telegram_alert_broadcast") {
       const d = ev.detail as Record<string, any> | undefined;
       const sessions = Number(d?.data?.sessions ?? 0);
@@ -1081,6 +1085,9 @@ export function extractNodeInfo(events: DisplayEvent[]): NodeInfoMap {
       const d = ev.detail as Record<string, any> | undefined;
       const reason = d?.data?.reason ?? "suppressed";
       pushUnique(info.os_gate, `🔇 → TTS suppressed (${reason})`);
+    }
+    if (ev.type === "flow_event" && ev.detail?.node === "tts_muted") {
+      pushUnique(info.os_gate, "🔇 → TTS muted (speaker)");
     }
     if (ev.type === "flow_event" && ev.detail?.node === "no_reply") {
       pushUnique(info.os_gate, "🚫 → no reply");

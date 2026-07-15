@@ -229,6 +229,8 @@ agent_response → tg_out        (Telegram/Slack output)
 lamp_gate → tts_speak          (Gate passes if not suppressed → HAL TTS)
 ```
 
+If the device speaker is muted, HAL answers the TTS call with HTTP 200 `{"status":"suppressed"}` and plays nothing — surfaced as the `tts_muted` flow event (see below).
+
 **Elbow routing**: Edges from `local_match` to output nodes (hw_emotion, hw_led, hw_servo, tts_speak) use elbow paths routed to the **left** of the output column to avoid crossing intermediate nodes.
 
 ### Event → node labels (runtime detail boxes)
@@ -250,6 +252,7 @@ Node info extracted from turn events:
 - `lifecycle_end` → Response node + final row in the Event Pipeline.
 - `tts_send` → TTS Speak + Output nodes. Output text is read from `detail.data.full_text` (the complete reply) with fallback to `detail.data.text`. When the agent's first sentence is streamed to TTS mid-turn (`tts_stream_send`, sent early for lower latency), `data.text` holds only the **remainder** (sentence 1 sliced off so it isn't spoken twice); `data.full_text` carries sentence 1 + remainder so the web chat and flow Output show the full reply. `data.streamed_len` is the byte offset where the remainder begins.
 - `tts_suppressed` → 🔇 marker in the gate column. `data.reason` discriminates: `channel_run` (real Telegram user turn — detected by `tg-` runID prefix synthesised in the `session.message` handler, or `channelRuns` map mark from chat.history fallback; reply fans out via OpenClaw session instead of the device speaker), `already_spoken` (built-in tts tool already routed), `voice_agent_handled` (realtime voice agent already spoke this turn), `web_chat` (Flow Monitor chat — reply shown in web UI only). Emitted *instead of* `tts_send` when the actual `SendToHalTTS` call is skipped — prevents the UI from misleadingly claiming TTS happened. Note: there is no `music_playing` reason — playing music no longer suppresses the spoken reply; the OS server always sends the reply TTS and HAL serializes it before music (the reply speaks first, then music plays). Classifier uses positive evidence only: UUID runs from OpenClaw steer-mode self-fire, cron fires, and heartbeats are NOT `channel_run` and DO speak on the device.
+- `tts_muted` → TTS node tinted red (same as suppressed); detail panel shows "🔇 speaker muted — reply not spoken", gate line "🔇 → TTS muted (speaker)". Emitted right *after* `tts_send` on the same run: the reply was sent to HAL, but the device speaker is muted, so HAL answers HTTP 200 `{"status":"suppressed"}` and does NOT synthesize or play anything (no TTS API call spent). The Go HAL client (`lib/hal` `SpeakReply`/`SpeakQueueReply`) decodes that body into the sentinel error `hal.ErrSpeakerMuted`, and the handler logs `tts_muted` `{run_id, text}`. Unlike `tts_suppressed` (a Go-side decision made *before* sending, with no accompanying `tts_send` — the chat text comes from the suppress event itself), the reply text still reaches the web chat via `tts_send`; only the audio stays silent.
 - `token_usage` → Response node (token counts).
 - `cot_leak_filtered` → emitted at lifecycle:end when the CoT-leak filter dropped sentences from the reply. `data.dropped` is the sentence count, `data.preview` a bounded preview of what was removed. See "CoT-leak filter" below.
 
