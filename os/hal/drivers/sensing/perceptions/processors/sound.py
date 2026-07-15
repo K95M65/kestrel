@@ -222,13 +222,25 @@ class SoundPerception(Perception[Any]):
                     f"sound persistent — occurrence {occurrence} → will speak",
                     {"action": "persistent", "occurrence": occurrence},
                 )
-            else:
+            elif occurrence == 1:
                 msg += f" — occurrence {occurrence}"
                 self._push_monitor(
                     "sound_tracker",
                     f"sound occurrence {occurrence} → silent",
                     {"action": "silent", "occurrence": occurrence},
                 )
+            else:
+                # Middle occurrences (2..persistent-1) only advance the
+                # tracker. Each POST is a full agent turn, and "still noisy"
+                # between the transition (occurrence 1) and the escalation
+                # (persistent) tells the agent nothing it can act on — in
+                # sustained noise this cuts 3 turns per cycle to 2.
+                self._push_monitor(
+                    "sound_tracker",
+                    f"sound occurrence {occurrence} → counted, not forwarded",
+                    {"action": "counted", "occurrence": occurrence},
+                )
+                return
 
             self._send_event("sound", msg, "", None, None)
         except Exception as e:

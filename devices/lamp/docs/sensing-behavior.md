@@ -31,12 +31,14 @@ HAL fires a sound event on every audio sample that crosses `SOUND_RMS_THRESHOLD`
 | Stage | What the agent sees | Agent reaction |
 |---|---|---|
 | Occurrence 1 | `... — occurrence 1` | `/emotion shock` (0.8), NO_REPLY |
-| Occurrence 2 | `... — occurrence 2` | `/emotion curious` (0.7), NO_REPLY |
+| Occurrence 2 | **nothing** — counted tracker-side, not forwarded | no agent turn |
 | Occurrence 3+ | `... — persistent (occurrence 3)` | `/emotion curious` (0.9), speaks once |
 | After speaking | dropped by Python (suppressed 3 min) | nothing reaches agent |
 | 2 min silence | window resets | back to occurrence 1 |
 
-The analogy: a dog hears a noise — it looks up (occurrence 1), keeps watching (occurrence 2), then barks once if the noise persists (occurrence 3+). After barking it doesn't keep barking.
+Middle occurrences (2 .. persistent−1) advance the counter but are not forwarded: each forward is a full LLM turn, and "still noisy" between the transition (occurrence 1) and the escalation (persistent) gives the agent nothing to act on — in sustained noise this cuts 3 turns per cycle to 2.
+
+The analogy: a dog hears a noise — it looks up (occurrence 1), keeps watching quietly (occurrence 2, no report), then barks once if the noise persists (occurrence 3+). After barking it doesn't keep barking.
 
 ### Constants (`sound.py`)
 
@@ -62,7 +64,8 @@ _SUPPRESS_DURATION_S  = 180.0  # suppress after speaking (3 min)
 Python pushes `sound_tracker` events directly to the monitor bus via `POST /api/monitor/event`. These appear in the Flow Monitor alongside `sensing_input` turns:
 
 ```json
-{ "action": "silent",    "occurrence": 1 }  // occurrence 1 or 2 — forwarded silently
+{ "action": "silent",    "occurrence": 1 }  // occurrence 1 — forwarded silently
+{ "action": "counted",   "occurrence": 2 }  // middle occurrence — counted, not forwarded
 { "action": "persistent","occurrence": 3 }  // occurrence 3+ — agent will speak
 { "action": "drop" }                        // dedup or suppressed — not forwarded
 ```

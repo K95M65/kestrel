@@ -31,12 +31,14 @@ HAL bắn một sound event cho mỗi audio sample vượt ngưỡng `SOUND_RMS_
 | Giai đoạn | Agent nhận | Phản ứng của agent |
 |---|---|---|
 | Lần 1 | `... — occurrence 1` | `/emotion shock` (0.8), im lặng |
-| Lần 2 | `... — occurrence 2` | `/emotion curious` (0.7), im lặng |
+| Lần 2 | **không có gì** — chỉ đếm ở tracker, không forward | không tốn turn agent |
 | Lần 3+ | `... — persistent (occurrence 3)` | `/emotion curious` (0.9), nói 1 lần |
 | Sau khi nói | Python drop (suppress 3 phút) | Không có gì đến agent |
 | Im lặng 2 phút | Window reset | Trở về lần 1 |
 
-Ví dụ: một con chó nghe tiếng động — nó nhìn lên (lần 1), tiếp tục theo dõi (lần 2), rồi sủa một lần nếu tiếng ồn kéo dài (lần 3+). Sau khi sủa thì không sủa tiếp.
+Các lần giữa (2 .. persistent−1) chỉ tăng counter chứ không forward: mỗi forward là một turn LLM đầy đủ, mà "vẫn còn ồn" giữa lúc chuyển trạng thái (lần 1) và lúc leo thang (persistent) không cho agent thông tin gì để hành động — khi ồn kéo dài, số turn mỗi chu kỳ giảm từ 3 xuống 2.
+
+Ví dụ: một con chó nghe tiếng động — nó nhìn lên (lần 1), tiếp tục theo dõi trong im lặng (lần 2, không báo), rồi sủa một lần nếu tiếng ồn kéo dài (lần 3+). Sau khi sủa thì không sủa tiếp.
 
 ### Hằng số (`sound.py`)
 
@@ -62,7 +64,8 @@ _SUPPRESS_DURATION_S  = 180.0  # suppress sau khi đã nói (3 phút)
 Python đẩy `sound_tracker` events trực tiếp vào monitor bus qua `POST /api/monitor/event`. Chúng hiện trên Flow Monitor cạnh `sensing_input` turn:
 
 ```json
-{ "action": "silent",    "occurrence": 1 }  // lần 1 hoặc 2 — forwarded, im lặng
+{ "action": "silent",    "occurrence": 1 }  // lần 1 — forwarded, im lặng
+{ "action": "counted",   "occurrence": 2 }  // lần giữa — chỉ đếm, không forward
 { "action": "persistent","occurrence": 3 }  // lần 3+ — agent sẽ nói
 { "action": "drop" }                        // dedup hoặc suppress — không forward
 ```

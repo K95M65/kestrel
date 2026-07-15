@@ -34,6 +34,20 @@ RESOURCES_DIR = Path(__file__).parent / "resources"
 # Map raw Kinetics action labels to high-level activity groups.
 # The OS server receives the raw labels — the agent infers the group. The mapping here
 # is kept only to filter out emotional actions (handled by a separate channel).
+# Boot-scoped dedup sidecar — survives HAL service restarts so the first
+# flush after a deploy/OTA doesn't re-fire "Activity detected" as if the
+# activity were news (same pattern as the presence and scene sidecars).
+# tmpfs + boot_id: a full device reboot starts fresh on purpose.
+_MOTION_STATE_PATH = Path("/tmp/hal-motion-state.json")
+
+
+def _current_boot_id() -> str:
+    try:
+        return Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+    except Exception:
+        return ""
+
+
 ACTIVITY_GROUP: dict[str, str] = {
     # drink — reset hydration timer
     "drinking": "drink",
@@ -374,6 +388,7 @@ class MotionPerception(Perception[cv2.typing.MatLike]):
         self._transition_min_gap_s: float = config.MOTION_TRANSITION_MIN_GAP_S
         self._last_event_ts: float = 0.0
         self._last_sent_class: frozenset[str] | None = None
+        self._load_dedup_state()
 
         self._state_lock: threading.RLock = threading.RLock()
 
@@ -386,6 +401,52 @@ class MotionPerception(Perception[cv2.typing.MatLike]):
         # only to compute the [computer_streak_min: N] context hint that
         # rides alongside the posture summary — not a gate.
         self._sedentary_streak_start_ts: float = 0.0
+
+    def _load_dedup_state(self) -> None:
+        """Restore dedup/cooldown state from the boot-scoped sidecar."""
+        try:
+            if not _MOTION_STATE_PATH.exists():
+                return
+            data = json.loads(_MOTION_STATE_PATH.read_text())
+            if data.get("boot_id") != _current_boot_id():
+                _MOTION_STATE_PATH.unlink(missing_ok=True)
+                return
+            self._last_sent_key = (
+                str(data.get("user", "")),
+                frozenset(data.get("labels") or []),
+            )
+            self._last_sent_ts = float(data.get("sent_ts") or 0.0)
+            self._last_event_ts = float(data.get("event_ts") or 0.0)
+            classes = data.get("classes")
+            self._last_sent_class = frozenset(classes) if classes else None
+            logger.info(
+                "[motion] dedup state restored (last event %.0fs ago — no re-fire)",
+                time.time() - self._last_event_ts,
+            )
+        except Exception as e:
+            logger.warning("[motion] dedup state load failed: %s", e)
+
+    def _persist_dedup_state(self) -> None:
+        """Write the sidecar. Called only on send/reset — a few writes per hour."""
+        try:
+            if self._last_sent_key is None:
+                _MOTION_STATE_PATH.unlink(missing_ok=True)
+                return
+            user, labels = self._last_sent_key
+            _MOTION_STATE_PATH.write_text(
+                json.dumps(
+                    {
+                        "boot_id": _current_boot_id(),
+                        "user": user,
+                        "labels": sorted(labels),
+                        "sent_ts": self._last_sent_ts,
+                        "event_ts": self._last_event_ts,
+                        "classes": sorted(self._last_sent_class or ()),
+                    }
+                )
+            )
+        except Exception as e:
+            logger.warning("[motion] dedup state save failed: %s", e)
 
     def set_pose_perception(self, pose: PosePerception | None) -> None:
         """Wire in the pose sampler so motion can fold posture summaries
@@ -719,6 +780,7 @@ class MotionPerception(Perception[cv2.typing.MatLike]):
         self._last_sent_ts = cur_ts
         self._last_event_ts = cur_ts
         self._last_sent_class = classes
+        self._persist_dedup_state()
 
         # Log each outbound label to the OS server wellbeing BEFORE firing the event.
         # Log-first means when the agent reads history on motion.activity,
@@ -793,6 +855,9 @@ class MotionPerception(Perception[cv2.typing.MatLike]):
         self._last_event_ts = 0.0
         self._last_sent_class = None
         self._sedentary_streak_start_ts = 0.0
+        # Sync the sidecar (unlinks it) so a restart can't resurrect the
+        # state this user-change reset just cleared.
+        self._persist_dedup_state()
 
     def to_dict(self) -> dict[str, Any]:
         seconds_since = (

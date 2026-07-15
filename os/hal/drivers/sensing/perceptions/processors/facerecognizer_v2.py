@@ -1753,6 +1753,7 @@ class FacePerception(Perception[cv2.typing.MatLike]):
         self._faces_n: int = 0
         self._face_present: bool = False
         self._people_data_dict: dict[str, PersonData] = {}
+        self._last_stranger_enter_ts: float = 0.0
         self._last_presence_save_ts: float = 0.0
         self._load_presence_state()
         self._owners: set[str] = set()
@@ -2169,7 +2170,30 @@ class FacePerception(Perception[cv2.typing.MatLike]):
             )
             stranger_ids_to_send = new_strangers.union(flushed_stranger_ids)
 
+            # Stranger-only enter floor: embedding flicker mints a fresh
+            # stranger_N id every few seconds for the same unrecognizable
+            # person, and a fresh id is always "new" — each would be a full
+            # agent turn with only the 10s FACE_COOLDOWN between them. One
+            # stranger update per floor window is plenty; a friend appearing
+            # is never floored.
+            if (
+                annotated_frames_to_send
+                and not new_owners
+                and stranger_ids_to_send
+                and (cur_ts - self._last_stranger_enter_ts)
+                < config.FACE_STRANGER_ENTER_FLOOR_S
+            ):
+                logger.info(
+                    "[face] stranger-only enter floored: %s (last stranger enter %.0fs ago < %.0fs)",
+                    sorted(stranger_ids_to_send),
+                    cur_ts - self._last_stranger_enter_ts,
+                    config.FACE_STRANGER_ENTER_FLOOR_S,
+                )
+                annotated_frames_to_send = []
+
             if annotated_frames_to_send:
+                if not new_owners and stranger_ids_to_send:
+                    self._last_stranger_enter_ts = cur_ts
                 parts = []
                 if new_owners:
                     parts.append(f"friend ({', '.join(new_owners)})")

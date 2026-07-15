@@ -109,6 +109,11 @@ YUNET_CONFIDENCE_THRESHOLD = float(
 FACE_COOLDOWN_S = float(os.environ.get("HAL_FACE_COOLDOWN_S", "10.0"))
 FACE_OWNER_FORGET_S = float(os.environ.get("HAL_FACE_OWNER_FORGET_S", "3600.0"))
 FACE_STRANGER_FORGET_S = float(os.environ.get("HAL_FACE_STRANGER_FORGET_S", "1800.0"))
+# Floor between two STRANGER-ONLY presence.enter events. Embedding flicker
+# mints a fresh stranger_N id every few seconds for the same unrecognizable
+# person, and a fresh id is always "new" — without this floor that's an agent
+# turn every FACE_COOLDOWN_S (10s). Friend enters are not affected.
+FACE_STRANGER_ENTER_FLOOR_S = float(os.environ.get("HAL_FACE_STRANGER_ENTER_FLOOR_S", "300.0"))
 FACE_STRANGER_FLUSH_S = float(os.environ.get("HAL_FACE_STRANGER_FLUSH_S", "10.0"))
 FACE_AREA_RATIO_THRESHOLD = float(os.environ.get("HAL_FACE_AREA_RATIO_THRESHOLD", "0.05"))
 
