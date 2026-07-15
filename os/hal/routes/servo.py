@@ -182,7 +182,7 @@ def play_recording(req: ServoRequest):
         raise HTTPException(503, "Servo not available")
     if getattr(state.animation_service, "_zero_mode", False) or getattr(state.animation_service, "_hold_mode", False):
         state.logger.debug("servo/play blocked: %s mode active",
-                           "zero-hold" if state.animation_service._zero_mode else "hold")
+                           "zero-hold" if getattr(state.animation_service, "_zero_mode", False) else "hold")
         return {"status": "ok"}
     if not state.animation_service._running.is_set():
         state.animation_service._running.set()

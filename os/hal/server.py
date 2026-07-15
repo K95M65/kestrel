@@ -107,6 +107,22 @@ _profile = _device_profile()
 # Full declared route surface (incl. `speaker`), keys usable with `in`.
 _declared = _profile.declared_routes()
 
+# Warm the heaviest driver chain (lerobot → torch, ~4s of the ~7.5s total import
+# time on an A523) in parallel with the rest of the module imports below.
+# Python's per-module import locks make the gated
+# `from hal.drivers.motors.animation_service import ...` further down wait on —
+# not duplicate — this import, so it acts as a join point.
+if "servo" in _declared:
+    import importlib
+
+    def _warm_import_servo():
+        try:
+            importlib.import_module("hal.drivers.motors.animation_service")
+        except Exception:
+            pass  # the gated import below reports the real error
+
+    threading.Thread(target=_warm_import_servo, daemon=True, name="warm-import-servo").start()
+
 # --- Lazy imports for hardware drivers (may not be available on dev machines),
 # gated on the declared routes so undeclared hardware costs zero import time ---
 
@@ -637,6 +653,17 @@ async def lifespan(app: FastAPI):
     _lifespan_stopping.set()
     _thermal_stop.set()
 
+    # Voice/sensing stops (~3s) run concurrently with the announce+park below —
+    # they only tear down mic/STT/perception threads, never the TTS output the
+    # cue plays on.
+    _shutdown_threads = []
+    if state.voice_service:
+        _shutdown_threads.append(threading.Thread(target=state.voice_service.stop, daemon=True))
+    if state.sensing_service:
+        _shutdown_threads.append(threading.Thread(target=state.sensing_service.stop, daemon=True))
+    for t in _shutdown_threads:
+        t.start()
+
     # Shutdown — announce + park servos first (only when OS is actually
     # going down and no button path already announced), so the audible cue
     # fires while tts_service is still alive.
@@ -652,13 +679,6 @@ async def lifespan(app: FastAPI):
     if state.tracker_service and state.tracker_service.is_tracking:
         state.tracker_service.stop()
 
-    _shutdown_threads = []
-    if state.voice_service:
-        _shutdown_threads.append(threading.Thread(target=state.voice_service.stop, daemon=True))
-    if state.sensing_service:
-        _shutdown_threads.append(threading.Thread(target=state.sensing_service.stop, daemon=True))
-    for t in _shutdown_threads:
-        t.start()
     for t in _shutdown_threads:
         # Best-effort grace only — systemd kills the whole cgroup (arecord
         # included) right after, so a slow voice/sensing stop must not add

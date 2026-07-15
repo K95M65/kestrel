@@ -1,8 +1,7 @@
 """LLM-based memory summarizer using the Anthropic Messages API."""
 
 import logging
-
-import anthropic
+import threading
 
 import hal.config as app_config
 from hal.drivers.realtime.constants import RESOURCES_DIR
@@ -23,17 +22,31 @@ class RealtimeSummarizer:
         base_url: str | None = app_config.REALTIME_SUMMARIZER_BASE_URL or None,
         model: str = app_config.REALTIME_SUMMARIZER_MODEL,
     ) -> None:
-        self._client: anthropic.Anthropic = anthropic.Anthropic(
-            api_key=api_key,
-            base_url=base_url,
-            timeout=120.0,
-        )
+        # anthropic imports lazily on first summarize(): the SDK costs ~1.3s of
+        # import time on device and every summarize() runs on a background
+        # thread, so cold boot shouldn't pay for it.
+        self._api_key = api_key
+        self._base_url = base_url
+        self._client = None
+        self._client_lock = threading.Lock()
         self._model: str = model
         try:
             self._system_prompt: str = SUMMARIZE_PROMPT_PATH.read_text(encoding="utf-8").strip()
         except FileNotFoundError:
             logger.warning("[realtime] Summarize prompt not found at %s", SUMMARIZE_PROMPT_PATH)
             self._system_prompt = "Summarize the following entries concisely."
+
+    def _get_client(self):
+        if self._client is None:
+            with self._client_lock:
+                if self._client is None:
+                    import anthropic
+                    self._client = anthropic.Anthropic(
+                        api_key=self._api_key,
+                        base_url=self._base_url,
+                        timeout=120.0,
+                    )
+        return self._client
 
     def summarize(self, entries: list[str]) -> str:
         """Summarize a list of text entries into a concise summary.
@@ -51,7 +64,7 @@ class RealtimeSummarizer:
             user_content = user_content[-self.MAX_INPUT_CHARS :]
 
         try:
-            response = self._client.messages.create(
+            response = self._get_client().messages.create(
                 model=self._model,
                 max_tokens=4096,
                 system=self._system_prompt,

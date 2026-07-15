@@ -22,6 +22,7 @@ cue alone whether to wait or to walk away.
 
 import logging
 import subprocess
+import threading
 import time
 
 import hal.app_state as state
@@ -93,6 +94,21 @@ def announce_os_shutdown():
 
     logger.info("lifespan announce: kind=%s text=%r", kind, text)
 
+    # Park servo before systemd kills the process, otherwise the body
+    # slams down mid-pose. Same reasoning as long_press_action Step 2.
+    # Runs in parallel with the spoken cue below (park ~2.4s, cue ~1.5s —
+    # sequential they were the two biggest shutdown costs); both must finish
+    # before this function returns.
+    def _park_servos():
+        try:
+            from hal.routes.servo import release_servos
+            release_servos()
+        except Exception as e:
+            logger.warning("servo release before shutdown failed: %s", e)
+
+    park = threading.Thread(target=_park_servos, daemon=True, name="shutdown-park")
+    park.start()
+
     if state.tts_service and state.tts_service.available and not state._speaker_muted and text:
         # speak_cached is async — poll the speaking flag instead of a fixed 5s
         # sleep: the service-restart clip is ~1.5s, so a hard sleep(5) added
@@ -104,10 +120,4 @@ def announce_os_shutdown():
         while time.monotonic() < deadline and state._tts_speaking:
             time.sleep(0.1)
 
-    # Park servo before systemd kills the process, otherwise the body
-    # slams down mid-pose. Same reasoning as long_press_action Step 2.
-    try:
-        from hal.routes.servo import release_servos
-        release_servos()
-    except Exception as e:
-        logger.warning("servo release before shutdown failed: %s", e)
+    park.join(timeout=6)
