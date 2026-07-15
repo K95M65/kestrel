@@ -2260,7 +2260,7 @@ class FacePerception(Perception[cv2.typing.MatLike]):
         except Exception as e:
             logger.warning("[face] presence state load failed: %s", e)
 
-    def _persist_presence_state(self, cur_ts: float) -> None:
+    def _persist_presence_state(self, cur_ts: float, force: bool = False) -> None:
         """Throttled dump of the last_seen map.
 
         Must run periodically, not just on enter/leave: the restore above only
@@ -2268,7 +2268,7 @@ class FacePerception(Perception[cv2.typing.MatLike]):
         enter-time-only save would already be past the forget window by the
         next restart. tmpfs makes the 30s write essentially free.
         """
-        if (cur_ts - self._last_presence_save_ts) < 30.0:
+        if not force and (cur_ts - self._last_presence_save_ts) < 30.0:
             return
         self._last_presence_save_ts = cur_ts
         try:
@@ -2517,6 +2517,11 @@ class FacePerception(Perception[cv2.typing.MatLike]):
         """Clear all last-seen timestamps so next detection fires events immediately."""
         with self._state_lock:
             self._people_data_dict.clear()
+            # Persist the now-empty map immediately (bypassing the 30s
+            # throttle) — otherwise a HAL restart within the throttle window
+            # would restore the sidecar's stale last_seen and silently undo
+            # this reset.
+            self._persist_presence_state(time.time(), force=True)
             _ = self._flush_stranger_buffer(time.time())
             logger.info("Face recognition cooldowns reset")
 
