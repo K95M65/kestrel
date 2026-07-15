@@ -2,7 +2,17 @@
 
 Lamp có thể theo dõi và hướng theo bất kỳ vật thể nào mà người dùng gọi tên. Một detector tìm vật thể theo tên và seed một ViT tracker, sau đó một vòng lặp vision tốc độ cao bám theo nó real-time, trong khi một servo worker tách rời điều khiển đầu trượt mượt về phía target.
 
-Toàn bộ code tracking nằm ở `os/hal/drivers/tracking/tracker_service.py`.
+Toàn bộ code tracking nằm trong package `os/hal/drivers/tracking/`:
+
+| Module | Nội dung |
+|--------|----------|
+| `tracker_service.py` | `TrackerService` — vòng đời session (start/stop/status/update_bbox) + vòng lặp vision nhanh |
+| `constants.py` | Toàn bộ knob tuning (các module khác import với alias `C`) |
+| `detection.py` | `ObjectDetector` — chuỗi YuNet face / YOLOv8n local / YOLOWorld remote |
+| `vit_tracker.py` | Backend tracker OpenCV (`create_tracker`, `vit_init`, `vit_update`, `get_tracking_score`) |
+| `servo_follow.py` | `ServoFollower` — servo goal + thread worker SmoothDamp |
+| `filters.py` | `AlphaBetaFilter2D`, `PID`, `smooth_damp`, `soft_deadband` |
+| `frame_utils.py` | `downscale`, `scale_bbox` (map tọa độ) |
 
 ## Kiến trúc
 
@@ -32,7 +42,7 @@ Vòng lặp vision không bao giờ block chờ motor di chuyển: nó publish m
 
 ### Vision downscale, tính toán ở độ phân giải gốc
 
-Camera chạy **1280×720**. Mọi thành phần vision nặng — ViT tracker và cả ba detector — đều chạy trên frame đã downscale xuống `VISION_MAX_WIDTH` (640 px rộng, 0.5× → ¼ số pixel) để tăng tốc. Mỗi bbox chúng tạo ra được map **ngược về tọa độ gốc 1280×720** trước bất kỳ phép tính servo/PID nào (`_downscale` / `_scale_bbox` / `_vit_init` / `_vit_update`, và `detect_object` là transparent). Vì hợp đồng tọa độ ở phía sau luôn là độ phân giải gốc, nên không hằng số nào được tune theo pixel (PID gains, gates, dead zones, ngưỡng feedforward) thay đổi khi hệ số downscale thay đổi. Đặt `VISION_MAX_WIDTH = 0` để tắt.
+Camera chạy **1280×720**. Mọi thành phần vision nặng — ViT tracker và cả ba detector — đều chạy trên frame đã downscale xuống `VISION_MAX_WIDTH` (640 px rộng, 0.5× → ¼ số pixel) để tăng tốc. Mỗi bbox chúng tạo ra được map **ngược về tọa độ gốc 1280×720** trước bất kỳ phép tính servo/PID nào (`frame_utils.downscale` / `scale_bbox`, `vit_tracker.vit_init` / `vit_update`, và `detect_object` là transparent). Vì hợp đồng tọa độ ở phía sau luôn là độ phân giải gốc, nên không hằng số nào được tune theo pixel (PID gains, gates, dead zones, ngưỡng feedforward) thay đổi khi hệ số downscale thay đổi. Đặt `VISION_MAX_WIDTH = 0` để tắt.
 
 ## Detection
 
@@ -79,13 +89,13 @@ Pitch được dồn vào elbow (`PITCH_WEIGHT_ELBOW = 0.90`). Thực nghiệm c
 Mỗi frame vòng lặp biến bbox của tracker thành một servo goal tuyệt đối:
 
 1. **Alpha-beta filter trên centroid** (`AlphaBetaFilter2D`) — một Kalman steady-state vận tốc-hằng. Làm mượt jitter, coast qua các frame bị rớt/rác bằng prediction, gate các cú teleport outlier (`AB_GATE_PX`), và phơi ra ước lượng vận tốc. Một velocity lead (`AB_LEAD_S = 0.12 s`) nhắm hơi vượt trước target.
-2. **Soft dead zone** (`_soft_deadband`) — error bằng 0 bên trong dead zone và tăng dần từ 0 tại rìa (không có bước nhảy giá trị). Cái này loại bỏ cú giật "đá ra khỏi giữa" mà hard dead zone cũ tạo ra.
+2. **Soft dead zone** (`soft_deadband`) — error bằng 0 bên trong dead zone và tăng dần từ 0 tại rìa (không có bước nhảy giá trị). Cái này loại bỏ cú giật "đá ra khỏi giữa" mà hard dead zone cũ tạo ra.
 3. **PID + velocity feedforward** — một PID time-aware có anti-windup trên position error đã qua soft-deadband, **cộng** một term feedforward tỉ lệ với vận tốc pixel đo được của target (`VFF_GAIN`). Feedforward pan camera *theo tốc độ của target* ngay cả khi position error bằng không, nên một target di chuyển đều là một pha pan liên tục thay vì các cú bùng đuổi bắt. Một target ở giữa nhưng đang di chuyển vẫn tiếp tục pan (không đóng băng trong dead zone). Output kết hợp bị clamp về `PID_OUTPUT_MAX_DEG` (5°).
 4. **Publish goal** — joint target tuyệt đối kết quả được giao cho servo worker (non-blocking).
 
 ### Servo worker (SmoothDamp follower)
 
-`_servo_worker` chạy trên thread riêng và liên tục ease các joint về phía goal mới nhất bằng **SmoothDamp** (`_smooth_damp`, một follower critically-damped): mỗi joint mang vận tốc riêng, nên mọi cú di chuyển đều tăng tốc mượt và ease-out vào target, và một goal mới đến giữa cú di chuyển sẽ retarget mà không giật restart — chuyển động "film camera" điện ảnh. Nó phát ra **một bus write mỗi tick `SERVO_SUBSTEP_SLEEP` (30 ms)**, cùng nhịp click như ramp fixed-substep cũ (Feetech STS3215 click mỗi lần write, nên tần suất write phải giữ có giới hạn — SmoothDamp thay đổi *cái gì* được ra lệnh mỗi tick, không phải *bao lâu một lần*).
+`ServoFollower` (`servo_follow.py`) chạy worker trên thread riêng và liên tục ease các joint về phía goal mới nhất bằng **SmoothDamp** (`smooth_damp`, một follower critically-damped): mỗi joint mang vận tốc riêng, nên mọi cú di chuyển đều tăng tốc mượt và ease-out vào target, và một goal mới đến giữa cú di chuyển sẽ retarget mà không giật restart — chuyển động "film camera" điện ảnh. Nó phát ra **một bus write mỗi tick `SERVO_SUBSTEP_SLEEP` (30 ms)**, cùng nhịp click như ramp fixed-substep cũ (Feetech STS3215 click mỗi lần write, nên tần suất write phải giữ có giới hạn — SmoothDamp thay đổi *cái gì* được ra lệnh mỗi tick, không phải *bao lâu một lần*).
 
 Giới hạn chuyển động phần cứng khi tracking: `TRACKING_GOAL_VELOCITY = 150` steps/s và `TRACKING_ACCELERATION = 30` (ramp nhẹ nhàng). Khôi phục về default nhạy bén khi tracking kết thúc.
 
@@ -98,7 +108,9 @@ Giới hạn chuyển động phần cứng khi tracking: `TRACKING_GOAL_VELOCIT
 - **Bbox-trust guard (bloat hold)** — khi ViT lock tan thành một box quá khổ thì centroid là rác, nên servo giữ nguyên thay vì đuổi theo nó:
   - `BBOX_FREEZE_RATIO` (1.0) — bbox ≥ diện tích cả frame ⇒ ViT đã tan.
   - `BLOAT_HOLD_MULT` (3.0) — bbox > 3× diện tích lock tin cậy gần nhất ⇒ hold và buộc re-detect.
+- **Sàn confidence cho servo** — confidence ViT < `SERVO_MIN_CONF` (0.25) thì giữ servo (`LOW-CONF-HOLD`) kể cả khi detector vẫn đang confirm target; trước đây vùng conf 0.15–0.4 kèm confirm mới là vùng mù khiến servo đuổi theo một lock yếu (thường là ma). Tracker vẫn update và PID chạy lại khi confidence hồi.
 - **Detector-gated trust** — nếu không detector nào xác nhận trong `TRUST_TRACKER_S` (2.5 s) và confidence ViT < `TRACKER_TRUST_CONF` (0.4), giữ servo (`WAIT-YOLO`) thay vì đuổi một bóng ma; confidence ViT cao vẫn tiếp tục fire ngay cả khi không có detector confirm mới.
+- **Hold là hold thật** — mọi trạng thái hold (`LOW-CONF-HOLD`, `WAIT-YOLO`, `BLOAT-HOLD`, frame bị skip do low-confidence) đều retarget follow worker về pose *hiện tại* (`ServoFollower.hold()`). Trước đây hold chỉ ngừng publish goal mới, worker vẫn glide tiếp về goal cũ — nên arm vẫn "đuổi ma" thêm một nhịp sau khi lock đã hỏng.
 
 ### Chuyển đổi Pixel-sang-Degree
 
@@ -141,12 +153,14 @@ pitch_correction = clamp(PID(soft_deadband(dy)) + VFF·vy·deg_per_px·dt,  ±5�
 | `BBOX_FREEZE_RATIO` | 1.0 | Bbox ≥ frame ⇒ ViT đã tan (hold) |
 | `BLOAT_HOLD_MULT` | 3.0 | Bbox > 3× lock tin cậy ⇒ hold |
 | `CONFIDENCE_THRESHOLD` | 0.15 | Dưới mức này = frame low-confidence |
-| `MAX_LOW_CONFIDENCE_FRAMES` | 10 | Số frame low-confidence liên tiếp → dừng |
+| `LOW_CONF_WINDOW` / `LOW_CONF_STOP_COUNT` | 15 / 8 | Cửa sổ trượt: ≥8 frame low trong 15 frame gần nhất → dừng (đếm liên-tiếp cũ bị reset bởi mỗi frame nhấp nháy vượt ngưỡng, khiến ghost lock sống mãi) |
+| `SERVO_MIN_CONF` | 0.25 | Sàn confidence để fire servo PID |
+| `TRACKER_TRUST_CONF` / `TRUST_TRACKER_S` | 0.4 / 2.5 | Detector-gated trust (xem trên) |
 | `YOLO_MAX_MISS` | 30 | Số lần CSRT miss liên tiếp trước khi retry |
 | `MAX_TRACK_DURATION_S` | 300 | Timeout tự động dừng (5 phút) |
 | `_LOCAL_IMGSZ` | 320 | Kích thước inference local YOLO (640 → 1.3–2.9 s, quá chậm) |
 
-> Ghi chú legacy: đường proportional `GIMBAL_GAIN` / `GIMBAL_MAX_STEP` / `EMA_ALPHA` (`_fire_gimbal` / `_send_gimbal_target`) đã **chết** — điều khiển live là đường PID + feedforward (`_fire_pid`). Đừng tune mấy cái đó cho độ nhạy.
+Mọi knob nằm trong `os/hal/drivers/tracking/constants.py`. (Đường proportional chết `GIMBAL_*` / `EMA_ALPHA` đã bị xoá khi tách package.)
 
 ### Giới hạn vị trí servo
 
@@ -161,7 +175,7 @@ pitch_correction = clamp(PID(soft_deadband(dy)) + VFF·vy·deg_per_px·dt,  ±5�
 
 | Điều kiện | Hành động |
 |-----------|-----------|
-| `confidence < 0.15` trong 10 frame | Dừng — mất target |
+| `confidence < 0.15` trong ≥8/15 frame gần nhất (cửa sổ trượt) | Dừng — mất target |
 | Bbox co nhỏ dưới `DETECT_MIN_AREA_RATIO` | Dừng — ghost-lock trên một mảnh nhỏ |
 | Bbox tràn frame + không detect trong 3 s | Buộc retry, rồi dừng nếu không phục hồi |
 | Không detector confirm trong `STOP_NO_YOLO_S` (20 s) | Dừng — ghost tracking |
@@ -257,7 +271,7 @@ Re-init thủ công tracker với một bbox mới mà không dừng session (ba
 
 ```
 1. Object leaves frame or is occluded
-2. TrackerVit confidence drops below 0.15 (or ViT lock dissolves)
+2. Confidence TrackerVit ở dưới 0.15 trong phần lớn cửa sổ gần nhất (hoặc lock ViT tan rã)
 3. Background YOLO can't re-find it → after the guards trip → auto-stop
 4. Arm returns to zero
 5. Agent can notify user or re-issue the follow command

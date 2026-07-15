@@ -12,23 +12,7 @@ import threading
 import time
 from typing import Dict, Optional
 
-from hal.drivers.tracking.constants import (
-    BASE_PITCH_MAX,
-    BASE_PITCH_MIN,
-    ELBOW_PITCH_MAX,
-    ELBOW_PITCH_MIN,
-    ELBOW_PITCH_SIGN,
-    PITCH_WEIGHT_BASE,
-    PITCH_WEIGHT_ELBOW,
-    PITCH_WEIGHT_WRIST,
-    SERVO_MAX_SPEED_DPS,
-    SERVO_SMOOTH_TIME,
-    SERVO_SUBSTEP_SLEEP,
-    WRIST_PITCH_MAX,
-    WRIST_PITCH_MIN,
-    YAW_MAX,
-    YAW_MIN,
-)
+from hal.drivers.tracking import constants as C
 from hal.drivers.tracking.filters import smooth_damp
 
 logger = logging.getLogger(__name__)
@@ -126,23 +110,23 @@ class ServoFollower:
         with self._lock:
             cur = self._positions_locked()
         target = {
-            "base_yaw.pos":    max(YAW_MIN,         min(YAW_MAX,         cur["base_yaw.pos"]    + yaw_step)),
-            "base_pitch.pos":  max(BASE_PITCH_MIN,  min(BASE_PITCH_MAX,  cur["base_pitch.pos"]  + pitch_correction * PITCH_WEIGHT_BASE)),
-            "elbow_pitch.pos": max(ELBOW_PITCH_MIN, min(ELBOW_PITCH_MAX, cur["elbow_pitch.pos"] + ELBOW_PITCH_SIGN * pitch_correction * PITCH_WEIGHT_ELBOW)),
-            "wrist_pitch.pos": max(WRIST_PITCH_MIN, min(WRIST_PITCH_MAX, cur["wrist_pitch.pos"] + pitch_correction * PITCH_WEIGHT_WRIST)),
+            "base_yaw.pos":    max(C.YAW_MIN,         min(C.YAW_MAX,         cur["base_yaw.pos"]    + yaw_step)),
+            "base_pitch.pos":  max(C.BASE_PITCH_MIN,  min(C.BASE_PITCH_MAX,  cur["base_pitch.pos"]  + pitch_correction * C.PITCH_WEIGHT_BASE)),
+            "elbow_pitch.pos": max(C.ELBOW_PITCH_MIN, min(C.ELBOW_PITCH_MAX, cur["elbow_pitch.pos"] + C.ELBOW_PITCH_SIGN * pitch_correction * C.PITCH_WEIGHT_ELBOW)),
+            "wrist_pitch.pos": max(C.WRIST_PITCH_MIN, min(C.WRIST_PITCH_MAX, cur["wrist_pitch.pos"] + pitch_correction * C.PITCH_WEIGHT_WRIST)),
         }
         # Warn loudly when an axis has saturated against its mechanical limit and
         # the PID is still demanding more travel in that direction — camera
         # physically can't follow further; only re-centering the device helps.
         if abs(yaw_step) >= 0.1 and (
-            (yaw_step < 0 and cur["base_yaw.pos"] <= YAW_MIN + 0.5) or
-            (yaw_step > 0 and cur["base_yaw.pos"] >= YAW_MAX - 0.5)
+            (yaw_step < 0 and cur["base_yaw.pos"] <= C.YAW_MIN + 0.5) or
+            (yaw_step > 0 and cur["base_yaw.pos"] >= C.YAW_MAX - 0.5)
         ):
             logger.warning("[saturation] yaw at limit %.1f° but PID still demanding %.2f° — recenter device",
                            cur["base_yaw.pos"], yaw_step)
-        if abs(pitch_correction) >= 0.1 and PITCH_WEIGHT_WRIST > 0 and (
-            (pitch_correction > 0 and cur["wrist_pitch.pos"] >= WRIST_PITCH_MAX - 0.5) or
-            (pitch_correction < 0 and cur["wrist_pitch.pos"] <= WRIST_PITCH_MIN + 0.5)
+        if abs(pitch_correction) >= 0.1 and C.PITCH_WEIGHT_WRIST > 0 and (
+            (pitch_correction > 0 and cur["wrist_pitch.pos"] >= C.WRIST_PITCH_MAX - 0.5) or
+            (pitch_correction < 0 and cur["wrist_pitch.pos"] <= C.WRIST_PITCH_MIN + 0.5)
         ):
             logger.warning("[saturation] wrist at limit %.1f° but PID still demanding pitch=%.2f° — recenter device",
                            cur["wrist_pitch.pos"], pitch_correction)
@@ -155,7 +139,7 @@ class ServoFollower:
         (used while the tracker has lost the target)."""
         with self._lock:
             goal = self._positions_locked()
-            goal["base_yaw.pos"] = max(YAW_MIN, min(YAW_MAX, self._yaw + delta_deg))
+            goal["base_yaw.pos"] = max(C.YAW_MIN, min(C.YAW_MAX, self._yaw + delta_deg))
             self._goal = goal
 
     # --- worker lifecycle ---
@@ -180,7 +164,7 @@ class ServoFollower:
 
         Each iteration advances every joint toward the latest goal with the
         SmoothDamp critically-damped follower (ease-in/ease-out), one bus write
-        per SERVO_SUBSTEP_SLEEP tick — the same click cadence as the old
+        per C.SERVO_SUBSTEP_SLEEP tick — the same click cadence as the old
         fixed-substep ramp, but with a smooth velocity profile instead of a
         square wave. Each joint carries its own velocity, so when a fresh goal
         arrives mid-move the follower retargets without a restart jerk.
@@ -218,7 +202,7 @@ class ServoFollower:
             for k in JOINTS:
                 step[k], vel[k] = smooth_damp(
                     cur[k], goal[k], vel[k],
-                    SERVO_SMOOTH_TIME, SERVO_SUBSTEP_SLEEP, SERVO_MAX_SPEED_DPS,
+                    C.SERVO_SMOOTH_TIME, C.SERVO_SUBSTEP_SLEEP, C.SERVO_MAX_SPEED_DPS,
                 )
             try:
                 with animation_service.bus_lock:
@@ -232,4 +216,4 @@ class ServoFollower:
                 self._base_pitch  = step["base_pitch.pos"]
                 self._elbow_pitch = step["elbow_pitch.pos"]
                 self._wrist_pitch = step["wrist_pitch.pos"]
-            time.sleep(SERVO_SUBSTEP_SLEEP)
+            time.sleep(C.SERVO_SUBSTEP_SLEEP)

@@ -4,12 +4,7 @@ soft dead zone, alpha-beta centroid filter, and a time-aware PID."""
 import time
 from typing import Optional, Tuple
 
-from hal.drivers.tracking.constants import (
-    AB_GATE_DECAY,
-    AB_MAX_GATED_STREAK,
-    PID_INTEGRAL_MAX,
-    PID_OUTPUT_MAX_DEG,
-)
+from hal.drivers.tracking import constants as C
 
 
 def smooth_damp(current: float, target: float, velocity: float,
@@ -68,8 +63,8 @@ class AlphaBetaFilter2D:
     """
 
     def __init__(self, alpha: float, beta: float, gate_px: float,
-                 gate_decay: float = AB_GATE_DECAY,
-                 max_gated_streak: int = AB_MAX_GATED_STREAK):
+                 gate_decay: float = C.AB_GATE_DECAY,
+                 max_gated_streak: int = C.AB_MAX_GATED_STREAK):
         self.alpha, self.beta = alpha, beta
         self.gate_px, self.gate_decay = gate_px, gate_decay
         self.max_gated_streak = max_gated_streak
@@ -126,10 +121,10 @@ class PID:
     """Time-aware PID with anti-windup. Industry-standard servo control."""
 
     def __init__(self, kp: float, ki: float, kd: float,
-                 output_min: float = -PID_OUTPUT_MAX_DEG,
-                 output_max: float = PID_OUTPUT_MAX_DEG,
-                 integral_min: float = -PID_INTEGRAL_MAX,
-                 integral_max: float = PID_INTEGRAL_MAX):
+                 output_min: float = -C.PID_OUTPUT_MAX_DEG,
+                 output_max: float = C.PID_OUTPUT_MAX_DEG,
+                 integral_min: float = -C.PID_INTEGRAL_MAX,
+                 integral_max: float = C.PID_INTEGRAL_MAX):
         self.kp, self.ki, self.kd = kp, ki, kd
         self.output_min, self.output_max = output_min, output_max
         self.integral_min, self.integral_max = integral_min, integral_max

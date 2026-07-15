@@ -25,11 +25,7 @@ from hal.config import (
     YUNET_CONFIDENCE_THRESHOLD as _YUNET_CONF,
 )
 from hal.drivers.sensing.crypto import CryptoSession, resolve_public_key
-from hal.drivers.tracking.constants import (
-    DETECT_MAX_AREA_RATIO,
-    DETECT_MIN_AREA_RATIO,
-    DETECT_MIN_CONFIDENCE,
-)
+from hal.drivers.tracking import constants as C
 from hal.drivers.tracking.frame_utils import downscale, scale_bbox
 
 logger = logging.getLogger(__name__)
@@ -252,7 +248,7 @@ class ObjectDetector:
                 t_req = time.perf_counter()
                 try:
                     results = model(frame, verbose=False, imgsz=_LOCAL_IMGSZ,
-                                    classes=[coco_idx], conf=DETECT_MIN_CONFIDENCE)
+                                    classes=[coco_idx], conf=C.DETECT_MIN_CONFIDENCE)
                     t_ms = (time.perf_counter() - t_req) * 1000
                     h_fr, w_fr = frame.shape[:2]
                     frame_area = float(h_fr * w_fr)
@@ -266,7 +262,7 @@ class ObjectDetector:
                             bw = int(x2 - x1)
                             bh = int(y2 - y1)
                             area_ratio = (bw * bh) / frame_area if frame_area > 0 else 0.0
-                            if not (DETECT_MIN_AREA_RATIO <= area_ratio <= DETECT_MAX_AREA_RATIO):
+                            if not (C.DETECT_MIN_AREA_RATIO <= area_ratio <= C.DETECT_MAX_AREA_RATIO):
                                 continue
                             if best is None or conf > best[1]:
                                 best = ((int(x1), int(y1), bw, bh), conf, area_ratio)
@@ -345,9 +341,9 @@ class ObjectDetector:
                 conf = d.get("confidence", 0)
                 area_ratio = (w * h) / frame_area if frame_area > 0 else 0.0
                 cname = d.get("class_name", "?")
-                if conf < DETECT_MIN_CONFIDENCE:
+                if conf < C.DETECT_MIN_CONFIDENCE:
                     reason = "REJECTED (conf)"
-                elif not (DETECT_MIN_AREA_RATIO <= area_ratio <= DETECT_MAX_AREA_RATIO):
+                elif not (C.DETECT_MIN_AREA_RATIO <= area_ratio <= C.DETECT_MAX_AREA_RATIO):
                     reason = "REJECTED (size)"
                 else:
                     reason = "ACCEPTED"
@@ -363,8 +359,8 @@ class ObjectDetector:
                 logger.warning(
                     "YOLOWorld: '%s' — %d detection(s) but none passed filters "
                     "(conf >= %.2f, area %.1f%%–%.1f%%)",
-                    target, len(detections), DETECT_MIN_CONFIDENCE,
-                    DETECT_MIN_AREA_RATIO * 100, DETECT_MAX_AREA_RATIO * 100,
+                    target, len(detections), C.DETECT_MIN_CONFIDENCE,
+                    C.DETECT_MIN_AREA_RATIO * 100, C.DETECT_MAX_AREA_RATIO * 100,
                 )
                 return None
 

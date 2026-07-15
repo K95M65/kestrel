@@ -2,7 +2,17 @@
 
 Lamp can track and follow any object the user names. A detector finds the object by name and seeds a ViT tracker, then a fast vision loop follows it in real time while a decoupled servo worker glides the head smoothly toward the target.
 
-All tracking code lives in `os/hal/drivers/tracking/tracker_service.py`.
+All tracking code lives in the `os/hal/drivers/tracking/` package:
+
+| Module | Contents |
+|--------|----------|
+| `tracker_service.py` | `TrackerService` — session lifecycle (start/stop/status/update_bbox) + the fast vision loop |
+| `constants.py` | All tuning knobs (imported as `C` by the other modules) |
+| `detection.py` | `ObjectDetector` — YuNet face / local YOLOv8n / remote YOLOWorld chain |
+| `vit_tracker.py` | OpenCV tracker backend (`create_tracker`, `vit_init`, `vit_update`, `get_tracking_score`) |
+| `servo_follow.py` | `ServoFollower` — servo goal + SmoothDamp follow worker thread |
+| `filters.py` | `AlphaBetaFilter2D`, `PID`, `smooth_damp`, `soft_deadband` |
+| `frame_utils.py` | `downscale`, `scale_bbox` (coordinate mapping) |
 
 ## Architecture
 
@@ -32,7 +42,7 @@ The vision loop never blocks on motor motion: it publishes an *absolute* servo g
 
 ### Downscaled vision, original-resolution math
 
-The camera runs **1280×720**. Every heavy vision component — the ViT tracker and all three detectors — runs on a frame downscaled to `VISION_MAX_WIDTH` (640 px wide, 0.5× → ¼ the pixels) for speed. Each bbox they produce is mapped **back to original 1280×720 coordinates** before any servo/PID math (`_downscale` / `_scale_bbox` / `_vit_init` / `_vit_update`, and `detect_object` is transparent). Because the coordinate contract downstream is always original resolution, none of the pixel-tuned constants (PID gains, gates, dead zones, feedforward thresholds) change when the downscale factor changes. Set `VISION_MAX_WIDTH = 0` to disable.
+The camera runs **1280×720**. Every heavy vision component — the ViT tracker and all three detectors — runs on a frame downscaled to `VISION_MAX_WIDTH` (640 px wide, 0.5× → ¼ the pixels) for speed. Each bbox they produce is mapped **back to original 1280×720 coordinates** before any servo/PID math (`frame_utils.downscale` / `scale_bbox`, `vit_tracker.vit_init` / `vit_update`, and `detect_object` is transparent). Because the coordinate contract downstream is always original resolution, none of the pixel-tuned constants (PID gains, gates, dead zones, feedforward thresholds) change when the downscale factor changes. Set `VISION_MAX_WIDTH = 0` to disable.
 
 ## Detection
 
@@ -79,13 +89,13 @@ Pitch is concentrated on the elbow (`PITCH_WEIGHT_ELBOW = 0.90`). Empirically on
 Each frame the loop turns the tracker bbox into an absolute servo goal:
 
 1. **Alpha-beta filter on the centroid** (`AlphaBetaFilter2D`) — a constant-velocity steady-state Kalman. Smooths jitter, coasts through dropped/garbage frames on prediction, gates outlier teleports (`AB_GATE_PX`), and exposes a velocity estimate. A velocity lead (`AB_LEAD_S = 0.12 s`) aims slightly ahead of the target.
-2. **Soft dead zone** (`_soft_deadband`) — the error is 0 inside the dead zone and ramps up from 0 at the edge (no value step). This removes the "kick out of center" jerk the old hard dead zone produced.
+2. **Soft dead zone** (`soft_deadband`) — the error is 0 inside the dead zone and ramps up from 0 at the edge (no value step). This removes the "kick out of center" jerk the old hard dead zone produced.
 3. **PID + velocity feedforward** — a time-aware PID with anti-windup on the soft-deadbanded position error, **plus** a feedforward term proportional to the target's measured pixel velocity (`VFF_GAIN`). The feedforward pans the camera *at the target's speed* even at zero position error, so a steadily moving target is a continuous pan instead of catch-up bursts. A position-centered but moving target keeps panning (does not freeze in the dead zone). Combined output is clamped to `PID_OUTPUT_MAX_DEG` (5°).
 4. **Publish goal** — the resulting absolute joint target is handed to the servo worker (non-blocking).
 
 ### Servo worker (SmoothDamp follower)
 
-`_servo_worker` runs on its own thread and continuously eases the joints toward the latest goal using **SmoothDamp** (`_smooth_damp`, a critically-damped follower): each joint carries its own velocity, so every move accelerates smoothly and eases out into the target, and a fresh goal arriving mid-move retargets without a restart jerk — the cinematic "film camera" motion. It issues **one bus write per `SERVO_SUBSTEP_SLEEP` (30 ms) tick**, the same click cadence as the old fixed-substep ramp (the Feetech STS3215 clicks on each write, so the write rate must stay bounded — SmoothDamp changes *what* is commanded per tick, not *how often*).
+`ServoFollower` (`servo_follow.py`) runs a worker on its own thread and continuously eases the joints toward the latest goal using **SmoothDamp** (`smooth_damp`, a critically-damped follower): each joint carries its own velocity, so every move accelerates smoothly and eases out into the target, and a fresh goal arriving mid-move retargets without a restart jerk — the cinematic "film camera" motion. It issues **one bus write per `SERVO_SUBSTEP_SLEEP` (30 ms) tick**, the same click cadence as the old fixed-substep ramp (the Feetech STS3215 clicks on each write, so the write rate must stay bounded — SmoothDamp changes *what* is commanded per tick, not *how often*).
 
 Hardware motion limits during tracking: `TRACKING_GOAL_VELOCITY = 150` steps/s and `TRACKING_ACCELERATION = 30` (gentle ramp). Restored to snappy defaults when tracking ends.
 
@@ -98,7 +108,9 @@ Hardware motion limits during tracking: `TRACKING_GOAL_VELOCITY = 150` steps/s a
 - **Bbox-trust guard (bloat hold)** — when the ViT lock dissolves into an oversized box the centroid is garbage, so the servo holds instead of chasing it:
   - `BBOX_FREEZE_RATIO` (1.0) — bbox ≥ full frame area ⇒ ViT dissolved.
   - `BLOAT_HOLD_MULT` (3.0) — bbox > 3× the last trusted lock area ⇒ hold and force a re-detect.
+- **Servo confidence floor** — ViT confidence < `SERVO_MIN_CONF` (0.25) holds the servo (`LOW-CONF-HOLD`) even while the detector is still confirming the target; without it, conf 0.15–0.4 with a fresh confirm was a blind zone that kept the servo chasing a barely-held (often ghost) lock. The tracker keeps updating and the PID resumes when confidence recovers.
 - **Detector-gated trust** — if no detector has confirmed for `TRUST_TRACKER_S` (2.5 s) and ViT confidence < `TRACKER_TRUST_CONF` (0.4), hold the servo (`WAIT-YOLO`) rather than chase a phantom; high ViT confidence keeps firing even without a fresh detector confirm.
+- **Hold really holds** — every hold state (`LOW-CONF-HOLD`, `WAIT-YOLO`, `BLOAT-HOLD`, low-confidence skip frames) retargets the follow worker to the *current* pose (`ServoFollower.hold()`). Previously a hold only stopped publishing new goals, so the worker kept gliding toward the last stale goal — the arm visibly chased a ghost for a beat after the lock had gone bad.
 
 ### Pixel-to-Degree Conversion
 
@@ -141,12 +153,14 @@ pitch_correction = clamp(PID(soft_deadband(dy)) + VFF·vy·deg_per_px·dt,  ±5�
 | `BBOX_FREEZE_RATIO` | 1.0 | Bbox ≥ frame ⇒ ViT dissolved (hold) |
 | `BLOAT_HOLD_MULT` | 3.0 | Bbox > 3× trusted lock ⇒ hold |
 | `CONFIDENCE_THRESHOLD` | 0.15 | Below this = low-confidence frame |
-| `MAX_LOW_CONFIDENCE_FRAMES` | 10 | Consecutive low-confidence frames → stop |
-| `YOLO_MAX_MISS` | 30 | Consecutive CSRT misses before retry |
+| `LOW_CONF_WINDOW` / `LOW_CONF_STOP_COUNT` | 15 / 8 | Sliding window: ≥8 low frames in the last 15 → stop (a consecutive counter was reset by every above-threshold flicker, letting ghost locks live forever) |
+| `SERVO_MIN_CONF` | 0.25 | Confidence floor for firing the servo PID at all |
+| `TRACKER_TRUST_CONF` / `TRUST_TRACKER_S` | 0.4 / 2.5 | Detector-gated trust (see above) |
+| `YOLO_MAX_MISS` | 30 | Consecutive tracker misses before retry |
 | `MAX_TRACK_DURATION_S` | 300 | Auto-stop timeout (5 min) |
 | `_LOCAL_IMGSZ` | 320 | Local YOLO inference size (640 → 1.3–2.9 s, too slow) |
 
-> Legacy note: the `GIMBAL_GAIN` / `GIMBAL_MAX_STEP` / `EMA_ALPHA` proportional path (`_fire_gimbal` / `_send_gimbal_target`) is **dead** — live control is the PID + feedforward path (`_fire_pid`). Don't tune those for responsiveness.
+All knobs live in `os/hal/drivers/tracking/constants.py`. (The old dead `GIMBAL_*` / `EMA_ALPHA` proportional path was removed in the package split.)
 
 ### Servo Position Limits
 
@@ -161,7 +175,7 @@ pitch_correction = clamp(PID(soft_deadband(dy)) + VFF·vy·deg_per_px·dt,  ±5�
 
 | Condition | Action |
 |-----------|--------|
-| `confidence < 0.15` for 10 frames | Stop — lost target |
+| `confidence < 0.15` in ≥8 of the last 15 frames (sliding window) | Stop — lost target |
 | Bbox shrinks below `DETECT_MIN_AREA_RATIO` | Stop — ghost-lock on a sliver |
 | Bbox overflows frame + no detect for 3 s | Forced retry, then stop if unrecovered |
 | No detector confirm for `STOP_NO_YOLO_S` (20 s) | Stop — ghost tracking |
@@ -257,7 +271,7 @@ Manual re-init of the tracker with a new bbox without stopping the session (the 
 
 ```
 1. Object leaves frame or is occluded
-2. TrackerVit confidence drops below 0.15 (or ViT lock dissolves)
+2. TrackerVit confidence stays below 0.15 for most of the recent window (or ViT lock dissolves)
 3. Background YOLO can't re-find it → after the guards trip → auto-stop
 4. Arm returns to zero
 5. Agent can notify user or re-issue the follow command

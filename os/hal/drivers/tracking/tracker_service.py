@@ -32,46 +32,7 @@ import cv2
 import numpy as np
 import numpy.typing as npt
 
-from hal.drivers.tracking.constants import (
-    AB_ALPHA,
-    AB_BETA,
-    AB_GATE_PX,
-    AB_LEAD_S,
-    BBOX_FREEZE_RATIO,
-    BLOAT_HOLD_MULT,
-    CAMERA_FOV_DEG,
-    CONFIDENCE_THRESHOLD,
-    DEAD_ZONE_PITCH_PCT,
-    DEAD_ZONE_YAW_PCT,
-    DETECT_MAX_AREA_RATIO,
-    DETECT_MIN_AREA_RATIO,
-    FAST_LOOP_FPS,
-    LOST_CENTER_FRAC,
-    LOW_CONF_STOP_COUNT,
-    LOW_CONF_WINDOW,
-    MAX_TRACK_DURATION_S,
-    PID_OUTPUT_MAX_DEG,
-    PID_PITCH_KD,
-    PID_PITCH_KI,
-    PID_PITCH_KP,
-    PID_YAW_KD,
-    PID_YAW_KI,
-    PID_YAW_KP,
-    REINIT_COOLDOWN_S,
-    SERVO_COOLDOWN_S,
-    SERVO_MIN_CONF,
-    STOP_NO_YOLO_S,
-    TRACKER_TRUST_CONF,
-    TRACKING_ACCELERATION,
-    TRACKING_GOAL_VELOCITY,
-    TRUST_TRACKER_S,
-    VFF_GAIN,
-    VFF_MAX_DT_S,
-    VFF_MOVING_MIN_PXS,
-    YOLO_AREA_GATE_MULT,
-    YOLO_MAX_MISS,
-    YOLO_REDETECT_S,
-)
+from hal.drivers.tracking import constants as C
 from hal.drivers.tracking.detection import ObjectDetector
 from hal.drivers.tracking.filters import AlphaBetaFilter2D, PID, soft_deadband
 from hal.drivers.tracking.servo_follow import ServoFollower
@@ -111,8 +72,8 @@ class TrackerService:
         # threads that fight over the same servo state.
         self._start_lock = threading.Lock()
         self.last_error: str = ""
-        self._yaw_pid = PID(PID_YAW_KP, PID_YAW_KI, PID_YAW_KD)
-        self._pitch_pid = PID(PID_PITCH_KP, PID_PITCH_KI, PID_PITCH_KD)
+        self._yaw_pid = PID(C.PID_YAW_KP, C.PID_YAW_KI, C.PID_YAW_KD)
+        self._pitch_pid = PID(C.PID_PITCH_KP, C.PID_PITCH_KI, C.PID_PITCH_KD)
         self._follower = ServoFollower()
         # Area (px²) of the last trusted bbox lock — baseline for bloat detection.
         self._track_init_area: float = 0.0
@@ -343,14 +304,14 @@ class TrackerService:
         _tracking_motors = ["base_yaw", "base_pitch", "elbow_pitch", "wrist_pitch"]
         try:
             with animation_service.bus_lock:
-                if TRACKING_GOAL_VELOCITY > 0:
+                if C.TRACKING_GOAL_VELOCITY > 0:
                     animation_service.robot.bus.sync_write(
-                        "Goal_Velocity", {m: TRACKING_GOAL_VELOCITY for m in _tracking_motors}
+                        "Goal_Velocity", {m: C.TRACKING_GOAL_VELOCITY for m in _tracking_motors}
                     )
                 animation_service.robot.bus.sync_write(
-                    "Acceleration", {m: TRACKING_ACCELERATION for m in _tracking_motors}
+                    "Acceleration", {m: C.TRACKING_ACCELERATION for m in _tracking_motors}
                 )
-            logger.info("[tracking] Goal_Velocity=%d Acceleration=%d", TRACKING_GOAL_VELOCITY, TRACKING_ACCELERATION)
+            logger.info("[tracking] Goal_Velocity=%d Acceleration=%d", C.TRACKING_GOAL_VELOCITY, C.TRACKING_ACCELERATION)
         except Exception as e:
             logger.warning("[tracking] Failed to set motor params: %s", e)
 
@@ -377,7 +338,7 @@ class TrackerService:
         last_reinit_t: float = 0.0
 
         # Alpha-beta centroid filter (smoothed, velocity-led, outlier-gated offset).
-        ab_filter = AlphaBetaFilter2D(AB_ALPHA, AB_BETA, AB_GATE_PX)
+        ab_filter = AlphaBetaFilter2D(C.AB_ALPHA, C.AB_BETA, C.AB_GATE_PX)
         last_ab_t: Optional[float] = None   # perf_counter of previous filter update (dt source)
         prev_dx: Optional[float] = None   # offset from previous frame (direction arrow)
         prev_dy: Optional[float] = None
@@ -386,7 +347,7 @@ class TrackerService:
         miss_count = 0
         yolo_miss_count = 0   # consecutive YOLO misses — ghost tracking detection
         # Sliding window of below-threshold confidence flags (1 = low frame).
-        low_conf_window: deque = deque(maxlen=LOW_CONF_WINDOW)
+        low_conf_window: deque = deque(maxlen=C.LOW_CONF_WINDOW)
         retry_count = 0
         frame_count = 0
         t_csrt_acc = 0.0   # accumulated tracker-update time
@@ -462,7 +423,7 @@ class TrackerService:
 
                 frame = camera_capture.last_frame
                 if frame is None:
-                    time.sleep(1.0 / FAST_LOOP_FPS)
+                    time.sleep(1.0 / C.FAST_LOOP_FPS)
                     continue
 
                 h_fr, w_fr = frame.shape[:2]
@@ -477,26 +438,26 @@ class TrackerService:
                 confidence = get_tracking_score(state.tracker)
                 state.confidence = confidence
                 if ok:
-                    low_conf_window.append(1 if confidence < CONFIDENCE_THRESHOLD else 0)
+                    low_conf_window.append(1 if confidence < C.CONFIDENCE_THRESHOLD else 0)
                     state.low_confidence_frames = sum(low_conf_window)
-                    if state.low_confidence_frames >= LOW_CONF_STOP_COUNT:
+                    if state.low_confidence_frames >= C.LOW_CONF_STOP_COUNT:
                         logger.warning("Tracker lost '%s' (conf=%.3f, %d/%d low in last %d frames) — stopping",
                                        state.target_label, confidence,
-                                       state.low_confidence_frames, LOW_CONF_STOP_COUNT,
+                                       state.low_confidence_frames, C.LOW_CONF_STOP_COUNT,
                                        len(low_conf_window))
                         break
-                    if confidence < CONFIDENCE_THRESHOLD:
+                    if confidence < C.CONFIDENCE_THRESHOLD:
                         logger.info("[conf] low %.3f (%d/%d in window) target='%s'",
                                     confidence, state.low_confidence_frames,
-                                    LOW_CONF_STOP_COUNT, state.target_label)
+                                    C.LOW_CONF_STOP_COUNT, state.target_label)
                         # Don't glide on toward the stale goal while skipping.
                         self._follower.hold()
-                        time.sleep(1.0 / FAST_LOOP_FPS)
+                        time.sleep(1.0 / C.FAST_LOOP_FPS)
                         continue
 
                 if not ok:
                     miss_count += 1
-                    logger.info("[search] tracker miss %d/%d target='%s'", miss_count, YOLO_MAX_MISS, state.target_label)
+                    logger.info("[search] tracker miss %d/%d target='%s'", miss_count, C.YOLO_MAX_MISS, state.target_label)
                     if miss_count == 1:
                         # First miss: force YOLO immediately instead of waiting for interval
                         last_yolo_t = 0
@@ -504,11 +465,11 @@ class TrackerService:
                     # Route through the servo goal so the follow worker drives it (one owner).
                     _sweep_dir = 1 if ((miss_count - 1) // 8) % 2 == 0 else -1
                     self._follower.sweep_yaw(2.0 * _sweep_dir)
-                    if miss_count >= YOLO_MAX_MISS:
+                    if miss_count >= C.YOLO_MAX_MISS:
                         if _do_retry():
                             continue
                         break
-                    time.sleep(1.0 / FAST_LOOP_FPS)
+                    time.sleep(1.0 / C.FAST_LOOP_FPS)
                     continue
 
                 miss_count = 0
@@ -524,7 +485,7 @@ class TrackerService:
                 # naturally and tracking continues.
 
                 # Ghost-lock: bbox shrunk to a sliver (typically locked on frame edge).
-                if bbox_ratio < DETECT_MIN_AREA_RATIO:
+                if bbox_ratio < C.DETECT_MIN_AREA_RATIO:
                     logger.warning("[bbox] ghost-lock: %dx%d area=%.2f%% — stopping",
                                    bw, bh, bbox_ratio * 100)
                     break
@@ -533,9 +494,9 @@ class TrackerService:
                 # Skipping creates a dead spiral: tracker keeps bloating each iteration
                 # while YOLO misses, until bbox crosses the stop threshold. Letting the
                 # loop continue keeps the servo chasing while YOLO works in background.
-                if bbox_ratio > DETECT_MAX_AREA_RATIO:
+                if bbox_ratio > C.DETECT_MAX_AREA_RATIO:
                     logger.warning("[bbox] large (%.1f%% > %.1f%%) — firing YOLO bg, keep tracking",
-                                   bbox_ratio * 100, DETECT_MAX_AREA_RATIO * 100)
+                                   bbox_ratio * 100, C.DETECT_MAX_AREA_RATIO * 100)
                     if not yolo_running.is_set() and state.target_label:
                         yolo_running.set()
                         snap = frame.copy()
@@ -554,10 +515,10 @@ class TrackerService:
                 ab_dt = 0.0 if last_ab_t is None else (now_ab - last_ab_t)
                 last_ab_t = now_ab
                 fx, fy, vx_f, vy_f, ab_gated = ab_filter.update(cx_obj, cy_obj, ab_dt)
-                # Velocity feedforward: aim where the target will be in AB_LEAD_S,
+                # Velocity feedforward: aim where the target will be in C.AB_LEAD_S,
                 # not where it is now — cuts the lag on fast motion.
-                lead_x = fx + vx_f * AB_LEAD_S
-                lead_y = fy + vy_f * AB_LEAD_S
+                lead_x = fx + vx_f * C.AB_LEAD_S
+                lead_y = fy + vy_f * C.AB_LEAD_S
                 dx = float(lead_x - w_fr / 2.0)
                 dy = float(lead_y - h_fr / 2.0)
                 if ab_gated:
@@ -589,12 +550,12 @@ class TrackerService:
                 now_t = time.perf_counter()
                 # Soft dead zone: continuous error (0 at the edge, ramps up) so
                 # there is no output step when the target leaves center.
-                err_dx = soft_deadband(dx, w_fr * DEAD_ZONE_YAW_PCT)
-                err_dy = soft_deadband(dy, h_fr * DEAD_ZONE_PITCH_PCT)
+                err_dx = soft_deadband(dx, w_fr * C.DEAD_ZONE_YAW_PCT)
+                err_dy = soft_deadband(dy, h_fr * C.DEAD_ZONE_PITCH_PCT)
                 # Target pixel speed (alpha-beta velocity) — drives the feedforward
                 # and keeps a centered-but-moving target being panned.
                 speed_pxs = (vx_f ** 2 + vy_f ** 2) ** 0.5
-                moving_ff = speed_pxs > VFF_MOVING_MIN_PXS
+                moving_ff = speed_pxs > C.VFF_MOVING_MIN_PXS
                 centered = err_dx == 0.0 and err_dy == 0.0
                 yolo_age = now_t - last_yolo_confirm_t
                 # Bbox-trust guard: ViT bloated past its last trusted lock (or the
@@ -606,9 +567,9 @@ class TrackerService:
                 cur_area_px = bw * bh
                 bloated_vs_trust = (
                     self._track_init_area > 0
-                    and cur_area_px > self._track_init_area * BLOAT_HOLD_MULT
+                    and cur_area_px > self._track_init_area * C.BLOAT_HOLD_MULT
                 )
-                bbox_untrusted = bbox_ratio >= BBOX_FREEZE_RATIO or bloated_vs_trust
+                bbox_untrusted = bbox_ratio >= C.BBOX_FREEZE_RATIO or bloated_vs_trust
                 # Ghost-lock recovery: ViT sometimes reports ok=True with a bbox
                 # larger than the frame (lock dissolved into background). If that
                 # persists with no detector confirm, _do_retry instead of breaking
@@ -621,9 +582,9 @@ class TrackerService:
                         last_yolo_confirm_t = time.perf_counter()
                         continue
                     break
-                if yolo_age >= STOP_NO_YOLO_S:
+                if yolo_age >= C.STOP_NO_YOLO_S:
                     logger.warning("[yolo-trust] no YOLO confirm for %.1fs > %.1fs — stopping ghost",
-                                   yolo_age, STOP_NO_YOLO_S)
+                                   yolo_age, C.STOP_NO_YOLO_S)
                     break
                 elif bbox_untrusted:
                     # Bloated/garbage bbox — hold position, reset PID so the
@@ -635,7 +596,7 @@ class TrackerService:
                     if not yolo_running.is_set() and state.target_label:
                         last_yolo_t = 0  # force YOLO redetect ASAP to relock
                     logger.info("[bbox] untrusted (%s): area=%.0f%% cur_px=%.0f trust_px=%.0f — HOLD servo, await YOLO relock",
-                                "overflow" if bbox_ratio >= BBOX_FREEZE_RATIO else "bloat>%.1fx" % BLOAT_HOLD_MULT,
+                                "overflow" if bbox_ratio >= C.BBOX_FREEZE_RATIO else "bloat>%.1fx" % C.BLOAT_HOLD_MULT,
                                 bbox_ratio * 100, cur_area_px, self._track_init_area)
                 elif centered and not moving_ff:
                     # Truly centered AND still — hold and let the integral clear.
@@ -644,7 +605,7 @@ class TrackerService:
                     self._yaw_pid.reset()
                     self._pitch_pid.reset()
                     motion_state = "CENTERED"
-                elif confidence < SERVO_MIN_CONF:
+                elif confidence < C.SERVO_MIN_CONF:
                     # Tracker barely holding the lock — don't chase, even with a
                     # fresh detector confirm (conf 0.15–0.4 + confirm used to be
                     # a blind zone that kept the servo hunting ghosts). Tracker
@@ -653,14 +614,14 @@ class TrackerService:
                     self._pitch_pid.reset()
                     motion_state = "LOW-CONF-HOLD"
                     self._follower.hold()
-                elif yolo_age >= TRUST_TRACKER_S and confidence < TRACKER_TRUST_CONF:
+                elif yolo_age >= C.TRUST_TRACKER_S and confidence < C.TRACKER_TRUST_CONF:
                     # Tracker AND detector both unsure — hold servo, don't chase
                     # phantom. If ViT confidence is high we trust the tracker
                     # even without detector confirm (face moving fast often makes
                     # YuNet miss while ViT keeps a good lock).
                     motion_state = "WAIT-YOLO"
                     self._follower.hold()
-                elif (now_t - last_servo_t) >= SERVO_COOLDOWN_S:
+                elif (now_t - last_servo_t) >= C.SERVO_COOLDOWN_S:
                     motion_state = "CHASING"
                     # Position PID on the soft-deadbanded error. Yaw sign: dx>0
                     # (object on right) → base_yaw must INCREASE to chase right
@@ -671,14 +632,14 @@ class TrackerService:
                     # per-fire angular step so the camera pans at the target's
                     # speed with zero position error. deg_per_px is the same on
                     # both axes for square pixels (vert FOV = horiz FOV·h/w).
-                    dt_fire = (min(VFF_MAX_DT_S, now_t - last_servo_t)
-                               if last_servo_t > 0 else 1.0 / FAST_LOOP_FPS)
-                    deg_per_px = CAMERA_FOV_DEG / w_fr
-                    yaw_ff = VFF_GAIN * vx_f * deg_per_px * dt_fire
-                    pitch_ff = VFF_GAIN * vy_f * deg_per_px * dt_fire
+                    dt_fire = (min(C.VFF_MAX_DT_S, now_t - last_servo_t)
+                               if last_servo_t > 0 else 1.0 / C.FAST_LOOP_FPS)
+                    deg_per_px = C.CAMERA_FOV_DEG / w_fr
+                    yaw_ff = C.VFF_GAIN * vx_f * deg_per_px * dt_fire
+                    pitch_ff = C.VFF_GAIN * vy_f * deg_per_px * dt_fire
                     # Combine and clamp to the PID output limit so ff + pid can't
                     # exceed the per-fire travel cap.
-                    _lim = PID_OUTPUT_MAX_DEG
+                    _lim = C.PID_OUTPUT_MAX_DEG
                     yaw_step = max(-_lim, min(_lim, yaw_pid + yaw_ff))
                     pitch_correction = max(-_lim, min(_lim, pitch_pid + pitch_ff))
                     logger.info("[pid-fire] offset=(%.0f,%.0f) v=(%.0f,%.0f)px/s → yaw=%.2f(ff%.2f) pitch=%.2f(ff%.2f) target='%s'",
@@ -713,8 +674,8 @@ class TrackerService:
                         med = 0.0
                         if len(recent_yolo_areas) >= 3:
                             med = sorted(recent_yolo_areas)[len(recent_yolo_areas) // 2]
-                            if med > 0 and (yolo_area > med * YOLO_AREA_GATE_MULT
-                                            or yolo_area < med / YOLO_AREA_GATE_MULT):
+                            if med > 0 and (yolo_area > med * C.YOLO_AREA_GATE_MULT
+                                            or yolo_area < med / C.YOLO_AREA_GATE_MULT):
                                 area_outlier = True
                         # Center distance between tracker bbox and YOLO bbox
                         cdx = cdy = 0.0
@@ -738,11 +699,11 @@ class TrackerService:
                         # still recovers fast.
                         now_reinit = time.perf_counter()
                         frame_diag = (w_fr ** 2 + h_fr ** 2) ** 0.5
-                        clearly_lost = center_dist > frame_diag * LOST_CENTER_FRAC
-                        cooldown_ok = (now_reinit - last_reinit_t) >= REINIT_COOLDOWN_S
+                        clearly_lost = center_dist > frame_diag * C.LOST_CENTER_FRAC
+                        cooldown_ok = (now_reinit - last_reinit_t) >= C.REINIT_COOLDOWN_S
                         if area_outlier:
                             logger.info("[detect-gate] reject YOLO area=%d (median=%d, gate=%.0fx) "
-                                        "— keep current lock", yolo_area, int(med), YOLO_AREA_GATE_MULT)
+                                        "— keep current lock", yolo_area, int(med), C.YOLO_AREA_GATE_MULT)
                         elif (bloated or diverged) and (cooldown_ok or clearly_lost):
                             logger.info("[drift-correct] reinit reason: bloated=%s diverged=%s lost=%s "
                                         "cur_area=%d yolo_area=%d center_dist=%.0fpx",
@@ -784,9 +745,9 @@ class TrackerService:
                     logger.info("[edge] offset=(%.0f,%.0f) > 25%% frame → force YOLO target='%s'",
                                 dx, dy, state.target_label)
 
-                # Fire background YOLO scan every YOLO_REDETECT_S.
+                # Fire background YOLO scan every C.YOLO_REDETECT_S.
                 now = time.perf_counter()
-                if state.target_label and not yolo_running.is_set() and now - last_yolo_t >= YOLO_REDETECT_S:
+                if state.target_label and not yolo_running.is_set() and now - last_yolo_t >= C.YOLO_REDETECT_S:
                     last_yolo_t = now
                     yolo_running.set()
                     snap = frame.copy()
@@ -825,12 +786,12 @@ class TrackerService:
                     servo_count = 0
                     fps_t0 = time.perf_counter()
 
-                if time.perf_counter() - track_start_t > MAX_TRACK_DURATION_S:
-                    logger.warning("Tracking timeout after %ds, stopping", MAX_TRACK_DURATION_S)
+                if time.perf_counter() - track_start_t > C.MAX_TRACK_DURATION_S:
+                    logger.warning("Tracking timeout after %ds, stopping", C.MAX_TRACK_DURATION_S)
                     break
 
                 dt = time.perf_counter() - t0
-                sleep_time = (1.0 / FAST_LOOP_FPS) - dt
+                sleep_time = (1.0 / C.FAST_LOOP_FPS) - dt
                 if sleep_time > 0:
                     time.sleep(sleep_time)
 
@@ -860,7 +821,7 @@ class TrackerService:
                 # Restore full speed after arm has started moving to zero.
                 time.sleep(1.0)
                 with animation_service.bus_lock:
-                    if TRACKING_GOAL_VELOCITY > 0:
+                    if C.TRACKING_GOAL_VELOCITY > 0:
                         animation_service.robot.bus.sync_write(
                             "Goal_Velocity", {m: 0 for m in _tracking_motors}
                         )
