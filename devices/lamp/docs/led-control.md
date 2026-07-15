@@ -67,6 +67,8 @@ Each scene controls **all peripherals** — not just LED, but also camera, mic, 
 
 Deactivate: `POST /scene/off` — clears active scene, restores idle LED, re-enables camera/speaker, releases servo hold.
 
+The active scene **survives HAL service restarts** (OTA, deploy, crash): it is persisted to a boot-scoped sidecar (`/tmp/hal-scene-state.json`, keyed to the kernel `boot_id`) and re-activated automatically when HAL comes back up, so the agent's belief ("focus mode is on") stays in sync. A full device reboot intentionally starts scene-less. Transient LED calls (`/led/solid`, `/led/off`, `/led/effect` with `"transient": true`, e.g. the boot breathing effect) overlay the strip without exiting the active scene; only non-transient LED overrides clear it.
+
 | Scene | Bright | Color (K) | Servo | Camera | Mic | Speaker |
 |-------|--------|-----------|-------|--------|-----|---------|
 | `reading` | 80% | 4000K warm white | desk + hold | off | on | off |
@@ -146,6 +148,10 @@ Auto-pauses on interaction, resumes after 60s of silence.
 ## LED in Emotion
 
 See [emotion-led-mapping.md](emotion-led-mapping.md) for the full emotion → LED color + effect + servo mapping.
+
+### Unknown emotion names
+
+`POST /emotion` (`os/hal/routes/emotion.py`) never rejects a non-empty emotion name — there is no 400 for unknown names. Unrecognized names go through a resolution ladder: exact match → normalized (lowercase, trim, dashes→underscores) → a small alias map (e.g. `joy`→`happy`, `surprised`→`shock`) → fuzzy match (difflib, cutoff 0.75) → fallback to `idle`. When the incoming name resolves to a different emotion, HAL logs a warning, and everything downstream (sleep gate, servo, LED) uses the resolved emotion.
 
 ## Per-device preset overrides
 

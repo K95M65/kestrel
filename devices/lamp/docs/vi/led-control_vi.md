@@ -65,6 +65,10 @@ POST /scene
 
 Mỗi scene điều khiển **toàn bộ thiết bị ngoại vi** — không chỉ LED mà cả camera, mic, speaker và servo.
 
+Tắt scene: `POST /scene/off` — xoá scene đang active, khôi phục LED idle, bật lại camera/speaker, nhả servo hold.
+
+Scene đang active **sống sót qua các lần restart HAL service** (OTA, deploy, crash): trạng thái được persist vào sidecar theo phiên boot (`/tmp/hal-scene-state.json`, gắn với `boot_id` của kernel) và tự động kích hoạt lại khi HAL chạy trở lại, nên niềm tin của agent ("focus mode đang bật") luôn đồng bộ. Reboot toàn bộ thiết bị thì chủ đích khởi động không có scene. Các lệnh LED transient (`/led/solid`, `/led/off`, `/led/effect` với `"transient": true`, vd hiệu ứng breathing lúc boot) chỉ overlay lên strip mà không thoát scene đang active; chỉ LED override non-transient mới xoá scene.
+
 | Scene | Sáng | Màu (K) | Servo | Camera | Mic | Speaker |
 |-------|------|---------|-------|--------|-----|---------|
 | `reading` | 80% | 4000K trắng ấm | desk + hold | off | off | off |
@@ -154,6 +158,10 @@ Mỗi emotion preset có LED color riêng:
 | excited | Cam sáng |
 | shy | Hồng nhạt |
 | shock | Trắng flash |
+
+### Tên emotion không nhận diện được
+
+`POST /emotion` (`os/hal/routes/emotion.py`) không bao giờ từ chối tên emotion khác rỗng — không còn trả 400 cho tên lạ. Tên không nhận diện được đi qua thang resolution: exact match → normalize (lowercase, trim, dash→underscore) → bảng alias nhỏ (vd `joy`→`happy`, `surprised`→`shock`) → fuzzy match (difflib, cutoff 0.75) → fallback về `idle`. Khi tên gửi lên được resolve sang emotion khác, HAL log warning, và toàn bộ downstream (sleep gate, servo, LED) dùng emotion đã resolve.
 
 ## Override preset theo từng thiết bị
 
