@@ -91,9 +91,11 @@ stub convention). This file is the running history for whoever picks the task up
         dead code removed (codexBin/envWithoutHome/picoStopVerifyTimeout), lying
         sed-artifact comments rewritten (onboarding header, IsBusy, identity, reset)
 - [x] Behavioral audit of sed-adapted files: skills pipeline verified coherent —
-      presync copy, skill_watcher CDN install, pruneUnsupportedSkills and the AGENTS.md
-      hint ALL resolve to /root/.codex/workspace/skills (= codex exec --cd); markdown
-      block changes no longer restart the gateway (codex reads workspace per-turn)
+      presync copy, skill_watcher CDN install, pruneUnsupportedSkills, migration and the
+      AGENTS.md hint ALL resolve to /root/.codex/skills (codex's NATIVE $CODEX_HOME/skills
+      discovery root — the `@` picker + native skill loading; NOT workspace/skills, which
+      codex never scans); markdown block changes no longer restart the gateway (codex
+      reads workspace per-turn)
 - [x] FINAL GATE: go build + full go test + go vet + tsc -b + GOOS=linux GOARCH=arm64
       — ALL GREEN (2026-07-07)
 - [x] campaign-api /responses probe (2026-07-07, from lamp-ac82 with the device key):
