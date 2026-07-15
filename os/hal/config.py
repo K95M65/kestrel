@@ -764,6 +764,16 @@ REALTIME_SUMMARY_MAX_CHARS: int = int(os.environ.get("HAL_REALTIME_SUMMARY_MAX_C
 # USER.md/IDENTITY.md are agent-writable, so without this the per-turn floor
 # grows unbounded. Default leaves today's ~9.6k chars untouched.
 REALTIME_IDENTITY_MAX_CHARS: int = int(os.environ.get("HAL_REALTIME_IDENTITY_MAX_CHARS", "12000"))
+# Cap on the [REPLY] transcript replayed to the MAIN agent after a
+# realtime-handled turn. The replay exists for memory continuity (the main
+# agent burns a full turn just to record it + answer NO_REPLY), so the gist is
+# enough — an uncapped long spoken reply inflates that already-overhead turn.
+REALTIME_REPLY_SYNC_MAX_CHARS: int = int(os.environ.get("HAL_REALTIME_REPLY_SYNC_MAX_CHARS", "600"))
+# Cap on each [TTS HISTORY] line pushed into the live Gemini session after the
+# device speaks. It accumulates in session context and is re-billed on every
+# later turn until recycle; Gemini only needs the gist to avoid repeating
+# itself.
+REALTIME_TTS_HISTORY_MAX_CHARS: int = int(os.environ.get("HAL_REALTIME_TTS_HISTORY_MAX_CHARS", "300"))
 
 # --- Realtime: Summarizer (Anthropic Messages API) ---
 REALTIME_SUMMARIZER_ENABLED: bool = os.environ.get("HAL_REALTIME_SUMMARIZER_ENABLED", "true").lower() in ("1", "true", "yes")

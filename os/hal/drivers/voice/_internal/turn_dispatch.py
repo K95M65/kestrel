@@ -7,6 +7,7 @@ the utterance for speech-emotion recognition.
 
 import logging
 
+from hal import config as hal_config
 from hal.drivers.voice.speech_emotion.constants import UNKNOWN_USER_LABEL
 
 logger = logging.getLogger("hal.voice")
@@ -84,8 +85,15 @@ def dispatch_turn(decorator, sensing_sender, combined, audio_buffer, ser_audio_b
         if rt.handled:
             # Realtime already spoke — send as "voice_handled" to skip dead-air filler.
             # Include skill hint so OpenClaw reads input-branching and responds NO_REPLY.
+            # [REPLY] is capped: it exists only so the main agent's memory knows
+            # what was said — the gist, not the full monologue, on a turn that
+            # is pure overhead (NO_REPLY) to begin with.
+            reply: str = rt.transcript or ""
+            max_reply = hal_config.REALTIME_REPLY_SYNC_MAX_CHARS
+            if len(reply) > max_reply:
+                reply = reply[:max_reply] + " …[truncated]"
             sensing_sender.send(
-                f"[skills: input-branching]\n[HANDLED] {final_msg}\n[REPLY] {rt.transcript}",
+                f"[skills: input-branching]\n[HANDLED] {final_msg}\n[REPLY] {reply}",
                 event_type="voice_agent_handled",
                 skip_echo=True,
             )

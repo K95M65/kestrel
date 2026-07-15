@@ -368,6 +368,21 @@ class RealtimeOrchestrator:
                 except Exception:
                     logger.exception("[realtime] old agent disconnect failed")
 
+    def discard_open_activity(self, reason: str) -> bool:
+        """Drop a turn whose audio already streamed into the session.
+
+        Manual-VAD Gemini has no "discard" primitive: dropped-turn audio sits
+        in the still-open activity and gets billed with (and can confuse) the
+        NEXT committed turn. Closing with activityEnd instead would make the
+        model answer the noise — the exact reply REQUIRE_TRANSCRIPT exists to
+        prevent. The only clean exit is a fresh session; costs one handshake
+        (~1s) on a turn that is already dead air. No-op when no activity is
+        open (auto-VAD providers, or no audio streamed yet).
+        """
+        if self._agent is None or not getattr(self._agent, "_activity_started", False):
+            return False
+        return self._rebuild_now(reason)
+
     def recover_session(self, reason: str) -> bool:
         """Reconnect a FRESH session synchronously for a mid-turn 1011 replay.
 

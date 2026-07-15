@@ -375,6 +375,18 @@ def run_realtime_turn(
             hal_config.REALTIME_MIN_COMMIT_DURATION_S,
             audio_is_speech,
         )
+        # The dropped turn's audio already streamed into the session's open
+        # manual-VAD activity and would be billed with (and can confuse) the
+        # NEXT committed turn. Swap in a fresh session — this turn is dead
+        # air, so nobody is waiting on the ~1s handshake.
+        if rt_audio_buffer and realtime.available:
+            try:
+                if realtime.discard_open_activity("noise-drop"):
+                    logger.info(
+                        "[realtime] Discarded open activity after noise drop (fresh session)"
+                    )
+            except Exception:
+                logger.exception("[realtime] noise-drop discard failed")
     elif hal_config.REALTIME_ENABLED:
         logger.warning(
             "[realtime] Enabled but agent not available — falling back to OS server"

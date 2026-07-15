@@ -184,6 +184,12 @@ class VoiceService:
                     # spoken (often an OpenClaw reply, not Gemini's own output) is
                     # pushed to Gemini as history so it stays aware of what the
                     # device said and won't repeat it. Not a Gemini-generated line.
+                    # Capped: it accumulates in session context and is re-billed
+                    # on every later turn until recycle — the gist is enough to
+                    # avoid repetition.
+                    max_hist = hal_config.REALTIME_TTS_HISTORY_MAX_CHARS
+                    if len(text) > max_hist:
+                        text = text[:max_hist] + "…"
                     logger.info(
                         "[realtime<-tts] Notifying realtime agent of spoken text: %r",
                         text[:100],
