@@ -1,0 +1,209 @@
+"""Tuning knobs shared across the tracking package.
+
+Detector-internal knobs (COCO map, endpoints, model paths) live in
+detection.py / vit_tracker.py next to the code that uses them; everything
+here is either shared between modules or a behavior dial worth finding in
+one place.
+"""
+
+# Vision-pipeline max width (px). The ViT tracker AND the detectors (YuNet /
+# local YOLO / remote YOLOWorld) run on a frame downscaled to at most this
+# width; every bbox they return is mapped back to ORIGINAL camera coordinates
+# before any servo/PID math, so no pixel-tuned constant (PID gains, area/center
+# gates, dead zones, feedforward thresholds) needs re-tuning. Camera runs
+# 1280x720, so 640 = 0.5x → ¼ the pixels for the ViT crop/resize and detector
+# input → faster fast-loop → smoother tracking. Set to 0/None to disable, or a
+# width ≥ the camera width for a no-op.
+VISION_MAX_WIDTH = 640
+
+# Fast loop target FPS — tracker update on Pi runs ~15-25ms/frame. Lowered from
+# 15→10: Feetech STS3215 makes an audible click on each send_action (motor
+# accel/decel spike). At 15fps × 4 substeps that's ~60 writes/sec = audible
+# 60 Hz buzz. 10fps × 2 substeps ≈ 20 writes/sec → softer continuous motion.
+FAST_LOOP_FPS = 10
+
+# Hardware velocity limit for tracking (Feetech STS3215 Goal_Velocity register).
+# 0 = unlimited (default). Lower = slower, smoother camera pan → ViT stays locked.
+# Unit: steps/s. ~150 ≈ moderate tracking speed. Set to 0 to disable.
+TRACKING_GOAL_VELOCITY = 150
+
+# Hardware acceleration for tracking (Feetech STS3215 Acceleration register).
+# 254 = max (default, snappy). Lower = gentler ramp up/down → less jerk.
+# Range: 0-254. ~30 gives smooth glide without being too sluggish.
+TRACKING_ACCELERATION = 30
+
+# Camera field-of-view in degrees (horizontal). Used to convert px offset → degrees.
+CAMERA_FOV_DEG = 60.0
+
+# Per-axis dead zones as fraction of frame.
+# Yaw larger — horizontal jitter is common, small dx not worth a motor move.
+# Pitch smaller — vertical needs finer response for elbow tracking.
+DEAD_ZONE_YAW_PCT   = 0.07
+DEAD_ZONE_PITCH_PCT = 0.05
+
+# --- Alpha-beta (constant-velocity) filter on the target centroid ---
+# Steady-state Kalman for a constant-velocity model. Replaces the plain EMA so
+# the servo follows a *predicted, gated* centroid instead of the raw ViT bbox
+# center: it smooths jitter, coasts through dropped/garbage frames, and leads a
+# moving target to cut lag. ALPHA = position correction (higher = snappier,
+# noisier), BETA = velocity correction (higher = faster to track accel, more
+# overshoot). GATE_PX rejects a measurement whose residual-from-prediction
+# exceeds it — a ViT-bloat teleport or false detection — by coasting on the
+# prediction. Because the gate is on residual (not raw jump), sustained fast
+# motion is NOT gated (velocity tracks it); only sudden unexplained jumps are.
+# LEAD_S projects the centroid forward by this many seconds (velocity
+# feedforward) to anticipate motion; 0 = no lead.
+AB_ALPHA = 0.6
+AB_BETA = 0.2
+AB_GATE_PX = 200.0
+AB_LEAD_S = 0.12
+# Velocity decay applied when a measurement is gated, so a persistent bad lock
+# coasts to a stop instead of running away on stale velocity.
+AB_GATE_DECAY = 0.7
+# Consecutive gated frames after which the filter force-accepts the measurement
+# (re-seeds). Stops a genuine fast move from being rejected forever; transient
+# ViT-bloat teleports last only 1–2 frames so they're still filtered out.
+AB_MAX_GATED_STREAK = 3
+
+# YOLO background re-detect interval (seconds).
+# Local YOLOv8n runs ~300-700ms/call on Allwinner A523. At 500ms interval
+# it saturated all CPU cores → camera MJPEG stream stalled.
+# 1.5s gives the CPU breathing room while still catching tracker drift.
+YOLO_REDETECT_S = 1.5
+
+# How many consecutive tracker-update miss frames before retrying.
+# Raised: ViT honestly returns ok=False on transient low-confidence frames.
+YOLO_MAX_MISS = 30
+
+# Cooldown after servo fire (seconds) — ignore motion detection while camera
+# stabilises after a move. Prevents servo shake → fake MOVE → immediate re-fire loop.
+SERVO_COOLDOWN_S = 0.10
+
+# Servo-worker tick period (dt) used by the SmoothDamp follower — one bus write
+# per tick. Spaced so the motor has time between commands to glide smoothly to
+# each intermediate point instead of getting retargeted before it settles
+# (which produced the click train).
+SERVO_SUBSTEP_SLEEP = 0.030
+
+# --- SmoothDamp follower (cinematic ease-in/ease-out) ---
+# The servo worker used to step a FIXED number of degrees toward the goal each
+# tick, then snap the last step. That makes the commanded velocity a square wave
+# (0 → ~50°/s instantly → 0 instantly) every time the goal changes at ~10 Hz —
+# the "jerky, not smooth like a film camera" feel. SmoothDamp (Game Programming
+# Gems 4 / Unity's Mathf.SmoothDamp) is a critically-damped follower: it carries
+# an internal per-joint velocity so every move accelerates smoothly and eases out
+# into the target, and when a fresh goal arrives mid-move the velocity carries
+# over (no restart jerk). Same one-write-per-tick cadence → no extra click/buzz.
+# SMOOTH_TIME = approximate seconds to reach the target: higher = smoother but
+# laggier; tune on-device. MAX_SPEED_DPS caps peak pan speed (deg/s) so a big
+# offset can't whip the camera and lose ViT lock (the hardware Goal_Velocity is
+# the real ceiling; this keeps the software setpoint tame too).
+SERVO_SMOOTH_TIME   = 0.18
+SERVO_MAX_SPEED_DPS = 60.0
+
+# Pitch distribution across 3 joints.
+# Empirical: only wrist_pitch is pure rotation. base+elbow primarily translate
+# camera (kinematic coupling) → object grows in frame but doesn't move toward
+# center. Use wrist alone for predictable pitch control.
+PITCH_WEIGHT_BASE  = 0.10
+PITCH_WEIGHT_ELBOW = 0.90
+PITCH_WEIGHT_WRIST = 0.0
+
+# Elbow servo polarity. The elbow_pitch motor's positive direction was reversed
+# in hardware (2026-06-19), so a positive pitch_correction now drives the camera
+# the opposite way. Flip the elbow contribution by this sign so the camera still
+# chases dy in the correct direction. Set back to +1 if the wiring is restored.
+ELBOW_PITCH_SIGN = -1.0
+
+# Maximum tracking duration (seconds) — auto-stop to save motor/CPU.
+MAX_TRACK_DURATION_S = 300  # 5 minutes
+
+# Servo position limits (degrees).
+YAW_MIN, YAW_MAX = -135.0, 135.0
+BASE_PITCH_MIN, BASE_PITCH_MAX = -90.0, 30.0
+ELBOW_PITCH_MIN, ELBOW_PITCH_MAX = -90.0, 90.0
+WRIST_PITCH_MIN, WRIST_PITCH_MAX = -90.0, 90.0
+
+# Detection quality filters (applied by every detector AND by the loop's
+# ghost-lock sliver / bloat checks).
+DETECT_MIN_AREA_RATIO = 0.003
+DETECT_MAX_AREA_RATIO = 0.80
+DETECT_MIN_CONFIDENCE = 0.15  # lowered to catch phone at angles/back-facing
+
+# Bbox-trust guard (ViT bloat protection).
+# ViT can dissolve its lock into a box that overflows the whole frame — it stops
+# tracking the object and "tracks" everything. Driving the servo off that
+# bloated centroid causes jitter when the object is still and useless chase when
+# it moves. We only treat a bbox as garbage when it MEETS OR EXCEEDS the full
+# frame area: nothing real can be bigger than the frame, so this never freezes a
+# legitimately large object (e.g. a person standing close fills 80–90% and must
+# still track). On garbage we HOLD the servo and let YOLO/retry relock.
+BBOX_FREEZE_RATIO = 1.0   # bbox area ≥ this fraction of frame ⇒ ViT dissolved
+# Relative bloat: the frame-overflow check above misses the common failure where
+# ViT balloons to 20–45% of the frame (still < 1 frame) while the real target is
+# a small face (~3%). Its centroid then wanders ±200px/frame and the servo
+# whipsaws (the "jerky, never centers" symptom). Hold the servo whenever the live
+# bbox is more than this multiple of the last YOLO-trusted lock area. A genuinely
+# large/approaching object is confirmed by YOLO, which updates the trusted
+# baseline, so this never freezes a legitimately large target.
+BLOAT_HOLD_MULT = 3.0
+
+# Detection gating + reinit debounce (SORT/ByteTrack-style outlier rejection).
+# Reject a YOLO/YuNet box whose area is more than this multiple off the recent
+# median — it's almost certainly a false detection (background object, the
+# second face, scale glitch). Don't reinit the tracker to it.
+YOLO_AREA_GATE_MULT = 4.0
+# Min seconds between tracker reinits, so a noisy detector can't reinit every
+# frame. Bypassed when the tracker is clearly lost (see LOST_CENTER_FRAC).
+REINIT_COOLDOWN_S = 0.5
+# Detection-tracker center distance beyond this fraction of the frame diagonal
+# means the lock is genuinely lost → reinit immediately, ignoring the cooldown.
+LOST_CENTER_FRAC = 0.5
+
+# Ghost-lock detection via tracker confidence (ViT only).
+# Sliding window, NOT a consecutive-frame counter: ViT confidence on a dying
+# lock flickers around the threshold (0.12 → 0.16 → 0.13 …), and a consecutive
+# counter reset by every single above-threshold frame let ghost locks survive
+# indefinitely. Stop when LOW_CONF_STOP_COUNT of the last LOW_CONF_WINDOW
+# frames are below CONFIDENCE_THRESHOLD.
+CONFIDENCE_THRESHOLD = 0.15
+LOW_CONF_WINDOW = 15
+LOW_CONF_STOP_COUNT = 8
+# Floor for firing the servo PID at all, even while the detector still
+# confirms the target. Without it, conf 0.15–0.4 with a fresh detector confirm
+# was a blind zone that kept the servo chasing a barely-held lock. Below this
+# → hold servo (tracker keeps updating; PID resumes when confidence recovers).
+SERVO_MIN_CONF = 0.25
+# When the detector (YuNet / YOLO) hasn't confirmed for TRUST_TRACKER_S, fall
+# back to ViT's own confidence: if it's above this threshold, keep firing PID
+# (the tracker still has a solid lock — common when face moves fast and YuNet
+# misses a few frames). Below this → freeze servo, wait for detector.
+TRACKER_TRUST_CONF = 0.4
+# Detector-gated trust window (seconds). With redetect=1.5s this allows ~1
+# missed redetect before the tracker is treated as suspect.
+TRUST_TRACKER_S = 2.5
+# No detector confirm at all for this long → the lock is a ghost, stop.
+STOP_NO_YOLO_S = 20.0
+
+# PID gains for servo control (industry pattern: PyImageSearch face tracking).
+# KP lowered (0.04→0.025 yaw, 0.05→0.03 pitch): smaller per-fire step, gentler
+# chase. KD lowered too — D term amplifies bbox jitter into servo jerks.
+PID_YAW_KP, PID_YAW_KI, PID_YAW_KD = 0.025, 0.002, 0.002
+PID_PITCH_KP, PID_PITCH_KI, PID_PITCH_KD = 0.03, 0.002, 0.0025
+PID_OUTPUT_MAX_DEG = 5.0
+PID_INTEGRAL_MAX = 30.0
+
+# --- Velocity feedforward (constant-velocity cinematic pan) ---
+# The position PID only reacts to accumulated error, so a target moving at a
+# steady speed is always chased in catch-up bursts (the "follows in jerks, not a
+# smooth pan" feel). The alpha-beta filter already estimates the target's pixel
+# velocity (vx_f, vy_f); feed a fraction of it straight to the servo as a rate
+# command so the camera pans AT the target's speed even at zero position error.
+# The PID then only has to correct the residual. 0 = off (pure position PID).
+VFF_GAIN = 0.6
+# Cap on the per-fire dt used to turn the feedforward rate (deg/s) into a
+# per-fire step (deg) — a long gap between fires can't inject a huge lurch.
+VFF_MAX_DT_S = 0.20
+# Target pixel-speed above which a position-centered target is still "moving" →
+# keep panning on feedforward instead of freezing in the dead zone.
+VFF_MOVING_MIN_PXS = 40.0
