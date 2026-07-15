@@ -57,6 +57,7 @@ The camera runs **1280×720**. Every heavy vision component — the ViT tracker 
 - COCO has no hand/face class, so `hand`/`face` intentionally fall through to YuNet/YOLOWorld instead of mapping to `person` (which locked onto the whole body).
 - On a local-YOLO miss the code falls back to remote YOLOWorld, **throttled** to at most one attempt per `REMOTE_FALLBACK_MIN_INTERVAL` (2.0 s) so a genuinely unseeable target doesn't hit remote every redetect.
 - Detection quality filters: confidence ≥ `DETECT_MIN_CONFIDENCE` (0.15), area between `DETECT_MIN_AREA_RATIO` (0.3%) and `DETECT_MAX_AREA_RATIO` (80%) of frame.
+- **Lookalike guard (local path)** — local YOLO detects **unrestricted** (no `classes=` filter) so competing classes stay visible, then: (a) the confusion cluster cell phone / mouse / remote needs conf ≥ 0.35 (`_CONFUSABLE_CONF_FLOOR`) instead of the global 0.15; (b) **cross-class disambiguation** — if a box of another class overlaps the candidate (IoU ≥ 0.5) with *higher* confidence, the candidate is rejected ("that's probably a mouse, not the phone you asked for") and the code falls through to the remote fallback.
 
 Weights are checked into the repo (`os/hal/drivers/tracking/models/`) so deploy is one rsync and the Pi never needs internet at boot to start tracking.
 
@@ -88,10 +89,11 @@ Pitch is concentrated on the elbow (`PITCH_WEIGHT_ELBOW = 0.90`). Empirically on
 
 Each frame the loop turns the tracker bbox into an absolute servo goal:
 
-1. **Alpha-beta filter on the centroid** (`AlphaBetaFilter2D`) — a constant-velocity steady-state Kalman. Smooths jitter, coasts through dropped/garbage frames on prediction, gates outlier teleports (`AB_GATE_PX`), and exposes a velocity estimate. A velocity lead (`AB_LEAD_S = 0.12 s`) aims slightly ahead of the target.
-2. **Soft dead zone** (`soft_deadband`) — the error is 0 inside the dead zone and ramps up from 0 at the edge (no value step). This removes the "kick out of center" jerk the old hard dead zone produced.
-3. **PID + velocity feedforward** — a time-aware PID with anti-windup on the soft-deadbanded position error, **plus** a feedforward term proportional to the target's measured pixel velocity (`VFF_GAIN`). The feedforward pans the camera *at the target's speed* even at zero position error, so a steadily moving target is a continuous pan instead of catch-up bursts. A position-centered but moving target keeps panning (does not freeze in the dead zone). Combined output is clamped to `PID_OUTPUT_MAX_DEG` (5°).
-4. **Publish goal** — the resulting absolute joint target is handed to the servo worker (non-blocking).
+1. **Alpha-beta filter on the centroid** (`AlphaBetaFilter2D`) — a constant-velocity steady-state Kalman. Smooths jitter, coasts through dropped/garbage frames on prediction, gates outlier teleports (`AB_GATE_PX`), and exposes a velocity estimate. A velocity lead (`AB_LEAD_S = 0.20 s`) aims ahead of the target — cinematic "lead room".
+2. **Tiered dead zone** (`soft_deadband`) — three bands, continuous at both boundaries: true zero inside ±`DEAD_ZONE_INNER_PCT` (2 %, servo rests, PID clears); a gentle **creep band** up to the outer edge (`DEAD_ZONE_CREEP_GAIN` = 0.12 slope) so the camera lazily drifts toward center instead of freezing dead — a hard stop here produced the start-stop "security camera" feel; full error beyond the outer edge.
+3. **Velocity feedforward first, PID second (smooth pursuit)** — the primary command is a feedforward term proportional to the target's measured pixel velocity (`VFF_GAIN` = 0.9): the camera *matches the target's speed* like human smooth pursuit, even at zero position error. A time-aware PID with anti-windup (KP deliberately small: 0.015 yaw / 0.02 pitch) only trims the residual position error. A position-centered but moving target keeps panning (does not freeze in the dead zone). Combined output is clamped to `PID_OUTPUT_MAX_DEG` (5°).
+4. **Saccade vs pursuit profiles** — mirroring human gaze: offset > `SACCADE_OFFSET_FRAC` (22 % of frame width) switches the follow worker to the **saccade** profile (`SACCADE_SMOOTH_TIME` 0.20 s, `SACCADE_MAX_SPEED_DPS` 80) for a fast relocation; small offsets use the heavy **pursuit** profile (`SERVO_SMOOTH_TIME` 0.32 s, `SERVO_MAX_SPEED_DPS` 40) — fluid-head inertia. One compromise profile did both badly. The loop state logs `SACCADE` vs `CHASING`.
+5. **Publish goal** — the resulting absolute joint target is handed to the servo worker (non-blocking).
 
 ### Servo worker (SmoothDamp follower)
 
@@ -131,17 +133,20 @@ pitch_correction = clamp(PID(soft_deadband(dy)) + VFF·vy·deg_per_px·dt,  ±5�
 | `VISION_MAX_WIDTH` | 640 | Downscale width for ViT + detectors (0 = off) |
 | `FAST_LOOP_FPS` | 10 | Vision loop frequency |
 | `CAMERA_FOV_DEG` | 60 | Horizontal FOV, for px→deg |
-| `DEAD_ZONE_YAW_PCT` / `_PITCH_PCT` | 0.07 / 0.05 | Soft dead zone as fraction of frame |
-| `PID_YAW_KP` / `PID_PITCH_KP` | 0.025 / 0.03 | PID proportional gains |
+| `DEAD_ZONE_INNER_PCT` | 0.02 | True-zero band (servo rests) |
+| `DEAD_ZONE_YAW_PCT` / `_PITCH_PCT` | 0.07 / 0.05 | Outer dead-zone edge (creep band ends) |
+| `DEAD_ZONE_CREEP_GAIN` | 0.12 | Lazy-drift slope inside the creep band |
+| `PID_YAW_KP` / `PID_PITCH_KP` | 0.015 / 0.02 | PID proportional gains (trim only — VFF is primary) |
 | `PID_OUTPUT_MAX_DEG` | 5.0 | Max degrees per fire (yaw & combined pitch) |
 | `AB_ALPHA` / `AB_BETA` | 0.6 / 0.2 | Alpha-beta position/velocity gains |
 | `AB_GATE_PX` | 200 | Reject a centroid teleport beyond this residual |
-| `AB_LEAD_S` | 0.12 | Velocity lead (aim ahead of the target) |
-| `VFF_GAIN` | 0.6 | Fraction of target velocity fed forward |
+| `AB_LEAD_S` | 0.20 | Velocity lead (cinematic "lead room" ahead of the target) |
+| `VFF_GAIN` | 0.9 | Fraction of target velocity fed forward (primary command) |
 | `VFF_MAX_DT_S` | 0.20 | Cap on per-fire dt for feedforward |
 | `VFF_MOVING_MIN_PXS` | 40 | Target speed above which a centered target keeps panning |
-| `SERVO_SMOOTH_TIME` | 0.18 | SmoothDamp time constant (↓ snappier, ↑ smoother/laggier) |
-| `SERVO_MAX_SPEED_DPS` | 60 | SmoothDamp peak pan speed cap |
+| `SERVO_SMOOTH_TIME` / `SERVO_MAX_SPEED_DPS` | 0.32 / 40 | Pursuit profile (heavy, fluid-head) |
+| `SACCADE_SMOOTH_TIME` / `SACCADE_MAX_SPEED_DPS` | 0.20 / 80 | Saccade profile (fast relocation) |
+| `SACCADE_OFFSET_FRAC` | 0.22 | Offset (fraction of frame width) that triggers saccade |
 | `SERVO_SUBSTEP_SLEEP` | 0.030 | Servo-worker tick / bus-write period |
 | `TRACKING_GOAL_VELOCITY` | 150 | Hardware velocity limit (steps/s) |
 | `TRACKING_ACCELERATION` | 30 | Hardware acceleration ramp |

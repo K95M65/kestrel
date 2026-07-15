@@ -76,6 +76,16 @@ _COCO_CLASSES = {
     "toaster": 70, "sink": 71, "refrigerator": 72, "book": 73, "clock": 74,
     "vase": 75, "scissors": 76, "teddy bear": 77, "hair drier": 78, "toothbrush": 79,
 }
+# Classic COCO confusion cluster: cell phone / mouse / remote are all small,
+# dark, rounded rectangles — at imgsz=320 YOLOv8n regularly mislabels one as
+# another. These classes need a higher confidence floor than the global
+# DETECT_MIN_CONFIDENCE (0.15, deliberately low to catch phones at odd angles).
+_CONFUSABLE_CONF_FLOOR = {64: 0.35, 65: 0.35, 67: 0.35}  # mouse, remote, cell phone
+# A rival box of ANOTHER class overlapping the candidate by at least this IoU
+# with higher confidence disqualifies the candidate ("that's probably a mouse,
+# not the phone you asked for").
+_CROSS_CLASS_IOU = 0.5
+
 # Remote API fallback (open vocabulary).
 _DETECT_MODEL = "yoloworld"
 _YOLO_ENDPOINT = f"/detect/{_DETECT_MODEL}"
@@ -163,6 +173,19 @@ def _get_yunet():
     return _yunet
 
 
+def _iou_xyxy(a, b) -> float:
+    """IoU of two (x1, y1, x2, y2) boxes."""
+    ix1, iy1 = max(a[0], b[0]), max(a[1], b[1])
+    ix2, iy2 = min(a[2], b[2]), min(a[3], b[3])
+    iw, ih = max(0.0, ix2 - ix1), max(0.0, iy2 - iy1)
+    inter = iw * ih
+    if inter <= 0:
+        return 0.0
+    area_a = (a[2] - a[0]) * (a[3] - a[1])
+    area_b = (b[2] - b[0]) * (b[3] - b[1])
+    return inter / (area_a + area_b - inter)
+
+
 def _detect_face_yunet(frame: npt.NDArray[np.uint8]) -> Optional[Tuple[int, int, int, int]]:
     """Run YuNet on the frame, return the largest face bbox (x,y,w,h) or None.
 
@@ -247,27 +270,54 @@ class ObjectDetector:
             if model is not None:
                 t_req = time.perf_counter()
                 try:
+                    # Detect UNRESTRICTED (no classes= filter): with the filter,
+                    # YOLO is only allowed to answer the target class, so a
+                    # mouse gets rubber-stamped "cell phone 0.18" with no rival
+                    # to expose it. Open detection keeps the competing classes
+                    # around for cross-class disambiguation below.
                     results = model(frame, verbose=False, imgsz=_LOCAL_IMGSZ,
-                                    classes=[coco_idx], conf=C.DETECT_MIN_CONFIDENCE)
+                                    conf=C.DETECT_MIN_CONFIDENCE)
                     t_ms = (time.perf_counter() - t_req) * 1000
                     h_fr, w_fr = frame.shape[:2]
                     frame_area = float(h_fr * w_fr)
-                    best = None
+                    conf_floor = max(C.DETECT_MIN_CONFIDENCE,
+                                     _CONFUSABLE_CONF_FLOOR.get(coco_idx, 0.0))
+                    boxes = []  # (cls, conf, x1, y1, x2, y2)
                     for r in results:
                         if r.boxes is None or len(r.boxes) == 0:
                             continue
                         for b in r.boxes:
                             x1, y1, x2, y2 = b.xyxy[0].tolist()
-                            conf = float(b.conf[0])
-                            bw = int(x2 - x1)
-                            bh = int(y2 - y1)
-                            area_ratio = (bw * bh) / frame_area if frame_area > 0 else 0.0
-                            if not (C.DETECT_MIN_AREA_RATIO <= area_ratio <= C.DETECT_MAX_AREA_RATIO):
-                                continue
-                            if best is None or conf > best[1]:
-                                best = ((int(x1), int(y1), bw, bh), conf, area_ratio)
+                            boxes.append((int(b.cls[0]), float(b.conf[0]), x1, y1, x2, y2))
+                    best = None
+                    for cls, conf, x1, y1, x2, y2 in boxes:
+                        if cls != coco_idx or conf < conf_floor:
+                            continue
+                        bw = int(x2 - x1)
+                        bh = int(y2 - y1)
+                        area_ratio = (bw * bh) / frame_area if frame_area > 0 else 0.0
+                        if not (C.DETECT_MIN_AREA_RATIO <= area_ratio <= C.DETECT_MAX_AREA_RATIO):
+                            continue
+                        if best is None or conf > best[1]:
+                            best = ((int(x1), int(y1), bw, bh), conf, area_ratio, (x1, y1, x2, y2))
+                    # Cross-class disambiguation: a same-spot box of another
+                    # class with HIGHER confidence means the model believes the
+                    # object is that other thing — reject instead of seeding the
+                    # tracker on a lookalike (phone↔mouse↔remote).
                     if best is not None:
-                        bbox, conf, area_ratio = best
+                        rect = best[3]
+                        for cls, conf, x1, y1, x2, y2 in boxes:
+                            if cls == coco_idx or conf <= best[1]:
+                                continue
+                            if _iou_xyxy(rect, (x1, y1, x2, y2)) >= _CROSS_CLASS_IOU:
+                                rival = model.names.get(cls, str(cls)) if hasattr(model, "names") else str(cls)
+                                logger.info(
+                                    "[tracking_yolo_local] reject '%s' conf=%.3f — same spot is '%s' conf=%.3f (cross-class)",
+                                    target, best[1], rival, conf)
+                                best = None
+                                break
+                    if best is not None:
+                        bbox, conf, area_ratio, _ = best
                         logger.info("[tracking_yolo_local] target='%s' bbox=%s conf=%.3f area=%.1f%% latency=%.0fms",
                                     target, bbox, conf, area_ratio * 100, t_ms)
                         return scale_bbox(bbox, _up)

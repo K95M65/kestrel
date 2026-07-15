@@ -34,20 +34,25 @@ def smooth_damp(current: float, target: float, velocity: float,
     return new, velocity
 
 
-def soft_deadband(error: float, dz: float) -> float:
-    """Continuous dead zone: 0 inside ±dz, then ramps from 0 at the edge.
+def soft_deadband(error: float, inner: float, outer: float, creep: float) -> float:
+    """Tiered dead zone, continuous everywhere. Sign-preserving.
 
-    The old hard dead zone fed the controller the RAW error the instant the
-    target crossed the boundary — output jumped from 0 to a full dz-worth of
-    error, the "kick out of center" jerk. This shifts the error so it starts at
-    0 at the edge and grows from there (no value step), giving a smooth handoff
-    between holding and chasing. Sign-preserving.
+    - |error| ≤ inner: 0 — servo truly rests (CENTERED, PID clears).
+    - inner < |error| ≤ outer: creep band — a gentle `creep` slope so the
+      camera lazily drifts toward center instead of freezing dead at the
+      boundary. A hard stop here produced the start-stop "security camera"
+      feel; a human operator never fully freezes.
+    - |error| > outer: full error, offset so it continues exactly where the
+      creep band left off (no output step at either boundary — a value jump
+      at the edge was the old "kick out of center" jerk).
     """
-    if error > dz:
-        return error - dz
-    if error < -dz:
-        return error + dz
-    return 0.0
+    mag = abs(error)
+    if mag <= inner:
+        return 0.0
+    sign = 1.0 if error > 0 else -1.0
+    if mag <= outer:
+        return sign * creep * (mag - inner)
+    return sign * (creep * (outer - inner) + (mag - outer))
 
 
 class AlphaBetaFilter2D:

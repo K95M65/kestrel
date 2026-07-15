@@ -57,6 +57,7 @@ Camera chạy **1280×720**. Mọi thành phần vision nặng — ViT tracker v
 - COCO không có class hand/face, nên `hand`/`face` cố ý rơi xuống YuNet/YOLOWorld thay vì map tới `person` (vốn khóa vào toàn thân).
 - Khi local-YOLO miss, code fallback về remote YOLOWorld, **throttle** tối đa một lần mỗi `REMOTE_FALLBACK_MIN_INTERVAL` (2.0 s) để một target thật sự không thể thấy không gọi remote mỗi lần redetect.
 - Bộ lọc chất lượng detection: confidence ≥ `DETECT_MIN_CONFIDENCE` (0.15), diện tích nằm giữa `DETECT_MIN_AREA_RATIO` (0.3%) và `DETECT_MAX_AREA_RATIO` (80%) của frame.
+- **Chống nhầm vật giống nhau (đường local)** — YOLO local detect **mở** (không filter `classes=`) để các class cạnh tranh còn hiện diện, sau đó: (a) cụm dễ nhầm cell phone / mouse / remote cần conf ≥ 0.35 (`_CONFUSABLE_CONF_FLOOR`) thay vì 0.15 chung; (b) **cross-class disambiguation** — nếu một box class khác đè lên candidate (IoU ≥ 0.5) với confidence *cao hơn*, candidate bị từ chối ("đó chắc là con chuột, không phải cái điện thoại anh hỏi") và code rơi xuống remote fallback.
 
 Weights được check vào repo (`os/hal/drivers/tracking/models/`) nên deploy chỉ một lần rsync và Pi không bao giờ cần internet lúc boot để bắt đầu tracking.
 
@@ -88,10 +89,11 @@ Pitch được dồn vào elbow (`PITCH_WEIGHT_ELBOW = 0.90`). Thực nghiệm c
 
 Mỗi frame vòng lặp biến bbox của tracker thành một servo goal tuyệt đối:
 
-1. **Alpha-beta filter trên centroid** (`AlphaBetaFilter2D`) — một Kalman steady-state vận tốc-hằng. Làm mượt jitter, coast qua các frame bị rớt/rác bằng prediction, gate các cú teleport outlier (`AB_GATE_PX`), và phơi ra ước lượng vận tốc. Một velocity lead (`AB_LEAD_S = 0.12 s`) nhắm hơi vượt trước target.
-2. **Soft dead zone** (`soft_deadband`) — error bằng 0 bên trong dead zone và tăng dần từ 0 tại rìa (không có bước nhảy giá trị). Cái này loại bỏ cú giật "đá ra khỏi giữa" mà hard dead zone cũ tạo ra.
-3. **PID + velocity feedforward** — một PID time-aware có anti-windup trên position error đã qua soft-deadband, **cộng** một term feedforward tỉ lệ với vận tốc pixel đo được của target (`VFF_GAIN`). Feedforward pan camera *theo tốc độ của target* ngay cả khi position error bằng không, nên một target di chuyển đều là một pha pan liên tục thay vì các cú bùng đuổi bắt. Một target ở giữa nhưng đang di chuyển vẫn tiếp tục pan (không đóng băng trong dead zone). Output kết hợp bị clamp về `PID_OUTPUT_MAX_DEG` (5°).
-4. **Publish goal** — joint target tuyệt đối kết quả được giao cho servo worker (non-blocking).
+1. **Alpha-beta filter trên centroid** (`AlphaBetaFilter2D`) — một Kalman steady-state vận tốc-hằng. Làm mượt jitter, coast qua các frame bị rớt/rác bằng prediction, gate các cú teleport outlier (`AB_GATE_PX`), và phơi ra ước lượng vận tốc. Một velocity lead (`AB_LEAD_S = 0.20 s`) nhắm trước mặt target — "lead room" kiểu điện ảnh.
+2. **Dead zone 3 tầng** (`soft_deadband`) — liên tục tại cả hai ranh giới: zero thật bên trong ±`DEAD_ZONE_INNER_PCT` (2%, servo nghỉ, PID xả); **dải creep** tới rìa ngoài (độ dốc `DEAD_ZONE_CREEP_GAIN` = 0.12) để camera lững thững trôi về tâm thay vì đứng khựng — dừng cứng ở đây tạo cảm giác "camera an ninh" đi–dừng–đi; ngoài rìa ngoài là error đầy đủ.
+3. **Velocity feedforward chính, PID phụ (smooth pursuit)** — lệnh chủ đạo là feedforward tỉ lệ với vận tốc pixel đo được của target (`VFF_GAIN` = 0.9): camera *khớp tốc độ vật* như mắt người bám mượt, kể cả khi sai số vị trí bằng 0. PID time-aware chống windup (KP cố tình nhỏ: 0.015 yaw / 0.02 pitch) chỉ sửa phần dư vị trí. Vật đang ở giữa nhưng di chuyển thì vẫn pan tiếp (không đóng băng trong dead zone). Output tổng clamp về `PID_OUTPUT_MAX_DEG` (5°).
+4. **Hai profile saccade / pursuit** — mô phỏng mắt người: lệch > `SACCADE_OFFSET_FRAC` (22% bề ngang frame) thì follow worker chuyển sang profile **saccade** (`SACCADE_SMOOTH_TIME` 0.20s, `SACCADE_MAX_SPEED_DPS` 80) để lia nhanh về chỗ; lệch nhỏ dùng profile **pursuit** nặng (`SERVO_SMOOTH_TIME` 0.32s, `SERVO_MAX_SPEED_DPS` 40) — quán tính fluid-head. Một profile thỏa hiệp làm cả hai việc đều dở. State log ra `SACCADE` vs `CHASING`.
+5. **Publish goal** — joint target tuyệt đối kết quả được giao cho servo worker (non-blocking).
 
 ### Servo worker (SmoothDamp follower)
 
@@ -131,17 +133,20 @@ pitch_correction = clamp(PID(soft_deadband(dy)) + VFF·vy·deg_per_px·dt,  ±5�
 | `VISION_MAX_WIDTH` | 640 | Chiều rộng downscale cho ViT + detectors (0 = tắt) |
 | `FAST_LOOP_FPS` | 10 | Tần số vòng lặp vision |
 | `CAMERA_FOV_DEG` | 60 | FOV ngang, cho px→deg |
+| `DEAD_ZONE_INNER_PCT` | 0.02 | Dải zero thật (servo nghỉ) |
+| `DEAD_ZONE_CREEP_GAIN` | 0.12 | Độ dốc trôi lười trong dải creep |
 | `DEAD_ZONE_YAW_PCT` / `_PITCH_PCT` | 0.07 / 0.05 | Soft dead zone theo tỉ lệ frame |
-| `PID_YAW_KP` / `PID_PITCH_KP` | 0.025 / 0.03 | PID proportional gains |
+| `PID_YAW_KP` / `PID_PITCH_KP` | 0.015 / 0.02 | PID proportional gains |
 | `PID_OUTPUT_MAX_DEG` | 5.0 | Số độ tối đa mỗi lần fire (yaw & pitch kết hợp) |
 | `AB_ALPHA` / `AB_BETA` | 0.6 / 0.2 | Alpha-beta position/velocity gains |
 | `AB_GATE_PX` | 200 | Loại một cú teleport centroid vượt residual này |
-| `AB_LEAD_S` | 0.12 | Velocity lead (nhắm vượt trước target) |
-| `VFF_GAIN` | 0.6 | Tỉ lệ vận tốc target được feed forward |
+| `AB_LEAD_S` | 0.20 | Velocity lead (nhắm vượt trước target) |
+| `VFF_GAIN` | 0.9 | Tỉ lệ vận tốc target được feed forward |
 | `VFF_MAX_DT_S` | 0.20 | Cap trên dt mỗi lần fire cho feedforward |
 | `VFF_MOVING_MIN_PXS` | 40 | Tốc độ target mà trên đó target ở giữa vẫn tiếp tục pan |
-| `SERVO_SMOOTH_TIME` | 0.18 | Hằng số thời gian SmoothDamp (↓ nhạy hơn, ↑ mượt/trễ hơn) |
-| `SERVO_MAX_SPEED_DPS` | 60 | Cap tốc độ pan đỉnh của SmoothDamp |
+| `SERVO_SMOOTH_TIME` / `SERVO_MAX_SPEED_DPS` | 0.32 / 40 | Profile pursuit (nặng, fluid-head) |
+| `SACCADE_SMOOTH_TIME` / `SACCADE_MAX_SPEED_DPS` | 0.20 / 80 | Profile saccade (lia nhanh) |
+| `SACCADE_OFFSET_FRAC` | 0.22 | Ngưỡng lệch (theo bề ngang frame) kích saccade |
 | `SERVO_SUBSTEP_SLEEP` | 0.030 | Tick servo-worker / chu kỳ bus-write |
 | `TRACKING_GOAL_VELOCITY` | 150 | Giới hạn vận tốc phần cứng (steps/s) |
 | `TRACKING_ACCELERATION` | 30 | Ramp gia tốc phần cứng |

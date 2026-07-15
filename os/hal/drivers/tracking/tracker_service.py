@@ -548,10 +548,19 @@ class TrackerService:
 
                 # --- PID + velocity-feedforward continuous-fire with detector-gated trust ---
                 now_t = time.perf_counter()
-                # Soft dead zone: continuous error (0 at the edge, ramps up) so
-                # there is no output step when the target leaves center.
-                err_dx = soft_deadband(dx, w_fr * C.DEAD_ZONE_YAW_PCT)
-                err_dy = soft_deadband(dy, h_fr * C.DEAD_ZONE_PITCH_PCT)
+                # Saccade vs pursuit: big offset → snappy relocation profile;
+                # small offset → heavy fluid-head pursuit profile (see constants).
+                saccade = offset_mag > C.SACCADE_OFFSET_FRAC * w_fr
+                self._follower.set_profile(
+                    C.SACCADE_SMOOTH_TIME if saccade else C.SERVO_SMOOTH_TIME,
+                    C.SACCADE_MAX_SPEED_DPS if saccade else C.SERVO_MAX_SPEED_DPS,
+                )
+                # Tiered dead zone: true zero inside INNER, lazy creep toward
+                # center up to the outer edge, full error beyond (continuous).
+                err_dx = soft_deadband(dx, w_fr * C.DEAD_ZONE_INNER_PCT,
+                                       w_fr * C.DEAD_ZONE_YAW_PCT, C.DEAD_ZONE_CREEP_GAIN)
+                err_dy = soft_deadband(dy, h_fr * C.DEAD_ZONE_INNER_PCT,
+                                       h_fr * C.DEAD_ZONE_PITCH_PCT, C.DEAD_ZONE_CREEP_GAIN)
                 # Target pixel speed (alpha-beta velocity) — drives the feedforward
                 # and keeps a centered-but-moving target being panned.
                 speed_pxs = (vx_f ** 2 + vy_f ** 2) ** 0.5
@@ -622,7 +631,7 @@ class TrackerService:
                     motion_state = "WAIT-YOLO"
                     self._follower.hold()
                 elif (now_t - last_servo_t) >= C.SERVO_COOLDOWN_S:
-                    motion_state = "CHASING"
+                    motion_state = "SACCADE" if saccade else "CHASING"
                     # Position PID on the soft-deadbanded error. Yaw sign: dx>0
                     # (object on right) → base_yaw must INCREASE to chase right
                     # (verified empirically vs legacy gimbal path).

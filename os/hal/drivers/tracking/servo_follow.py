@@ -32,6 +32,16 @@ class ServoFollower:
         self._base_pitch = 0.0
         self._elbow_pitch = 0.0
         self._wrist_pitch = 0.0
+        # Motion profile (pursuit by default; the vision loop switches to the
+        # saccade profile on large offsets). Read by the worker every tick.
+        self._smooth_time = C.SERVO_SMOOTH_TIME
+        self._max_speed_dps = C.SERVO_MAX_SPEED_DPS
+
+    def set_profile(self, smooth_time: float, max_speed_dps: float) -> None:
+        """Switch the follower's motion profile (pursuit ↔ saccade)."""
+        with self._lock:
+            self._smooth_time = smooth_time
+            self._max_speed_dps = max_speed_dps
 
     # --- position state ---
 
@@ -186,6 +196,8 @@ class ServoFollower:
             with self._lock:
                 goal = dict(self._goal) if self._goal is not None else None
                 cur = self._positions_locked()
+                smooth_time = self._smooth_time
+                max_speed = self._max_speed_dps
             if goal is None:
                 time.sleep(idle_sleep)
                 continue
@@ -202,7 +214,7 @@ class ServoFollower:
             for k in JOINTS:
                 step[k], vel[k] = smooth_damp(
                     cur[k], goal[k], vel[k],
-                    C.SERVO_SMOOTH_TIME, C.SERVO_SUBSTEP_SLEEP, C.SERVO_MAX_SPEED_DPS,
+                    smooth_time, C.SERVO_SUBSTEP_SLEEP, max_speed,
                 )
             try:
                 with animation_service.bus_lock:

@@ -35,11 +35,19 @@ TRACKING_ACCELERATION = 30
 # Camera field-of-view in degrees (horizontal). Used to convert px offset → degrees.
 CAMERA_FOV_DEG = 60.0
 
-# Per-axis dead zones as fraction of frame.
-# Yaw larger — horizontal jitter is common, small dx not worth a motor move.
-# Pitch smaller — vertical needs finer response for elbow tracking.
+# Tiered dead zone (per-axis, as fraction of frame).
+# Inside ±INNER: true zero — servo rests, PID integral clears (CENTERED).
+# INNER→OUTER: "creep band" — a gentle CREEP_GAIN slope drifts the camera
+# lazily toward center instead of freezing dead at the boundary. The old hard
+# stop at the dead-zone edge produced the start-stop "security camera" feel;
+# a human operator never fully freezes, they drift. Beyond OUTER: full error
+# (continuous at both boundaries, no output step).
+# Yaw outer larger — horizontal jitter is common, small dx not worth a chase.
+# Pitch outer smaller — vertical needs finer response for elbow tracking.
+DEAD_ZONE_INNER_PCT = 0.02
 DEAD_ZONE_YAW_PCT   = 0.07
 DEAD_ZONE_PITCH_PCT = 0.05
+DEAD_ZONE_CREEP_GAIN = 0.12
 
 # --- Alpha-beta (constant-velocity) filter on the target centroid ---
 # Steady-state Kalman for a constant-velocity model. Replaces the plain EMA so
@@ -56,7 +64,9 @@ DEAD_ZONE_PITCH_PCT = 0.05
 AB_ALPHA = 0.6
 AB_BETA = 0.2
 AB_GATE_PX = 200.0
-AB_LEAD_S = 0.12
+# Raised 0.12→0.20: with pursuit control the camera pans at the target's
+# speed, so a bigger lead buys cinematic "lead room" ahead of the subject.
+AB_LEAD_S = 0.20
 # Velocity decay applied when a measurement is gated, so a persistent bad lock
 # coasts to a stop instead of running away on stale velocity.
 AB_GATE_DECAY = 0.7
@@ -98,8 +108,20 @@ SERVO_SUBSTEP_SLEEP = 0.030
 # laggier; tune on-device. MAX_SPEED_DPS caps peak pan speed (deg/s) so a big
 # offset can't whip the camera and lose ViT lock (the hardware Goal_Velocity is
 # the real ceiling; this keeps the software setpoint tame too).
-SERVO_SMOOTH_TIME   = 0.18
-SERVO_MAX_SPEED_DPS = 60.0
+#
+# Two profiles, mirroring how human gaze works: PURSUIT (small error) is heavy
+# and slow like a fluid-head film camera — velocity feedforward does the work,
+# the follower just adds inertia. SACCADE (error > SACCADE_OFFSET_FRAC of the
+# frame) relocates fast with a shorter smooth time, then hands back to pursuit.
+# One compromise profile did both badly: snappy enough to catch up = twitchy
+# when centered.
+SERVO_SMOOTH_TIME   = 0.32   # pursuit
+SERVO_MAX_SPEED_DPS = 40.0   # pursuit
+SACCADE_SMOOTH_TIME   = 0.20
+SACCADE_MAX_SPEED_DPS = 80.0
+# Offset (fraction of frame width) beyond which the loop switches to the
+# saccade profile.
+SACCADE_OFFSET_FRAC = 0.22
 
 # Pitch distribution across 3 joints.
 # Empirical: only wrist_pitch is pure rotation. base+elbow primarily translate
@@ -186,10 +208,13 @@ TRUST_TRACKER_S = 2.5
 STOP_NO_YOLO_S = 20.0
 
 # PID gains for servo control (industry pattern: PyImageSearch face tracking).
-# KP lowered (0.04→0.025 yaw, 0.05→0.03 pitch): smaller per-fire step, gentler
-# chase. KD lowered too — D term amplifies bbox jitter into servo jerks.
-PID_YAW_KP, PID_YAW_KI, PID_YAW_KD = 0.025, 0.002, 0.002
-PID_PITCH_KP, PID_PITCH_KI, PID_PITCH_KD = 0.03, 0.002, 0.0025
+# KP lowered again (0.025→0.015 yaw, 0.03→0.02 pitch) as part of the pursuit
+# rework: velocity feedforward (VFF_GAIN below) is now the primary command —
+# the camera *matches the target's speed* like human smooth pursuit — and the
+# PID only trims residual position error. A large P term on top of full
+# feedforward double-counts the error and overshoots.
+PID_YAW_KP, PID_YAW_KI, PID_YAW_KD = 0.015, 0.002, 0.002
+PID_PITCH_KP, PID_PITCH_KI, PID_PITCH_KD = 0.02, 0.002, 0.0025
 PID_OUTPUT_MAX_DEG = 5.0
 PID_INTEGRAL_MAX = 30.0
 
@@ -200,7 +225,9 @@ PID_INTEGRAL_MAX = 30.0
 # velocity (vx_f, vy_f); feed a fraction of it straight to the servo as a rate
 # command so the camera pans AT the target's speed even at zero position error.
 # The PID then only has to correct the residual. 0 = off (pure position PID).
-VFF_GAIN = 0.6
+# Raised 0.6→0.9: velocity matching is now the dominant command (smooth
+# pursuit); KP was lowered in step so the sum doesn't overshoot.
+VFF_GAIN = 0.9
 # Cap on the per-fire dt used to turn the feedforward rate (deg/s) into a
 # per-fire step (deg) — a long gap between fires can't inject a huge lurch.
 VFF_MAX_DT_S = 0.20
