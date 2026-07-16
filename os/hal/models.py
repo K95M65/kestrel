@@ -316,7 +316,7 @@ class ServoAimRequest(BaseModel):
 class ServoNudgeRequest(BaseModel):
     yaw: float = Field(0.0, ge=-180.0, le=180.0, description="Relative yaw in degrees (negative=left, positive=right)")
     pitch: float = Field(0.0, ge=-90.0, le=90.0, description="Relative pitch in degrees (negative=down, positive=up)")
-    duration: float = Field(2.0, ge=0.0, le=10.0, description="Move duration in seconds")
+    duration: float = Field(0.5, ge=0.0, le=10.0, description="Move duration in seconds — stretched automatically when the move would exceed the SAFETY.md speed ceiling")
 
     model_config = {
         "json_schema_extra": {

@@ -39,6 +39,7 @@ from hal.config import (
     DEVICE_ID,
     SERVO_FPS,
     SERVO_HOLD_S,
+    SERVO_PLAY_RAMP_S,
     SERVO_PORT,
     TTS_SPEED,
     TTS_VOICE,
@@ -248,7 +249,8 @@ async def lifespan(app: FastAPI):
             return
         try:
             svc = AnimationService(
-                port=SERVO_PORT, lamp_id=DEVICE_ID, fps=SERVO_FPS, hold_s=SERVO_HOLD_S
+                port=SERVO_PORT, lamp_id=DEVICE_ID, fps=SERVO_FPS,
+                duration=SERVO_PLAY_RAMP_S, hold_s=SERVO_HOLD_S,
             )
             svc.start()
             state.animation_service = svc

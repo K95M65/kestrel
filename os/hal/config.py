@@ -14,6 +14,12 @@ SERVO_PORT = os.environ.get("HAL_SERVO_PORT", "/dev/ttyACM0")
 DEVICE_ID = os.environ.get("HAL_DEVICE_ID", "hal")
 SERVO_FPS = int(os.environ.get("HAL_SERVO_FPS", "30"))
 SERVO_HOLD_S = float(os.environ.get("HAL_SERVO_HOLD_S", "3.0"))
+# Ramp before a recording plays: /servo/play interpolates from the current pose
+# to the recording's first frame over this many seconds (applies to every
+# recording switch — emotions, idle, music groove). Was a hardcoded 5.0 —
+# most of the perceived "play is slow" was this pre-roll, not the animation.
+# SAFETY.md motion.max_speed still bounds the per-joint speed independently.
+SERVO_PLAY_RAMP_S = float(os.environ.get("HAL_SERVO_PLAY_RAMP_S", "2.0"))
 HTTP_PORT = int(os.environ.get("HAL_HTTP_PORT", "5001"))
 # production (default): bind 127.0.0.1, local-only middleware enforced.
 # developer: bind 0.0.0.0, no access restrictions — for local dev/testing only.
