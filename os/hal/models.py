@@ -303,7 +303,7 @@ class ServoAimRequest(BaseModel):
         description="Named direction: desk, wall, left, right, up, down, center, user",
     )
     duration: float = Field(
-        2.0, ge=0.0, le=10.0, description="Move duration in seconds (default: 2.0)"
+        0.5, ge=0.0, le=10.0, description="Move duration in seconds — stretched automatically when the move would exceed the SAFETY.md speed ceiling"
     )
 
     model_config = {
@@ -466,10 +466,10 @@ class ServoMoveRequest(BaseModel):
         ),
     )
     duration: float = Field(
-        2.0,
+        0.5,
         ge=0.0,
         le=10.0,
-        description="Move duration in seconds. 0 = instant jump, >0 = smooth interpolation (default: 2.0)",
+        description="Move duration in seconds. 0 = instant jump, >0 = smooth interpolation — stretched automatically when the move would exceed the SAFETY.md speed ceiling",
     )
 
     model_config = {

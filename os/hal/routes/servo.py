@@ -487,8 +487,12 @@ def aim_servo(req: ServoAimRequest):
         else:
             positions = {**preset, "base_yaw.pos": current.get("base_yaw.pos", preset["base_yaw.pos"])}
 
-        if req.duration > 0:
-            state.animation_service.move_to(positions, duration=req.duration)
+        # Safety speed cap (SAFETY.md motion.max_speed) — aim was the only servo
+        # move endpoint that sent req.duration unclamped; a short duration on a
+        # wide arc (look left = ~90° yaw) would exceed the deg/s ceiling.
+        eff_duration = min_move_duration(state.safety_policy, positions, current, req.duration)
+        if eff_duration > 0:
+            state.animation_service.move_to(positions, duration=eff_duration)
         else:
             with state.animation_service.bus_lock:
                 state.animation_service.robot.send_action(positions)
