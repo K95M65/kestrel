@@ -58,6 +58,11 @@ func (h *AgentHandler) deliverTTS(send func(string) error, text, flowRunID, errC
 			"component", "agent", "run_id", flowRunID, "banner", text[:min(len(text), 120)])
 		flow.Log("tts_llm_limit", map[string]any{"run_id": flowRunID, "banner": text}, flowRunID)
 		text = i18n.One(i18n.PhraseLLMLimit)
+		// The notice is OS-generated hardcoded TTS, NOT the agent's reply —
+		// send it through plain Speak so it is never fed back into the
+		// realtime agent's [TTS HISTORY] (the reply path's realtime_feedback
+		// opt-in is reserved for text the agent actually generated).
+		send = hal.Speak
 	}
 	go func() {
 		err := send(text)
