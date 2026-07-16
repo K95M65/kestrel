@@ -32,6 +32,30 @@ function normalizeHref(raw: string): string | null {
 
 const linkStyle: React.CSSProperties = { color: "var(--lm-teal)", textDecoration: "underline" };
 
+// linkifyPlain makes URLs clickable in user-authored bubbles WITHOUT any other
+// markdown transformation — what the user typed must stay verbatim (asterisks,
+// backticks, brackets), only recognizable http(s) URLs become anchors.
+function linkifyPlain(text: string, keyPrefix: string): ReactNode[] {
+  const parts: ReactNode[] = [];
+  const re = /[a-zA-Z]{2,10}:\/\/[^\s<>)"]+/g;
+  let last = 0;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(text)) !== null) {
+    const href = normalizeHref(match[0]);
+    if (!href) continue; // unrecognized scheme — leave in the surrounding text
+    if (match.index > last) parts.push(text.slice(last, match.index));
+    parts.push(
+      <a key={`${keyPrefix}-${match.index}`} href={href} target="_blank" rel="noopener noreferrer" style={linkStyle}>
+        {match[0].length > 50 ? match[0].slice(0, 50) + "…" : match[0]}
+      </a>,
+    );
+    last = match.index + match[0].length;
+  }
+  if (parts.length === 0) return [text]; // fast path: no links
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
+
 // Inline: **bold**, *italic*, ~~strikethrough~~, `code`, [links](url), URLs
 function renderInline(line: string, keyPrefix: string): ReactNode[] {
   const parts: ReactNode[] = [];
@@ -2005,14 +2029,14 @@ export function ChatSection({ events, isActive }: Props) {
                     </span>
                   ) : msg.pending && msg.text ? (
                     <>
-                      {msg.role === "agent" ? renderMarkdown(msg.text) : msg.text}
+                      {msg.role === "agent" ? renderMarkdown(msg.text) : linkifyPlain(msg.text, msg.id)}
                       <span className="lm-cursor" style={{
                         display: "inline-block", width: 2, height: "1em",
                         background: "var(--lm-amber)", marginLeft: 2,
                         verticalAlign: "text-bottom", borderRadius: 1,
                       }} />
                     </>
-                  ) : msg.role === "agent" ? renderMarkdown(msg.text) : msg.text}
+                  ) : msg.role === "agent" ? renderMarkdown(msg.text) : linkifyPlain(msg.text, msg.id)}
                 </div>
                 {/* Action bar: time + copy + retry */}
                 <div style={{ display: "flex", alignItems: "center", gap: 6, paddingInline: 4 }}>
