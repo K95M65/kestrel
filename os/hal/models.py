@@ -225,13 +225,6 @@ class SceneResponse(BaseModel):
     color: list[int]
 
 
-class SpeakPhraseRequest(BaseModel):
-    phrase: str = Field(
-        ..., min_length=1, max_length=64,
-        description="Key of a localized OS phrase (hal/i18n.py PHRASES_BY_LANG), e.g. 'llm_limit'",
-    )
-
-
 class SpeakRequest(BaseModel):
     text: str = Field(
         ..., min_length=1, max_length=2000, description="Text to speak via TTS"

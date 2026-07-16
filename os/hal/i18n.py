@@ -47,12 +47,11 @@ PHRASE_QUIET_HOURS = "quiet_hours"
 # (e.g. ElevenLabs 429). Prerendered at boot so it plays from the WAV cache
 # without another API call, letting the user hear WHY the reply went silent.
 PHRASE_RATE_LIMIT = "rate_limit"
-# The spoken LLM-usage-limit notice. os-server triggers it BY KEY via
-# POST /voice/speak-phrase {"phrase": "llm_limit"} — this table is the single
-# source of truth for the wording. Prerendered at boot so it plays from the
-# WAV cache with no API call while the TTS provider is itself rate-limited
-# (the usual case — both ride the same plan quota).
-PHRASE_LLM_LIMIT = "llm_limit"
+# NOTE: the LLM-usage-limit notice deliberately does NOT live here — its
+# caller is the os-server (Go), so its wording lives in lib/i18n/phrases.go
+# (PhraseLLMLimit) and arrives via /voice/speak with cached=true. Phrases in
+# THIS table are the ones spoken by hal's own Python code (rule: wording
+# lives where its caller lives).
 
 # Localized action announcements. reboot/shutdown phrases stay literal
 # in every language ("rebooting", "shutting down") because the user just
@@ -102,12 +101,6 @@ PHRASES_BY_LANG = {
         LANG_VI:    "Mình hết hạn mức giọng nói rồi, kiểm tra gói giúp mình nha.",
         LANG_ZH_CN: "我的语音额度用完了，去看看套餐吧。",
         LANG_ZH_TW: "我的語音額度用完了，去看看方案吧。",
-    },
-    PHRASE_LLM_LIMIT: {
-        LANG_EN:    "[sigh] I've hit my usage limit.",
-        LANG_VI:    "[sigh] Mình hết hạn mức rồi.",
-        LANG_ZH_CN: "[sigh] 我的额度用完了。",
-        LANG_ZH_TW: "[sigh] 我的額度用完了。",
     },
 }
 
