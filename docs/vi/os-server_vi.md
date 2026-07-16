@@ -250,7 +250,6 @@ Cần sensing có camera (InsightFace). Mặc định ảnh người đã đăng
 | POST | `/voice/start` | Start voice pipeline (Deepgram STT + TTS) |
 | POST | `/voice/stop` | Stop voice pipeline |
 | POST | `/voice/speak` | TTS — chuyển text thành giọng nói. Body fields: `text`, `voice?`, `interruptible?`, `provider?`, `tts_api_key?`, `tts_base_url?`, `cached?` (dùng WAV cache, render+save khi miss), `prerender?` (render+save không play — warmup lúc boot) |
-| POST | `/voice/speak-phrase` | Nói một câu OS đã bản địa hoá theo KEY (`hal/i18n.py PHRASES_BY_LANG`, vd `llm_limit`, `rate_limit`). HAL sở hữu câu chữ (một nguồn sự thật duy nhất); phát qua WAV cache nên notice prerender lúc boot vẫn kêu được khi TTS provider đang rate-limited. Body: `{"phrase": "<key>"}` |
 | GET | `/voice/status` | voice_available, voice_listening, tts_available, tts_speaking |
 
 ### System

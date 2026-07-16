@@ -8,6 +8,7 @@ import (
 
 	"go.autonomous.ai/os/lib/flow"
 	"go.autonomous.ai/os/lib/hal"
+	"go.autonomous.ai/os/lib/i18n"
 )
 
 // llmLimitPatterns fingerprint the plan-usage-limit banner the backend returns
