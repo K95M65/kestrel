@@ -49,6 +49,7 @@ class FERSetting(BaseModel):
     remote_url: str | None = None
     confidence_threshold: float | None = None
     frame_interval: float | None = None
+    label_thresholds: dict[str, float] | None = None
     batch_size: int | None = None
     batch_timeout: float | None = None
 

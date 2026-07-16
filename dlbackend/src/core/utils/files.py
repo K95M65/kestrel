@@ -28,6 +28,8 @@ CDN_PATHS: dict[ModelEnum, str] = {
     ModelEnum.EMONET_8_PTH: "pytorch_models/emonet_8.pth",
     ModelEnum.EMONET_5_ONNX: "onnx_models/emonet_5.onnx",
     ModelEnum.EMONET_5_PTH: "pytorch_models/emonet_5.pth",
+    ModelEnum.EMOAFFECTNET_ONNX: "onnx_models/emoaffectnet_resnet50.onnx",
+    ModelEnum.EMOAFFECTNET_PTH: "pytorch_models/emoaffectnet_resnet50.pth",
     # Audio emotion (SER)
     ModelEnum.EMOTION2VEC_ONNX: "onnx_models/emotion2vec.onnx",
     # Pose 2D

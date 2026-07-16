@@ -24,6 +24,7 @@ from core.perception.base import PerceptionBase
 from core.perception.base.batching import InputBatcher
 from core.perception.face.predictors.base import FaceDetector
 from core.perception.face.utils import FaceDetectorFactory
+from core.perception.facial_emotion.label_gating import resolve_label
 from core.perception.facial_emotion.predictors.base import EmotionRecognizer
 from core.perception.facial_emotion.session import EmotionPerceptionSession
 from core.perception.facial_emotion.utils import EmotionRecognizerFactory
@@ -129,6 +130,10 @@ class EmotionPerception(PerceptionBase[EmotionPerceptionSession]):
 
     # --- Single-shot prediction (for HTTP endpoints) ---
 
+    @property
+    def _label_thresholds(self) -> dict[str, float] | None:
+        return self._default_config.label_thresholds if self._default_config else None
+
     async def predict_face(self, face_crop: cv2t.MatLike) -> Emotion | None:
         """Classify emotion from a single pre-cropped face image."""
         if self._emotion_batcher is None:
@@ -139,12 +144,14 @@ class EmotionPerception(PerceptionBase[EmotionPerceptionSession]):
         futures = await self._emotion_batcher.submit([face_crop])
         raw: RawEmotionDetection = await futures[0]
 
-        emotion_idx: int = int(np.argmax(raw.expression_probs))
+        resolved = resolve_label(
+            raw.expression_probs, recognizer.class_names, self._label_thresholds
+        )
         H, W = face_crop.shape[:2]
 
         return Emotion(
-            emotion=recognizer.class_names[emotion_idx],
-            confidence=float(raw.expression_probs[emotion_idx]),
+            emotion=resolved.label,
+            confidence=resolved.confidence,
             face_confidence=1.0,
             bbox=[0, 0, W, H],
             valence=raw.valence,
@@ -175,11 +182,13 @@ class EmotionPerception(PerceptionBase[EmotionPerceptionSession]):
 
         emotions: list[Emotion] = []
         for fc, raw in zip(face_crops, raw_results):
-            emotion_idx: int = int(np.argmax(raw.expression_probs))
+            resolved = resolve_label(
+                raw.expression_probs, recognizer.class_names, self._label_thresholds
+            )
             emotions.append(
                 Emotion(
-                    emotion=recognizer.class_names[emotion_idx],
-                    confidence=float(raw.expression_probs[emotion_idx]),
+                    emotion=resolved.label,
+                    confidence=resolved.confidence,
                     face_confidence=fc.confidence,
                     bbox=fc.bbox_xyxy,
                     valence=raw.valence,
