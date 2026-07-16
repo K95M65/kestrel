@@ -164,7 +164,50 @@ class SoundPerception(Perception[Any]):
 
     @override
     def cleanup(self) -> None:
-        pass
+        self._capture_stop.set()
+        self._sample_req.set()  # unblock the worker's wait so it can exit
+
+    def _ensure_capture_thread(self) -> None:
+        if self._capture_thread is not None and self._capture_thread.is_alive():
+            return
+        self._capture_stop.clear()
+        self._capture_thread = threading.Thread(
+            target=self._capture_loop, daemon=True, name="sound-capture"
+        )
+        self._capture_thread.start()
+
+    def _capture_loop(self) -> None:
+        """Record one RMS sample per request from _check_impl (see __init__
+        note). The 0.5s blocking rec lands on THIS thread, not the sensing
+        observer chain."""
+        sample_rate = 44100
+        frames = int(sample_rate * config.SOUND_SAMPLE_DURATION_S)
+        while not self._capture_stop.is_set():
+            if not self._sample_req.wait(timeout=0.5):
+                continue
+            if self._capture_stop.is_set():
+                return
+            self._sample_req.clear()
+            try:
+                recording = self._sd.rec(
+                    frames,
+                    samplerate=sample_rate,
+                    channels=1,
+                    dtype="int16",
+                    device=self._input_device,
+                    blocking=True,
+                )
+                rms = float(
+                    self._np.sqrt(
+                        self._np.mean(recording.astype(self._np.float64) ** 2)
+                    )
+                )
+                self._reading = (rms, time.time())
+            except Exception as e:
+                logger.debug("Sound capture failed: %s", e)
+                # Don't spin on a dead device — pause before honoring the
+                # next request.
+                self._capture_stop.wait(2.0)
 
     @override
     def _check_impl(self, data: Any) -> None:
@@ -204,21 +247,17 @@ class SoundPerception(Perception[Any]):
             pass
 
         try:
-            sample_rate = 44100
-            frames = int(sample_rate * config.SOUND_SAMPLE_DURATION_S)
-            recording = self._sd.rec(
-                frames,
-                samplerate=sample_rate,
-                channels=1,
-                dtype="int16",
-                device=self._input_device,
-                blocking=True,
-            )
-            rms = float(
-                self._np.sqrt(self._np.mean(recording.astype(self._np.float64) ** 2))
-            )
+            self._ensure_capture_thread()
+            reading = self._reading
+            self._reading = None  # consume once
+            self._sample_req.set()  # ask the worker for a fresh sample
+            if reading is None:
+                return
+            rms, ts = reading
+            if time.time() - ts > _READING_MAX_AGE_S:
+                return  # guards blocked consumption for a while — situation is over
             self._last_rms = rms
-            self._last_rms_ts = time.time()
+            self._last_rms_ts = ts
             if rms < config.SOUND_RMS_THRESHOLD:
                 return
 
