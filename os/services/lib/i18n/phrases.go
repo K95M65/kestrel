@@ -19,7 +19,10 @@ const (
 	PhraseBrainRestart  Phrase = "sensing.brain_restart"
 	PhraseCompactNotice Phrase = "openclaw.compact_notice"
 	PhraseTrackFailFmt  Phrase = "tracking.track_fail_fmt"
-	PhraseLLMLimit      Phrase = "agent.llm_limit"
+	// The LLM-usage-limit notice deliberately has NO entry here: hal owns
+	// that wording (hal/i18n.py PHRASE_LLM_LIMIT) and os-server triggers it
+	// by KEY via hal.SpeakPhrase("llm_limit") — one source of truth, and
+	// hal's boot-prerendered WAV plays it even while TTS is rate-limited.
 
 	// Chitchat replies — consumed via PickIn(phrase, inputLang) from the
 	// local intent matcher. The reply lang follows the matched input phrase
@@ -181,12 +184,6 @@ var phrases = map[Phrase]map[string][]string{
 		LangVI:    {"[sigh] Mình không rõ %s lắm — quay mình về phía đó được không, hay gọi tên khác xem?"},
 		LangZhCN: {"[sigh] 我看不太清%s — 让我朝那边看看，或者换个名字？"},
 		LangZhTW: {"[sigh] 我看不太清%s — 讓我朝那邊看看，或者換個名字？"},
-	},
-	PhraseLLMLimit: {
-		LangEN:   {"[sigh] I've hit my usage limit."},
-		LangVI:   {"[sigh] Mình hết hạn mức rồi."},
-		LangZhCN: {"[sigh] 我的额度用完了。"},
-		LangZhTW: {"[sigh] 我的額度用完了。"},
 	},
 	PhraseChitchatGreeting: {
 		LangEN:   {"[chuckle] Hi there!", "[laughs softly] Hey hey!", "[whisper] I'm here."},

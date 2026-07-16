@@ -250,6 +250,7 @@ Requires sensing with camera (InsightFace). Enrolled person JPEGs persist under 
 | POST | `/voice/start` | Start voice pipeline (Deepgram STT + TTS) |
 | POST | `/voice/stop` | Stop voice pipeline |
 | POST | `/voice/speak` | TTS — convert text to speech. Body fields: `text`, `voice?`, `interruptible?`, `provider?`, `tts_api_key?`, `tts_base_url?`, `cached?` (use WAV cache, render+save on miss), `prerender?` (render+save without playing — boot warmup) |
+| POST | `/voice/speak-phrase` | Speak a NAMED localized OS phrase by key (`hal/i18n.py PHRASES_BY_LANG`, e.g. `llm_limit`, `rate_limit`). HAL owns the wording (single source of truth); plays via the WAV cache so boot-prerendered notices work even while the TTS provider is rate-limited. Body: `{"phrase": "<key>"}` |
 | GET | `/voice/status` | voice_available, voice_listening, tts_available, tts_speaking |
 
 ### System

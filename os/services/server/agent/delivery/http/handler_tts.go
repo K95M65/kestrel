@@ -8,7 +8,6 @@ import (
 
 	"go.autonomous.ai/os/lib/flow"
 	"go.autonomous.ai/os/lib/hal"
-	"go.autonomous.ai/os/lib/i18n"
 )
 
 // llmLimitPatterns fingerprint the plan-usage-limit banner the backend returns
@@ -57,12 +56,13 @@ func (h *AgentHandler) deliverTTS(send func(string) error, text, flowRunID, errC
 		slog.Warn("LLM usage-limit reply detected — speaking short notice instead",
 			"component", "agent", "run_id", flowRunID, "banner", text[:min(len(text), 120)])
 		flow.Log("tts_llm_limit", map[string]any{"run_id": flowRunID, "banner": text}, flowRunID)
-		text = i18n.One(i18n.PhraseLLMLimit)
-		// The notice is OS-generated hardcoded TTS, NOT the agent's reply —
-		// send it through plain Speak so it is never fed back into the
-		// realtime agent's [TTS HISTORY] (the reply path's realtime_feedback
-		// opt-in is reserved for text the agent actually generated).
-		send = hal.Speak
+		// hal owns the localized notice text AND its boot-prerendered WAV
+		// (hal/i18n.py PHRASE_LLM_LIMIT) — send only the phrase KEY so the
+		// wording lives in exactly one place, and playback works from hal's
+		// cache even while the TTS provider is rate-limited. The phrase path
+		// is plain OS TTS: never fed back into the realtime [TTS HISTORY].
+		text = "llm_limit"
+		send = func(string) error { return hal.SpeakPhrase("llm_limit") }
 	}
 	go func() {
 		err := send(text)

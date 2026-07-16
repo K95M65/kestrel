@@ -16,6 +16,7 @@ from fastapi.responses import StreamingResponse
 import hal.app_state as state
 from hal.config import AUDIO_INPUT_ALSA, TTS_SPEED, TTS_VOICE, TTS_INSTRUCTIONS
 from hal.models import (
+    SpeakPhraseRequest,
     SpeakRequest,
     StatusResponse,
     VoiceConfigRequest,
@@ -321,6 +322,40 @@ def speak_queue_text(req: SpeakRequest):
         realtime_feedback=req.realtime_feedback,
     )
     if not ok:
+        raise HTTPException(503, "TTS not available")
+    return {"status": "ok"}
+
+
+@router.post("/voice/speak-phrase", response_model=StatusResponse)
+def speak_phrase(req: SpeakPhraseRequest):
+    """Speak a NAMED localized OS phrase by key (hal/i18n.py PHRASES_BY_LANG).
+
+    The caller (os-server) sends only the KEY — hal owns the localized text,
+    so wording lives in exactly one place and the two processes can't drift.
+    Playback goes through speak_cached: boot-prerendered phrases play from
+    the WAV cache with no API call. That is the point — the main user is the
+    LLM-usage-limit notice, spoken precisely when the TTS provider is likely
+    rate-limited too (both ride the same plan quota).
+    """
+    if not state.tts_service:
+        raise HTTPException(503, "TTS not initialized")
+    if state._speaker_muted:
+        state.logger.info(
+            "POST /voice/speak-phrase: suppressed -- speaker muted (%s)", req.phrase
+        )
+        return {"status": "suppressed"}
+    if state.music_service and state.music_service.streaming:
+        raise HTTPException(409, "Speaker busy -- music is playing")
+
+    from hal.i18n import PHRASES_BY_LANG, localized_phrase
+
+    if req.phrase not in PHRASES_BY_LANG:
+        raise HTTPException(400, f"Unknown phrase key: {req.phrase}")
+    text = localized_phrase(req.phrase)
+    if not text:
+        raise HTTPException(400, f"No localized text for phrase: {req.phrase}")
+    state.logger.info("POST /voice/speak-phrase: %s -> %r", req.phrase, text[:60])
+    if not state.tts_service.speak_cached(text):
         raise HTTPException(503, "TTS not available")
     return {"status": "ok"}
 
