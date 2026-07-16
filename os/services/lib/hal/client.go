@@ -172,16 +172,6 @@ func SpeakQueueReply(text string) error {
 	return postSpeak("/voice/speak-queue", body)
 }
 
-// SpeakPhrase asks hal to speak a NAMED localized OS phrase by key
-// (hal/i18n.py PHRASES_BY_LANG, e.g. "llm_limit"). hal owns the text — the
-// single source of truth for wording — and serves boot-prerendered WAVs from
-// its cache, so the phrase still plays while the TTS provider is
-// rate-limited. Use for OS notices; never for agent-generated text.
-func SpeakPhrase(key string) error {
-	body, _ := json.Marshal(map[string]string{"phrase": key})
-	return post("/voice/speak-phrase", body)
-}
-
 // SpeakInterruptible sends text to TTS; playback can be cut short by incoming voice.
 func SpeakInterruptible(text string) error {
 	body, _ := json.Marshal(map[string]any{"text": text, "interruptible": true})
