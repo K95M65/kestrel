@@ -57,7 +57,13 @@ func (h *AgentHandler) deliverTTS(send func(string) error, text, flowRunID, errC
 		slog.Warn("LLM usage-limit reply detected — speaking short notice instead",
 			"component", "agent", "run_id", flowRunID, "banner", text[:min(len(text), 120)])
 		flow.Log("tts_llm_limit", map[string]any{"run_id": flowRunID, "banner": text}, flowRunID)
+		// The notice is OS-generated hardcoded TTS, NOT the agent's reply.
+		// SpeakCached: (a) plain path — never fed back into the realtime
+		// [TTS HISTORY]; (b) render+save on first success, then replays from
+		// hal's persistent WAV cache with no API call — which is what keeps
+		// it audible when the TTS provider shares the exhausted quota.
 		text = i18n.One(i18n.PhraseLLMLimit)
+		send = hal.SpeakCached
 	}
 	go func() {
 		err := send(text)

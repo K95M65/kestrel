@@ -19,7 +19,11 @@ const (
 	PhraseBrainRestart  Phrase = "sensing.brain_restart"
 	PhraseCompactNotice Phrase = "openclaw.compact_notice"
 	PhraseTrackFailFmt  Phrase = "tracking.track_fail_fmt"
-	PhraseLLMLimit      Phrase = "agent.llm_limit"
+	// Spoken when the backend replaces the agent reply with its plan-limit
+	// banner. Delivered via hal.SpeakCached so the WAV self-caches on the
+	// first successful render and replays from hal's persistent cache when
+	// the TTS provider is itself rate-limited (both ride the same quota).
+	PhraseLLMLimit Phrase = "agent.llm_limit"
 
 	// Chitchat replies — consumed via PickIn(phrase, inputLang) from the
 	// local intent matcher. The reply lang follows the matched input phrase
@@ -176,17 +180,17 @@ var phrases = map[Phrase]map[string][]string{
 		LangZhCN: {"稍等一下，我在整理一下。"},
 		LangZhTW: {"稍等一下，我在整理一下。"},
 	},
-	PhraseTrackFailFmt: {
-		LangEN:    {"[sigh] I can't quite see %s — point me that way, or call it something else?"},
-		LangVI:    {"[sigh] Mình không rõ %s lắm — quay mình về phía đó được không, hay gọi tên khác xem?"},
-		LangZhCN: {"[sigh] 我看不太清%s — 让我朝那边看看，或者换个名字？"},
-		LangZhTW: {"[sigh] 我看不太清%s — 讓我朝那邊看看，或者換個名字？"},
-	},
 	PhraseLLMLimit: {
 		LangEN:   {"[sigh] I've hit my usage limit."},
 		LangVI:   {"[sigh] Mình hết hạn mức rồi."},
 		LangZhCN: {"[sigh] 我的额度用完了。"},
 		LangZhTW: {"[sigh] 我的額度用完了。"},
+	},
+	PhraseTrackFailFmt: {
+		LangEN:    {"[sigh] I can't quite see %s — point me that way, or call it something else?"},
+		LangVI:    {"[sigh] Mình không rõ %s lắm — quay mình về phía đó được không, hay gọi tên khác xem?"},
+		LangZhCN: {"[sigh] 我看不太清%s — 让我朝那边看看，或者换个名字？"},
+		LangZhTW: {"[sigh] 我看不太清%s — 讓我朝那邊看看，或者換個名字？"},
 	},
 	PhraseChitchatGreeting: {
 		LangEN:   {"[chuckle] Hi there!", "[laughs softly] Hey hey!", "[whisper] I'm here."},
