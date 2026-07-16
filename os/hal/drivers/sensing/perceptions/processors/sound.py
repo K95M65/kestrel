@@ -24,6 +24,10 @@ _SUPPRESS_DURATION_S = 180.0
 # (~740 RMS) reads the same as thunder (~755) — but talk transcribes and
 # thunder comes back empty, so a recent transcript means "people talking".
 _CONVERSATION_HOLDOFF_S = 15.0
+# Max age of a worker-recorded RMS reading before the consumer discards it —
+# a stale reading means the guards (TTS/music) blocked consumption for a
+# while, so the sound it captured belongs to a situation that's over.
+_READING_MAX_AGE_S = 10.0
 
 
 class SoundPerception(Perception[Any]):
@@ -92,6 +96,19 @@ class SoundPerception(Perception[Any]):
         self._last_rms: float = 0.0
         self._last_rms_ts: float = 0.0
 
+        # Async capture. sd.rec(blocking=True) takes SOUND_SAMPLE_DURATION_S
+        # (0.5s) and used to run INSIDE the sensing observer chain — every
+        # perception behind sound waited out the recording on every tick. A
+        # dedicated worker now records ON REQUEST (same duty cycle and same
+        # device-open pattern as before, so no new ALSA contention) and
+        # publishes (rms, ts); the check callback consumes the previous
+        # reading and requests the next. Detection lags one tick — irrelevant
+        # against the 120s escalation window.
+        self._sample_req = threading.Event()
+        self._capture_stop = threading.Event()
+        self._capture_thread: threading.Thread | None = None
+        self._reading: tuple[float, float] | None = None  # (rms, unix ts)
+
     @property
     def last_level(self) -> tuple[float, float]:
         """(last sampled RMS on int16 scale, unix ts of that sample).
@@ -157,6 +174,7 @@ class SoundPerception(Perception[Any]):
         if self._tts is not None and (
             self._tts.speaking or time.time() - self._tts.last_spoken_time < 5.0
         ):
+            self._sample_req.clear()  # don't record the tail of our own speech
             return
 
         # Music guard — the speaker's own playback reaches the sensing mic just
