@@ -172,6 +172,15 @@ func SpeakQueueReply(text string) error {
 	return postSpeak("/voice/speak-queue", body)
 }
 
+// PrerenderCached renders `text` into hal's persistent WAV cache WITHOUT
+// playing it (boot warmup). A later SpeakCached of the same text then plays
+// from disk with no TTS API call — the mechanism that keeps OS notices
+// audible while the TTS provider is rate-limited.
+func PrerenderCached(text string) error {
+	body, _ := json.Marshal(map[string]any{"text": text, "cached": true, "prerender": true})
+	return post("/voice/speak", body)
+}
+
 // SpeakInterruptible sends text to TTS; playback can be cut short by incoming voice.
 func SpeakInterruptible(text string) error {
 	body, _ := json.Marshal(map[string]any{"text": text, "interruptible": true})
