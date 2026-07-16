@@ -47,6 +47,12 @@ PHRASE_QUIET_HOURS = "quiet_hours"
 # (e.g. ElevenLabs 429). Prerendered at boot so it plays from the WAV cache
 # without another API call, letting the user hear WHY the reply went silent.
 PHRASE_RATE_LIMIT = "rate_limit"
+# The os-server's spoken LLM-usage-limit notice. The TEXT MUST BYTE-MATCH
+# lib/i18n/phrases.go PhraseLLMLimit (Go sends it via /voice/speak; the
+# byte-match is what lets TTSService.speak's cache-first lookup hit the WAV
+# prerendered here at boot, so the notice still plays while the TTS provider
+# is itself rate-limited — the usual case, both ride the same plan quota).
+PHRASE_LLM_LIMIT = "llm_limit"
 
 # Localized action announcements. reboot/shutdown phrases stay literal
 # in every language ("rebooting", "shutting down") because the user just
@@ -96,6 +102,14 @@ PHRASES_BY_LANG = {
         LANG_VI:    "Mình hết hạn mức giọng nói rồi, kiểm tra gói giúp mình nha.",
         LANG_ZH_CN: "我的语音额度用完了，去看看套餐吧。",
         LANG_ZH_TW: "我的語音額度用完了，去看看方案吧。",
+    },
+    # KEEP IN SYNC with lib/i18n/phrases.go PhraseLLMLimit — byte-identical,
+    # see the PHRASE_LLM_LIMIT comment above for why.
+    PHRASE_LLM_LIMIT: {
+        LANG_EN:    "[sigh] I've hit my usage limit.",
+        LANG_VI:    "[sigh] Mình hết hạn mức rồi.",
+        LANG_ZH_CN: "[sigh] 我的额度用完了。",
+        LANG_ZH_TW: "[sigh] 我的額度用完了。",
     },
 }
 
