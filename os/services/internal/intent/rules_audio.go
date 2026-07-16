@@ -13,7 +13,7 @@ var audioRules = []rule{
 		match:      anyOf("volume up", "louder"),
 		exec: func(string) *Result {
 			post("/audio/volume", `{"volume":100}`)
-			return &Result{TTSText: "Volume up!", Actions: []string{`POST /audio/volume {"volume":80}`}}
+			return &Result{TTSText: "Volume up!", Actions: []string{`POST /audio/volume {"volume":100}`}}
 		},
 	},
 	{
