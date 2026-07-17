@@ -80,6 +80,11 @@ class LEDOffRequest(BaseModel):
 
 class LEDPaintRequest(BaseModel):
     colors: list[Union[list[int], int]]
+    # Treat `colors` as gradient stops and interpolate them across the whole
+    # strip (2 stops -> smooth 64-pixel fade) instead of painting the first
+    # len(colors) pixels and leaving the rest stale.
+    gradient: bool = False
+    transient: bool = False
 
     model_config = {
         "json_schema_extra": {

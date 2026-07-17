@@ -21,6 +21,7 @@ from hal.presets import (
     FX_SPEAKING_WAVE,
     LST_EFFECT,
     LST_OFF,
+    LST_PAINT,
     LST_SOLID,
     RGB_CMD_PAINT,
     RGB_CMD_SOLID,
@@ -96,12 +97,25 @@ def set_led_solid(req: LEDSolidRequest):
 
 @router.post("/led/paint", response_model=StatusResponse)
 def set_led_paint(req: LEDPaintRequest):
-    """Set individual pixel colors."""
+    """Set individual pixel colors (multi-color fills, gradients)."""
     if not state.rgb_service:
         raise HTTPException(503, "LED not available")
-    state._dismiss_mic_muted_led("led/paint")
     colors = [tuple(c) if isinstance(c, list) else c for c in req.colors]
+    # A running effect repaints the strip every ~40ms and would overwrite
+    # the painted pixels — stop it first, same as /led/solid.
+    state._stop_current_effect()
     state.rgb_service.dispatch(RGB_CMD_PAINT, colors)
+    if not req.transient:
+        state._active_scene = None
+    if state.sensing_service:
+        avg = state._avg_paint_color(colors)
+        if avg:
+            state.sensing_service.presence.set_last_color(avg)
+    if req.transient:
+        state._cancel_pending_restore()
+    else:
+        state._dismiss_mic_muted_led("led/paint")
+        state._save_user_led_state({"type": LST_PAINT, "colors": req.colors})
     return {"status": "ok"}
 
 

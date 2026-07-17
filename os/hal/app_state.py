@@ -21,8 +21,10 @@ from hal.presets import (
     FX_SPEAKING_WAVE_RAINBOW,
     LST_EFFECT,
     LST_OFF,
+    LST_PAINT,
     LST_SCENE,
     LST_SOLID,
+    RGB_CMD_PAINT,
     RGB_CMD_SOLID,
     SCENE_PRESETS,
     STATUS_LED_PRESETS,
@@ -350,6 +352,24 @@ def _is_nonblack(color) -> bool:
     return color and any(c > 0 for c in color)
 
 
+def _avg_paint_color(colors) -> Optional[tuple]:
+    """Average RGB of a paint pixel list (packed-int pixels included).
+
+    Paint states have no single color, but presence dimming and overlay
+    effects need one base color — the average is the closest stand-in.
+    Returns None when the list has no usable pixels.
+    """
+    rgb = []
+    for c in colors:
+        if isinstance(c, int):
+            rgb.append(((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF))
+        elif isinstance(c, (list, tuple)) and len(c) >= 3:
+            rgb.append(tuple(c[:3]))
+    if not rgb:
+        return None
+    return tuple(sum(ch) // len(rgb) for ch in zip(*rgb))
+
+
 def _led_off_by_user() -> bool:
     """True when the user explicitly turned the LED off (LST_OFF).
 
@@ -373,6 +393,10 @@ def _get_current_led_color() -> tuple:
             return tuple(_user_led_state["color"])
         if stype == LST_EFFECT and _is_nonblack(_user_led_state.get("color")):
             return tuple(_user_led_state["color"])
+        if stype == LST_PAINT:
+            avg = _avg_paint_color(_user_led_state.get("colors") or [])
+            if _is_nonblack(avg):
+                return avg
         if stype == LST_SCENE:
             preset = SCENE_PRESETS.get(_user_led_state.get("scene", ""))
             if preset:
@@ -396,6 +420,8 @@ def _get_user_base_color() -> tuple:
     if stype in (LST_SOLID, LST_EFFECT):
         color = _user_led_state.get("color")
         return tuple(color) if color else (0, 0, 0)
+    if stype == LST_PAINT:
+        return _avg_paint_color(_user_led_state.get("colors") or []) or (0, 0, 0)
     if stype == LST_SCENE:
         preset = SCENE_PRESETS.get(_user_led_state.get("scene", ""))
         if preset:
@@ -561,6 +587,14 @@ def _restore_user_led():
             _stop_current_effect()
             rgb_service.dispatch(RGB_CMD_SOLID, tuple(state["color"]))
             logger.info("LED restore: solid color=%s", state["color"])
+        elif stype == LST_PAINT:
+            _stop_current_effect()
+            colors = [
+                tuple(c) if isinstance(c, list) else c
+                for c in state.get("colors") or []
+            ]
+            rgb_service.dispatch(RGB_CMD_PAINT, colors)
+            logger.info("LED restore: paint %d pixels", len(colors))
         elif stype == LST_EFFECT:
             _stop_current_effect()
             global _effect_thread, _effect_name, _effect_base_color
