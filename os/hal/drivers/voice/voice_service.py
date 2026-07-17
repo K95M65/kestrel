@@ -48,8 +48,11 @@ class VoiceService:
     """Local VAD + pluggable STT provider for autonomous sensing."""
 
     # Strip HW markers, audio tags, and system tags from realtime agent output.
+    # The HW alternative mirrors the Go executor grammar (handler_hw.go
+    # hwMarkerRe): brace-anchored optional body, so a `]` inside a JSON array
+    # body (e.g. {"color":[255,0,0]}) doesn't truncate the match.
     RT_MARKER_RE: re.Pattern[str] = re.compile(
-        r"\[HW:/[^\]]*\]"
+        r"\[HW:/[^{\]]*(?:\{[^}]*\})?\]"
         r"|\[(?:laughs|LAUGHS|sighs|chuckle|light chuckle|giggle|big laugh|gasps|gulps|breathes|clears throat|whispers|pause|pauses|hesitates|stammers|thinking|thinks|thought|thoughtful|pondering|ponders|reasoning)"
         r"[^\]]*\]"
         r"|\[(?:cheerfully|playfully|quietly|nervously|deadpan|flatly|dramatic tone|resigned tone|excited|calm|tired|sad|sorrowful|nervous|frustrated)"
@@ -68,14 +71,23 @@ class VoiceService:
     )
 
     # Markdown-link-form HW marker like [Tắt đèn](HW:/led/off:{}) — some LLMs
-    # wrap the marker in a link. Keep the label, drop the marker (mirrors
-    # hwLinkRe in os-server handler_hw.go).
-    RT_HW_LINK_RE: re.Pattern[str] = re.compile(r"\[([^\]]*)\]\(\s*HW:[^)]*\)")
+    # wrap the marker in a link. Keep the label, drop the marker. Mirrors
+    # hwLinkRe in os-server handler_hw.go EXACTLY: never looser than the
+    # executor, so a variant it won't fire stays visible as raw text instead
+    # of being scrubbed into a confident-looking label.
+    RT_HW_LINK_RE: re.Pattern[str] = re.compile(
+        r"\[([^\]]*)\]\(\s*HW:\s*(?:/[^(){:\s]+(?::[^(){:\s]+)*)(?::\{[^}]*\})?:?\s*\)",
+        re.IGNORECASE,
+    )
 
     @staticmethod
     def strip_rt_markers(text: str) -> str:
         """Remove HW markers, audio tags, and system tags from realtime agent text."""
-        text = VoiceService.RT_HW_LINK_RE.sub(r"\1", text)
+        # Label may itself be a canonical marker's content (LLM link-wrapped
+        # the second of a back-to-back pair) — both are markers, keep neither.
+        text = VoiceService.RT_HW_LINK_RE.sub(
+            lambda m: "" if m.group(1)[:3].lower() == "hw:" else m.group(1), text
+        )
         cleaned: str = VoiceService.RT_MARKER_RE.sub("", text)
         cleaned = re.sub(r"  +", " ", cleaned).strip()
         return cleaned

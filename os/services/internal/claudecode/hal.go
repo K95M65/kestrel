@@ -31,9 +31,13 @@ var (
 	// (it bypasses that pipeline), so the same markers must be stripped here.
 	// Keep the two patterns in sync.
 	reHWMarker = regexp.MustCompile(`\[HW:((?:/[^{:\]]+(?::[^{:\]]+)*))(?::(\{[^}]*\}))?\]`)
-	// reHWLink mirrors hwLinkRe in handler_hw.go: markdown-link-form markers
-	// like [Tắt đèn](HW:/led/off:{}) — keep the label, drop the marker.
-	reHWLink = regexp.MustCompile(`\[([^\]]*)\]\(\s*HW:[^)]*\)`)
+	// reHWLink mirrors hwLinkRe in handler_hw.go EXACTLY (grammar-wise):
+	// markdown-link-form markers like [Tắt đèn](HW:/led/off:{}) — keep the
+	// label, drop the marker. It must never be looser than the executor: a
+	// variant the executor won't fire has to stay visible as raw text, not be
+	// scrubbed into a confident-looking label. The brace-anchored body also
+	// keeps a `)` inside JSON strings from truncating the match.
+	reHWLink = regexp.MustCompile(`(?i)\[([^\]]*)\]\(\s*HW:\s*(?:/[^(){:\s]+(?::[^(){:\s]+)*)(?::\{[^}]*\})?:?\s*\)`)
 	// reAudioTag mirrors HAL's _strip_audio_tags whitelist
 	// (os/hal/drivers/voice/tts/openai.py): ElevenLabs-style delivery tags like
 	// [laugh] / [sigh] are TTS styling and meaningless in a chat bubble.
@@ -45,7 +49,15 @@ var (
 // conversational text. Unlike stripForTTS it keeps markdown and emoji — chat
 // clients render them fine.
 func stripForChannel(text string) string {
-	text = reHWLink.ReplaceAllString(text, "$1")
+	text = reHWLink.ReplaceAllStringFunc(text, func(m string) string {
+		label := reHWLink.FindStringSubmatch(m)[1]
+		// Label may itself be a canonical marker's content (LLM link-wrapped
+		// the second of a back-to-back pair) — both are markers, show neither.
+		if len(label) >= 3 && strings.EqualFold(label[:3], "HW:") {
+			return ""
+		}
+		return label
+	})
 	text = reHWMarker.ReplaceAllString(text, "")
 	text = reAudioTag.ReplaceAllString(text, "")
 	return strings.TrimSpace(text)

@@ -74,7 +74,15 @@ var hwMarkerRe = regexp.MustCompile(`\[HW:((?:/[^{:\]]+(?::[^{:\]]+)*))(?::(\{[^
 // shape, so the command was silently dropped (the LED never turned off) and
 // the raw link leaked into chat/TTS. normalizeHWMarkers rewrites it to the
 // canonical form, keeping the label as speakable text.
-var hwLinkRe = regexp.MustCompile(`\[([^\]]*)\]\(\s*HW:((?:/[^(){:\s]+(?::[^(){:\s]+)*))(?::(\{[^}]*\}))?\s*\)`)
+//
+// Tolerances beyond the canonical grammar, all observed/plausible LLM
+// mangling: case-insensitive scheme (`hw:`), whitespace after `HW:`, and a
+// dangling `:` with no body (`(HW:/led/off:)`). The strip-only mirrors
+// (claudecode/codex stripForChannel, web stripHWMarkers, HAL strip_rt_markers)
+// MUST stay exactly as loose as this regex — a variant the executor rejects
+// must stay visible as raw text, never be silently scrubbed into a
+// confident-looking label.
+var hwLinkRe = regexp.MustCompile(`(?i)\[([^\]]*)\]\(\s*HW:\s*((?:/[^(){:\s]+(?::[^(){:\s]+)*))(?::(\{[^}]*\}))?:?\s*\)`)
 
 // normalizeHWMarkers rewrites markdown-link-form markers to the canonical
 // inline form. The marker is placed BEFORE the label so a reply that opens
@@ -87,6 +95,14 @@ func normalizeHWMarkers(text string) string {
 			body = "{}"
 		}
 		marker := "[HW:" + path + ":" + body + "]"
+		// The label group can capture a preceding CANONICAL marker's content:
+		// in `[HW:/led/effect/stop:{}](HW:/led/solid:{...})` (LLM link-wrapped
+		// only the second marker) the label is `HW:/led/effect/stop:{}`.
+		// Reconstruct BOTH markers in emitted order instead of demoting the
+		// first one to spoken text.
+		if len(label) >= 3 && strings.EqualFold(label[:3], "HW:") {
+			return "[HW:" + label[3:] + "]" + marker
+		}
 		if strings.TrimSpace(label) == "" {
 			return marker
 		}

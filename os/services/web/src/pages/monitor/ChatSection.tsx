@@ -242,10 +242,20 @@ function renderMarkdown(text: string): ReactNode {
 
 // Strip inline HW control markers like [HW:/emotion:{"emotion":"curious","intensity":0.7}]
 // and the markdown-link form [label](HW:/led/off:{}) some LLMs emit (keep the label).
+// Both patterns mirror the Go executor grammar (handler_hw.go hwMarkerRe/hwLinkRe)
+// exactly — never looser, so a variant the executor won't fire stays visible as raw
+// text instead of being scrubbed into a confident-looking label. The brace-anchored
+// body keeps `]` / `)` inside JSON from truncating the match.
+const HW_LINK_RE = /\[([^\]]*)\]\(\s*HW:\s*(?:\/[^(){:\s]+(?::[^(){:\s]+)*)(?::\{[^}]*\})?:?\s*\)/gi;
+const HW_MARKER_RE = /\[HW:\/[^{\]]*(?:\{[^}]*\})?\]/g;
 function stripHWMarkers(text: string): string {
   return text
-    .replace(/\[([^\]]*)\]\(\s*HW:[^)]*\)/g, "$1")
-    .replace(/\[HW:\/[^\]]*\]/g, "")
+    .replace(HW_LINK_RE, (_m, label: string) =>
+      // Label may itself be a canonical marker's content (LLM link-wrapped the
+      // second of a back-to-back pair) — both are markers, show neither.
+      /^hw:/i.test(label) ? "" : label,
+    )
+    .replace(HW_MARKER_RE, "")
     .trim();
 }
 
