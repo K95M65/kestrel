@@ -224,7 +224,7 @@ func hasPartialHWMarker(text string) bool {
 // it reports whether text contains a markdown-link marker opener `](HW:`
 // (case-insensitive, matching hwLinkRe) with no closing `)` yet, or ends
 // mid-way through the `](HW:` signature itself. Without this guard a link
-// marker still streaming in (e.g. `[Tắt đèn nè. Chờ nha](HW:/led/of`) passes
+// marker still streaming in (e.g. `[Lights off. Hold on](HW:/led/of`) passes
 // the canonical check, tryFirstSentenceFlush finds a sentence boundary INSIDE
 // the label and streams bracket garbage to TTS — and streamedCleanLen ends up
 // measured against text whose cleaned form changes once the link completes.

@@ -70,7 +70,7 @@ class VoiceService:
         re.IGNORECASE,
     )
 
-    # Markdown-link-form HW marker like [Tắt đèn](HW:/led/off:{}) — some LLMs
+    # Markdown-link-form HW marker like [Lights off](HW:/led/off:{}) — some LLMs
     # wrap the marker in a link. Keep the label, drop the marker. Mirrors
     # hwLinkRe in os-server handler_hw.go EXACTLY: never looser than the
     # executor, so a variant it won't fire stays visible as raw text instead

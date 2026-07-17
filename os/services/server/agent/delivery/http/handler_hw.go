@@ -68,7 +68,7 @@ var prunedImageMarkerRe = regexp.MustCompile(`\[image[^\]]*removed[^\]]*\]`)
 var hwMarkerRe = regexp.MustCompile(`\[HW:((?:/[^{:\]]+(?::[^{:\]]+)*))(?::(\{[^}]*\}))?\]`)
 
 // hwLinkRe matches markdown-link-form markers like
-// [Tắt đèn liền đây!](HW:/led/off:{}) that markdown-trained LLMs sometimes
+// [Lights off right away!](HW:/led/off:{}) that markdown-trained LLMs sometimes
 // emit instead of the canonical [HW:/led/off:{}] — the sentence becomes a link
 // label and the marker moves into the URL slot. hwMarkerRe never matches that
 // shape, so the command was silently dropped (the LED never turned off) and

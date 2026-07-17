@@ -67,7 +67,7 @@ var (
 	// Keep the two patterns in sync.
 	reHWMarker = regexp.MustCompile(`\[HW:((?:/[^{:\]]+(?::[^{:\]]+)*))(?::(\{[^}]*\}))?\]`)
 	// reHWLink mirrors hwLinkRe in handler_hw.go EXACTLY (grammar-wise):
-	// markdown-link-form markers like [Tắt đèn](HW:/led/off:{}) — keep the
+	// markdown-link-form markers like [Lights off](HW:/led/off:{}) — keep the
 	// label, drop the marker. It must never be looser than the executor: a
 	// variant the executor won't fire has to stay visible as raw text, not be
 	// scrubbed into a confident-looking label. The brace-anchored body also
