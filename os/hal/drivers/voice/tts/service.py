@@ -1189,6 +1189,20 @@ class TTSService:
 
         self._lock.release()
 
+        # Zero-sample completion = backend failure (all producer retries
+        # gave up: Cloudflare 5xx, timeout, network drop). Flash amber so
+        # the user knows their request was heard but the backend broke —
+        # otherwise the device just goes silent and looks frozen. Skip when
+        # the user explicitly stopped (stop_event set) — that's a normal
+        # barge-in, not a failure.
+        if total_samples == 0 and not self._stop_event.is_set():
+            try:
+                from hal import app_state
+
+                app_state._flash_backend_error()
+            except Exception:
+                logger.exception("backend-error flash dispatch failed")
+
         # Lock is released before announcing so the notice can re-acquire it via
         # the cached-play path. Announce is a no-op unless a rate limit was hit.
         if self._rate_limit_hit:

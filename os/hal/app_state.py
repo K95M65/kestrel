@@ -552,6 +552,50 @@ def _dismiss_mic_muted_led(source: str):
     logger.info("Mic-muted LED indicator dismissed by %s (mic stays muted)", source)
 
 
+def _flash_backend_error():
+    """3x amber flashes signalling a TTS/backend failure. Called from the
+    TTS service when a speak() returns 0 samples (Cloudflare 524, upstream
+    timeout, all retries exhausted) — the user hears no reply and would
+    otherwise be left wondering; the flash makes the failure visible.
+
+    Runs a short notification_flash (~1s) on its own thread and then hands
+    the strip back via _restore_user_led / mic-muted repaint, so it never
+    leaves the strip stuck at the last flash frame. Skips silently when
+    the mic-muted privacy indicator owns the strip — a hardware kill-switch
+    red must survive any error signal."""
+    if not rgb_service:
+        return
+    if _mic_muted_led_owns_strip():
+        return
+
+    def _run_then_settle():
+        from hal.drivers.rgb.effects import notification_flash
+
+        color = (255, 191, 0)  # amber-yellow, distinct from statusled hardware fault
+        local_stop = threading.Event()
+        try:
+            notification_flash(color, 1.0, local_stop, rgb_service)
+        except Exception as e:
+            logger.warning("backend-error flash failed: %s", e)
+        # Hand the strip back to whatever the resting look should be. The
+        # notification_flash never sets _effect_thread etc. (it runs
+        # standalone here), so nothing to clear — just repaint.
+        try:
+            if _mic_muted_led_owns_strip():
+                _start_mic_muted_effect()
+            else:
+                _restore_user_led()
+        except Exception as e:
+            logger.warning("backend-error flash restore failed: %s", e)
+
+    logger.info("Flashing backend-error cue (3x amber)")
+    threading.Thread(
+        target=_run_then_settle,
+        daemon=True,
+        name="led-backend-error-flash",
+    ).start()
+
+
 def _restore_user_led():
     """Restore LED to user state after emotion animation completes."""
     global _restore_timer

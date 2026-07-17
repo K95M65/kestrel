@@ -33,8 +33,18 @@ class OpenAITTSBackend(TTSBackend):
         try:
             from openai import OpenAI
             base_url = _ensure_openai_v1(base_url)
-            self._client = OpenAI(api_key=api_key, base_url=base_url)
-            logger.info("OpenAI TTS backend ready (base_url=%s)", base_url)
+            # timeout=10 caps a single TTS request end-to-end. Default SDK
+            # timeout is 600s — long enough for an upstream Cloudflare 524 or
+            # similar backend stall to freeze self._speaking=True for MINUTES,
+            # which drains the mic pipeline and looks like the whole voice
+            # loop hung (observed 2026-07-17: campaign-api returned 524 on
+            # attempt 1, attempt 2 hung ~22s+ with no timeout). 10s is well
+            # above normal TTFB (~2-5s) but keeps the worst-case retry
+            # chain (max_retries=3 → 4 attempts × 10s ≈ 40s wall-clock)
+            # short enough for the user to still connect the amber flash
+            # cue to the utterance that triggered it.
+            self._client = OpenAI(api_key=api_key, base_url=base_url, timeout=10.0)
+            logger.info("OpenAI TTS backend ready (base_url=%s, timeout=10s)", base_url)
         except ImportError as e:
             logger.warning("openai SDK not available: %s", e)
 
