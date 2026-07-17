@@ -13,7 +13,7 @@
 | GET | `/led` | LED strip info (count, available) |
 | GET | `/led/color` | Current color `{"r", "g", "b"}` |
 | POST | `/led/solid` | Fill entire strip with one color |
-| POST | `/led/paint` | Set per-pixel colors (array up to 64 items) |
+| POST | `/led/paint` | Set per-pixel colors (array up to 64 items), or a gradient with `"gradient": true` |
 | POST | `/led/off` | Turn off all LEDs |
 | POST | `/led/effect` | Start an effect |
 | POST | `/led/effect/stop` | Stop running effect |
@@ -21,40 +21,49 @@
 
 ### Transient writes
 
-`/led/solid`, `/led/effect`, and `/led/off` accept an optional `"transient": true` flag. When set, the call paints the strip but does **not** overwrite the saved user LED state. The saved state is restored when the caller (e.g. Claude Desktop Buddy) is done — either via the natural emotion restore timer, or by an explicit `POST /led/restore`. Pulse effects launched with `transient: true` also overlay on the user's saved color instead of black.
+`/led/solid`, `/led/paint`, `/led/effect`, and `/led/off` accept an optional `"transient": true` flag. When set, the call paints the strip but does **not** overwrite the saved user LED state. The saved state is restored when the caller (e.g. Claude Desktop Buddy) is done — either via the natural emotion restore timer, or by an explicit `POST /led/restore`. Pulse effects launched with `transient: true` also overlay on the user's saved color instead of black.
 
 ## Solid Color
 
 ```json
 POST /led/solid
-{"r": 255, "g": 180, "b": 100}
+{"color": [255, 180, 100]}
 ```
 
-RGB values 0-255.
+`color` is an `[R, G, B]` array (values 0-255) or a packed `0xRRGGBB` int.
 
-## Paint (Per-Pixel)
+## Paint (Per-Pixel / Gradient)
 
 ```json
 POST /led/paint
-{"pixels": [{"i": 0, "r": 255, "g": 0, "b": 0}, {"i": 1, "r": 0, "g": 255, "b": 0}]}
+{"colors": [[255, 0, 0], [0, 255, 0], [0, 0, 255]]}
 ```
 
-`i` = pixel index (0-63).
+`colors` is an array of `[R, G, B]` (or packed-int) pixels applied in index order (0-63). Without `gradient`, only the first `len(colors)` pixels are painted — the rest of the strip keeps its previous color.
+
+```json
+POST /led/paint
+{"colors": [[0, 200, 200], [150, 0, 255]], "gradient": true}
+```
+
+With `"gradient": true` the colors are treated as gradient **stops** and linearly interpolated across the whole strip (CSS-gradient style) — the example above fades cyan → purple over all 64 pixels. Works with any number of stops ≥ 1.
+
+Paint stops any running effect first (an effect repaints the strip every ~40ms and would overwrite it) and, unless `"transient": true`, saves the painted pixel list as the user LED state — so emotion animations, TTS waves, and HAL restarts within the same boot restore the exact gradient. For gradients the *expanded* 64-pixel list is saved, not the stops.
 
 ## Effects
 
 ```json
 POST /led/effect
-{"effect": "breathing", "r": 255, "g": 100, "b": 50, "speed": 1.0}
+{"effect": "breathing", "color": [255, 100, 50], "speed": 1.0}
 ```
 
 | Effect | Description | Params |
 |--------|-------------|--------|
-| `breathing` | Sine-wave brightness up/down | r, g, b, speed |
-| `candle` | Random flickering candle | r, g, b |
+| `breathing` | Sine-wave brightness up/down | color, speed |
+| `candle` | Random flickering candle | color |
 | `rainbow` | Hue rotation across strip | speed |
-| `notification_flash` | Quick flash 3 times | r, g, b |
-| `pulse` | Single pulse from center outward | r, g, b, speed |
+| `notification_flash` | Quick flash 3 times | color |
+| `pulse` | Single pulse from center outward | color, speed |
 
 ## Lighting Scenes
 
