@@ -439,6 +439,11 @@ class VoiceStatusResponse(BaseModel):
     tts_speaking: bool
     tts_detail: Optional[dict] = None
     mic_muted: bool = False
+    # Hardware kill-switch position (Intern v2 Pro PD1 slide switch). null on
+    # devices without the switch (Lamp) so the web UI can hide the "HW-locked"
+    # hint entirely. True/False mirrors the physical throw and is the authority:
+    # while True, /voice/unmute rejects with 409 and the touchpad ignores taps.
+    hw_mic_switch_muted: Optional[bool] = None
 
 
 class HealthResponse(BaseModel):

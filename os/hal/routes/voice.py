@@ -360,6 +360,13 @@ def mute_mic():
 @router.post("/voice/unmute", response_model=StatusResponse)
 def unmute_mic():
     """Unmute mic -- restart voice pipeline."""
+    # HW kill-switch beats software: while the physical PD1 slide switch is
+    # muted, the web/API is not allowed to override it — mic_button.py would
+    # just flip it back on the next reconcile anyway, leaving the UI briefly
+    # showing "unmuted" while the pipeline stays down. 409 lets the web toast
+    # a specific "flip the switch first" message.
+    if state._hw_mic_switch_muted is True:
+        raise HTTPException(409, "Hardware mic switch is off -- flip the physical switch to unmute")
     if not state._mic_muted:
         return {"status": "already_unmuted"}
     state._mic_muted = False
@@ -474,4 +481,5 @@ def voice_status():
         "tts_speaking": state.tts_service.speaking if state.tts_service else False,
         "tts_detail": tts_detail,
         "mic_muted": state._mic_muted,
+        "hw_mic_switch_muted": state._hw_mic_switch_muted,
     }

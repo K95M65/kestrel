@@ -181,6 +181,14 @@ def announce_listening_cue(source: str = "button"):
     so callers that resolve gestures in two steps (GPIO button: floor-grab
     on release, cue after the click window) can defer just the audible part
     — a cue talking over the user mid-triple-click disrupts their rhythm."""
+    # Same HW kill-switch guard as single_click_action: gpio_button.py's
+    # _on_click_timeout calls this DIRECTLY (bypassing single_click_action)
+    # after the click window closes, so the guard has to live here too or
+    # "I'm listening" still fires while the mic is physically off. Guarding
+    # only single_click_action leaves the GPIO-button path leaky.
+    if state._hw_mic_switch_muted is True:
+        logger.info("%s listening cue skipped -- HW mic switch is off", source)
+        return
     if _tts_available():
         threading.Thread(
             target=_announce_listening,
@@ -193,6 +201,18 @@ def single_click_action(source: str = "button", announce: bool = True, chime: bo
     """Stop in-flight speech / unmute mic + speaker, then announce listening cue.
     announce=False skips the cue (caller fires announce_listening_cue later).
     chime=False skips the ack ping (caller already chimed at gesture start)."""
+    # Hardware mic-mute switch is the authority: while it is physically off,
+    # taps on the GPIO button / TTP223 touchpad must NOT wake, unmute, or
+    # announce — the whole gesture flow would violate the kill-switch promise.
+    # Skip silently (no chime, no cue): the red mic-muted LED is already the
+    # visual "off" indicator; a chime here would read as "action accepted"
+    # when nothing happened. mic_button.py's own unmute-path call flips the
+    # flag to False BEFORE calling this, so the slide switch's own unmute is
+    # not blocked. None = device has no HW switch (Lamp) → always fall through.
+    if state._hw_mic_switch_muted is True:
+        logger.info("%s single click ignored -- HW mic switch is off", source)
+        return
+
     from hal.routes.music import audio_stop, unmute_speaker
     from hal.routes.voice import stop_tts, unmute_mic
 

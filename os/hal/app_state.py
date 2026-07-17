@@ -115,6 +115,14 @@ _mic_muted = False
 _mic_manual_override = False
 _speaker_muted = False
 
+# Hardware mic-mute slide switch position (Intern v2 Pro's PD1 kill switch).
+# None on devices without the switch (Lamp) — the web UI uses that to decide
+# whether to show the "HW switch is off" hint at all. True/False mirrors the
+# physical position, published by hal.drivers.mic_button on every reconcile.
+# When True, /voice/unmute rejects with 409 and single_click_action bails
+# early: the slide switch is the authority whenever it is physically muted.
+_hw_mic_switch_muted: "bool | None" = None
+
 # Mic-muted idle LED indicator (STATUS_LED_PRESETS["mic_muted"], dark red
 # breathing). Set by /voice/mute, cleared by /voice/unmute. It is the strip's
 # RESTING look while muted: emotions/effects/waves still run normally on top,

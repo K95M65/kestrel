@@ -186,6 +186,20 @@ def start_led_effect(req: LEDEffectRequest):
         state.logger.info("LED effect '%s' skipped -- TTS speaking_wave active", req.effect)
         return {"status": "ok", "effect": req.effect, "speed": req.speed}
 
+    # Mic-muted red is a privacy indicator — a transient system overlay
+    # (ambient breathing, Buddy Busy pulse, statusled) must NOT paint over
+    # it. Ambient's breathingLoop reads the current color and re-fires every
+    # 2s (see internal/ambient/service.go), and without this guard each tick
+    # would kill our red thread and start ambient's breathing in some dim
+    # frame we happened to sample. User-initiated writes (non-transient) go
+    # through unchanged and dismiss mic-muted below via _dismiss_mic_muted_led.
+    if req.transient and state._mic_muted_led_owns_strip():
+        state.logger.info(
+            "LED effect '%s' (transient) skipped -- mic-muted indicator owns strip",
+            req.effect,
+        )
+        return {"status": "ok", "effect": req.effect, "speed": req.speed}
+
     state._stop_current_effect()
     if not req.transient:
         state._active_scene = None
@@ -297,6 +311,18 @@ def stop_led_effect():
         raise HTTPException(503, "LED not available")
     if state._tts_speaking:
         state.logger.info("LED effect/stop skipped -- TTS speaking_wave active")
+        return {"status": "ok"}
+    # Same reasoning as /led/effect: don't let a transient overlay's cleanup
+    # pull the mic-muted red down. Ambient's breathingLoop calls StopEffect
+    # on pause/lock; without this the red vanishes the moment ambient stops
+    # its own effect. Detect via effect thread name — the mic-muted effect
+    # runs under "led-mic-muted", and stopping any OTHER effect while
+    # mic-muted owns the strip is a stale caller (the mic-muted effect kept
+    # running under it).
+    if state._mic_muted_led_owns_strip() and (
+        state._effect_thread is None or state._effect_thread.name == "led-mic-muted"
+    ):
+        state.logger.info("LED effect/stop skipped -- mic-muted indicator owns strip")
         return {"status": "ok"}
     state._stop_current_effect()
     return {"status": "ok"}

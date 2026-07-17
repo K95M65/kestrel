@@ -221,6 +221,43 @@ class MicButtonHandler:
             except Exception as e:
                 logger.warning("Mic switch watchdog tick failed: %s", e)
 
+    def _paint_listening_after_cue(self):
+        """Fire the blue LISTENING pulse after the unmute "I'm listening"
+        TTS cue finishes so the strip settles on a clear "ready to listen"
+        cue instead of the warm-white last-frame from the TTS wave.
+
+        Poll _tts_speaking (up to 5s) rather than sleeping a fixed delay:
+        the cached clip is ~740ms but launch latency varies (thread
+        startup + first-audio jitter), and a fixed 1.5s wait was landing
+        WHILE the wave was still painting → _apply_emotion_led_display's
+        "Emotion LED skipped -- TTS speaking_wave active" guard swallowed
+        the paint and blue never appeared. Also bail if the user re-muted
+        or music started meanwhile."""
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            if state._hw_mic_switch_muted is True or state._mic_muted:
+                return
+            if state._music_playing:
+                return
+            if not state._tts_speaking:
+                break
+            time.sleep(0.1)
+        else:
+            logger.info("mic switch unmute listening cue: TTS never quiesced -- skipping")
+            return
+        # Small settle after TTS end so the wave's teardown restore lands
+        # first; painting into a live restore path races the effect thread.
+        time.sleep(0.15)
+        if state._hw_mic_switch_muted is True or state._mic_muted:
+            return
+        try:
+            from hal.presets import EMO_LISTENING
+
+            state._apply_emotion_led_display(EMO_LISTENING, 0.7, force_led=True)
+            logger.info("mic switch unmute -- painted LISTENING cue on strip")
+        except Exception as e:
+            logger.warning("mic switch unmute listening cue failed: %s", e)
+
     def _apply_state_locked(self, muted: bool):
         """Push mic state to match the switch position. Idempotent — if HAL
         state already matches (web admin just set it, or start-up sync
@@ -231,6 +268,12 @@ class MicButtonHandler:
         contexts like boot init) so the check-then-write on state._mic_muted
         isn't racy against another edge/watchdog reconcile.
         """
+        # Publish the physical switch position BEFORE the idempotency skip:
+        # /voice/status and single_click_action guards read this flag, so a
+        # boot-time sync where the sidecar already agrees with the switch
+        # still needs to advertise "HW-locked" to the web.
+        state._hw_mic_switch_muted = muted
+
         if state._mic_muted == muted:
             return
 
@@ -239,20 +282,23 @@ class MicButtonHandler:
         try:
             if muted:
                 logger.info("mic switch → muting")
-                # Physical throw = the most deliberate mute there is: paint
-                # the indicator BEFORE the route runs — mute_mic blocks for
-                # seconds in voice_service.stop() (session teardown), and
-                # the feedback must not wait that out. force also paints
-                # over a live TTS/music wave (mute_mic's own call defers).
-                state._apply_mic_muted_led(force=True)
-                # Cut any in-flight speech AND music too: the throw reads
-                # as "quiet, stop listening" — don't finish the sentence or
-                # keep the track playing over it. (~10ms; the speak/music
-                # end restores settle on the red above.)
+                # Order matters. Do the fast quiet-me ops FIRST (stop_tts,
+                # audio_stop each ~10ms) BEFORE painting red, because
+                # audio_stop unconditionally invokes _on_music_complete
+                # which, when the user has no saved LED state, tramples the
+                # current effect and starts its own "idle breathing"
+                # fallback (routes/music.py) — that would kill the red the
+                # instant we painted it. Painting AFTER means the red is
+                # the LAST effect started, so nothing races it. mute_mic
+                # (slow, seconds — voice_service.stop() session teardown)
+                # still runs last so the visual feedback is not gated on it.
                 stop_tts()
                 from hal.routes.music import audio_stop
 
                 audio_stop()
+                # Now paint. force also overlays a live TTS/music wave, so
+                # even a mid-utterance throw gets immediate red feedback.
+                state._apply_mic_muted_led(force=True)
                 mute_mic()
             else:
                 logger.info("mic switch → unmuting")
@@ -266,5 +312,21 @@ class MicButtonHandler:
                 from hal.drivers.button_actions import single_click_action
 
                 single_click_action("mic-switch")
+                # After unmute the natural resting look is warm-white
+                # ambient because _user_led_state is None on fresh boots —
+                # the "listening" blue pulse only fires when speech is
+                # actually detected (voice_service.py). Users read that
+                # gap as "did unmute even work?" Paint the blue listening
+                # indicator NOW so the transition red → blue is instant.
+                # Delayed ~1.5s so the "I'm listening" TTS cue (~1s
+                # cached clip) finishes first — otherwise its speaking-
+                # wave overlays and immediately hides the blue. force_led
+                # skips the background-emotion "respect user state" guard
+                # (LISTENING is a background emotion).
+                threading.Thread(
+                    target=self._paint_listening_after_cue,
+                    daemon=True,
+                    name="mic-switch-listening-cue",
+                ).start()
         except Exception as e:
             logger.warning("Mic switch apply failed: %s", e)
