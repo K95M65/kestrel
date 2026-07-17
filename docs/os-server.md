@@ -162,7 +162,7 @@ Accessed via nginx proxy: `/hw/*` → `127.0.0.1:5001`
 | GET | `/led` | LED strip info |
 | GET | `/led/color` | Current LED color |
 | POST | `/led/solid` | Fill entire strip with one color |
-| POST | `/led/paint` | Set individual pixels (array up to 64) |
+| POST | `/led/paint` | Set individual pixels (array up to 64), or gradient stops with `"gradient": true` |
 | POST | `/led/off` | Turn off all LEDs |
 | POST | `/led/effect` | Start effect (breathing, candle, rainbow, notification_flash, pulse) |
 | POST | `/led/effect/stop` | Stop running effect |

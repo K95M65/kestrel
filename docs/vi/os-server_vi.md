@@ -162,7 +162,7 @@ Truy cập qua nginx proxy: `/hw/*` → `127.0.0.1:5001`
 | GET | `/led` | LED strip info |
 | GET | `/led/color` | Màu LED hiện tại |
 | POST | `/led/solid` | Fill toàn bộ 1 màu |
-| POST | `/led/paint` | Set từng pixel (array tối đa 64) |
+| POST | `/led/paint` | Set từng pixel (array tối đa 64), hoặc gradient stops với `"gradient": true` |
 | POST | `/led/off` | Tắt tất cả LED |
 | POST | `/led/effect` | Bật effect (breathing, candle, rainbow, notification_flash, pulse) |
 | POST | `/led/effect/stop` | Dừng effect |

@@ -13,7 +13,7 @@
 | GET | `/led` | LED strip info (count, available) |
 | GET | `/led/color` | Màu hiện tại `{"r", "g", "b"}` |
 | POST | `/led/solid` | Fill toàn bộ strip 1 màu |
-| POST | `/led/paint` | Set từng pixel (array tối đa 64 items) |
+| POST | `/led/paint` | Set từng pixel (array tối đa 64 items), hoặc gradient với `"gradient": true` |
 | POST | `/led/off` | Tắt tất cả LED |
 | POST | `/led/effect` | Bật effect |
 | POST | `/led/effect/stop` | Dừng effect đang chạy |
@@ -21,40 +21,49 @@
 
 ### Transient writes
 
-`/led/solid`, `/led/effect`, `/led/off` chấp nhận flag tùy chọn `"transient": true`. Khi bật, call sẽ paint strip nhưng **không** ghi đè user LED state. State đã lưu sẽ được restore khi caller (vd Claude Desktop Buddy) xong việc — qua emotion restore timer tự nhiên, hoặc qua `POST /led/restore`. Pulse effect chạy với `transient: true` cũng overlay trên màu user thay vì nền đen.
+`/led/solid`, `/led/paint`, `/led/effect`, `/led/off` chấp nhận flag tùy chọn `"transient": true`. Khi bật, call sẽ paint strip nhưng **không** ghi đè user LED state. State đã lưu sẽ được restore khi caller (vd Claude Desktop Buddy) xong việc — qua emotion restore timer tự nhiên, hoặc qua `POST /led/restore`. Pulse effect chạy với `transient: true` cũng overlay trên màu user thay vì nền đen.
 
 ## Solid Color
 
 ```json
 POST /led/solid
-{"r": 255, "g": 180, "b": 100}
+{"color": [255, 180, 100]}
 ```
 
-Giá trị RGB 0-255.
+`color` là array `[R, G, B]` (giá trị 0-255) hoặc int packed `0xRRGGBB`.
 
-## Paint (Per-Pixel)
+## Paint (Per-Pixel / Gradient)
 
 ```json
 POST /led/paint
-{"pixels": [{"i": 0, "r": 255, "g": 0, "b": 0}, {"i": 1, "r": 0, "g": 255, "b": 0}]}
+{"colors": [[255, 0, 0], [0, 255, 0], [0, 0, 255]]}
 ```
 
-`i` = pixel index (0-63).
+`colors` là array các pixel `[R, G, B]` (hoặc packed int) áp theo thứ tự index (0-63). Không có `gradient`, chỉ `len(colors)` pixel đầu được paint — phần còn lại của strip giữ màu cũ.
+
+```json
+POST /led/paint
+{"colors": [[0, 200, 200], [150, 0, 255]], "gradient": true}
+```
+
+Với `"gradient": true`, các màu được coi là **stop** của gradient và nội suy tuyến tính trên toàn bộ strip (kiểu CSS gradient) — ví dụ trên fade cyan → tím qua cả 64 pixel. Chấp nhận số stop bất kỳ ≥ 1.
+
+Paint tự dừng effect đang chạy trước (effect repaint strip mỗi ~40ms sẽ đè lên) và, trừ khi `"transient": true`, lưu danh sách pixel đã paint làm user LED state — nên emotion animation, TTS wave, và HAL restart trong cùng phiên boot đều restore đúng gradient. Với gradient, danh sách 64 pixel *đã expand* được lưu, không phải các stop.
 
 ## Effects
 
 ```json
 POST /led/effect
-{"effect": "breathing", "r": 255, "g": 100, "b": 50, "speed": 1.0}
+{"effect": "breathing", "color": [255, 100, 50], "speed": 1.0}
 ```
 
 | Effect | Mô tả | Params |
 |--------|-------|--------|
-| `breathing` | Sine-wave brightness lên xuống | r, g, b, speed |
-| `candle` | Nến lung linh ngẫu nhiên | r, g, b |
+| `breathing` | Sine-wave brightness lên xuống | color, speed |
+| `candle` | Nến lung linh ngẫu nhiên | color |
 | `rainbow` | Xoay hue qua toàn bộ strip | speed |
-| `notification_flash` | Flash nhanh 3 lần | r, g, b |
-| `pulse` | Pulse đơn từ tâm ra ngoài | r, g, b, speed |
+| `notification_flash` | Flash nhanh 3 lần | color |
+| `pulse` | Pulse đơn từ tâm ra ngoài | color, speed |
 
 ## Lighting Scenes
 
