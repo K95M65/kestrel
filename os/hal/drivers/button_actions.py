@@ -216,7 +216,9 @@ def single_click_action(source: str = "button", announce: bool = True, chime: bo
     from hal.routes.music import audio_stop, unmute_speaker
     from hal.routes.voice import stop_tts, unmute_mic
 
+    t_start = time.monotonic()
     _wake_if_sleepy(source)
+    logger.info("[sca-trace] wake done +%.0fms", (time.monotonic() - t_start) * 1000)
 
     # A single click is a "give me the floor" gesture, so relax a user/scene
     # speaker mute too — otherwise the listening cue stays silent and the reply
@@ -226,11 +228,15 @@ def single_click_action(source: str = "button", announce: bool = True, chime: bo
     # Must run before the _tts_available() check below so the cue can play.
     if state._speaker_muted and not state._enrolling:
         logger.info("%s single click -- unmuting speaker", source)
+        t = time.monotonic()
         unmute_speaker()
+        logger.info("[sca-trace] unmute_speaker done +%.0fms", (time.monotonic() - t) * 1000)
 
     if state._mic_muted:
         logger.info("%s single click -- unmuting mic", source)
+        t = time.monotonic()
         unmute_mic()
+        logger.info("[sca-trace] unmute_mic done +%.0fms", (time.monotonic() - t) * 1000)
     else:
         logger.info("%s single click -- stopping speaker", source)
         stop_tts()
@@ -238,14 +244,18 @@ def single_click_action(source: str = "button", announce: bool = True, chime: bo
     # Ack ping AFTER the stop: stop_tts frees the persistent stream lock
     # within ~10ms, so the chime sounds effectively at gesture time.
     if chime:
+        t = time.monotonic()
         play_ack_chime(source)
+        logger.info("[sca-trace] chime done +%.0fms", (time.monotonic() - t) * 1000)
     # Announce the listening cue so the user hears confirmation of the
     # click — both for unmute (mic just opened) and for stop-speaker (the
     # device was talking, user wants the floor). The cue itself preempts
     # in-flight TTS via stop() + speak_cached retry, so calling stop_tts()
     # above is fine — _announce_listening handles the lock handoff.
     if announce:
+        t = time.monotonic()
         announce_listening_cue(source)
+        logger.info("[sca-trace] announce_listening_cue dispatched +%.0fms (total_sca=%.0fms)", (time.monotonic() - t) * 1000, (time.monotonic() - t_start) * 1000)
 
 
 def triple_click_action(source: str = "button"):

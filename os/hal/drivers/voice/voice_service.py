@@ -285,7 +285,25 @@ class VoiceService:
     def stop(self):
         self._running = False
         if hal_config.REALTIME_ENABLED:
-            self._realtime.stop()
+            # realtime.stop() calls _context.summarize_device_memory() +
+            # summarize_realtime_memory() which fire LLM requests — an
+            # unresponsive backend (Cloudflare 524, network stall) can hang
+            # them for tens of seconds and stall the entire voice teardown.
+            # Wrap in a daemon thread with a bounded join so the summarize
+            # is best-effort: if it doesn't finish in 3s we orphan it and
+            # continue teardown. Better to lose one summary than to leave
+            # the whole voice pipeline stuck waiting.
+            rt_thread = threading.Thread(
+                target=self._realtime.stop,
+                daemon=True,
+                name="voice-realtime-teardown",
+            )
+            rt_thread.start()
+            rt_thread.join(timeout=3.0)
+            if rt_thread.is_alive():
+                logger.warning(
+                    "realtime.stop() did not finish in 3s -- orphaning (memory summary or WS disconnect stalled)"
+                )
         if self._thread:
             self._thread.join(timeout=5)
             self._thread = None

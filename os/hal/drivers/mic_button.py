@@ -115,6 +115,10 @@ class MicButtonHandler:
         # Serializes _apply_state against itself so overlapping timers /
         # watchdog ticks can't check-then-write race on state._mic_muted.
         self._apply_lock = threading.Lock()
+        # Latency-trace: monotonic ts of the last GPIO edge; reset every
+        # _on_edge fire. Feeds the [mic-switch-trace] logs so operators can
+        # tell "switch was slow" from "internal ops were slow" at a glance.
+        self._last_edge_ts: float = 0.0
 
     def start(self):
         dev = _resolve_device_type()
@@ -191,6 +195,8 @@ class MicButtonHandler:
         # the last one is not always the terminal position. Instead we
         # re-read the pin in _reconcile after the bounce settles, so the
         # applied state matches the switch's real end position.
+        self._last_edge_ts = time.monotonic()
+        logger.info("[mic-switch-trace] EDGE fired (level=%d, tick=%d)", level, tick)
         with self._timer_lock:
             if self._settle_timer is not None:
                 self._settle_timer.cancel()
@@ -205,13 +211,31 @@ class MicButtonHandler:
         settle Timer (after an edge storm quiets) and from the watchdog.
         Runs under _apply_lock so concurrent triggers can't race the
         underlying mute_mic() / unmute_mic() routes."""
+        t_recon = time.monotonic()
+        since_edge = (t_recon - self._last_edge_ts) if self._last_edge_ts else -1
         try:
             current_level = self._lgpio.gpio_read(self._handle, _MIC_BTN_LINE)
         except Exception as e:
             logger.warning("Mic switch reconcile read failed: %s", e)
             return
+        logger.info(
+            "[mic-switch-trace] RECONCILE pin_level=%d muted=%s (settle_wait=%.0fms since last edge)",
+            current_level,
+            current_level == _LEVEL_MUTED,
+            since_edge * 1000 if since_edge >= 0 else -1,
+        )
+        t_lock_want = time.monotonic()
         with self._apply_lock:
+            t_lock_got = time.monotonic()
+            logger.info(
+                "[mic-switch-trace] APPLY_LOCK acquired (waited=%.0fms)",
+                (t_lock_got - t_lock_want) * 1000,
+            )
             self._apply_state_locked(current_level == _LEVEL_MUTED)
+            logger.info(
+                "[mic-switch-trace] APPLY_STATE done (total_edge→done=%.0fms)",
+                (time.monotonic() - self._last_edge_ts) * 1000 if self._last_edge_ts else -1,
+            )
 
     def _watchdog_loop(self):
         while True:
@@ -302,16 +326,20 @@ class MicButtonHandler:
                 mute_mic()
             else:
                 logger.info("mic switch → unmuting")
+                t0 = time.monotonic()
                 # Symmetric: never leave the red showing while the mic is
                 # hot — kill it immediately, even mid-wave.
                 state._clear_mic_muted_led(force=True)
+                logger.info("[mic-switch-trace] unmute step1 clear_red done +%.0fms", (time.monotonic() - t0) * 1000)
                 # Reuse the 1-tap action instead of a bare unmute_mic():
                 # wake-if-sleepy + relax speaker mute + unmute mic + ack
                 # chime + localized "I'm listening" cue — the slide switch
                 # gets the same feedback set as the button/touchpad.
                 from hal.drivers.button_actions import single_click_action
 
+                t_sca = time.monotonic()
                 single_click_action("mic-switch")
+                logger.info("[mic-switch-trace] unmute step2 single_click_action done +%.0fms (cumul=%.0fms)", (time.monotonic() - t_sca) * 1000, (time.monotonic() - t0) * 1000)
                 # After unmute the natural resting look is warm-white
                 # ambient because _user_led_state is None on fresh boots —
                 # the "listening" blue pulse only fires when speech is
