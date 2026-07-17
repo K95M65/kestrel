@@ -295,10 +295,23 @@ def restore_led():
         state.logger.info("LED restore: mic muted -- settling on privacy indicator")
         return {"status": "ok"}
     user_state = state._user_led_state
-    if user_state is None or user_state.get("type") == LST_OFF:
+    if user_state is not None and user_state.get("type") == LST_OFF:
+        # User explicitly turned the strip off — honor it, restore to black.
         state._stop_current_effect()
         state.rgb_service.dispatch(RGB_CMD_SOLID, (0, 0, 0))
-        state.logger.info("LED restore: no user state -- strip cleared")
+        state.logger.info("LED restore: user state OFF -- cleared to black")
+        return {"status": "ok"}
+    if user_state is None:
+        # No saved user preference — settle on the ambient resting look
+        # (warm-white breathing, mirrors the Go ambient loop fallback) so a
+        # transient overlay releasing the strip (voice_service noise-session
+        # cleanup, Buddy) doesn't leave the lamp DARK for ~60s until
+        # ambient.breathingLoop resumes after its interaction quiet-window.
+        # Same pattern _clear_mic_muted_led uses when no user state exists.
+        from hal.presets import AMBIENT_RESTING_LED
+
+        state._start_preset_effect(AMBIENT_RESTING_LED, "led-ambient-fallback")
+        state.logger.info("LED restore: no user state -- settling on ambient resting")
         return {"status": "ok"}
     state._restore_user_led()
     return {"status": "ok"}
