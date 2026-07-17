@@ -116,11 +116,11 @@ func TestHasPartialHWLinkMarker(t *testing.T) {
 		in   string
 		want bool
 	}{
-		{`[Lights off. Hold on](HW:/led/of`, true},   // mid-stream, unclosed
-		{`[Lights off](hw:`, true},                   // lowercase, unclosed
-		{`All done [off](`, true},                    // ends inside signature
-		{`[Lights off](HW:/led/off:{})`, false},      // complete link marker
-		{`[HW:/led/off:{}]`, false},                  // canonical, not link form
+		{`[Lights off. Hold on](HW:/led/of`, true},    // mid-stream, unclosed
+		{`[Lights off](hw:`, true},                    // lowercase, unclosed
+		{`All done [off](`, true},                     // ends inside signature
+		{`[Lights off](HW:/led/off:{})`, false},       // complete link marker
+		{`[HW:/led/off:{}]`, false},                   // canonical, not link form
 		{`See the [docs](https://x.vn) here.`, false}, // plain link
 	} {
 		if got := hasPartialHWLinkMarker(tc.in); got != tc.want {
