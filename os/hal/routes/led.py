@@ -95,12 +95,38 @@ def set_led_solid(req: LEDSolidRequest):
     return {"status": "ok"}
 
 
+def _expand_gradient(stops, n: int) -> list:
+    """Linearly interpolate color stops across n pixels (CSS-gradient style)."""
+    rgb = []
+    for c in stops:
+        if isinstance(c, int):
+            rgb.append(((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF))
+        elif isinstance(c, (list, tuple)) and len(c) >= 3:
+            rgb.append(tuple(c[:3]))
+    if not rgb:
+        return []
+    if len(rgb) == 1 or n <= 1:
+        return [rgb[0]] * max(n, 1)
+    out = []
+    segs = len(rgb) - 1
+    for i in range(n):
+        pos = i * segs / (n - 1)
+        k = min(int(pos), segs - 1)
+        t = pos - k
+        a, b = rgb[k], rgb[k + 1]
+        out.append(tuple(int(x + (y - x) * t) for x, y in zip(a, b)))
+    return out
+
+
 @router.post("/led/paint", response_model=StatusResponse)
 def set_led_paint(req: LEDPaintRequest):
     """Set individual pixel colors (multi-color fills, gradients)."""
     if not state.rgb_service:
         raise HTTPException(503, "LED not available")
-    colors = [tuple(c) if isinstance(c, list) else c for c in req.colors]
+    if req.gradient:
+        colors = _expand_gradient(req.colors, state.rgb_service.led_count)
+    else:
+        colors = [tuple(c) if isinstance(c, list) else c for c in req.colors]
     # A running effect repaints the strip every ~40ms and would overwrite
     # the painted pixels — stop it first, same as /led/solid.
     state._stop_current_effect()
@@ -115,7 +141,14 @@ def set_led_paint(req: LEDPaintRequest):
         state._cancel_pending_restore()
     else:
         state._dismiss_mic_muted_led("led/paint")
-        state._save_user_led_state({"type": LST_PAINT, "colors": req.colors})
+        # Persist the final pixel list (gradient already expanded) so restore
+        # repaints exactly what the strip showed.
+        state._save_user_led_state(
+            {
+                "type": LST_PAINT,
+                "colors": [list(c) if isinstance(c, tuple) else c for c in colors],
+            }
+        )
     return {"status": "ok"}
 
 

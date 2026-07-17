@@ -456,8 +456,16 @@ async def lifespan(app: FastAPI):
                     # the tool, so the realtime model can't set an emotion.
                     enable_expression=("expression" in _profile.capabilities),
                 )
-                state.voice_service.start()
-                logger.info("VoiceService auto-started (%s, wake_words=%s)", stt_provider.name, wake_words)
+                if state._mic_muted:
+                    # Mute restored from the sidecar (or the physical switch
+                    # applied it during driver init): build the pipeline but
+                    # don't open the mic — same guard as routes/voice.py
+                    # start_voice. Without this the boot auto-start reopened
+                    # the mic on every HAL restart while "muted".
+                    logger.info("VoiceService created but NOT started -- mic muted")
+                else:
+                    state.voice_service.start()
+                    logger.info("VoiceService auto-started (%s, wake_words=%s)", stt_provider.name, wake_words)
     except FileNotFoundError:
         logger.info(
             f"os-server config not found at {os_config_path}, voice will wait for /voice/start"
