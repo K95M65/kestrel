@@ -437,8 +437,14 @@ class EmotionPerception(Perception[FaceDetectionData]):
         """Crop face, send to emotion backend, buffer result."""
 
         h, w = frame.shape[:2]
-        # bbox is [x1, y1, x2, y2] from InsightFace
-        x1, y1, x2, y2 = face.bbox
+        # Prefer the face-mesh re-centered box computed during face recognition
+        # (get_box over the dense 468 landmarks): tighter and better-centered on
+        # the face than the raw detector bbox, and the framing the cloud emotion
+        # model expects, with NO rotation applied. Fall back to the detector bbox
+        # when no mesh box is available (e.g. the v1 recognizer). Both are
+        # [x1, y1, x2, y2].
+        box_source = "emotion_box" if face.emotion_box is not None else "bbox"
+        x1, y1, x2, y2 = face.emotion_box if face.emotion_box is not None else face.bbox
 
         # Clamp to frame bounds
         x1 = max(0, x1)
@@ -504,6 +510,9 @@ class EmotionPerception(Perception[FaceDetectionData]):
             # frame.jpg to reproduce input.jpg (bbox above is the raw, unclamped
             # detector box, which may extend past the frame edges).
             crop_box=[x1, y1, x2, y2],
+            # Which box produced the crop: the face-mesh re-centered box (reused
+            # from recognition) or the raw detector bbox fallback.
+            box_source=box_source,
             frame_size=[w, h],
             person_id=face.person_id,
             face_confidence=face.confidence,
