@@ -241,8 +241,12 @@ function renderMarkdown(text: string): ReactNode {
 }
 
 // Strip inline HW control markers like [HW:/emotion:{"emotion":"curious","intensity":0.7}]
+// and the markdown-link form [label](HW:/led/off:{}) some LLMs emit (keep the label).
 function stripHWMarkers(text: string): string {
-  return text.replace(/\[HW:\/[^\]]*\]/g, "").trim();
+  return text
+    .replace(/\[([^\]]*)\]\(\s*HW:[^)]*\)/g, "$1")
+    .replace(/\[HW:\/[^\]]*\]/g, "")
+    .trim();
 }
 
 // ─── Tool call parsing ──────────────────────────────────────────────────────

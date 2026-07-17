@@ -67,6 +67,33 @@ var prunedImageMarkerRe = regexp.MustCompile(`\[image[^\]]*removed[^\]]*\]`)
 // normalizes these to slashes after capture.
 var hwMarkerRe = regexp.MustCompile(`\[HW:((?:/[^{:\]]+(?::[^{:\]]+)*))(?::(\{[^}]*\}))?\]`)
 
+// hwLinkRe matches markdown-link-form markers like
+// [Tắt đèn liền đây!](HW:/led/off:{}) that markdown-trained LLMs sometimes
+// emit instead of the canonical [HW:/led/off:{}] — the sentence becomes a link
+// label and the marker moves into the URL slot. hwMarkerRe never matches that
+// shape, so the command was silently dropped (the LED never turned off) and
+// the raw link leaked into chat/TTS. normalizeHWMarkers rewrites it to the
+// canonical form, keeping the label as speakable text.
+var hwLinkRe = regexp.MustCompile(`\[([^\]]*)\]\(\s*HW:((?:/[^(){:\s]+(?::[^(){:\s]+)*))(?::(\{[^}]*\}))?\s*\)`)
+
+// normalizeHWMarkers rewrites markdown-link-form markers to the canonical
+// inline form. The marker is placed BEFORE the label so a reply that opens
+// with a link still counts as a leading marker (fires at stream time).
+func normalizeHWMarkers(text string) string {
+	return hwLinkRe.ReplaceAllStringFunc(text, func(m string) string {
+		sub := hwLinkRe.FindStringSubmatch(m)
+		label, path, body := sub[1], sub[2], sub[3]
+		if body == "" {
+			body = "{}"
+		}
+		marker := "[HW:" + path + ":" + body + "]"
+		if strings.TrimSpace(label) == "" {
+			return marker
+		}
+		return marker + " " + label
+	})
+}
+
 type hwCall struct {
 	path string
 	body string
@@ -75,6 +102,7 @@ type hwCall struct {
 // extractHWCalls parses all [HW:/path:{"json"}] markers from text,
 // returns the list of calls and the text with all markers stripped.
 func extractHWCalls(text string) ([]hwCall, string) {
+	text = normalizeHWMarkers(text)
 	matches := hwMarkerRe.FindAllStringSubmatch(text, -1)
 	calls := make([]hwCall, 0, len(matches))
 	for _, m := range matches {
@@ -111,6 +139,7 @@ func extractHWCalls(text string) ([]hwCall, string) {
 // Caller hands the resulting count to recordFiredHWCount so lifecycle:end can
 // skip these markers via extractHWCalls's stable in-order output.
 func extractLeadingHWCalls(text string) []hwCall {
+	text = normalizeHWMarkers(text)
 	matches := hwMarkerRe.FindAllStringSubmatchIndex(text, -1)
 	var calls []hwCall
 	expectedPos := 0

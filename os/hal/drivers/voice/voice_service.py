@@ -67,9 +67,15 @@ class VoiceService:
         re.IGNORECASE,
     )
 
+    # Markdown-link-form HW marker like [Tắt đèn](HW:/led/off:{}) — some LLMs
+    # wrap the marker in a link. Keep the label, drop the marker (mirrors
+    # hwLinkRe in os-server handler_hw.go).
+    RT_HW_LINK_RE: re.Pattern[str] = re.compile(r"\[([^\]]*)\]\(\s*HW:[^)]*\)")
+
     @staticmethod
     def strip_rt_markers(text: str) -> str:
         """Remove HW markers, audio tags, and system tags from realtime agent text."""
+        text = VoiceService.RT_HW_LINK_RE.sub(r"\1", text)
         cleaned: str = VoiceService.RT_MARKER_RE.sub("", text)
         cleaned = re.sub(r"  +", " ", cleaned).strip()
         return cleaned
