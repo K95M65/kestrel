@@ -234,7 +234,7 @@ class MicButtonHandler:
         if state._mic_muted == muted:
             return
 
-        from hal.routes.voice import mute_mic
+        from hal.routes.voice import mute_mic, stop_tts
 
         try:
             if muted:
@@ -245,6 +245,10 @@ class MicButtonHandler:
                 # the feedback must not wait that out. force also paints
                 # over a live TTS/music wave (mute_mic's own call defers).
                 state._apply_mic_muted_led(force=True)
+                # Cut any in-flight speech too: the throw reads as "quiet,
+                # stop listening" — don't finish the sentence over it.
+                # (~10ms; its speak-end restore settles on the red above.)
+                stop_tts()
                 mute_mic()
             else:
                 logger.info("mic switch → unmuting")
