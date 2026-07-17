@@ -452,30 +452,46 @@ def _start_mic_muted_effect():
     _start_preset_effect(STATUS_LED_PRESETS["mic_muted"], "led-mic-muted")
 
 
-def _apply_mic_muted_led():
+def _apply_mic_muted_led(force: bool = False):
     """Turn on the mic-muted resting indicator (called by POST /voice/mute).
 
     Paints immediately unless a TTS/music wave owns the strip — then the
-    wave-end restore lands on the red (see _restore_user_led)."""
+    wave-end restore lands on the red (see _restore_user_led).
+
+    force=True (physical mic switch) paints NOW even over a live wave: a
+    hardware throw is the most deliberate mute there is, so its feedback
+    must not wait out the current utterance. TTS audio keeps playing —
+    only the wave visual is replaced; the wave-end restore then keeps
+    settling on the red as usual."""
     global _mic_muted_led
-    if _mic_muted_led:
+    if _mic_muted_led and not force:
         return
     _mic_muted_led = True
-    logger.info("Mic-muted LED indicator ON")
-    if _tts_speaking or _music_playing:
+    logger.info("Mic-muted LED indicator ON%s", " (forced)" if force else "")
+    if not force and (_tts_speaking or _music_playing):
         return
     _start_mic_muted_effect()
 
 
-def _clear_mic_muted_led():
+def _clear_mic_muted_led(force: bool = False):
     """Drop the mic-muted indicator and restore the user's saved LED state
-    (called by POST /voice/unmute and scene mic-unmute paths)."""
+    (called by POST /voice/unmute and scene mic-unmute paths).
+
+    force=True (physical mic switch) also kills a red painted over a live
+    wave (see _apply_mic_muted_led force) so the strip never shows "muted"
+    while the mic is actually hot — the wave-end restore then lands on the
+    user state."""
     global _mic_muted_led, _effect_thread, _effect_name, _effect_base_color
-    if not _mic_muted_led:
+    if not _mic_muted_led and not force:
         return
     _mic_muted_led = False
     logger.info("Mic-muted LED indicator OFF -- restoring user state")
     if _tts_speaking or _music_playing:
+        if force and _effect_thread is not None and _effect_thread.name == "led-mic-muted":
+            # A forced mute painted red over this wave; stop it now. The
+            # strip stays dark for the rest of the utterance and the
+            # wave-end restore repaints the user state.
+            _stop_current_effect()
         return
     # With no saved user state (fresh boot, user never picked a color)
     # _restore_user_led is a no-op ("keeping emotion color") and would

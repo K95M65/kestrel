@@ -346,10 +346,13 @@ def mute_mic():
         return {"status": "already_muted"}
     state._mic_muted = True
     state._mic_manual_override = True
-    if state.voice_service and state.voice_service.available:
-        state.voice_service.stop()
+    # LED + sidecar BEFORE the pipeline teardown: voice_service.stop() can
+    # block for seconds (session teardown), and the mute feedback must not
+    # wait that out.
     state._apply_mic_muted_led()
     state._persist_mic_state()
+    if state.voice_service and state.voice_service.available:
+        state.voice_service.stop()
     state.logger.info("Mic muted by user")
     return {"status": "ok"}
 

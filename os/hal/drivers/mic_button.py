@@ -234,14 +234,29 @@ class MicButtonHandler:
         if state._mic_muted == muted:
             return
 
-        from hal.routes.voice import mute_mic, unmute_mic
+        from hal.routes.voice import mute_mic
 
         try:
             if muted:
                 logger.info("mic switch → muting")
+                # Physical throw = the most deliberate mute there is: paint
+                # the indicator BEFORE the route runs — mute_mic blocks for
+                # seconds in voice_service.stop() (session teardown), and
+                # the feedback must not wait that out. force also paints
+                # over a live TTS/music wave (mute_mic's own call defers).
+                state._apply_mic_muted_led(force=True)
                 mute_mic()
             else:
                 logger.info("mic switch → unmuting")
-                unmute_mic()
+                # Symmetric: never leave the red showing while the mic is
+                # hot — kill it immediately, even mid-wave.
+                state._clear_mic_muted_led(force=True)
+                # Reuse the 1-tap action instead of a bare unmute_mic():
+                # wake-if-sleepy + relax speaker mute + unmute mic + ack
+                # chime + localized "I'm listening" cue — the slide switch
+                # gets the same feedback set as the button/touchpad.
+                from hal.drivers.button_actions import single_click_action
+
+                single_click_action("mic-switch")
         except Exception as e:
             logger.warning("Mic switch apply failed: %s", e)
