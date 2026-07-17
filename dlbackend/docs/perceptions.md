@@ -52,7 +52,7 @@ Classifies human actions from a rolling clip of frames into Kinetics classes.
 
 Classifies emotion from a face crop.
 
-- Enum `EmotionRecognizerEnum` (`enums/facial_emotion.py`): `posterv2`, `emonet_8`, `emonet_5`
+- Enum `EmotionRecognizerEnum` (`enums/facial_emotion.py`): `posterv2`, `emonet_8`, `emonet_5`, `emoaffectnet`
 - Predictors (`perception/facial_emotion/predictors/`):
 
   | Model | File | Architecture | Weights | Input | Output |
@@ -60,6 +60,11 @@ Classifies emotion from a face crop.
   | **POSTER V2** (default) | `posterv2.py` | POSTER V2 ONNX | `posterv2_7cls.onnx` | 224×224 | 7 RAF-DB emotions |
   | EmoNet-8 | `emonet.py` | EmoNet ONNX | `emonet_8.onnx` | 256×256 | 8 emotions + valence + arousal |
   | EmoNet-5 | `emonet.py` | EmoNet ONNX | `emonet_5.onnx` | 256×256 | 5 emotions + valence + arousal |
+  | Emo-AffectNet | `emoaffectnet.py` | ResNet-50 ONNX | `emoaffectnet_resnet50.onnx` | 224×224 | 7 AffectNet emotions |
+
+- The winning label is gated by a per-label confidence threshold
+  (`label_gating.py`); below its bar → `Neutral`. See
+  [configuration.md](configuration.md) (`FER__LABEL_THRESHOLDS`).
 
 - Output: `EmotionDetection` → `emotions: list[Emotion{emotion, confidence,
   face_confidence, bbox, valence?, arousal?}]`.
@@ -173,6 +178,7 @@ on first use. Override with `<NAME>__CKPT_PATH` (local) or `<NAME>__REMOTE_URL` 
 | POSTER V2 | `posterv2_7cls.onnx` | ONNX | `onnx_models/` |
 | EmoNet-8 | `emonet_8.onnx` | ONNX | `onnx_models/` |
 | EmoNet-5 | `emonet_5.onnx` | ONNX | `onnx_models/` |
+| Emo-AffectNet | `emoaffectnet_resnet50.onnx` | ONNX | `onnx_models/` |
 | RTMPose-M | `rtmpose-m.onnx` | ONNX | `onnx_models/` |
 | TCPFormer | `tcpformer_h36m_243.onnx` | ONNX | `onnx_models/` |
 | emotion2vec+ | `emotion2vec.onnx` | ONNX | `onnx_models/` |
@@ -200,6 +206,7 @@ export-all              # run all exports (skips missing checkpoints)
 export-uniformerv2      # UniformerV2 action recognition
 export-posterv2         # POSTER V2 facial emotion
 export-emonet           # EmoNet facial emotion (5 or 8 class)
+export-emoaffectnet     # Emo-AffectNet facial emotion (ResNet-50, downloads from HF)
 export-emotion2vec      # emotion2vec+ speech emotion (downloads from HF)
 export-tcpformer        # TCPFormer 3D pose lifter
 export-owlv2            # OWLv2 zero-shot object detection (downloads from HF)
@@ -220,6 +227,7 @@ All models export with ONNX opset 17. `B` = batch, `T` = variable time, `K` = nu
 | **UniformerV2** | `videos` | `[B,1,3,8,224,224]` | Normalize: mean=0.45, std=0.225 | `probs` | `[B, num_classes]` softmax |
 | **POSTER V2** | `images` | `[B,3,224,224]` | ImageNet norm: mean=[0.485,0.456,0.406], std=[0.229,0.224,0.225] | `probs` | `[B, 7]` softmax |
 | **EmoNet** | `images` | `[B,3,256,256]` | Range [0,1], no normalization | `probs`, `valence`, `arousal` | `[B,N]` softmax, `[B]`, `[B]` |
+| **Emo-AffectNet** | `images` | `[B,3,224,224]` | RGB→BGR flip, ×255, VGGFace2 mean subtract — all baked into ONNX (caller passes [0,1] RGB) | `probs` | `[B, 7]` softmax |
 | **emotion2vec+** | `audio` | `[B, T]` (16kHz mono) | Optional mean/var normalize | `probs` | `[B, 9]` softmax |
 | **TCPFormer** | `keypoints` | `[B,243,17,3]` | Raw 2D skeleton (x,y,conf) | `poses` | `[B,243,17,3]` 3D coords |
 | **OWLv2** | `images`, `class_tokens` | `[B,3,H,W]`, `[K,16]` int64 | OWLv2Processor | `boxes`, `probs`, `labels` | `[B,N,4]` xywh, `[B,N,K]`, `[B,N]` |
@@ -246,6 +254,7 @@ checkpoint). For example: `YOLO_WORLD_ONNX`, `YOLO_WORLD_NMS_ONNX`,
 | `export-uniformerv2` | PyTorch `.pth` | `models/pretrained/<config>.pth` | `models/onnx/uniformerv2-*_fp32.onnx` |
 | `export-posterv2` | PyTorch `.pth` | `models/pretrained/posterv2_7cls.pth` | `models/onnx/posterv2_7cls.onnx` |
 | `export-emonet` | PyTorch `.pth` | `models/pretrained/emonet_{5,8}.pth` | `models/onnx/emonet_{5,8}.onnx` |
+| `export-emoaffectnet` | HuggingFace | `ElenaRyumina/face_emotion_recognition` (`FER_static_ResNet50_AffectNet.pt`) | `models/onnx/emoaffectnet_resnet50.onnx` |
 | `export-emotion2vec` | HuggingFace | `iic/emotion2vec_plus_large` | `models/onnx/emotion2vec.onnx` |
 | `export-tcpformer` | PyTorch `.pth.tr` | `models/pretrained/TCPFormer_h36m_243_379.pth.tr` | `models/onnx/tcpformer_h36m_243.onnx` |
 | `export-owlv2` | HuggingFace | `google/owlv2-large-patch14-ensemble` | `models/onnx/owlv2_raw.onnx` (raw) / `owlv2.onnx` (NMS) |
