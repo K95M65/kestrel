@@ -17,12 +17,12 @@ claudecode-specific protocol, layout, and quirks.
 > and the **claude.ai OAuth login** flow (§7b) as an alternative to the
 > config.json API key. Known caveats are flagged ⚠️ in §11.
 
-Code: `os/services/internal/claudecode/`.
+Code: `os/services/internal/agent/runtimes/claudecode/`.
 
 | What | Where on device |
 |------|-----------------|
 | Claude Code CLI | `/usr/local/bin/claude` (symlink → `/root/.local/bin/claude`) |
-| Bridge (systemd `claudecode.service`) | `os-server claudecode-gatewayd` subcommand (compiled into `/usr/local/bin/os-server`; code `os/services/internal/claudecode/gatewayd/`) |
+| Bridge (systemd `claudecode.service`) | `os-server claudecode-gatewayd` subcommand (compiled into `/usr/local/bin/os-server`; code `os/services/internal/agent/runtimes/claudecode/gatewayd/`) |
 | Launch env (`ANTHROPIC_*`, channel flags) | `/root/.claudecode/.env` (presync-owned) |
 | Workspace (Claude's cwd) | `/root/.claudecode/workspace/` |
 | Persona / memory | `workspace/{CLAUDE,SOUL,IDENTITY,USER,MEMORY,KNOWLEDGE}.md`, `workspace/memory/*.md` |
@@ -107,7 +107,7 @@ without a switch):
 ## 3. The bridge (`os-server claudecode-gatewayd`)
 
 Claude Code has no server mode, so the systemd unit runs a small Go gatewayd
-(`internal/claudecode/gatewayd/`, structurally mirroring the codex gatewayd —
+(`internal/agent/runtimes/claudecode/gatewayd/`, structurally mirroring the codex gatewayd —
 no python3/websockets dependency) that:
 
 - holds **one persistent headless Claude process**:
@@ -202,7 +202,7 @@ in-session conversation is lost. `CompactSession` returns
 ## 7. Channels — all device-owned (telegram, discord, slack)
 
 `SupportedChannels() = [telegram, slack, discord]`. All three receive loops
-run inside os-server, mirroring `internal/codex` 1:1. Claude Code's native
+run inside os-server, mirroring `internal/agent/runtimes/codex` 1:1. Claude Code's native
 telegram/discord channel plugins are **deliberately not used**: they proved
 undebuggable in the field (bun children with no journal logs, silent
 allowlist drops, silent death on bridge-restart races), and they would compete
@@ -236,7 +236,7 @@ plugin.
   ~30 s, but rotating it while a session is open takes effect on the next
   session cycle. whatsapp → `domain.ErrChannelNotSupported`.
 - **Slack is DEVICE-OWNED** (`slack.go` + `slack_sender.go`, a mirror of
-  `internal/codex/slack.go`): Claude Code has no slack channel plugin ("Claude
+  `internal/agent/runtimes/codex/slack.go`): Claude Code has no slack channel plugin ("Claude
   in Slack" is a separate cloud feature that spawns web sessions from `@Claude`
   mentions, not a device channel). Instead the public bff-campaign-service
   proxy receives Slack Events API deliveries and fans them out over MQTT to the
@@ -266,7 +266,7 @@ plugin.
 ## 7b. Auth — claude.ai OAuth login (alternative to the API key)
 
 The device can authenticate with the **user's own Claude subscription** instead
-of `llm_api_key`. The flow (`internal/claudecode/login.go`, the
+of `llm_api_key`. The flow (`internal/agent/runtimes/claudecode/login.go`, the
 `domain.ClaudeLoginPairer` optional interface) mirrors the WhatsApp pairing
 flow — streaming `PairingEvent`s — with one extra leg: the OAuth code travels
 back into the flow.

@@ -385,8 +385,8 @@ fi
 # ── Codex + Claude Code + PicoClaw CLI binary pre-bake (lamp + intern-v2) ───
 # Same fast-path trick as the Hermes binary pre-bake above: bake ONLY the raw
 # CLI binaries here — no systemd unit, no presync/onboard, no enable/start.
-# Those stay owned entirely by each backend's own install.sh (internal/codex,
-# internal/claudecode, internal/picoclaw — embedded in os-server, fetched by
+# Those stay owned entirely by each backend's own install.sh (internal/agent/runtimes/codex,
+# internal/agent/runtimes/claudecode, internal/agent/runtimes/picoclaw — embedded in os-server, fetched by
 # switch-runtime on the first real switch to that runtime); each detects the
 # binary already present and skips its own download, same as hermes above.
 # Versions are pinned here just like CODEX_VERSION/PICO_VERSION in their
@@ -402,7 +402,7 @@ fi
 #   [x] Claude Code — baked here, lamp + intern-v2
 #   [x] Codex       — baked here, lamp + intern-v2
 #   [x] PicoClaw    — baked here, lamp + intern-v2 (backend exists —
-#                      internal/picoclaw + AgentGateway registered — UI badge
+#                      internal/agent/runtimes/picoclaw + AgentGateway registered — UI badge
 #                      is "coming soon" only pending product flip, not a
 #                      missing backend)
 #   [ ] OpenCode  — NOT baked: no internal/opencode package, no AgentGateway

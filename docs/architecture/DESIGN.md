@@ -104,7 +104,7 @@ committees, no heavy process. Docs live in-tree beside the code they describe.
 The restructure landed in CI-gated stages:
 
 1. ✅ **Conformance + base**: `contract/COMPATIBILITY.md`, `cts/`, `devices/_base`.
-2. ✅ **Go layer**: `os/core` → `os/services` (runtime bridge stays `os/services/internal/openclaw`).
+2. ✅ **Go layer**: `os/core` → `os/services` (runtime bridge stays `os/services/internal/agent/runtimes/openclaw`).
 3. ✅ **HAL package**: `lelamp` → `hal`, surfaced as `os/hal/drivers` (by subsystem) +
    `os/hal/board` (by board). Deploy identifiers renamed consistently (`/opt/hal`,
    `os/ota/hal`, `python -m hal.server`). On-device `LELAMP_*` env vars remain as **legacy

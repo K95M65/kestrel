@@ -69,10 +69,10 @@ interface `AgentGateway`. Các method chia nhóm:
 | **Lifecycle / onboarding** | `SetupAgent`, `EnsureOnboarding`, `ResetAgent`, `RestartAgent`, `RefreshModelsConfig` | Quyết theo backend; ghi rõ lý do no-op. |
 | **Cận-migration** | `UpdateIdentityName`, `StartSkillWatcher`, `WatchIdentity`, `StartModelSync`, `UpdatePrimaryModel`, `StartPrimaryModelWatch`, `CompactSession`, `NewSession`, `FetchChatHistory`, `WriteMCPEntry`/`RemoveMCPEntry`, `GetConfigJSON` | **Vùng nguy hiểm** — dễ no-op, đắt để phát hiện thiếu. Xem §4–§6. |
 
-**Bài học (Hermes):** ~15 method bị stub no-op trong `internal/hermes/stubs.go`.
+**Bài học (Hermes):** ~15 method bị stub no-op trong `internal/agent/runtimes/hermes/stubs.go`.
 Một số đúng là N/A (`PairWhatsapp` — không có plugin). `WriteMCPEntry`/`RemoveMCPEntry`
 ban đầu bị hoãn (`TODO(hermes-mcp)`) nhưng **sau đó được hiện thực** trên
-`mcp_servers` của `config.yaml` (`internal/hermes/mcp.go`), kèm clone config→config
+`mcp_servers` của `config.yaml` (`internal/agent/runtimes/hermes/mcp.go`), kèm clone config→config
 khi switch runtime (`internal/agent/mcp_reconcile.go`). Nhưng `StartSkillWatcher`,
 `UpdateIdentityName`, và đường config-sync là **gap chức năng**, không phải N/A —
 ship dạng no-op và chỉ phát hiện khi skills bị cũ / đổi tên vô tác dụng / config
@@ -157,7 +157,7 @@ Mẫu fix (dùng cho mọi thứ có state):
   `materializePresync`, gọi trong switch flow cạnh `materializeInstaller`).
 - `switch_runtime.sh` chạy `runtime-<name>-presync` ngay trước khi backend start.
 
-Presync của Hermes (`internal/hermes/presync.sh`) giờ làm chủ **cả** model wiring
+Presync của Hermes (`internal/agent/runtimes/hermes/presync.sh`) giờ làm chủ **cả** model wiring
 trong `config.yaml` (idempotent — coerce `model: ''` bị reset về map, khẳng định
 structure `provider`/`custom_providers`, sync `llm_*`/secrets) **lẫn** restore
 skills (chạy lại `claw migrate` khi `skills/openclaw-imports` rỗng). Giữ `verify`
@@ -249,7 +249,7 @@ trong doc backend (vd `docs/agentic/hermes.md`), không phải đảm bảo chun
   fetch/extract/hash share ở `internal/skills/skillzip.go`
   (`FetchSkillVersions`/`DownloadToTempFile`/`FolderHash`/`ExtractSkillZip`). Thêm
   `internal/<name>/skill_watcher.go` mỏng song song với
-  `internal/openclaw/skill_watcher.go` — chỉ khác **thư mục đích** và **đường
+  `internal/agent/runtimes/openclaw/skill_watcher.go` — chỉ khác **thư mục đích** và **đường
   notify**. Gate bằng `skills.Supported(device.Capabilities(...))`. Notify agent
   bằng `SendSystemChatMessage`.
 
@@ -265,7 +265,7 @@ trên event `message:preprocessed` của OpenClaw — `emotion-acknowledge` (m�
 **Vì sao OpenClaw cần hook còn Hermes thì không.** Trong OpenClaw mọi turn chạy
 bên trong daemon; os-server đẩy tin qua WebSocket rồi mất dấu, nên chỗ duy nhất để
 chen "thinking" đúng thời điểm là hook. Với Hermes, điểm chặn đã nằm phía Go —
-**mọi turn gửi tới Hermes đều đi qua `internal/hermes/chat.go:sendChat`** (voice,
+**mọi turn gửi tới Hermes đều đi qua `internal/agent/runtimes/hermes/chat.go:sendChat`** (voice,
 sensing, web, và cả Telegram — receive loop nằm phía Lumi, xem `telegramRunOrigin`).
 Nên ta reimplement hook native bằng Go và fire từ `sendChat`, thay vì materialize
 file hook vào workspace (Hermes không có onboarding Go để làm việc đó, và không có
@@ -273,7 +273,7 @@ loader `~/.hermes/hooks/HOOK.yaml` để chạy — `handler.ts` mà `claw migra
 vào là đồ chết dưới Hermes).
 
 Đã làm:
-- **`emotion-acknowledge` → Go native** trong `internal/hermes/emotion_ack.go`
+- **`emotion-acknowledge` → Go native** trong `internal/agent/runtimes/hermes/emotion_ack.go`
   (`fireAckEmotion`, gọi từ `sendChat`). Mirror `handler.ts` 1:1: cùng emotion
   (`thinking`, intensity `0.7`), cùng skip prefix
   (`[sensing:`/`[activity]`/`[emotion]`/`[speech_emotion]` + rỗng), và cap-gate đi
@@ -286,7 +286,7 @@ vào là đồ chết dưới Hermes).
   (`busySince`/`activeTurn`) trước round-trip mạng, nên gate riêng sẽ trùng lặp.
 
 > ⚠️ **Coupling bảo trì — không có liên kết compile-time.** `hooks/emotion-acknowledge/
-> handler.ts` (OpenClaw) và `internal/hermes/emotion_ack.go` (Hermes) là hai bản
+> handler.ts` (OpenClaw) và `internal/agent/runtimes/hermes/emotion_ack.go` (Hermes) là hai bản
 > cài đặt độc lập của cùng một hành vi. **Sửa cái này phải sửa cái kia** — skip
 > rules, tên/intensity emotion, và cap-gate phải y hệt, nếu không hai backend lệch
 > nhau trong im lặng. Giữ comment chéo trong cả hai file.
@@ -342,10 +342,10 @@ khi runtime đổi.
 
 - **`SupportedChannels() []string`** (method mới của `AgentGateway`,
   `domain/agent.go`) — trả các kênh runtime chạy được. Theo backend:
-  - openclaw → `[telegram, slack, discord, whatsapp]` (`internal/openclaw/channels.go`)
-  - hermes → `[telegram, slack, discord]` (`internal/hermes/channels.go`)
-  - picoclaw → `[telegram]` (`internal/picoclaw/channels.go`)
-  - claudecode → `[telegram, slack, discord]` (`internal/claudecode/channels.go`
+  - openclaw → `[telegram, slack, discord, whatsapp]` (`internal/agent/runtimes/openclaw/channels.go`)
+  - hermes → `[telegram, slack, discord]` (`internal/agent/runtimes/hermes/channels.go`)
+  - picoclaw → `[telegram]` (`internal/agent/runtimes/picoclaw/channels.go`)
+  - claudecode → `[telegram, slack, discord]` (`internal/agent/runtimes/claudecode/channels.go`
     — tất cả do device sở hữu, mirror codex: loop getUpdates
     `telegram_poll.go`, session discordgo `discord.go`, bridge MQTT `slack.go`;
     channel plugin native của Claude Code cố ý không dùng)

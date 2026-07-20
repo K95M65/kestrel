@@ -23,7 +23,7 @@ LLM. *(`os/services`)*
 **Agentic Runtime** — **OpenClaw**, **Hermes**, **PicoClaw**, **OpenAI Codex**, **Claude Code**,
 or a custom runtime. Runs the skills, embodies the device's `SOUL.md`, and decides what to act
 on. Swappable — and where Autonomous's differentiated value (the default brain, memory,
-character) lives. *(`os/services/internal/{openclaw,hermes,picoclaw,codex,claudecode}`)*
+character) lives. *(`os/services/internal/agent/runtimes/{openclaw,hermes,picoclaw,codex,claudecode}`)*
 
 **HAL — Capabilities** — the frozen, versioned interface: `audio`, `vision`, `motion`, `light`,
 `display`, `presence`. Skills call capabilities (`motion.move`), never hardware models, so one

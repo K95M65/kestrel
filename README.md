@@ -56,7 +56,7 @@ The always-on Go daemon: `intent` (fast local commands), `network`, `OTA`, `sens
 runtime. Runs the skills, embodies the device's `SOUL.md`, and decides what to act on.
 Swappable at runtime (web Settings or MQTT) — and where Autonomous OS's differentiated value
 (the default brain, memory, character) lives.
-*(`os/services/internal/{openclaw,hermes,picoclaw,codex,claudecode}`; adding
+*(`os/services/internal/agent/runtimes/{openclaw,hermes,picoclaw,codex,claudecode}`; adding
 your own: `docs/agentic/adding-agent-runtime.md`)*
 
 ### Hardware Abstraction Layer (HAL)

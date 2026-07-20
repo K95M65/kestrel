@@ -69,10 +69,10 @@ Your backend lives in `internal/<name>/` and its `*Service` must satisfy the
 | **Lifecycle / onboarding** | `SetupAgent`, `EnsureOnboarding`, `ResetAgent`, `RestartAgent`, `RefreshModelsConfig` | Decide per backend; document the no-op. |
 | **Migration-adjacent** | `UpdateIdentityName`, `StartSkillWatcher`, `WatchIdentity`, `StartModelSync`, `UpdatePrimaryModel`, `StartPrimaryModelWatch`, `CompactSession`, `NewSession`, `FetchChatHistory`, `WriteMCPEntry`/`RemoveMCPEntry`, `GetConfigJSON` | **The danger zone** — easy to no-op, expensive to discover missing. See §4–§6. |
 
-**Lesson (Hermes):** ~15 of these were stubbed no-op in `internal/hermes/stubs.go`.
+**Lesson (Hermes):** ~15 of these were stubbed no-op in `internal/agent/runtimes/hermes/stubs.go`.
 Some are legitimately N/A (`PairWhatsapp` — no plugin); `WriteMCPEntry`/`RemoveMCPEntry`
 were initially deferred (`TODO(hermes-mcp)`) and **later implemented** against
-`config.yaml` `mcp_servers` (`internal/hermes/mcp.go`), with a config→config clone on
+`config.yaml` `mcp_servers` (`internal/agent/runtimes/hermes/mcp.go`), with a config→config clone on
 runtime switch (`internal/agent/mcp_reconcile.go`). But `StartSkillWatcher`,
 `UpdateIdentityName`, and the config-sync path
 were **functional gaps**, not N/A — they shipped as no-ops and we only noticed when
@@ -160,7 +160,7 @@ The fix pattern (use it for everything stateful):
   `materializePresync`, called from the switch flow next to `materializeInstaller`).
 - `switch_runtime.sh` runs `runtime-<name>-presync` right before the backend starts.
 
-Hermes's presync (`internal/hermes/presync.sh`) now owns **both** the
+Hermes's presync (`internal/agent/runtimes/hermes/presync.sh`) now owns **both** the
 `config.yaml` model wiring (idempotent — coerces a reset-blanked `model: ''` back
 to a map, asserts `provider`/`custom_providers` structure, syncs `llm_*`/secrets)
 **and** the skill restore (re-runs `claw migrate` when `skills/openclaw-imports`
@@ -256,7 +256,7 @@ in its backend doc (e.g. `docs/agentic/hermes.md`), not a blanket guarantee here
 - **Skill watcher** (auto-update from CDN, capability-gated): the generic
   fetch/extract/hash plumbing is shared in `internal/skills/skillzip.go`
   (`FetchSkillVersions`/`DownloadToTempFile`/`FolderHash`/`ExtractSkillZip`). Add a
-  thin `internal/<name>/skill_watcher.go` parallel to `internal/openclaw/skill_watcher.go`
+  thin `internal/<name>/skill_watcher.go` parallel to `internal/agent/runtimes/openclaw/skill_watcher.go`
   — only the **target dir** and the **notify path** differ. Gate with
   `skills.Supported(device.Capabilities(...))`. Notify the agent with
   `SendSystemChatMessage`.
@@ -275,7 +275,7 @@ them.
 inside the daemon; os-server pushes the message over WebSocket and loses the
 thread, so the only place to inject "thinking" at the right moment is the hook.
 With Hermes the interception point is already on the Go side — **every turn sent
-to Hermes flows through `internal/hermes/chat.go:sendChat`** (voice, sensing, web,
+to Hermes flows through `internal/agent/runtimes/hermes/chat.go:sendChat`** (voice, sensing, web,
 and Telegram, whose receive loop is Lumi-side — see `telegramRunOrigin`). So we
 reimplement the hook natively in Go and fire from `sendChat`, instead of
 materializing hook files into a workspace (Hermes has no Go onboarding to do that,
@@ -283,7 +283,7 @@ and no `~/.hermes/hooks/HOOK.yaml` loader to execute them — the `handler.ts`
 copied in by `claw migrate` is dead weight under Hermes).
 
 What was done:
-- **`emotion-acknowledge` → native Go** in `internal/hermes/emotion_ack.go`
+- **`emotion-acknowledge` → native Go** in `internal/agent/runtimes/hermes/emotion_ack.go`
   (`fireAckEmotion`, called from `sendChat`). It mirrors `handler.ts` 1:1: same
   emotion (`thinking`, intensity `0.7`), same skip prefixes
   (`[sensing:`/`[activity]`/`[emotion]`/`[speech_emotion]` + empty), and the
@@ -297,7 +297,7 @@ What was done:
   gate would duplicate it.
 
 > ⚠️ **Maintenance coupling — no compile-time link.** `hooks/emotion-acknowledge/
-> handler.ts` (OpenClaw) and `internal/hermes/emotion_ack.go` (Hermes) are two
+> handler.ts` (OpenClaw) and `internal/agent/runtimes/hermes/emotion_ack.go` (Hermes) are two
 > independent implementations of the same behavior. **When you change one, change
 > the other** — skip rules, emotion name/intensity, and capability gate must stay
 > identical, or the two backends drift apart silently. Keep the cross-reference
@@ -355,10 +355,10 @@ runtime changes.
 
 - **`SupportedChannels() []string`** (new `AgentGateway` method,
   `domain/agent.go`) — returns the channels the runtime can run. Per backend:
-  - openclaw → `[telegram, slack, discord, whatsapp]` (`internal/openclaw/channels.go`)
-  - hermes → `[telegram, slack, discord]` (`internal/hermes/channels.go`)
-  - picoclaw → `[telegram]` (`internal/picoclaw/channels.go`)
-  - claudecode → `[telegram, slack, discord]` (`internal/claudecode/channels.go`
+  - openclaw → `[telegram, slack, discord, whatsapp]` (`internal/agent/runtimes/openclaw/channels.go`)
+  - hermes → `[telegram, slack, discord]` (`internal/agent/runtimes/hermes/channels.go`)
+  - picoclaw → `[telegram]` (`internal/agent/runtimes/picoclaw/channels.go`)
+  - claudecode → `[telegram, slack, discord]` (`internal/agent/runtimes/claudecode/channels.go`
     — all device-owned, mirroring codex: `telegram_poll.go` getUpdates loop,
     `discord.go` discordgo session, `slack.go` MQTT bridge; Claude Code's
     native channel plugins are deliberately not used)

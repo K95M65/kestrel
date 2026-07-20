@@ -148,7 +148,7 @@ for l in sys.stdin:
 |---|---|
 | `os/services/server/openclaw/delivery/sse/handler_api_compaction.go` | HTTP handler: reads `sessions.json`, scans session `.jsonl` for newest `type:"compaction"`. |
 | `os/services/server/openclaw/delivery/sse/handler_events.go` | OS-server-side RPC trigger (auto-compact when `TotalTokens > 80_000`, TTS notice, 2-min cooldown). |
-| `os/services/internal/openclaw/service_chat.go` | `CompactSession(sessionKey)` — the `sessions.compact` RPC sender. |
+| `os/services/internal/agent/runtimes/openclaw/service_chat.go` | `CompactSession(sessionKey)` — the `sessions.compact` RPC sender. |
 | `os/services/domain/agent.go` | `AgentGateway.CompactSession` interface. |
 | `os/services/web/src/pages/monitor/FlowSection/CompactionModal.tsx` | UI modal — shows timestamp, summary chars, session file, full summary text; links back to this doc. |
 | `docs/flow-monitor.md` | Parent doc — cross-references this one. |

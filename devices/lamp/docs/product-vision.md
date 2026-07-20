@@ -329,7 +329,7 @@ The Lamp server is forked from openclaw-lobster. Approximately 70-80% of Layer 1
 | LED skill (SKILL.md) | `resources/openclaw-skills/led-control/` | Inherited, adapted |
 | Reset button | `internal/resetbutton/` | Inherited |
 | Network service | `internal/network/` | Inherited |
-| OpenClaw service | `internal/openclaw/` | Inherited |
+| OpenClaw service | `internal/agent/runtimes/openclaw/` | Inherited |
 | Backend client | `internal/beclient/` | Inherited |
 | MQTT client | `lib/mqtt/` | Inherited |
 | OTA bootstrap | `bootstrap/` | Inherited |

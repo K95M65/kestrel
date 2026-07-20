@@ -93,7 +93,7 @@ Bảng tọa độ gần đúng và ASCII grid: xem mục *Turn Pipeline* và *A
 | `os/services/lib/flow/flow.go` | Emit flow, JSONL, API runID từng event |
 | `os/services/server/sensing/delivery/http/handler.go` | Sensing → flow.Start/End |
 | `os/services/server/openclaw/delivery/sse/handler.go` | Agent → flow.Log, map runID |
-| `os/services/internal/openclaw/service.go` | sendChat / idempotencyKey |
+| `os/services/internal/agent/runtimes/openclaw/service.go` | sendChat / idempotencyKey |
 | `os/services/web/src/pages/Monitor.tsx` | `groupIntoTurns`, `FlowDiagram`, v.v. |
 
 **Tải để so sánh:** nút **↓ Bundle** trên Flow Panel tải cùng lúc JSONL tail server, snapshot UI và OpenClaw debug payload (xem bảng *Turns list vs downloaded log* trong `docs/flow-monitor.md`).

@@ -22,10 +22,10 @@ This repo is developed in both **Cursor** and **Claude Code**. The following rul
    | Speech emotion recognition (SER) | `docs/speech-emotion.md` | `docs/vi/speech-emotion_vi.md` |
    | Realtime voice agent (HAL `drivers/realtime`, Gemini Live / OpenAI Realtime, delegate) | `docs/realtime-voice.md` | `docs/vi/realtime-voice_vi.md` |
    | DL backend, load balancer, encryption, models | `docs/dlbackend.md` | `docs/vi/dlbackend_vi.md` |
-   | Hermes agent backend (`agent_runtime`, internal/hermes) | `docs/agentic/hermes.md` | `docs/vi/agentic/hermes_vi.md` |
-   | PicoClaw agent backend (`agent_runtime`, internal/picoclaw, WebSocket) | `docs/agentic/picoclaw.md` | `docs/vi/agentic/picoclaw_vi.md` |
-   | Codex agent backend (`agent_runtime`, internal/codex, WS bridge) | `docs/agentic/codex.md` | `docs/vi/agentic/codex_vi.md` |
-   | Claude Code agent backend (`agent_runtime`, internal/claudecode, bridge WebSocket, native Telegram channel plugin) | `docs/agentic/claudecode.md` | `docs/vi/agentic/claudecode_vi.md` |
+   | Hermes agent backend (`agent_runtime`, internal/agent/runtimes/hermes) | `docs/agentic/hermes.md` | `docs/vi/agentic/hermes_vi.md` |
+   | PicoClaw agent backend (`agent_runtime`, internal/agent/runtimes/picoclaw, WebSocket) | `docs/agentic/picoclaw.md` | `docs/vi/agentic/picoclaw_vi.md` |
+   | Codex agent backend (`agent_runtime`, internal/agent/runtimes/codex, WS bridge) | `docs/agentic/codex.md` | `docs/vi/agentic/codex_vi.md` |
+   | Claude Code agent backend (`agent_runtime`, internal/agent/runtimes/claudecode, bridge WebSocket, native Telegram channel plugin) | `docs/agentic/claudecode.md` | `docs/vi/agentic/claudecode_vi.md` |
    | Adding/changing an agentic backend (AgentGateway contract, switch, install/presync, migration, skills, hooks, reset) | `docs/agentic/adding-agent-runtime.md` | `docs/vi/agentic/adding-agent-runtime_vi.md` |
    | Safety engine (SAFETY.md bounds, deterministic enforcement gate) | `docs/safety.md` | `docs/vi/safety_vi.md` |
 
@@ -122,7 +122,7 @@ Uses **Google Wire** for compile-time DI. After changing provider signatures, ru
 **Go backend — `os/services/`:**
 
 - **`server/`** — HTTP layer: Gin router, route handlers organized by domain. Each handler follows `delivery/http/handler.go` convention.
-- **`internal/`** — Business logic services (agent, ambient, beclient, buddy, device, healthwatch, intent, monitor, network, openclaw, ota, statusled).
+- **`internal/`** — Business logic services (ambient, beclient, buddy, device, healthwatch, intent, monitor, network, skills, statusled, vision) plus the agent hub: `internal/agent/` (AgentGateway factory + persona/config/channel/MCP migration) with the swappable backends under `internal/agent/runtimes/{openclaw,hermes,picoclaw,codex,claudecode}`.
 - **`bootstrap/`** — OTA worker: metadata fetching, update execution, state persistence.
 - **`domain/`** — Shared data structures.
 - **`server/serializers/`** — Standard JSON response wrapper.
