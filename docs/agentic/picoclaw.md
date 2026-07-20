@@ -9,7 +9,7 @@ which brain is active.
 
 - **`openclaw`** (default): persistent WebSocket to the OpenClaw daemon. See `docs/os-server.md` + `internal/agent/runtimes/openclaw`.
 - **`hermes`**: HTTP + SSE client against a local Hermes API server. See `docs/agentic/hermes.md` + `internal/agent/runtimes/hermes`.
-- **`picoclaw`**: persistent WebSocket client against a local PicoClaw runtime. This doc. Code: `os/services/internal/agent/runtimes/picoclaw/`.
+- **`picoclaw`**: persistent WebSocket client against a local PicoClaw runtime. This doc. Code: `system/internal/agent/runtimes/picoclaw/`.
 
 > Source of truth is the code. This documents `internal/agent/runtimes/picoclaw/` as
 > implemented; keep it in sync on change (EN: this file, VI: `docs/vi/agentic/picoclaw_vi.md`).

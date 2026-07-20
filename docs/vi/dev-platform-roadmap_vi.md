@@ -29,7 +29,7 @@ Hệ quả: **mọi service đang local-only, không auth**. Đây là blocker �
 
 | Hạng mục | Tại sao | Ảnh hưởng |
 |----------|---------|-----------|
-| API token auth cho HAL + OS server | Không có thì dev phải SSH vào thiết bị mãi mãi | `os/services/server`, `os/hal/server.py` |
+| API token auth cho HAL + OS server | Không có thì dev phải SSH vào thiết bị mãi mãi | `system/server`, `hal/server.py` |
 | Bind 0.0.0.0 + tài liệu firewall | Cho phép truy cập từ laptop dev qua LAN | systemd units, web UI doc |
 | API versioning `/v1/*` | Khoá contract trước khi mở | Tất cả HTTP handler |
 | OpenAPI spec | Đầu vào cho codegen SDK | HAL tự sinh từ FastAPI; OS server cần swaggo / kin-openapi |
@@ -76,7 +76,7 @@ Mục tiêu: dev ngoài viết skill, publish, user cài 1-click.
 | Registry | Cloud | API `publish/install/list/remove` + web UI |
 | Permission prompt | OS server UI | User duyệt khi cài (kiểu mobile app) |
 | Sandbox | Khó | Giới hạn fs/network. Ban đầu: chỉ skill được Autonomous review mới bypass |
-| Marketplace web UI | `os/services/web` hoặc site mới | Browse, install, quản lý |
+| Marketplace web UI | `system/web` hoặc site mới | Browse, install, quản lý |
 
 **Quyết định product/legal cần chốt:** quy trình review, revenue model, chính sách chống lạm dụng, content guideline.
 

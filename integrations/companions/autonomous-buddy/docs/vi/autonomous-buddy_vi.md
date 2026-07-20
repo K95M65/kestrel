@@ -409,4 +409,4 @@ Mac-only MVP → **Swift native**. Tauri/Rust để phase Windows/Linux. Flutter
 - `project_security_login_ui_batch.md` — security audit mới đóng; pattern cookie HMAC + bcrypt admin có thể reuse cho auth buddy
 - [Tài liệu Anthropic Computer Use](https://docs.anthropic.com/en/docs/build-with-claude/computer-use) — cho phase vision v1.1
 - [Apple ScreenCaptureKit](https://developer.apple.com/documentation/screencapturekit) — cho khả năng screenshot v1.5
-- [Apple Accessibility API](https://developer.apple.com/documentation/applicationservices/axuielement_h) — để target window/button
+- [Apple Accessibility API](https://developer.apple.com/documentation/applicationsystem/axuielement_h) — để target window/button

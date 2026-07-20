@@ -108,11 +108,11 @@ Rules:
 ## Project Overview
 
 Autonomous is an open-source OS for physical AI agents. The Go backend
-(`os/services`) provides device onboarding (WiFi, LLM provider, messaging
+(`system`) provides device onboarding (WiFi, LLM provider, messaging
 channel setup), OTA updates, and agent gateway integration. The brain is a
 swappable agentic runtime (OpenClaw, Hermes, or any LLM + skills + memory).
 
-**Go module (`os/services`):** `go.autonomous.ai/os` | **Go 1.24** | **Target:** Linux ARM64
+**Go module (`system`):** `go.autonomous.ai/os` | **Go 1.24** | **Target:** Linux ARM64
 
 ## Build & Development Commands
 
@@ -124,35 +124,35 @@ make os-build                # Builds os-server binary
 make os-build-bootstrap      # Builds bootstrap-server binary
 
 # Code generation (Google Wire DI)
-make os-generate             # Runs: cd os/services && GOFLAGS=-mod=mod go generate ./...
+make os-generate             # Runs: cd system && GOFLAGS=-mod=mod go generate ./...
 
 # Lint + tests (Go)
-make os-lint                 # cd os/services && golangci-lint run
-make os-test                 # cd os/services && go test ./...
+make os-lint                 # cd system && golangci-lint run
+make os-test                 # cd system && go test ./...
 
-# HAL (Python hardware runtime, os/hal)
+# HAL (Python hardware runtime, hal)
 make hal-dev                 # Install deps + run HAL locally
 make hal-lint                # Catch broken local imports + undefined names
 make hal-test                # Run HAL tests
 
-# Web frontend (React/Vite/Tailwind in os/services/web)
+# Web frontend (React/Vite/Tailwind in system/web)
 make web-install             # npm install
 make web-dev                 # Vite dev server
 make web-build               # Production build to dist/
 ```
 
 Go version is injected at build time via ldflags. HAL/web versions live in
-`os/services/VERSION_OS_SERVER` and `os/hal/VERSION_HAL` and are auto-bumped by the
+`system/VERSION_OS_SERVER` and `hal/VERSION_HAL` and are auto-bumped by the
 `make upload-*` release targets — do not hand-edit for releases.
 
 ## Architecture
 
 ### Two Executables
 
-- `os/services/cmd/os-server/main.go` - Main HTTP API server (Gin). Handles device
+- `system/cmd/os-server/main.go` - Main HTTP API server (Gin). Handles device
   setup, network management, LED control, health checks, and agent gateway
   integration.
-- `os/services/cmd/bootstrap/main.go` - OTA bootstrap worker. Periodically
+- `system/cmd/bootstrap/main.go` - OTA bootstrap worker. Periodically
   checks for and applies updates.
 
 ### Dependency Injection
@@ -162,7 +162,7 @@ Uses Google Wire for compile-time DI. After changing provider signatures, run
 
 ### Package Layout
 
-**Go backend - `os/services/`:**
+**Go backend - `system/`:**
 
 - `server/` - HTTP layer: Gin router, route handlers organized by domain.
   Each handler follows the `delivery/http/handler.go` convention.
@@ -180,7 +180,7 @@ Uses Google Wire for compile-time DI. After changing provider signatures, run
   client, safego, ...).
 - `web/` - React 19 + TypeScript + Vite + Tailwind CSS 4 SPA.
 
-**HAL - `os/hal/` (Python hardware runtime, FastAPI on :5001):**
+**HAL - `hal/` (Python hardware runtime, FastAPI on :5001):**
 
 - `drivers/` - Hardware drivers by subsystem (rgb, motors, voice, sensing,
   display, gpio_button, ...).
@@ -211,7 +211,7 @@ on failure.
 ### Configuration
 
 Config lives in `config/config.json` (path relative to the os-server working
-dir) and is managed by `os/services/server/config/config.go`. It supports a
+dir) and is managed by `system/server/config/config.go`. It supports a
 notification channel for config change propagation.
 
 ## Coding Standards
@@ -243,7 +243,7 @@ respect `ctx.Done()`.
 Use `go-playground/validator` for struct validation. Validate at the HTTP
 handler level before passing data to services.
 
-### Naming (paths under `os/services/`)
+### Naming (paths under `system/`)
 
 - Handlers: `server/<domain>/delivery/http/handler.go`
 - Services: `internal/<domain>/service.go`

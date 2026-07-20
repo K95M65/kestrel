@@ -80,15 +80,15 @@ Each phase is independently shippable and reviewable.
 - `autonomous-buddy/macos/Sources/AutonomousBuddy/Pairing/PairingWindow.swift` (code entry UI)
 
 **Lamp Go files:**
-- `os/services/internal/buddy/types.go`
-- `os/services/internal/buddy/store.go`
-- `os/services/internal/buddy/pairing.go`
-- `os/services/internal/buddy/service.go`
-- `os/services/server/buddy/delivery/http/handler.go`
-- `os/services/server/buddy/delivery/http/handler_pair.go`
-- `os/services/internal/buddy/wire.go`
-- Modify: `os/services/server/server.go` (register routes)
-- Modify: `os/services/server/wire.go` (provider)
+- `system/internal/buddy/types.go`
+- `system/internal/buddy/store.go`
+- `system/internal/buddy/pairing.go`
+- `system/internal/buddy/service.go`
+- `system/server/buddy/delivery/http/handler.go`
+- `system/server/buddy/delivery/http/handler_pair.go`
+- `system/internal/buddy/wire.go`
+- Modify: `system/server/server.go` (register routes)
+- Modify: `system/server/wire.go` (provider)
 - Run: `make generate`
 
 **Lamp web files:**
@@ -119,10 +119,10 @@ Each phase is independently shippable and reviewable.
 - `autonomous-buddy/macos/Sources/AutonomousBuddy/Connection/Reconnect.swift`
 
 **Lamp Go files:**
-- `os/services/internal/buddy/registry.go`
-- `os/services/internal/buddy/ws.go`
-- `os/services/server/buddy/delivery/http/handler_ws.go`
-- Update: `os/services/server/server.go` (register WS route)
+- `system/internal/buddy/registry.go`
+- `system/internal/buddy/ws.go`
+- `system/server/buddy/delivery/http/handler_ws.go`
+- Update: `system/server/server.go` (register WS route)
 
 **Routes added:**
 - `GET /api/buddy/ws` (WS upgrade)
@@ -161,8 +161,8 @@ Each phase is independently shippable and reviewable.
 **Status:** ✓ Done — sync `/api/buddy/command` (localOnly) + marker-friendly `/api/buddy/exec/:action`. Cross-compile `GOOS=linux GOARCH=arm64 go build ./...` clean. Debug log instrumentation across the chain (handler_hw → exec/command handler → dispatcher → ws read loop) so a failed turn is traceable to the exact stage.
 
 **Files:**
-- `os/services/internal/buddy/dispatcher.go`
-- `os/services/server/buddy/delivery/http/handler_command.go`
+- `system/internal/buddy/dispatcher.go`
+- `system/server/buddy/delivery/http/handler_command.go`
 - Update: wire providers, run `make generate`
 
 **Routes added:**
@@ -273,7 +273,7 @@ Subfolders `autonomous-buddy/windows/` and `autonomous-buddy/linux/` will host f
 
 ### Go (`lamp/`)
 ```
-os/services/internal/buddy/
+system/internal/buddy/
 ├── types.go
 ├── store.go
 ├── pairing.go
@@ -283,7 +283,7 @@ os/services/internal/buddy/
 ├── service.go
 └── wire.go
 
-os/services/server/buddy/delivery/http/
+system/server/buddy/delivery/http/
 ├── handler.go
 ├── handler_pair.go
 ├── handler_ws.go
@@ -291,9 +291,9 @@ os/services/server/buddy/delivery/http/
 ```
 
 Modified:
-- `os/services/server/server.go` (route registration)
-- `os/services/server/wire.go` (provider set)
-- `os/services/server/wire_gen.go` (regenerated)
+- `system/server/server.go` (route registration)
+- `system/server/wire.go` (provider set)
+- `system/server/wire_gen.go` (regenerated)
 
 ### Web (`lamp/web/`)
 ```

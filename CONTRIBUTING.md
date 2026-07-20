@@ -8,8 +8,8 @@ vibe-coded ones too. 🤖
 | You want to… | You write… |
 |--------------|-----------|
 | Run Autonomous on a new device (any hardware, any vendor) | `devices/<id>/DEVICE.md` + any missing driver |
-| Add a hardware capability | a driver in `os/hal/drivers/<subsystem>/` |
-| Support a new board | a profile in `os/hal/board/` |
+| Add a hardware capability | a driver in `hal/drivers/<subsystem>/` |
+| Support a new board | a profile in `hal/board/` |
 | Teach the agent a new ability | a `skills/<name>/SKILL.md` |
 | Give a device a personality | a `SOUL.md` |
 

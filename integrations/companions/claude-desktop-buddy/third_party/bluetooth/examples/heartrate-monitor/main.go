@@ -65,7 +65,7 @@ func main() {
 	}
 
 	// get services
-	println("discovering services/characteristics")
+	println("discovering system/characteristics")
 	srvcs, err := device.DiscoverServices([]bluetooth.UUID{heartRateServiceUUID})
 	must("discover services", err)
 

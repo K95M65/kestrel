@@ -409,4 +409,4 @@ Mac-only MVP → **Swift native**. Tauri/Rust deferred until Windows/Linux phase
 - `project_security_login_ui_batch.md` — recent security audit closed; cookie HMAC + bcrypt admin patterns to reuse for buddy auth
 - [Anthropic Computer Use docs](https://docs.anthropic.com/en/docs/build-with-claude/computer-use) — for vision phase v1.1
 - [Apple ScreenCaptureKit](https://developer.apple.com/documentation/screencapturekit) — for screenshot capability v1.5
-- [Apple Accessibility API](https://developer.apple.com/documentation/applicationservices/axuielement_h) — for window/button targeting
+- [Apple Accessibility API](https://developer.apple.com/documentation/applicationsystem/axuielement_h) — for window/button targeting

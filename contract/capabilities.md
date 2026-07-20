@@ -5,7 +5,7 @@ few platform features a body opts into. A `DEVICE.md` declares which groups a bo
 a `SKILL.md` declares which it needs. Names here are an ABI — once published, a name is
 never removed or repurposed (see `DEVICE-SPEC.md` § Versioning).
 
-A capability group maps to one or more routes — HAL hardware routes under `os/hal/`, or
+A capability group maps to one or more routes — HAL hardware routes under `hal/`, or
 (for platform features like `companion`) os-server routes. The route is the typed HTTP
 surface (consumer: the system); the capability is the agent-facing name (consumer: the
 LLM). **Skills and agents address capabilities, never routes or hardware models.**

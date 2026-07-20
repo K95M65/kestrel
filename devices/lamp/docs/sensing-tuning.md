@@ -1,7 +1,7 @@
 # Sensing Threshold Tuning Guide
 
 How to tune Lamp's sensing thresholds on real hardware.
-All constants live in `os/hal/config.py` and `os/hal/drivers/voice/voice_service.py`.
+All constants live in `hal/config.py` and `hal/drivers/voice/voice_service.py`.
 
 ## View Logs
 
@@ -32,7 +32,7 @@ INFO lelamp.service.sensing.sensing_service: [sensing] motion: Small movement de
 `MotionPerception` runs Kinetics action recognition (via perception-service) and emits a
 `motion.activity` event with the recognized activity labels.
 
-**File:** `os/hal/config.py`
+**File:** `hal/config.py`
 
 ```python
 MOTION_CONFIDENCE_THRESHOLD = 0.3    # min action-recognition confidence to buffer a label
@@ -79,7 +79,7 @@ INFO hal...motion: [motion] transition bypass: ['sedentary'] → ['eat'] (last e
 
 ## Sound Detection (Sensing)
 
-**File:** `os/hal/config.py`
+**File:** `hal/config.py`
 
 ```python
 SOUND_RMS_THRESHOLD = 3000   # RMS level to trigger "loud noise" event
@@ -107,7 +107,7 @@ Watch the `level` value during normal ambient conditions vs. when you clap/speak
 
 ## Voice Wake Word (VAD)
 
-**File:** `os/hal/drivers/voice/voice_service.py` (all env-tunable)
+**File:** `hal/drivers/voice/voice_service.py` (all env-tunable)
 
 ```python
 HAL_VAD_THRESHOLD = 3500        # RMS to trigger speech detection (default 3500)
@@ -135,7 +135,7 @@ HAL_SILERO_ENABLED = false      # tertiary gate (ONNX); webrtcvad usually enough
 
 ## Light Level Detection
 
-**File:** `os/hal/config.py`
+**File:** `hal/config.py`
 
 ```python
 LIGHT_LEVEL_INTERVAL_S = 30.0  # check every 30 seconds
@@ -160,7 +160,7 @@ INFO lelamp.service.sensing.sensing_service: [sensing] light.level: Ambient ligh
 
 ## Face Detection
 
-**File:** `os/hal/config.py`
+**File:** `hal/config.py`
 
 ```python
 FACE_AREA_RATIO_THRESHOLD = 0.05  # Skip faces larger than 5% of frame area
@@ -184,7 +184,7 @@ The area ratio threshold filters out faces that are **too small** relative to th
 
 ## Per-Face Motion Detection
 
-**File:** `os/hal/config.py`
+**File:** `hal/config.py`
 
 ```python
 MOTION_PER_FACE_ENABLED = false            # Enable per-face action recognition
@@ -209,7 +209,7 @@ Per-face motion opens a separate WS session per detected face and runs action re
 
 ## Speech Emotion Recognition (SER)
 
-**Files:** `os/hal/config.py`, `os/hal/drivers/voice/voice_service.py` (`_submit_speech_emotion_from_session`, `_identify_and_decorate`, `_session_wav_for_ser`) — see also [Speech Emotion Recognition](speech-emotion.md) for the full architecture. **Vietnamese:** [docs/vi/sensing-tuning_vi.md](vi/sensing-tuning_vi.md) (SER section), [speech-emotion_vi.md](vi/speech-emotion_vi.md).
+**Files:** `hal/config.py`, `hal/drivers/voice/voice_service.py` (`_submit_speech_emotion_from_session`, `_identify_and_decorate`, `_session_wav_for_ser`) — see also [Speech Emotion Recognition](speech-emotion.md) for the full architecture. **Vietnamese:** [docs/vi/sensing-tuning_vi.md](vi/sensing-tuning_vi.md) (SER section), [speech-emotion_vi.md](vi/speech-emotion_vi.md).
 
 **Voice integration (session end, transcript-independent):** in the `finally` block of every mic session (VAD trigger → ~2.5 s silence), `_stream_session` runs `_identify_and_decorate(final_text, audio_buffer)` **once** to resolve both `final_msg` (for the Lamp POST when STT had text) and `user_name` (for the SER submit). The result is passed to `_submit_speech_emotion_from_session(audio_buffer, user=...)`, which builds the WAV and calls `SpeechEmotionService.submit`. Unknown / no-match speakers still enqueue SER under the shared `unknown` dedup key when audio is long enough.
 
@@ -222,7 +222,7 @@ SPEECH_EMOTION_API_TIMEOUT_S = 15           # perception-service HTTP timeout
 DL_SER_ENDPOINT = "/lelamp/api/dl/ser/recognize"
 ```
 
-Per-label confidence thresholds are **not** in `config.py` — they live in `os/hal/drivers/voice/speech_emotion/constants.py` as `CONFIDENCE_THRESHOLD_BY_LABEL` (and `DEFAULT_CONFIDENCE_THRESHOLD` for unmapped labels). Negative emotions are gated higher than positive ones to suppress false-positive alarms:
+Per-label confidence thresholds are **not** in `config.py` — they live in `hal/drivers/voice/speech_emotion/constants.py` as `CONFIDENCE_THRESHOLD_BY_LABEL` (and `DEFAULT_CONFIDENCE_THRESHOLD` for unmapped labels). Negative emotions are gated higher than positive ones to suppress false-positive alarms:
 
 ```python
 # constants.py
@@ -267,7 +267,7 @@ The `flushing` line shows the raw label list — that's the mode-over-samples th
 
 ## Apply Changes
 
-After editing `os/hal/config.py` or `voice_service.py` on the Pi:
+After editing `hal/config.py` or `voice_service.py` on the Pi:
 
 ```bash
 sudo systemctl restart lelamp

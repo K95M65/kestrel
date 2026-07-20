@@ -168,7 +168,7 @@ Zoom phần mềm để tập trung vào vật nhỏ (vd: màn hình laptop đan
 
 ### Cơ chế
 
-Zoom được apply **trong capture loop** (`devices/video_capture_device.py::_video_capture_loop`) ngay sau rotate, trước khi set `last_response`. Loop center-crop frame theo `1/zoom` rồi resize về kích thước gốc, nên mọi consumer downstream đều đọc cùng buffer đã zoom:
+Zoom được apply **trong capture loop** (`drivers/camera/video_capture_device.py::_video_capture_loop`) ngay sau rotate, trước khi set `last_response`. Loop center-crop frame theo `1/zoom` rồi resize về kích thước gốc, nên mọi consumer downstream đều đọc cùng buffer đã zoom:
 
 | Consumer | Nguồn frame | Thấy zoom? |
 |---|---|---|
@@ -196,9 +196,32 @@ State zoom nằm trên instance device (`LocalVideoCaptureDevice.zoom`). Không 
 
 Monitor → Camera tab → card Live Stream có slider Zoom (1.0×–5.0×, step 0.1, debounce 200 ms POST) kèm nút Reset. Giá trị slider chuyển màu vàng khi đang zoom để cảnh báo FOV bị thu hẹp.
 
+## Exposure & Frame Rate
+
+Auto-exposure của camera USB kéo dài thời gian tích sáng khi thiếu sáng (~60ms), giới hạn tốc độ nhả frame ở **~16fps tại mọi độ phân giải** — đây là giới hạn exposure clock, không phải băng thông USB (720p và 4K đều kẹt 16fps). Ghim **manual** exposure tránh được throttle này, nhưng manual + gain cao đẩy ISP của camera vào trạng thái bất ổn làm loạn màu (frame posterize xanh lá/hồng) và kẹt nguyên phiên capture — đã gặp trên nhiều thiết bị với gain 255 và gain 192. Vì vậy HAL mặc định **auto** exposure; chỉ chuyển sang manual khi frame rate ổn định quan trọng hơn độ sáng thích ứng, và giữ gain ≤ ~144.
+
+### Config (env, đọc bởi `config.py`)
+
+| Biến | Default | Ý nghĩa |
+|---|---|---|
+| `HAL_CAMERA_AUTO_EXPOSURE` | `auto` | `auto` dùng auto-exposure thích ứng của camera (default; sáng/thích ứng nhưng throttle fps khi thiếu sáng). `manual` ghim exposure theo các giá trị bên dưới — rủi ro loạn màu ISP khi gain cao. |
+| `HAL_CAMERA_EXPOSURE` | `330` | Thời gian exposure manual, V4L2 `exposure_absolute` ×100µs: `200`=20ms (30fps), `330`=33ms (trần ≈30fps), `500`=50ms (≈20fps). |
+| `HAL_CAMERA_GAIN` | `96` | Gain cảm biến (tùy camera, vd 0–255). Tăng sáng không tốn fps nhưng thêm noise; trên ~144 rủi ro loạn màu ISP. |
+| `HAL_CAMERA_BRIGHTNESS` | _(không set)_ | Offset brightness (tùy camera, vd -64..64). Nâng sáng digital. |
+
+Default áp dụng kể cả khi `.env` không có entry nào. Muốn ghim frame rate trên một thiết bị thì set `HAL_CAMERA_AUTO_EXPOSURE=manual` per device — fallback manual (330 / 96) là bộ giá trị đã verify màu ổn định; default cũ (`manual` / 500 / 255) là combo độc đã biết.
+
+### Cơ chế
+
+`_apply_camera_controls()` (`drivers/camera/video_capture_device.py`) chạy sau khi set độ phân giải lúc open **và mỗi lần reopen device** — open mới reset camera về default, nếu không áp lại thì manual exposure sẽ âm thầm mất và FPS throttle quay lại. Map sang V4L2/UVC controls qua OpenCV: `CAP_PROP_AUTO_EXPOSURE` (1=manual, 3=auto), `CAP_PROP_EXPOSURE`, `CAP_PROP_GAIN`, `CAP_PROP_BRIGHTNESS`.
+
+### Trade-off
+
+Frame rate vs độ sáng là trade-off vật lý cứng trong phòng tối: exposure tối đa vẫn giữ được 30fps là ~33ms (`HAL_CAMERA_EXPOSURE=330`); ảnh sáng hơn cần exposure dài hơn (ít fps) hoặc gain cao hơn (nhiễu hơn, và trên ~144 rủi ro loạn màu). Stream endpoint bị cap riêng bởi `HAL_CAMERA_STREAM_FPS` (default 10), nên live view trên monitor không phản ánh tốc độ capture thật.
+
 ## Khôi phục lỗi (Failure Recovery)
 
-Capture loop (`devices/video_capture_device.py`) tự khôi phục 2 dạng lỗi thiết bị, đều bằng cách release rồi mở lại device V4L2 qua `_reopen_with_backoff()` (retry backoff lũy tiến 1s→30s, không bao giờ thoát loop vĩnh viễn khi HAL còn chạy; MJPEG, độ phân giải và exposure được áp lại sau mỗi lần reopen):
+Capture loop (`drivers/camera/video_capture_device.py`) tự khôi phục 2 dạng lỗi thiết bị, đều bằng cách release rồi mở lại device V4L2 qua `_reopen_with_backoff()` (retry backoff lũy tiến 1s→30s, không bao giờ thoát loop vĩnh viễn khi HAL còn chạy; MJPEG, độ phân giải và exposure được áp lại sau mỗi lần reopen):
 
 - **`read()` fail** — USB autosuspend hoặc lỗi V4L2 thoáng qua làm `read()` trả `ret=False`. Retry 1 lần sau 1s, rồi reopen.
 - **ISP đóng băng** — camera cứ nhả lại **cùng một buffer** với `ret=True` (đã gặp trên UVC cam khi dùng manual exposure/gain), nên nhánh recovery `read()`-fail không bao giờ kích hoạt trong khi mọi consumer (realtime look, sensing, tracking, snapshot) âm thầm xử lý cảnh cũ. Watchdog so sánh chữ ký frame đã subsample; frame byte-identical liên tục 10s (`_FREEZE_REOPEN_S`) không thể đến từ sensor thật → reopen. Log: `Camera frozen — identical frames for Ns, reopening device`.

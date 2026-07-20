@@ -39,7 +39,7 @@ Music suggestion là tính năng Lamp chủ động đề xuất nhạc phù h�
 
 ### Layer 1 — Trigger (HAL Python)
 
-**File:** `os/hal/drivers/sensing/perceptions/wellbeing.py`
+**File:** `hal/drivers/sensing/perceptions/wellbeing.py`
 
 - Timer chạy mỗi **60 phút** (default, config qua `HAL_WELLBEING_MUSIC_S`)
 - Chỉ fire khi `PresenceState.PRESENT`
@@ -49,7 +49,7 @@ Music suggestion là tính năng Lamp chủ động đề xuất nhạc phù h�
 
 ### Layer 2 — Event Pipeline (Lamp Go server)
 
-**File:** `os/services/server/sensing/delivery/http/handler.go`
+**File:** `system/server/sensing/delivery/http/handler.go`
 
 - Nhận `POST /api/sensing/event` với `type: "music.mood"`
 - Log vào mood history (`mood.Log`)
@@ -81,7 +81,7 @@ Music suggestion là tính năng Lamp chủ động đề xuất nhạc phù h�
 
 ### Layer 4 — Playback (HAL Python)
 
-**File:** `os/hal/drivers/voice/music_service.py`
+**File:** `hal/drivers/voice/music_service.py`
 
 - `POST /audio/play` → `MusicService.play(query, person)` — per-user history at `/root/local/users/{person}/audio_history/`
 - yt-dlp search YouTube → resolve audio URL
@@ -93,7 +93,7 @@ Music suggestion là tính năng Lamp chủ động đề xuất nhạc phù h�
 
 ## Mood History (data có sẵn nhưng chưa dùng)
 
-**File:** `os/services/lib/mood/mood.go`
+**File:** `system/lib/mood/mood.go`
 
 Log 2 loại event vào `/root/local/mood_YYYY-MM-DD.jsonl`:
 1. **Sensing input:** `music.mood`, `presence.enter`, `wellbeing.break`, etc.
@@ -212,12 +212,12 @@ Bỏ proactive timer, chỉ suggest khi:
 
 | File | Layer | Mô tả |
 |---|---|---|
-| `os/hal/drivers/sensing/perceptions/wellbeing.py` | Trigger | Timer 60min fire music.mood |
-| `os/hal/config.py` | Config | `HAL_WELLBEING_MUSIC_S` |
-| `os/hal/drivers/voice/music_service.py` | Playback | yt-dlp + ffmpeg + ALSA |
-| `os/hal/server.py` | API | `POST /audio/play` (có `person`), `POST /audio/stop` |
-| `os/services/lib/mood/mood.go` | Data | Mood history logger |
-| `os/services/server/sensing/delivery/http/handler.go` | Pipeline | Event routing + queueing |
+| `hal/drivers/sensing/perceptions/wellbeing.py` | Trigger | Timer 60min fire music.mood |
+| `hal/config.py` | Config | `HAL_WELLBEING_MUSIC_S` |
+| `hal/drivers/voice/music_service.py` | Playback | yt-dlp + ffmpeg + ALSA |
+| `hal/server.py` | API | `POST /audio/play` (có `person`), `POST /audio/stop` |
+| `system/lib/mood/mood.go` | Data | Mood history logger |
+| `system/server/sensing/delivery/http/handler.go` | Pipeline | Event routing + queueing |
 | `lamp/resources/openclaw-skills/sensing/SKILL.md` | AI | Nhận + process music.mood event |
 | `lamp/resources/openclaw-skills/music/SKILL.md` | AI | Mood→music mapping, suggestion rules |
 | `lamp/resources/openclaw-skills/scheduling/SKILL.md` | AI | cron.add tool (nếu dùng Option B) |

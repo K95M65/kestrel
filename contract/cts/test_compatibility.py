@@ -9,7 +9,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))  # contract/cts → repo root
-sys.path.insert(0, os.path.join(ROOT, "os"))
+sys.path.insert(0, ROOT)  # the hal package lives at the repo root
 
 from hal.board.device import load_device  # noqa: E402  (path set above)
 

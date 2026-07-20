@@ -178,7 +178,7 @@ Software zoom for focusing on small subjects (e.g. a laptop screen during a vide
 
 ### How it works
 
-Zoom is applied **inside the capture loop** (`devices/video_capture_device.py::_video_capture_loop`) right after rotate, before `last_response` is set. The loop center-crops the frame by `1/zoom` and resizes back to the original dimensions, so every downstream consumer reads the same zoomed buffer:
+Zoom is applied **inside the capture loop** (`drivers/camera/video_capture_device.py::_video_capture_loop`) right after rotate, before `last_response` is set. The loop center-crops the frame by `1/zoom` and resizes back to the original dimensions, so every downstream consumer reads the same zoomed buffer:
 
 | Consumer | Source | Sees zoom? |
 |---|---|---|
@@ -208,22 +208,22 @@ Monitor → Camera tab → Live Stream card has a Zoom slider (1.0×–5.0×, st
 
 ## Exposure & Frame Rate
 
-The USB camera's auto-exposure stretches integration time in low light (~60ms), capping delivery at **~16fps at every resolution** — this is the exposure clock, not USB bandwidth (720p and 4K both cap at 16fps). HAL therefore defaults to **manual** exposure (with baked-in `exposure=500`/`gain=255`) so the frame rate isn't throttled.
+The USB camera's auto-exposure stretches integration time in low light (~60ms), capping delivery at **~16fps at every resolution** — this is the exposure clock, not USB bandwidth (720p and 4K both cap at 16fps). Pinning **manual** exposure avoids that throttle, but manual with high gain drives the camera ISP into an unstable state that corrupts colors (green/magenta posterized frames) and sticks for the whole capture session — observed on multiple devices with gain 255 and gain 192. HAL therefore defaults to **auto** exposure; switch to manual only when a stable frame rate matters more than adaptive brightness, and keep gain ≤ ~144.
 
 ### Config (env, read by `config.py`)
 
 | Var | Default | Meaning |
 |---|---|---|
-| `HAL_CAMERA_AUTO_EXPOSURE` | `manual` | `manual` pins exposure using the values below (default). `auto` restores the camera's adaptive auto-exposure (brighter/adaptive but throttles fps in low light). |
-| `HAL_CAMERA_EXPOSURE` | `500` | Manual exposure time, V4L2 `exposure_absolute` ×100µs: `200`=20ms (30fps), `330`=33ms (≈30fps ceiling), `500`=50ms (≈20fps). |
-| `HAL_CAMERA_GAIN` | `255` | Sensor gain (camera-specific, e.g. 0–255). Brightens without costing fps, but adds noise. |
+| `HAL_CAMERA_AUTO_EXPOSURE` | `auto` | `auto` uses the camera's adaptive auto-exposure (default; brighter/adaptive but throttles fps in low light). `manual` pins exposure using the values below — risks the ISP color corruption with high gain. |
+| `HAL_CAMERA_EXPOSURE` | `330` | Manual exposure time, V4L2 `exposure_absolute` ×100µs: `200`=20ms (30fps), `330`=33ms (≈30fps ceiling), `500`=50ms (≈20fps). |
+| `HAL_CAMERA_GAIN` | `96` | Sensor gain (camera-specific, e.g. 0–255). Brightens without costing fps, but adds noise; values above ~144 risk the ISP color corruption. |
 | `HAL_CAMERA_BRIGHTNESS` | _(unset)_ | Brightness offset (camera-specific, e.g. -64..64). Digital lift. |
 
-The defaults (`manual` / 500 / 255) give a bright image at ~20fps in a dim room and apply even with no `.env` entries. In a bright room a fixed 50ms exposure can overexpose — set `HAL_CAMERA_AUTO_EXPOSURE=auto` per device to fall back to adaptive auto-exposure.
+The defaults apply even with no `.env` entries. To pin the frame rate on a device, set `HAL_CAMERA_AUTO_EXPOSURE=manual` per device — the manual fallbacks (330 / 96) are values verified color-stable; the old defaults (`manual` / 500 / 255) are the known-toxic combo.
 
 ### How it works
 
-`_apply_camera_controls()` (`devices/video_capture_device.py`) runs after the resolution is set on open **and on every device reopen** — a fresh open resets the camera to defaults, which would otherwise silently drop manual exposure and re-introduce the FPS throttle. It maps to V4L2/UVC controls via OpenCV: `CAP_PROP_AUTO_EXPOSURE` (1=manual, 3=auto), `CAP_PROP_EXPOSURE`, `CAP_PROP_GAIN`, `CAP_PROP_BRIGHTNESS`.
+`_apply_camera_controls()` (`drivers/camera/video_capture_device.py`) runs after the resolution is set on open **and on every device reopen** — a fresh open resets the camera to defaults, which would otherwise silently drop manual exposure and re-introduce the FPS throttle. It maps to V4L2/UVC controls via OpenCV: `CAP_PROP_AUTO_EXPOSURE` (1=manual, 3=auto), `CAP_PROP_EXPOSURE`, `CAP_PROP_GAIN`, `CAP_PROP_BRIGHTNESS`.
 
 ### Trade-off
 
@@ -231,7 +231,7 @@ Frame rate vs brightness is a hard physical trade-off in a dark room: the max ex
 
 ## Failure Recovery
 
-The capture loop (`devices/video_capture_device.py`) recovers from two distinct device failures, both by releasing and reopening the V4L2 device via `_reopen_with_backoff()` (retry with exponential backoff 1s→30s, never permanently exits the loop while HAL runs; MJPEG, resolution and exposure are re-applied on every reopen):
+The capture loop (`drivers/camera/video_capture_device.py`) recovers from two distinct device failures, both by releasing and reopening the V4L2 device via `_reopen_with_backoff()` (retry with exponential backoff 1s→30s, never permanently exits the loop while HAL runs; MJPEG, resolution and exposure are re-applied on every reopen):
 
 - **`read()` failure** — USB autosuspend or a transient V4L2 error makes `read()` return `ret=False`. One 1s retry, then reopen.
 - **ISP freeze** — the camera keeps delivering the **same buffer** with `ret=True` (seen on the UVC cam with manual exposure/gain), so the `read()`-failure path never fires while every consumer (realtime look, sensing, tracking, snapshot) silently works on a stale scene. A watchdog compares a subsampled signature of each frame; byte-identical frames for 10s (`_FREEZE_REOPEN_S`) cannot come from a live sensor and trigger a reopen. Log line: `Camera frozen — identical frames for Ns, reopening device`.

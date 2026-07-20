@@ -230,9 +230,9 @@ Requests exceeding these limits receive HTTP 400 before reaching the GPU.
 See [crypto-and-loadbalancer.md](crypto-and-loadbalancer.md) for the proxy/scaling
 topology and [deployment.md](deployment.md) for how to run it.
 
-## HAL client (`os/hal`)
+## HAL client (`hal`)
 
-The device side that calls this backend reads its own env (see `os/hal/config.py`).
+The device side that calls this backend reads its own env (see `hal/config.py`).
 Key knobs:
 
 | Env var | Default | Meaning |
@@ -244,6 +244,6 @@ Key knobs:
 | `DL_PUBLIC_KEY_FILE` | _(empty)_ | Load RSA public key from PEM instead of fetching |
 | `DL_PUBLIC_KEY_ENDPOINT` | `/crypto/public-key` | Path appended to `DL_BACKEND_URL` |
 
-> HAL field names are owned by `os/hal/config.py` — treat that file as source of
+> HAL field names are owned by `hal/config.py` — treat that file as source of
 > truth and update this table if they drift.
 </content>

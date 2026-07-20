@@ -15,7 +15,7 @@ Agentic Runtime (AI/LLM) → OS Server (Go, :5000) → HAL (Python, :5001) → H
 ## Project Directory
 
 ```
-os/services/
+system/
 ├── cmd/os-server/main.go              — OS Server entry point
 ├── cmd/bootstrap/main.go         — OTA bootstrap worker
 ├── server/
@@ -41,7 +41,7 @@ os/services/
 ├── bootstrap/                    — OTA worker
 └── web/                          — React 19 + Vite + Tailwind CSS 4 SPA
 
-os/hal/
+hal/
 ├── server.py                     — FastAPI server (38 endpoints)
 ├── config.py                     — Runtime constants (sensing thresholds, timeouts, URLs)
 ├── drivers/camera/               — Camera device (LocalVideoCaptureDevice, V4L2)

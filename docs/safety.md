@@ -7,7 +7,7 @@ the engine decides — on every request, regardless of who issued it — whether
 hardware is allowed to honour them and within what limits.
 
 > **Status:** Slice 1 (brightness ceiling) is **implemented and enforced** —
-> `os/hal/safety/policy.py` + the LED gate in `rgb_service.py`, loaded from
+> `hal/safety/policy.py` + the LED gate in `rgb_service.py`, loaded from
 > `devices/lamp/SAFETY.md`. Later slices reuse the same loader + gate. Each table
 > row below is marked enforced / reserved. This document tracks the code, not the
 > other way around.
@@ -28,7 +28,7 @@ Three layers, mirroring the device layer (`DEVICE.md` → capability → route �
 SAFETY.md front matter        the declared bounds (machine contract; per capability group)
         │  resolved via DEVICE.md safety_ref (path or http), parsed at boot
         ▼
-os/hal/safety/policy.py        pure SafetyPolicy + gate functions (no IO, unit-testable)
+hal/safety/policy.py        pure SafetyPolicy + gate functions (no IO, unit-testable)
         │  clamp_brightness(requested) -> min(requested, ceiling)   [slice 1]
         ▼
 HAL capability routes          call the gate BEFORE actuating (led, later servo/music)
@@ -39,8 +39,8 @@ hardware
 
 - **`SAFETY.md` front matter** — the bounds, keyed by capability group. Schema and
   field table: `contract/SAFETY-SPEC.md`.
-- **`os/hal/safety/policy.py`** — a pure loader (regex front-matter parse,
-  dependency-free, same discipline as `os/hal/board/device.py`) producing a typed
+- **`hal/safety/policy.py`** — a pure loader (regex front-matter parse,
+  dependency-free, same discipline as `hal/board/device.py`) producing a typed
   `SafetyPolicy`, plus pure gate functions. No hardware, no clock side effects, fully
   unit-testable off-hardware.
 - **The routes** — each capability route consults the gate at the point of actuation.
@@ -76,7 +76,7 @@ pass-through.
 | 1 | `light.max_brightness` ceiling | `clamp_brightness` / `clamp_color` | LED gate (`rgb_service` `_handle_solid`/`_handle_paint`) | **enforced (v1)** |
 | 2 | `quiet_hours` (light + audio) | `active_max_brightness` (time-aware) + `audio_quiet_now` | LED gate + music route | **enforced (v1)** |
 | 3 | `motion.max_speed` + `stop_always` (presence-driven) | `min_move_duration` | servo route | **enforced (v1)** (`max_accel` reserved) |
-| 4 | fail-safe states (network/gateway loss → stop tracking; board fault → 503 isolation; `thermal.max_temp_c` → SoC over-temp health event + stop tracking; setup + servo over-current reserved) | WS-disconnect hook + per-capability `503` + thermal monitor (`thermal_over`/`read_soc_temp_c`) | `os/services` on WS disconnect + HAL routes/`/health` + `server.py` `_thermal_monitor` | **partially enforced (v1)** (setup + over-current reserved) |
+| 4 | fail-safe states (network/gateway loss → stop tracking; board fault → 503 isolation; `thermal.max_temp_c` → SoC over-temp health event + stop tracking; setup + servo over-current reserved) | WS-disconnect hook + per-capability `503` + thermal monitor (`thermal_over`/`read_soc_temp_c`) | `services` on WS disconnect + HAL routes/`/health` + `server.py` `_thermal_monitor` | **partially enforced (v1)** (setup + over-current reserved) |
 
 Each slice adds fields to the `SafetyPolicy` and gate functions and wires one or more
 routes; the loader and the front-matter contract do not change shape between slices
@@ -107,7 +107,7 @@ network/access-control security — ports, RCE, CORS — not actuation bounds.)
 - [x] **Unit:** `clamp_brightness(255)` with `max_brightness: 180` → `180`;
       `clamp_brightness(120)` → `120`; no `max_brightness` → unchanged (pass-through).
       `clamp_color` scales hue-preserving (white→180,180,180; red→180,0,0). Schema
-      missing/malformed/unknown-major fail-loud. (`os/hal/test/test_safety.py`, 21 tests.)
+      missing/malformed/unknown-major fail-loud. (`hal/test/test_safety.py`, 21 tests.)
 - [x] **Runtime:** verified on a real Lamp — `GET /device` returns
       `"safety": {"light": {"max_brightness": 180}}`; `POST /led/solid` at full white
       (255) reads back `[180,180,180]`, `[100,50,0]` passes unchanged, `[255,0,0]` →
@@ -139,7 +139,7 @@ when `/etc/timezone` is absent (dev/macOS).
       `active_max_brightness` returns the reduced ceiling (40) inside the window and
       the base (180) outside; `clamp_color((255,255,255), now=23:00)` → `(40,40,40)`,
       `now=12:00` → `(180,180,180)`; `audio_quiet_now` true in-window, false out /
-      when no policy. (`os/hal/test/test_safety.py`.)
+      when no policy. (`hal/test/test_safety.py`.)
 - [x] **Runtime:** `GET /device` reports `safety.light.quiet_hours` +
       `safety.audio.quiet_hours`. With the window set to the current time, the LED
       ring clamps to the reduced ceiling and `POST /audio/play` returns
@@ -164,7 +164,7 @@ capped) — never by truncating the destination. Recovery actions
       1.0s), passes a slow one, bounds an instant (duration 0) request, passes
       through with no `max_speed` and with no policy at all, ignores joints with no
       known start; commented `# stop_always` is not parsed as a bound; `max_speed:
-      0` fails loud. (`os/hal/test/test_safety.py`.)
+      0` fails loud. (`hal/test/test_safety.py`.)
 - [ ] **Runtime (NOT yet verified on device — user deploys):** `GET /device`
       reports `safety.motion`; `/servo/move` at a tiny duration returns a stretched
       `duration` and the ring/arm moves at the capped speed; a device with no
@@ -182,8 +182,8 @@ critical dependency it falls into a safe posture deterministically, below the ag
 Three conditions are enforced today; setup-incomplete and servo over-current are reserved.
 
 - [x] **Network / gateway loss → stop agent-driven tracking.** On gateway WebSocket
-      disconnect, `os/services/internal/agent/runtimes/openclaw/service_ws.go` calls
-      `hal.StopServoTracking()` (`os/services/lib/hal`) → HAL `POST /servo/track/stop`,
+      disconnect, `system/internal/agent/runtimes/openclaw/service_ws.go` calls
+      `hal.StopServoTracking()` (`system/lib/hal`) → HAL `POST /servo/track/stop`,
       so the body stops chasing a target it has no fresh vision for. Best-effort and
       guarded by `SetUpCompleted`. Key nuance: the device does **not** freeze or "hold
       pose" — local idle animation continues (it is local and harmless) and recovery
@@ -207,7 +207,7 @@ Three conditions are enforced today; setup-incomplete and servo over-current are
       above `resume_temp_c`, clears at/below it, and is False with no policy / no thermal
       section / unreadable temp; `read_soc_temp_c` parses millidegrees → °C and returns
       None on any read error; parse defaults `resume = max − 10` and fails loud on
-      `max_temp_c ≤ 0` or `resume ≥ max`. (`os/hal/test/test_safety.py`.)
+      `max_temp_c ≤ 0` or `resume ≥ max`. (`hal/test/test_safety.py`.)
 - [ ] **Runtime (NOT device-verified):** the WS-disconnect → `/servo/track/stop` path and
       the thermal monitor are repo-level only; not yet confirmed on a live device (pull the
       gateway link; heat the SoC past `max_temp_c`).

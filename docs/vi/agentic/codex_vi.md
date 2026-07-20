@@ -10,7 +10,7 @@ não nào đang chạy.
 - **`openclaw`** (mặc định): WebSocket bền tới daemon OpenClaw. Xem `docs/os-server.md` + `internal/agent/runtimes/openclaw`.
 - **`hermes`**: client HTTP + SSE tới Hermes API server cục bộ. Xem `docs/agentic/hermes.md` + `internal/agent/runtimes/hermes`.
 - **`picoclaw`**: client WebSocket bền tới runtime PicoClaw cục bộ. Xem `docs/agentic/picoclaw.md` + `internal/agent/runtimes/picoclaw`.
-- **`codex`**: **OpenAI Codex CLI** làm bộ não agent của thiết bị, sau một WS bridge cục bộ. Tài liệu này. Code: `os/services/internal/agent/runtimes/codex/`.
+- **`codex`**: **OpenAI Codex CLI** làm bộ não agent của thiết bị, sau một WS bridge cục bộ. Tài liệu này. Code: `system/internal/agent/runtimes/codex/`.
 
 > Code là nguồn chân lý. Tài liệu này mô tả `internal/agent/runtimes/codex/` đúng như đã triển
 > khai; giữ đồng bộ khi thay đổi (EN: `docs/agentic/codex.md`, VI: file này).
@@ -449,7 +449,7 @@ tái hiện **native bằng Go** (`internal/agent/runtimes/codex/emotion_ack.go`
 `{emotion:"thinking"}` sang HAL — cùng prefix skip, cùng intensity, cùng
 capability gate (`skills.SupportedHooks`) như handler TS. Hook `turn-gate` đi
 kèm cố ý không mirror (sendChat đã đánh dấu turn busy rồi). ⚠️ Giữ lockstep với
-`os/services/internal/agent/runtimes/openclaw/hooks/emotion-acknowledge/handler.ts`.
+`system/internal/agent/runtimes/openclaw/hooks/emotion-acknowledge/handler.ts`.
 
 ## 7. Connector MCP (`mcp.go`)
 

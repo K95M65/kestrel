@@ -2,7 +2,7 @@
 
 Lamp can track and follow any object the user names. A detector finds the object by name and seeds a ViT tracker, then a fast vision loop follows it in real time while a decoupled servo worker glides the head smoothly toward the target.
 
-All tracking code lives in the `os/hal/drivers/tracking/` package:
+All tracking code lives in the `hal/drivers/tracking/` package:
 
 | Module | Contents |
 |--------|----------|
@@ -59,11 +59,11 @@ The camera runs **1280×720**. Every heavy vision component — the ViT tracker 
 - Detection quality filters: confidence ≥ `DETECT_MIN_CONFIDENCE` (0.15), area between `DETECT_MIN_AREA_RATIO` (0.3%) and `DETECT_MAX_AREA_RATIO` (80%) of frame.
 - **Lookalike guard (local path)** — local YOLO detects **unrestricted** (no `classes=` filter) so competing classes stay visible, then: (a) the confusion cluster cell phone / mouse / remote needs conf ≥ 0.35 (`_CONFUSABLE_CONF_FLOOR`) instead of the global 0.15; (b) **cross-class disambiguation** — if a box of another class overlaps the candidate (IoU ≥ 0.5) with *higher* confidence, the candidate is rejected ("that's probably a mouse, not the phone you asked for") and the code falls through to the remote fallback. The 0.35 floor applies only to the session-start detect (`strict=True`); mid-session redetects use the global 0.15 floor (a fast-moving phone reconfirms at conf 0.2–0.3, and the reinit gates already protect the lock) — cross-class disambiguation stays on in both modes.
 
-Weights are checked into the repo (`os/hal/drivers/tracking/models/`) so deploy is one rsync and the Pi never needs internet at boot to start tracking.
+Weights are checked into the repo (`hal/drivers/tracking/models/`) so deploy is one rsync and the Pi never needs internet at boot to start tracking.
 
 ## Tracker: TrackerVit
 
-**Model:** `os/hal/drivers/tracking/models/vittrack.onnx` (checked into repo)
+**Model:** `hal/drivers/tracking/models/vittrack.onnx` (checked into repo)
 
 | Feature | Value |
 |---------|-------|
@@ -166,7 +166,7 @@ pitch_correction = clamp(PID(soft_deadband(dy)) + VFF·vy·deg_per_px·dt,  ±5�
 | `MAX_TRACK_DURATION_S` | 300 | Auto-stop timeout (5 min) |
 | `_LOCAL_IMGSZ` | 320 | Local YOLO inference size (640 → 1.3–2.9 s, too slow) |
 
-All knobs live in `os/hal/drivers/tracking/constants.py`. (The old dead `GIMBAL_*` / `EMA_ALPHA` proportional path was removed in the package split.)
+All knobs live in `hal/drivers/tracking/constants.py`. (The old dead `GIMBAL_*` / `EMA_ALPHA` proportional path was removed in the package split.)
 
 ### Servo Position Limits
 
@@ -192,7 +192,7 @@ Note: a large bbox (e.g. a person filling the frame) is **not** a stop condition
 
 ### Auto-stop on gateway/network disconnect
 
-Object tracking is driven by remote vision updates from the agent/cloud. When the gateway WebSocket disconnects (cloud or internet loss), the device auto-stops any in-flight servo tracking — `os/services/internal/agent/runtimes/openclaw/service_ws.go` calls `hal.StopServoTracking()` → HAL `POST /servo/track/stop` (best-effort, guarded by `SetUpCompleted`). Without fresh remote updates, continued tracking would keep aiming the body at a stale target it can no longer correct, so it is stopped as a safety reflex. Local idle animation continues (the device stays "alive", doesn't freeze) and recovery (`/servo/track/stop`, stop/release) stays available. See `devices/lamp/SAFETY.md` → `## fail-safe states` (Network/gateway loss row, enforced).
+Object tracking is driven by remote vision updates from the agent/cloud. When the gateway WebSocket disconnects (cloud or internet loss), the device auto-stops any in-flight servo tracking — `system/internal/agent/runtimes/openclaw/service_ws.go` calls `hal.StopServoTracking()` → HAL `POST /servo/track/stop` (best-effort, guarded by `SetUpCompleted`). Without fresh remote updates, continued tracking would keep aiming the body at a stale target it can no longer correct, so it is stopped as a safety reflex. Local idle animation continues (the device stays "alive", doesn't freeze) and recovery (`/servo/track/stop`, stop/release) stays available. See `devices/lamp/SAFETY.md` → `## fail-safe states` (Network/gateway loss row, enforced).
 
 ## API Endpoints
 
@@ -301,7 +301,7 @@ Camera section shows:
 
 - `opencv-python>=4.8.0` (already in `pyproject.toml`)
 - `ultralytics` — local YOLOv8n inference
-- `vittrack.onnx`, `yolov8n.pt`, `face_detection_yunet_2023mar.onnx` — checked into `os/hal/drivers/tracking/models/`
+- `vittrack.onnx`, `yolov8n.pt`, `face_detection_yunet_2023mar.onnx` — checked into `hal/drivers/tracking/models/`
 - `requests` (already in project)
 - **YOLOWorld API** — DL backend at `{DL_BACKEND_URL}/detect/yoloworld` (open-vocab fallback only)
 

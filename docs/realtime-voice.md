@@ -6,8 +6,8 @@ directly (sub-second audio replies) and **delegates** anything that needs the
 main agent (device control, skills, memory, real-time facts) back to the
 OS-server flow.
 
-Code lives in `os/hal/drivers/realtime/`; it is driven by
-`os/hal/drivers/voice/voice_service.py`.
+Code lives in `hal/drivers/realtime/`; it is driven by
+`hal/drivers/voice/voice_service.py`.
 
 > **Source of truth:** this doc reflects the code. If they disagree, the code wins.
 
@@ -431,8 +431,8 @@ spurious HAL restart on the next boot after an os-server-only field changes.
 
 ### `config.json` `realtime` block
 
-Modelled in Go at `os/services/server/config/realtime.go`; read in HAL at
-`os/hal/config.py`. Shared fields sit at the top; per-provider knobs live in
+Modelled in Go at `system/server/config/realtime.go`; read in HAL at
+`hal/config.py`. Shared fields sit at the top; per-provider knobs live in
 `gemini` / `openai` / `qwen` sub-objects, with `provider` selecting the active
 one (`none` or absent → realtime off). Empty `api_key` / `base_url` fall back to
 `llm_api_key` / `llm_base_url` — **except qwen**: its credentials are its own
@@ -497,12 +497,12 @@ is still caught, while a reply-language sentence quoting English is not.
 Every dropped sentence is logged as `CoT leak dropped`.
 
 The main-agent path (openclaw/hermes replies spoken via os-server) has a Go
-port of this filter — `os/services/server/agent/delivery/http/cot_leak_filter.go`
+port of this filter — `system/server/agent/delivery/http/cot_leak_filter.go`
 (adds a snake_case-identifier TRIGGER for the DeepSeek leak corpus); see
 `docs/flow-monitor.md` § "CoT-leak filter (agent path)". Keep the two in sync
 when hardening either side.
 
-### Environment variables (`os/hal/config.py`)
+### Environment variables (`hal/config.py`)
 
 Each knob's `HAL_*` env var overrides the block (and is the dev-box path):
 

@@ -51,7 +51,7 @@
 
 Zone được validate dựa trên `/usr/share/zoneinfo`; zone không tồn tại trả về HTTP 400. Khi thành công, server: trỏ lại symlink `/etc/localtime` về file tzdata của zone, ghi `/etc/timezone` (kiểu Debian, có newline cuối), chạy `timedatectl set-timezone <tz>` best-effort (không fatal nếu thiếu lệnh), và lưu `timezone` vào `config/config.json`.
 
-Thay đổi có hiệu lực **mà KHÔNG cần restart HAL** — các clock helper của HAL (`os/hal/clock.py`) đọc lại `/etc/timezone` mỗi lần gọi.
+Thay đổi có hiệu lực **mà KHÔNG cần restart HAL** — các clock helper của HAL (`hal/clock.py`) đọc lại `/etc/timezone` mỗi lần gọi.
 
 Config field: `timezone` trong `config/config.json` (chuỗi IANA zone, omitempty) — bản ghi của zone đã áp dụng. Các file OS (`/etc/timezone` + `/etc/localtime`) mới là source of truth.
 

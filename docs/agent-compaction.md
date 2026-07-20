@@ -2,7 +2,7 @@
 
 > **Short version:** The agentic runtime auto-compacts the agent session when conversation tokens approach ~80k. The compaction result (a text `summary`) is then injected at the top of every subsequent turn's prompt until the next compact. If rules are accidentally copied or generalized into that summary, they can override the loaded `SKILL.md` — because the summary sits earlier in the prompt and is framed as "established context."
 >
-> This doc is the reference linked from the **📋 Summary** button in Flow Monitor (modal: `os/services/web/src/pages/monitor/FlowSection/CompactionModal.tsx`).
+> This doc is the reference linked from the **📋 Summary** button in Flow Monitor (modal: `system/web/src/pages/monitor/FlowSection/CompactionModal.tsx`).
 
 ## Why compaction exists
 
@@ -78,7 +78,7 @@ There are at least three ways a compaction can fire:
 | Source | Trigger | Side-effects | Observed `fromHook` |
 |---|---|---|---|
 | **Runtime internal hook** | tokens ≥ 80k, server-side detection | — | `true` |
-| **OS server RPC** (`os/services/server/openclaw/delivery/sse/handler_events.go:380-406`) | The OS server sees `u.TotalTokens > 80_000` on a lifecycle event, calls `agentGateway.CompactSession(sessionKey)` | TTS speaks *"Hold on, tidying up a bit."*; 2-minute cooldown via `h.compacting` atomic | unknown — needs verification against runtime source |
+| **OS server RPC** (`system/server/openclaw/delivery/sse/handler_events.go:380-406`) | The OS server sees `u.TotalTokens > 80_000` on a lifecycle event, calls `agentGateway.CompactSession(sessionKey)` | TTS speaks *"Hold on, tidying up a bit."*; 2-minute cooldown via `h.compacting` atomic | unknown — needs verification against runtime source |
 | **Manual / debug** | Someone invokes `sessions.compact` RPC directly (e.g. from a client tool) | — | likely `false` |
 
 **Heuristic to distinguish on UI today:** if a record's `timestamp` is within a few seconds after a `"sessions.compact sent"` log line in the OS server's journal for the same `sessionKey`, it was OS-server-initiated. Otherwise the runtime's internal hook.
@@ -146,11 +146,11 @@ for l in sys.stdin:
 
 | File | Role |
 |---|---|
-| `os/services/server/openclaw/delivery/sse/handler_api_compaction.go` | HTTP handler: reads `sessions.json`, scans session `.jsonl` for newest `type:"compaction"`. |
-| `os/services/server/openclaw/delivery/sse/handler_events.go` | OS-server-side RPC trigger (auto-compact when `TotalTokens > 80_000`, TTS notice, 2-min cooldown). |
-| `os/services/internal/agent/runtimes/openclaw/service_chat.go` | `CompactSession(sessionKey)` — the `sessions.compact` RPC sender. |
-| `os/services/domain/agent.go` | `AgentGateway.CompactSession` interface. |
-| `os/services/web/src/pages/monitor/FlowSection/CompactionModal.tsx` | UI modal — shows timestamp, summary chars, session file, full summary text; links back to this doc. |
+| `system/server/openclaw/delivery/sse/handler_api_compaction.go` | HTTP handler: reads `sessions.json`, scans session `.jsonl` for newest `type:"compaction"`. |
+| `system/server/openclaw/delivery/sse/handler_events.go` | OS-server-side RPC trigger (auto-compact when `TotalTokens > 80_000`, TTS notice, 2-min cooldown). |
+| `system/internal/agent/runtimes/openclaw/service_chat.go` | `CompactSession(sessionKey)` — the `sessions.compact` RPC sender. |
+| `system/domain/agent.go` | `AgentGateway.CompactSession` interface. |
+| `system/web/src/pages/monitor/FlowSection/CompactionModal.tsx` | UI modal — shows timestamp, summary chars, session file, full summary text; links back to this doc. |
 | `docs/flow-monitor.md` | Parent doc — cross-references this one. |
 
 Vietnamese summary: [`docs/vi/agent-compaction_vi.md`](vi/agent-compaction_vi.md).

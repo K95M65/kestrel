@@ -11,7 +11,7 @@ identity rename that did nothing, no skill auto-update).
 > must either do too or **consciously decide to skip — and say why in a comment.**
 > A no-op is a decision, never a default.
 
-Source of truth for the contract: `os/services/domain/agent.go` (the
+Source of truth for the contract: `system/domain/agent.go` (the
 `AgentGateway` interface). This doc explains *which* parts matter and *how* to
 wire the switch, install, migration, skills, hooks, and reset.
 
@@ -296,7 +296,7 @@ What was done:
   busy (`busySince`/`activeTurn`) before the network round-trip, so a separate
   gate would duplicate it.
 
-> ⚠️ **Maintenance coupling — no compile-time link.** `os/services/internal/agent/runtimes/openclaw/hooks/emotion-acknowledge/
+> ⚠️ **Maintenance coupling — no compile-time link.** `system/internal/agent/runtimes/openclaw/hooks/emotion-acknowledge/
 > handler.ts` (OpenClaw) and the `emotion_ack.go` files in
 > `internal/agent/runtimes/{hermes,picoclaw,codex,claudecode}` are independent
 > implementations of the same behavior. **When you change one, change them

@@ -51,7 +51,7 @@
 
 The zone is validated against `/usr/share/zoneinfo`; an unknown zone returns HTTP 400. On success the server: repoints the `/etc/localtime` symlink at the zone's tzdata file, writes `/etc/timezone` (Debian-style, trailing newline), runs `timedatectl set-timezone <tz>` best-effort (non-fatal if absent), and persists `timezone` to `config/config.json`.
 
-The change takes effect **without a HAL restart** — HAL's clock helpers (`os/hal/clock.py`) read `/etc/timezone` fresh on every call.
+The change takes effect **without a HAL restart** — HAL's clock helpers (`hal/clock.py`) read `/etc/timezone` fresh on every call.
 
 Config field: `timezone` in `config/config.json` (IANA zone string, omitempty) — a record of the applied zone. The OS files (`/etc/timezone` + `/etc/localtime`) are the source of truth.
 
