@@ -42,4 +42,4 @@ that capability in its `DEVICE.md`.
 
 ## See also
 
-[overview.md](overview.md) · [hal.md](hal.md) · `imager/` (board images + device-tree overlays)
+[overview.md](overview.md) · [hal.md](hal.md) · `scripts/imager/` (board images + device-tree overlays)

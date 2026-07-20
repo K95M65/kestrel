@@ -57,7 +57,7 @@ integrations/companions/claude-desktop-buddy/claude-desktop-buddy
 __pycache__
 *.egg-info
 
-imager/output/*.img
+scripts/imager/output/*.img
 scripts/release/.skill-hashes
 
 

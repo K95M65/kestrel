@@ -116,7 +116,7 @@ devices/          reference devices: lamp/, intern-v2/ (DEVICE · SOUL · SAFETY
 
 # Supporting
 docs/             documentation, incl. docs/architecture/
-scripts/  imager/ build, OTA, and SBC image tooling
+scripts/          build, OTA, and SBC image tooling (incl. scripts/imager/)
 
 # Off-device & integrations
 integrations/

@@ -927,7 +927,7 @@ Notes:
 - If charts/assets require blob/data, keep the minimal needed directives.
 - If `/gw-config` iframe remains same-origin, `frame-src 'self'` allows it. `frame-ancestors 'none'` prevents external sites from framing Lamp.
 
-Mirror in `imager/build.sh`.
+Mirror in `scripts/imager/build.sh`.
 
 ### Acceptance checks
 
@@ -1329,7 +1329,7 @@ Actions:
 Files:
 
 - `scripts/provision/setup.sh`
-- `imager/build.sh`
+- `scripts/imager/build.sh`
 - possibly `lamp/web/index.html`
 
 Actions:
@@ -1522,7 +1522,7 @@ Actions:
 - `scripts/provision/setup.sh`
   - Add CSP/security headers to nginx.
 
-- `imager/build.sh`
+- `scripts/imager/build.sh`
   - Mirror headers.
 
 ---

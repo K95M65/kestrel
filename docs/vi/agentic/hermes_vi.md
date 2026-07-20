@@ -365,7 +365,7 @@ giờ chạy, `WaitForAgentReady` time-out, `SetUpCompleted` vẫn `false`, devi
 mode, và triệu chứng nhìn giống "**WiFi không kết nối được**" dù WiFi thực ra đã
 associate thành công. Hai lớp khắc phục:
 
-- **A — pre-bake trong image** (`imager/build-orangepi.sh`): ngay sau khi pre-bake
+- **A — pre-bake trong image** (`scripts/imager/build-orangepi.sh`): ngay sau khi pre-bake
   binary Hermes CLI, image chạy `hermes gateway install --system` để ghi file unit,
   rồi `systemctl disable hermes-gateway` để nó **không** auto-start lúc boot
   (OpenClaw là runtime active mặc định; enable cả hai sẽ chạy 2 agent). Best-effort

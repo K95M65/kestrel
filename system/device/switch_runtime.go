@@ -10,7 +10,7 @@ import (
 // switch_runtime.sh is the generic, backend-agnostic agentic-backend switcher.
 // It is embedded in os-server and written to switchRuntimeBin on demand, so the
 // switcher is versioned and OTA-updated together with the binary — no
-// imager/setup.sh change is ever needed to ship or update it, and adding a new
+// scripts/imager/setup.sh change is ever needed to ship or update it, and adding a new
 // backend is just a runtimes/<name>/install.sh on the CDN.
 //
 //go:embed switch_runtime.sh

@@ -131,7 +131,7 @@ chừng resolve về `old` vẫn đang cài, không có gì để revert. `switc
    rollback chỉ restart unit **cũ**. Nó không bao giờ đụng `config.json`.
 
 Nên `switch-runtime` hoàn toàn không-biết-backend — **không cần đụng
-imager/setup.sh/switcher khi thêm backend.**
+scripts/imager/setup.sh/switcher khi thêm backend.**
 
 ---
 

@@ -59,7 +59,7 @@ location /api/ {
 upstream backend { server 127.0.0.1:5000; }
 ```
 
-Equivalent config exists in `imager/build.sh`.
+Equivalent config exists in `scripts/imager/build.sh`.
 
 ### Lamp Go server listens on all interfaces
 
@@ -1597,7 +1597,7 @@ Expected: `401`/`403` without auth; redacted with auth.
   - If shell remains, add `allow/deny` to `location = /api/system/shell`.
   - Consider restricting `/api/` by route at nginx only as defense-in-depth; app auth should be primary.
 
-- `imager/build.sh`
+- `scripts/imager/build.sh`
   - Mirror production nginx restrictions.
 
 ---
