@@ -161,15 +161,15 @@ start-nginx: stop-nginx
 	@if ! command -v nginx > /dev/null 2>&1; then \
 		apt-get update && apt-get install -y nginx; \
 	fi
-	cp $(NGINX_CONF) /etc/nginx/dlbackend-nginx.conf
-	nginx -c /etc/nginx/dlbackend-nginx.conf
+	cp $(NGINX_CONF) /etc/nginx/perception-service-nginx.conf
+	nginx -c /etc/nginx/perception-service-nginx.conf
 
 start-nginx-ssl: gen-ssl-cert stop-nginx
 	@if ! command -v nginx > /dev/null 2>&1; then \
 		apt-get update && apt-get install -y nginx; \
 	fi
-	cp $(NGINX_SSL_CONF) /etc/nginx/dlbackend-nginx-ssl.conf
-	nginx -c /etc/nginx/dlbackend-nginx-ssl.conf
+	cp $(NGINX_SSL_CONF) /etc/nginx/perception-service-nginx-ssl.conf
+	nginx -c /etc/nginx/perception-service-nginx-ssl.conf
 
 start-runpod-dlserver: install stop-runpod-dlserver
 	@command -v multilog >/dev/null || apt-get install -y daemontools
@@ -368,7 +368,7 @@ DEPLOY_HOST ?=
 DEPLOY_REPO ?= https://github.com/autonomous-ai/autonomous-os.git
 DEPLOY_BRANCH ?= main
 DEPLOY_ROOT ?= /workspace/autonomous-os
-DEPLOY_DL ?= $(DEPLOY_ROOT)/dlbackend
+DEPLOY_DL ?= $(DEPLOY_ROOT)/integrations/perception-service
 DEPLOY_API_KEY ?=
 
 define DEPLOY_SYNC

@@ -8,7 +8,6 @@ import time
 from typing import Any, cast
 
 import cv2.typing as cv2t
-import numpy as np
 from typing_extensions import override
 
 from core.models.face import FaceCrop, RawFaceDetection
@@ -21,6 +20,7 @@ from core.models.facial_emotion import (
 from core.perception.base import PerceptionSessionBase
 from core.perception.base.batching import InputBatcher
 from core.perception.face.predictors.base import FaceDetector
+from core.perception.facial_emotion.label_gating import resolve_label
 from core.perception.facial_emotion.predictors.base import EmotionRecognizer
 from core.types import Omit, omit
 from core.utils.common import get_or_default
@@ -95,19 +95,24 @@ class EmotionPerceptionSession(
 
         recognizer = cast(EmotionRecognizer, self._emotion_batcher.predictor)
 
-        # Combine output with face detector info, filter by threshold
+        # Combine output with face detector info, filter by threshold.
+        # Per-label gating runs first; a Neutral fallback is always emitted
+        # (bypasses the global confidence_threshold drop).
         emotions: list[Emotion] = []
         for face_crop, raw in zip(face_crops, raw_detections):
-            emotion_idx: int = int(np.argmax(raw.expression_probs))
-            confidence: float = float(raw.expression_probs[emotion_idx])
+            resolved = resolve_label(
+                raw.expression_probs,
+                recognizer.class_names,
+                self._config.label_thresholds,
+            )
 
-            if confidence < self._config.confidence_threshold:
+            if not resolved.is_fallback and resolved.confidence < self._config.confidence_threshold:
                 continue
 
             emotions.append(
                 Emotion(
-                    emotion=recognizer.class_names[emotion_idx],
-                    confidence=confidence,
+                    emotion=resolved.label,
+                    confidence=resolved.confidence,
                     face_confidence=face_crop.confidence,
                     bbox=face_crop.bbox_xyxy,
                     valence=raw.valence,

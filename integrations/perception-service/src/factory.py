@@ -105,10 +105,12 @@ def build_emotion_perception() -> EmotionPerception:
     if (
         settings.fer.confidence_threshold is not None
         or settings.fer.frame_interval is not None
+        or settings.fer.label_thresholds is not None
     ):
         default_config = EmotionPerceptionSessionConfig(
             confidence_threshold=settings.fer.confidence_threshold or 0.5,
             frame_interval=settings.fer.frame_interval or 1.0,
+            label_thresholds=settings.fer.label_thresholds,
         )
 
     return EmotionPerception(
