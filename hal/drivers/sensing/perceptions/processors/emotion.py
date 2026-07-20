@@ -65,7 +65,6 @@ EMOTION_BUCKETS = {
     "Contempt": "negative",
 }
 
-
 class RemoteEmotionRecognizer:
     """Calls the perception-service HTTP emotion-recognize endpoint for a single face crop."""
 
@@ -159,11 +158,20 @@ class RemoteEmotionRecognizer:
             else:
                 detections = resp.json().get("detections", [])
             if not detections:
+                # Endpoint applies the threshold server-side; empty here means
+                # no face detection cleared the confidence bar (a "fail").
                 return None
 
-            # Return the top detection (highest confidence)
+            # Return the top detection (highest confidence) as a shallow COPY
+            # with the candidate list attached. Copying is essential: `top` is
+            # itself an element of `detections`, so mutating it in place
+            # (top["all_detections"] = detections) would create a circular
+            # reference that makes json.dump abort mid-write and leave
+            # result.json truncated.
             top = max(detections, key=lambda d: d["confidence"])
-            return top
+            result = dict(top)
+            result["all_detections"] = detections
+            return result
         except requests.RequestException as e:
             logger.warning("[activity.emotion] request failed: %s", e)
             return None
@@ -242,8 +250,13 @@ class EmotionPerception(Perception[FaceDetectionData]):
         """Crop face, send to emotion backend, buffer result."""
 
         h, w = frame.shape[:2]
-        # bbox is [x1, y1, x2, y2] from InsightFace
-        x1, y1, x2, y2 = face.bbox
+        # Prefer the face-mesh re-centered box computed during face recognition
+        # (get_box over the dense 468 landmarks): tighter and better-centered on
+        # the face than the raw detector bbox, and the framing the cloud emotion
+        # model expects, with NO rotation applied. Fall back to the detector bbox
+        # when no mesh box is available (e.g. the v1 recognizer). Both are
+        # [x1, y1, x2, y2].
+        x1, y1, x2, y2 = face.emotion_box if face.emotion_box is not None else face.bbox
 
         # Clamp to frame bounds
         x1 = max(0, x1)
@@ -277,12 +290,13 @@ class EmotionPerception(Perception[FaceDetectionData]):
             if face.person_id not in self._emotion_buffer:
                 self._emotion_buffer[face.person_id] = []
 
+            weighted_confidence = confidence * face.confidence
             self._emotion_buffer[face.person_id].append(
                 EmotionData(
                     frame=frame,
                     face=face,
                     emotion=emotion,
-                    confidence=confidence * face.confidence,
+                    confidence=weighted_confidence,
                 )
             )
 

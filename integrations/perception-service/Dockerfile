@@ -14,7 +14,7 @@ EXPOSE 8899
 ENV MODEL_CACHE_DIR=/workspace/models
 
 # DL_API_KEY must be supplied at runtime:
-#   docker run --gpus all -e DL_API_KEY=<secret> -p 8899:8899 dlbackend
+#   docker run --gpus all -e DL_API_KEY=<secret> -p 8899:8899 perception-service
 #
 # Roles (set via ROLE env var):
 #   master  — nginx + lbserver + dlserver (default)

@@ -11,8 +11,8 @@ HOST="${HOST:-127.0.0.1}"
 mkdir -p /var/log/nginx /workspace/logs/dlserver /workspace/logs/lbserver "${MODEL_CACHE_DIR:-/workspace/models}"
 
 # Start nginx
-cp /app/nginx.conf /etc/nginx/dlbackend-nginx.conf
-nginx -c /etc/nginx/dlbackend-nginx.conf
+cp /app/nginx.conf /etc/nginx/perception-service-nginx.conf
+nginx -c /etc/nginx/perception-service-nginx.conf
 
 if [ "$ROLE" = "master" ]; then
     echo "[entrypoint] Starting as MASTER (nginx:8899 → lbserver:7999 → dlserver:8001)"
