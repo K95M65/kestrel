@@ -1,7 +1,7 @@
-// Package ambient provides idle "living creature" behaviors for Lamp.
-// When no interaction is happening, it drives breathing LED, color drift,
-// micro-movements, eye expression changes, and occasional self-talk via TTS.
-// All hardware control goes through HAL HTTP API (port 5001).
+// Package ambient provides idle "living creature" behaviors: when no
+// interaction is happening, it drives a breathing LED, servo micro-movements,
+// and occasional self-talk via TTS — each loop gated by the device's declared
+// capabilities. All hardware control goes through HAL HTTP API (port 5001).
 package ambient
 
 import (
@@ -270,7 +270,7 @@ func (s *Service) microMovementLoop(ctx context.Context) {
 	}
 }
 
-// mumbleLoop occasionally makes Lamp "talk to itself" via TTS.
+// mumbleLoop occasionally makes the device "talk to itself" via TTS.
 // Phrase pool lives in lib/i18n (PhraseMumble) so all hardcoded TTS
 // templates stay in one place.
 func (s *Service) mumbleLoop(ctx context.Context) {

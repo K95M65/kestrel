@@ -696,3 +696,38 @@ Các hằng số cấu hình nằm trong `hal/config.py`:
 - Prefix `[sensing:type]` trong message là cách agent biết đây là ambient event, không phải message từ người dùng.
 - **Pre-turn `thinking` emotion**: Hook `emotion-acknowledge` tự fire `POST /emotion {thinking, 0.7}` server-side ở event `message:preprocessed` cho mọi non-sensing message — agent không cần gọi. Hook skip sensing events vì mỗi type đã có emotion đầu tiên riêng.
 - **Image pruning echo**: OpenClaw strip image payload cũ khỏi conversation history để tiết kiệm token. Model nhỏ (Haiku) có thể echo marker dưới dạng `[image description removed]` trong response. `SOUL.md` hướng dẫn agent không được echo các marker này.
+
+---
+
+## Hành vi Ambient khi idle
+
+Khi không có gì diễn ra, `system/ambient/` (Go, thuộc os-server) làm thiết bị có cảm giác "đang sống": LED thở, thỉnh thoảng cựa mình, và tự lẩm bẩm khe khẽ. Mọi điều khiển phần cứng đi qua HAL HTTP API (:5001). Cơ chế này tách biệt với sensing event — không tạo agent turn, không tốn token.
+
+### Vòng đời pause / resume
+
+- Service khởi động ở trạng thái **paused**, resume sau 5 giây kể từ khi os-server boot.
+- Bất kỳ tương tác thật nào cũng pause ngay lập tức. Trigger pause (event trên monitor bus): `sensing_input`, `chat_response`, `intent_match`, `tts`, `chat_send`, `hw_emotion`.
+- Tự resume sau **60 giây** không có tương tác (`resumeDelay`, kiểm tra mỗi 2 giây).
+- **Sleep mode**: khi event `hw_emotion` mang emotion `sleepy`, toàn bộ hành vi ambient bị suppress cho tới khi có tương tác thật tiếp theo (chat, wake word, sensing) đánh thức thiết bị.
+- Chuyển trạng thái pause/resume được log vào Flow Monitor dưới dạng `ambient_pause` / `ambient_resume`.
+
+### Các behavior loop (gate theo capability)
+
+Mỗi loop điều khiển một peripheral và chỉ chạy khi device type khai báo capability tương ứng trong block `capabilities:` của `devices/<type>/DEVICE.md`; device không khai báo capability nào thì chạy tất cả loop (fail-open, giữ hành vi Lamp cũ).
+
+| Loop | Capability | Nhịp | Hoạt động |
+|------|-----------|------|-----------|
+| Breathing LED | `light` | liên tục (tick 2 giây) | Bật effect `breathing` có sẵn của HAL qua `/led/effect` (speed 0.3) với màu LED hiện tại đọc từ HAL; fallback trắng ấm `(255, 200, 140)` khi LED đang tắt (đen). Dừng effect khi paused hoặc LED đang bị lock. |
+| Micro-movements | `motion` | ngẫu nhiên 45–120 giây | Phát một servo recording an toàn trong bộ `idle`, `curious`, `nod`. Chỉ servo — không đụng vào LED. |
+| Mumble (tự lẩm bẩm) | `audio` | ngẫu nhiên 5–15 phút | Nói một câu ngẫu nhiên từ pool `PhraseMumble` (`system/lib/i18n/phrases.go`, EN/VI/zh-CN/zh-TW, có audio tag như `[sigh]`/`[whisper]`/`[chuckle]`). Dùng `hal.SpeakCached` — lần render đầu của mỗi câu mới gọi TTS provider, các lần sau phát lại từ WAV cache của HAL, nên lẩm bẩm lúc idle không tốn API. |
+
+### LED lock
+
+Khi user hoặc agent chủ động set màu/scene cho LED, breathing không được đè lên:
+
+- Event `led_set` trên monitor bus lock LED; `led_off` unlock (breathing được phép chạy lại khi idle).
+- LED set từ Web UI đi qua proxy `/api/hardware` và không phát các event trên, nên proxy gọi thẳng `LockLED()` / `UnlockLED()` trên ambient service.
+
+### Đừng nhầm với dead-air filler
+
+Mumble loop nói khi thiết bị **idle**. Một cơ chế khác — dead-air filler (`system/lib/i18n/fillers.go`, điều khiển bởi `server/sensing/delivery/http/deadair_filler.go`) — nói các câu đệm ngắn kiểu "Vẫn đang nghĩ" **giữa turn** khi agent đang bận xử lý, có override theo tool (ví dụ "Để mình tìm chút" khi đang `web_search`). Khác trigger, khác pool câu.

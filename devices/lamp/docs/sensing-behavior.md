@@ -756,7 +756,7 @@ When nothing is happening, `system/ambient/` (Go, part of os-server) makes the d
 
 ### Behavior loops (capability-gated)
 
-Each loop drives one peripheral and only runs if the device type declares the matching capability (`devices/contract/`); a device with no declared capabilities runs all loops (fail-open, legacy Lamp behavior).
+Each loop drives one peripheral and only runs if the device type declares the matching capability in the `capabilities:` block of `devices/<type>/DEVICE.md`; a device with no declared capabilities runs all loops (fail-open, legacy Lamp behavior).
 
 | Loop | Capability | Cadence | What it does |
 |------|-----------|---------|--------------|
