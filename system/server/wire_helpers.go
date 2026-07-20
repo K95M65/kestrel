@@ -2,6 +2,7 @@ package server
 
 import (
 	"go.autonomous.ai/os/system/device"
+	_agentHttp "go.autonomous.ai/os/system/server/agent/delivery/http"
 	"go.autonomous.ai/os/system/server/config"
 )
 
@@ -15,4 +16,12 @@ import (
 // wifi_connecting cue during setup, which would form an import cycle.
 func provideStatusLEDHasLight(cfg *config.Config) bool {
 	return device.Has(cfg.DeviceTypeOrDefault(), device.CapLight)
+}
+
+// provideAgentIsSleeping exposes the agent handler's sleep state as the
+// func() bool dependency SensingHandler declares. SensingHandler takes a
+// closure rather than the handler itself so the sensing package does not
+// import the agent delivery package.
+func provideAgentIsSleeping(h *_agentHttp.AgentHandler) func() bool {
+	return h.IsSleeping
 }

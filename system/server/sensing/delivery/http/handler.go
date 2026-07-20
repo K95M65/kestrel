@@ -75,10 +75,10 @@ type SensingHandler struct {
 }
 
 // ProvideSensingHandler constructs a SensingHandler.
-func ProvideSensingHandler(gw domain.AgentGateway, bus *monitor.Bus, cfg *config.Config, sled *statusled.Service, isSleeping func() bool) SensingHandler {
+func ProvideSensingHandler(gw domain.AgentGateway, bus *monitor.Bus, cfg *config.Config, sled *statusled.Service, isSleeping func() bool) *SensingHandler {
 	// Gate local intent rules to what this device's body can do — set once here.
 	intent.Configure(device.Capabilities(cfg.DeviceTypeOrDefault()))
-	return SensingHandler{
+	return &SensingHandler{
 		agentGateway: gw,
 		monitorBus:   bus,
 		config:       cfg,

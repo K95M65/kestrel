@@ -47,8 +47,8 @@ type Server struct {
 	networkHandler    _networkHttpDeliver.NetworkHandler
 	deviceHandler     _deviceHttpDeliver.DeviceHandler
 	deviceMQTTHandler _deviceMQTTDeliver.DeviceMQTTHandler
-	agentHandler      _agentHttpDeliver.AgentHandler
-	sensingHandler    _sensingHttpDeliver.SensingHandler
+	agentHandler      *_agentHttpDeliver.AgentHandler
+	sensingHandler    *_sensingHttpDeliver.SensingHandler
 	buddyHandler      _buddyHttpDeliver.BuddyHandler
 
 	agentGateway     domain.AgentGateway
@@ -120,8 +120,8 @@ func ProvideServer(
 	nh _networkHttpDeliver.NetworkHandler,
 	dh _deviceHttpDeliver.DeviceHandler,
 	dqth _deviceMQTTDeliver.DeviceMQTTHandler,
-	agentH _agentHttpDeliver.AgentHandler,
-	sensingH _sensingHttpDeliver.SensingHandler,
+	agentH *_agentHttpDeliver.AgentHandler,
+	sensingH *_sensingHttpDeliver.SensingHandler,
 	buddyH _buddyHttpDeliver.BuddyHandler,
 	ds *device.Service,
 	agentGW domain.AgentGateway,

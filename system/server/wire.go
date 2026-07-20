@@ -40,6 +40,7 @@ func InitializeServer() (*Server, error) {
 		healthwatch.ProviderSet,
 		statusled.ProviderSet,
 		provideStatusLEDHasLight,
+		provideAgentIsSleeping,
 		_healthHttpDeliver.ProviderSet,
 		_networkHttpDeliver.ProviderSet,
 		_deviceHttpDeliver.ProviderSet,

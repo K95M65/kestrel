@@ -16,11 +16,11 @@ import (
 	"go.autonomous.ai/os/system/lib/mqtt"
 	"go.autonomous.ai/os/system/monitor"
 	"go.autonomous.ai/os/system/network"
-	http6 "go.autonomous.ai/os/system/server/agent/delivery/http"
-	http7 "go.autonomous.ai/os/system/server/buddy/delivery/http"
+	http4 "go.autonomous.ai/os/system/server/agent/delivery/http"
+	http6 "go.autonomous.ai/os/system/server/buddy/delivery/http"
 	"go.autonomous.ai/os/system/server/config"
 	http3 "go.autonomous.ai/os/system/server/device/delivery/http"
-	mqtthandler "go.autonomous.ai/os/system/server/device/delivery/mqtt"
+	"go.autonomous.ai/os/system/server/device/delivery/mqtt"
 	"go.autonomous.ai/os/system/server/health/delivery/http"
 	http2 "go.autonomous.ai/os/system/server/network/delivery/http"
 	http5 "go.autonomous.ai/os/system/server/sensing/delivery/http"
@@ -33,12 +33,9 @@ func InitializeServer() (*Server, error) {
 	configConfig := config.ProvideConfig()
 	service := network.ProvideService(configConfig)
 	bus := monitor.ProvideBus()
-	statusledService := statusled.ProvideService(provideStatusLEDHasLight(configConfig))
+	bool2 := provideStatusLEDHasLight(configConfig)
+	statusledService := statusled.ProvideService(bool2)
 	agentGateway := agent.ProvideGateway(configConfig, bus, statusledService)
-	personaMigration := agent.ProvidePersonaMigration(configConfig)
-	configMigration := agent.ProvideConfigMigration(configConfig, agentGateway)
-	channelReconcile := agent.ProvideChannelReconcile(configConfig, agentGateway)
-	mcpReconcile := agent.ProvideMCPReconcile(configConfig, agentGateway)
 	healthHandler := http.ProvideHealthHandler(configConfig, service, agentGateway)
 	client := beclient.ProvideClient(configConfig)
 	deviceService := device.ProvideService(configConfig, service, agentGateway, client, statusledService)
@@ -50,15 +47,20 @@ func InitializeServer() (*Server, error) {
 		return nil, err
 	}
 	deviceMQTTHandler := mqtthandler.ProvideDeviceMQTTHandler(configConfig, factory, deviceService, service, agentGateway)
-	agentHandler := http6.ProvideAgentHandler(agentGateway, bus, statusledService, configConfig)
-	sensingHandler := http5.ProvideSensingHandler(agentGateway, bus, configConfig, statusledService, agentHandler.IsSleeping)
-	ambientService := ambient.ProvideService(bus, configConfig)
-	healthwatchService := healthwatch.ProvideService(bus, configConfig, statusledService)
+	agentHandler := http4.ProvideAgentHandler(agentGateway, bus, statusledService, configConfig)
+	v := provideAgentIsSleeping(agentHandler)
+	sensingHandler := http5.ProvideSensingHandler(agentGateway, bus, configConfig, statusledService, v)
 	buddyService, err := buddy.ProvideService()
 	if err != nil {
 		return nil, err
 	}
-	buddyHandler := http7.ProvideBuddyHandler(configConfig, buddyService)
+	buddyHandler := http6.ProvideBuddyHandler(configConfig, buddyService)
+	personaMigration := agent.ProvidePersonaMigration(configConfig)
+	configMigration := agent.ProvideConfigMigration(configConfig, agentGateway)
+	channelReconcile := agent.ProvideChannelReconcile(configConfig, agentGateway)
+	mcpReconcile := agent.ProvideMCPReconcile(configConfig, agentGateway)
+	ambientService := ambient.ProvideService(bus, configConfig)
+	healthwatchService := healthwatch.ProvideService(bus, configConfig, statusledService)
 	server := ProvideServer(configConfig, healthHandler, networkHandler, deviceHandler, deviceMQTTHandler, agentHandler, sensingHandler, buddyHandler, deviceService, agentGateway, personaMigration, configMigration, channelReconcile, mcpReconcile, service, factory, ambientService, healthwatchService, statusledService)
 	return server, nil
 }

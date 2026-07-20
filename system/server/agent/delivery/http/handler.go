@@ -178,7 +178,7 @@ type channelTurnState struct {
 const cronFireWindowMs int64 = 10_000
 
 // ProvideAgentHandler returns an OpenClaw events handler.
-func ProvideAgentHandler(gw domain.AgentGateway, bus *monitor.Bus, sled *statusled.Service, cfg *config.Config) AgentHandler {
+func ProvideAgentHandler(gw domain.AgentGateway, bus *monitor.Bus, sled *statusled.Service, cfg *config.Config) *AgentHandler {
 	// Init flow emitter here so ws_connect events (fired from StartWS before any HTTP request)
 	// are broadcast to SSE. The device is single-user so the global trace ID is sufficient;
 	// concurrent turn interleaving is not a concern in normal operation.
@@ -188,15 +188,13 @@ func ProvideAgentHandler(gw domain.AgentGateway, bus *monitor.Bus, sled *statusl
 	musicsuggestion.Init()
 	posture.Init()
 	// Populate OpenClaw version cache in the background so the first Status
-	// poll has it ready. Stays in package-level state because the handler
-	// struct is returned by value through wire — capturing &h.field here
-	// would write to a soon-to-be-discarded copy.
+	// poll has it ready.
 	go populateOpenClawVersion()
 	go populateHermesVersion()
 	go populatePicoclawVersion()
 	go populateCodexVersion()
 	go populateClaudeCodeVersion()
-	return AgentHandler{
+	return &AgentHandler{
 		agentGateway:         gw,
 		monitorBus:           bus,
 		statusLED:            sled,
