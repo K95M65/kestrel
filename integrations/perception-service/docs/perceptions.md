@@ -96,8 +96,12 @@ Classifies emotion from a speech waveform (independent of any transcript).
   large**, ONNX (`emotion2vec.onnx`), mono 16 kHz waveform, 9 classes (angry, disgusted, fearful, happy,
   neutral, other, sad, surprised, `<unk>`) + softmax.
 - Output `AudioEmotionDetection` → `emotions: list[AudioEmotion{emotion, confidence}]`.
-- The audio processor can resample, high-pass, denoise, VAD-gate and RMS-normalize
-  before inference (toggles under `AUDIO_EMBEDDER__*` / SER processor config).
+- The audio processor runs, in order: mono, resample, high-pass, denoise, VAD-gate,
+  RMS-normalize before inference. Each step has its own toggle under
+  `AUDIO_EMBEDDER__PROCESSOR__*` (e.g. `AUDIO_EMBEDDER__PROCESSOR__ENABLE_HIGH_PASS`).
+  Defaults: **high-pass and denoise are OFF** (they reshape the spectrum in ways CMN
+  cannot cancel, diverging from the WeSpeaker reference); mono, resample, VAD and
+  RMS-normalize are ON.
 
 ## 5. Object detection
 
@@ -137,8 +141,10 @@ the caller).
   | **WeSpeaker ECAPA-TDNN-1024** (default) | `ecapa_tdnn.py` | `wespeaker_ecapa_tdnn1024.onnx` | 1024 |
   | WeSpeaker CAM++ | `campplus.py` | `wespeaker_campplus.onnx` | — |
 
-- All models: 16 kHz mono input → 80-bin fbank → 2 s sliding windows (50 % overlap)
-  → L2-normalized embedding.
+- All models: 16 kHz mono input → 80-bin fbank → chunking → L2-normalized embedding.
+  Net speech ≤ 10 s is embedded as one whole-utterance chunk (like WeSpeaker's
+  extract_embedding); longer speech is split into 6 s chunks with 4 s hop for
+  per-chunk voting.
 - Output `RawAudioEmbedding{embedding, chunk_embeddings}`. Disabled by default.
 
 ## 7. Face detection (internal)

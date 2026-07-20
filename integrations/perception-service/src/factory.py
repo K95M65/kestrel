@@ -226,6 +226,7 @@ def build_audio_embedder() -> AudioEmbedder:
     proc = settings.audio_embedder.processor
     processor_factory = AudioProcessorFactory(
         target_sample_rate=proc.target_sample_rate,
+        enable_mono=proc.enable_mono,
         enable_resample=proc.enable_resample,
         enable_high_pass=proc.enable_high_pass,
         high_pass_cutoff_hz=proc.high_pass_cutoff_hz,

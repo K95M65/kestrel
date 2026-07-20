@@ -22,18 +22,20 @@ from core.utils.runtime import prepare_ort_session
 class AudioEmbedder(PredictorBase[Audio, RawAudioEmbedding]):
     """Base audio embedder using WeSpeaker ONNX models.
 
-    Computes 80-dim fbank features, applies sliding windows with 50% overlap,
-    runs ONNX inference per window, and mean-aggregates with L2 normalization.
-    For audio shorter than one window, features are linearly interpolated to
-    the window size.
+    Computes 80-dim fbank features, splits them into chunks (see
+    _sliding_windows), runs ONNX inference per chunk, and mean-aggregates with
+    L2 normalization. Speech at or below chunk_threshold_frames (default 20 s) is
+    embedded as a single whole-utterance chunk; longer speech is split into
+    window_frames chunks (default 6 s) with hop_frames stride (default 4 s).
     """
 
     DEFAULT_MODEL_PATH: Path | None = None
     DEFAULT_REMOTE_URL: str | None = None
     DEFAULT_PROCESSOR_FACTORY: AudioProcessorFactory = AudioProcessorFactory()
 
-    DEFAULT_WINDOW_FRAMES: int = 200
-    DEFAULT_HOP_FRAMES: int = 100
+    DEFAULT_WINDOW_FRAMES: int = 600
+    DEFAULT_HOP_FRAMES: int = 400
+    DEFAULT_CHUNK_THRESHOLD_FRAMES: int = 1000
     DEFAULT_SAMPLE_RATE: int = 16000
     DEFAULT_NUM_MEL_BINS: int = 80
     ONNX_INPUT_NAME: str = "feats"
@@ -45,6 +47,7 @@ class AudioEmbedder(PredictorBase[Audio, RawAudioEmbedding]):
         processor_factory: AudioProcessorFactory | None = None,
         window_frames: int | None = None,
         hop_frames: int | None = None,
+        chunk_threshold_frames: int | None = None,
         sample_rate: int | None = None,
         num_mel_bins: int | None = None,
         batch_size: int | None = None,
@@ -58,11 +61,15 @@ class AudioEmbedder(PredictorBase[Audio, RawAudioEmbedding]):
         )
         self._window_frames: int = get_or_default(window_frames, self.DEFAULT_WINDOW_FRAMES)
         self._hop_frames: int = get_or_default(hop_frames, self.DEFAULT_HOP_FRAMES)
+        self._chunk_threshold_frames: int = get_or_default(
+            chunk_threshold_frames, self.DEFAULT_CHUNK_THRESHOLD_FRAMES
+        )
         self._sample_rate: int = get_or_default(sample_rate, self.DEFAULT_SAMPLE_RATE)
         self._num_mel_bins: int = get_or_default(num_mel_bins, self.DEFAULT_NUM_MEL_BINS)
 
         self._session: ort.InferenceSession | None = None
         self._processor: CompositeAudioProcessor | None = None
+        self._input_name: str = self.ONNX_INPUT_NAME
 
     @override
     def _start_impl(self) -> None:
@@ -77,11 +84,21 @@ class AudioEmbedder(PredictorBase[Audio, RawAudioEmbedding]):
         self._processor = self._processor_factory.create()
         self._processor.start()
         self._logger.info("Loading audio embedder from %s", self._model_path)
-        warmup = {self.ONNX_INPUT_NAME: np.zeros(
+        session = prepare_ort_session(self._model_path)
+        input_names = [i.name for i in session.get_inputs()]
+        if self.ONNX_INPUT_NAME in input_names:
+            self._input_name = self.ONNX_INPUT_NAME
+        else:
+            self._input_name = input_names[0]
+            self._logger.warning(
+                "ONNX input %r not found (model inputs: %s) — falling back to %r",
+                self.ONNX_INPUT_NAME, input_names, self._input_name,
+            )
+        session.run(None, {self._input_name: np.zeros(
             (self._batch_size, self._window_frames, self._num_mel_bins), dtype=np.float32,
-        )}
-        self._session = prepare_ort_session(self._model_path, warmup_inputs=warmup)
-        self._logger.info("Audio embedder started")
+        )})
+        self._session = session
+        self._logger.info("Audio embedder started (input=%r)", self._input_name)
 
     @override
     def _stop_impl(self) -> None:
@@ -133,38 +150,31 @@ class AudioEmbedder(PredictorBase[Audio, RawAudioEmbedding]):
     def _sliding_windows(
         self, feat: npt.NDArray[np.float32]
     ) -> npt.NDArray[np.float32]:
-        """Split fbank features into overlapping windows.
+        """Split fbank features into chunks for per-chunk embedding.
 
-        If T < window_frames, linearly interpolate to window_frames.
-        Otherwise, slide with hop_frames overlap. The last window is shifted
-        back so that all windows have exactly window_frames size.
+        Net speech length is T (post-VAD fbank frames, ~100 per second):
+
+        * ``T <= chunk_threshold_frames`` (default 10 s): return the whole
+          utterance as ONE chunk of shape (1, T, M).
+        * ``T > chunk_threshold_frames``: slide ``window_frames`` with
+          ``hop_frames`` overlap so a long, possibly multi-speaker recording is
+          split for per-chunk voting. The last window is shifted back so every
+          window has exactly ``window_frames`` frames.
 
         Args:
             feat: Shape (T, num_mel_bins).
 
         Returns:
-            Array of shape (N, window_frames, num_mel_bins).
+            Array of shape (N, W, num_mel_bins) — W == T in the single-chunk case,
+            W == window_frames in the sliding case.
         """
         T = feat.shape[0]
 
         if T == 0:
             return np.zeros((1, self._window_frames, self._num_mel_bins), dtype=np.float32)
 
-        if T < self._window_frames:
-            # Clip shorter than one window: time-STRETCH it to a full window via
-            # per-mel-bin linear interpolation, rather than zero-padding. Fbank
-            # features vary smoothly over time, so stretching preserves the spectral
-            # shape the speaker embedder relies on, whereas appended silence (zeros)
-            # would dilute the embedding and pull short utterances toward a common
-            # "mostly-silence" point. Interpolation is along time only; each mel bin
-            # is interpolated independently (the `for m` loop).
-            x_old = np.linspace(0, 1, T)
-            x_new = np.linspace(0, 1, self._window_frames)
-            interpolated = np.stack(
-                [np.interp(x_new, x_old, feat[:, m]) for m in range(feat.shape[1])],
-                axis=1,
-            ).astype(np.float32)
-            return interpolated[np.newaxis]  # (1, W, M)
+        if T <= self._chunk_threshold_frames:
+            return feat[np.newaxis]  # (1, T, M)
 
         windows: list[npt.NDArray[np.float32]] = []
         start = 0
@@ -193,7 +203,7 @@ class AudioEmbedder(PredictorBase[Audio, RawAudioEmbedding]):
         for i in range(0, len(windows), self._batch_size):
             batch = windows[i : i + self._batch_size]  # (B, W, M)
             with self._gpu_lock:
-                (output,) = self._session.run(None, {self.ONNX_INPUT_NAME: batch})
+                (output,) = self._session.run(None, {self._input_name: batch})
             output = np.asarray(output, dtype=np.float32)  # (B, D)
 
             norms = np.linalg.norm(output, axis=1, keepdims=True)

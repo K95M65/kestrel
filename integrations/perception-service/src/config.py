@@ -83,10 +83,11 @@ class SERSetting(BaseModel):
 
 class AudioProcessorSetting(BaseModel):
     target_sample_rate: int = 16000
+    enable_mono: bool = True
     enable_resample: bool = True
-    enable_high_pass: bool = True
+    enable_high_pass: bool = False
     high_pass_cutoff_hz: float = 80.0
-    enable_noise_reduce: bool = True
+    enable_noise_reduce: bool = False
     noise_reduce_stationary: bool = False
     enable_vad: bool = True
     vad_min_duration_sec: float = 0.5
