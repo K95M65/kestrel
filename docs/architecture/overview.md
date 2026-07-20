@@ -13,10 +13,6 @@ like `guard`, `mood`, `scene`, `habit`, `wellbeing`, plus capability wrappers
 *character* is its `SOUL.md`. First-party skills use the same public contract a third party
 gets. *(`skills/`)*
 
-**Tools** — how the runtime reaches beyond the device: **MCP** servers and the **CLI**. Skills
-are the device's own abilities (through the HAL); tools are external capabilities the runtime
-calls.
-
 **System Managers** — the always-on Go daemon: `intent` (fast local commands), `network`,
 `sensing` routing, `monitor` (flow event bus), `healthwatch`, `ambient`, and `device`.
 Deterministic — they run with or without the runtime. OTA runs as its own worker
@@ -25,7 +21,10 @@ Deterministic — they run with or without the runtime. OTA runs as its own work
 **Agentic Runtime** — **OpenClaw**, **Hermes**, **PicoClaw**, **OpenAI Codex**, **Claude Code**,
 or a custom runtime. Runs the skills, embodies the device's `SOUL.md`, and decides what to act
 on. Swappable — and where Autonomous's differentiated value (the default brain, memory,
-character) lives. *(`runtimes/{openclaw,hermes,picoclaw,codex,claudecode}`)*
+character) lives. Its **tools** — how it reaches beyond the device — are **MCP connectors**
+(`runtimes/*/mcp.go`, synced across a switch by `system/agent`) and the **CLI** the LLM calls
+directly; skills are the device's own abilities through the HAL, tools are external.
+*(`runtimes/{openclaw,hermes,picoclaw,codex,claudecode}`)*
 
 **HAL — Capabilities** — the frozen, versioned interface, 12 capabilities: `audio`, `vision`,
 `sensing`, `presence`, `motion`, `light`, `display`, `expression`, `media`, `connectivity`,
