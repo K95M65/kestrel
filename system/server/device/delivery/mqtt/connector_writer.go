@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"go.autonomous.ai/os/domain"
+	"go.autonomous.ai/os/system/domain"
 )
 
 const (

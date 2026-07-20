@@ -7,8 +7,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"go.autonomous.ai/os/lib/hal"
-	"go.autonomous.ai/os/server/serializers"
+	"go.autonomous.ai/os/system/lib/hal"
+	"go.autonomous.ai/os/system/server/serializers"
 )
 
 // voicePreview plays a TTS preview through HAL using server-side

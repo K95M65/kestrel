@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
-	"go.autonomous.ai/os/internal/device"
-	"go.autonomous.ai/os/internal/statusled"
-	"go.autonomous.ai/os/lib/hal"
-	"go.autonomous.ai/os/lib/safego"
-	"go.autonomous.ai/os/server/config"
-	_sensingHttpDeliver "go.autonomous.ai/os/server/sensing/delivery/http"
+	"go.autonomous.ai/os/system/device"
+	"go.autonomous.ai/os/system/lib/hal"
+	"go.autonomous.ai/os/system/lib/safego"
+	"go.autonomous.ai/os/system/server/config"
+	_sensingHttpDeliver "go.autonomous.ai/os/system/server/sensing/delivery/http"
+	"go.autonomous.ai/os/system/statusled"
 )
 
 // runConfigChangeListener listens for config changes and calls handleSetUpCompleteChange only when SetUpCompleted changed.

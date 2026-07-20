@@ -25,7 +25,7 @@ planned as Phases 1B–1E; a Go `mock-device/` server lets you exercise the
 pairing UI and command REPL end-to-end today.
 
 On the device side the capability is declared as `companion.control` (see
-`contract/capabilities.md` — capability group `companion`, backed by the buddy
+`devices/contract/capabilities.md` — capability group `companion`, backed by the buddy
 service in os-server, target `computer`). Design and MVP plan:
 [`autonomous-buddy/docs/autonomous-buddy.md`](autonomous-buddy/docs/autonomous-buddy.md)
 and [`autonomous-buddy/docs/autonomous-buddy-mvp.md`](autonomous-buddy/docs/autonomous-buddy-mvp.md).
@@ -78,7 +78,7 @@ claude plugins install claude-code-buddy
 
 ## Pairing with the device
 
-Buddy pairing is owned by os-server (`system/internal/buddy`, routes in
+Buddy pairing is owned by os-server (`system/buddy`, routes in
 `system/server/buddy/delivery/http/`):
 
 1. `POST /api/buddy/pair/start` (admin-gated) — `IssuePairingCode` generates a

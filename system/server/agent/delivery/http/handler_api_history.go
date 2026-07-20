@@ -8,12 +8,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"go.autonomous.ai/os/lib/mood"
-	"go.autonomous.ai/os/lib/musicsuggestion"
-	"go.autonomous.ai/os/lib/usercanon"
-	"go.autonomous.ai/os/lib/posture"
-	"go.autonomous.ai/os/lib/wellbeing"
-	"go.autonomous.ai/os/server/serializers"
+	"go.autonomous.ai/os/system/lib/mood"
+	"go.autonomous.ai/os/system/lib/musicsuggestion"
+	"go.autonomous.ai/os/system/lib/posture"
+	"go.autonomous.ai/os/system/lib/usercanon"
+	"go.autonomous.ai/os/system/lib/wellbeing"
+	"go.autonomous.ai/os/system/server/serializers"
 )
 
 func (h *AgentHandler) MoodHistory(c *gin.Context) {

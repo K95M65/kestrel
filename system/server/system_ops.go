@@ -14,7 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"go.autonomous.ai/os/server/serializers"
+	"go.autonomous.ai/os/system/server/serializers"
 )
 
 // softwareUpdateLastFire tracks the last time each OTA target was triggered, so

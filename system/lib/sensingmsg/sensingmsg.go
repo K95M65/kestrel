@@ -7,9 +7,9 @@ package sensingmsg
 import (
 	"strings"
 
-	"go.autonomous.ai/os/domain"
-	"go.autonomous.ai/os/lib/i18n"
-	"go.autonomous.ai/os/lib/skillcontext"
+	"go.autonomous.ai/os/system/domain"
+	"go.autonomous.ai/os/system/lib/i18n"
+	"go.autonomous.ai/os/system/lib/skillcontext"
 )
 
 // Build returns the message that should be forwarded to the agent for a

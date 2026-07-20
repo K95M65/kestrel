@@ -82,9 +82,9 @@ Change messaging channel after setup is complete. Accepts `telegram`, `slack`, `
 - When not set up or setup fails → automatically switches to AP mode
 - Device broadcasts WiFi hotspot
 - Web UI serves setup page
-- `SwitchToAPMode()` in `internal/network/service.go`
+- `SwitchToAPMode()` in `system/network/service.go`
 - **LED indicator:** once HTTP server is listening, if `SetUpCompleted == false` the OS server spawns a background goroutine (`waitAndPaintSetupReady` in `server/server.go`) that polls HAL `GET /health` once per second up to 30s. As soon as `health.led == true`, it fires `POST /led/solid` with `{"color":[255,255,255]}` to paint the strip solid white. The poll exists because os-server typically binds :5000 before HAL's FastAPI is up on :5001 (Python loads `rpi_ws281x`, SPI, audio, camera) — a fire-and-forget paint would silently drop on `connection refused`. White stays on until setup completes (agent flash + ambient repaint it). The booting blue-breathing still shows during init.
-- **AP-mode LED suppression:** the openclaw WS reconnect loop (`internal/agent/runtimes/openclaw/service_ws.go`) skips `StateAgentDown` Set/Clear while `config.SetUpCompleted == false`, so the cyan disconnect overlay doesn't fight the setup-needed white during provisioning. WS still runs (`device.Setup` needs it ready to satisfy `WaitForAgentReady` before flipping `SetUpCompleted=true`), only the LED side-effect is gated.
+- **AP-mode LED suppression:** the openclaw WS reconnect loop (`runtimes/openclaw/service_ws.go`) skips `StateAgentDown` Set/Clear while `config.SetUpCompleted == false`, so the cyan disconnect overlay doesn't fight the setup-needed white during provisioning. WS still runs (`device.Setup` needs it ready to satisfy `WaitForAgentReady` before flipping `SetUpCompleted=true`), only the LED side-effect is gated.
 - **Wi-Fi association LED cue (`StateWifiConnecting`):** the moment the setup handler enters `device.Setup()`, it activates `statusled.StateWifiConnecting` (HAL preset `wifi_connecting` = blue `[0,135,255]` blink at speed 0.5) so the ring visibly switches from the setup-white to a blue blink while `wlan0` associates. A `defer` in `Setup()` clears it on every return path, so a failure that falls through to `SwitchToAPMode()` doesn't leave the strip blinking. Priority sits above `Booting` and below `OTA`/`Error`/`Connectivity` — the cue outranks residual boot state but never masks a real fault. Devices without the `light` capability short-circuit inside statusled (no-op).
 
 ## AP→STA Auto-Redirect (the "joining Wi-Fi…" screen)
@@ -121,7 +121,7 @@ IP (see channel 3).
    the AP is alive. Reads `phase` + `lan_ip`. Goes dark the instant the AP tears
    down. (The backend captures the STA IP early so this poll can return a
    `lan_ip` during the brief window the AP is still alive — see
-   `internal/device/service.go`.) A wall-clock watchdog flips an `apLost` flag
+   `system/device/service.go`.) A wall-clock watchdog flips an `apLost` flag
    when the poll has been unanswered >5s while setup is in flight — wall-clock,
    not consecutive-failure counting, because fetches to a vanished AP can hang
    in the browser's TCP retry for many seconds.
@@ -185,8 +185,8 @@ permanently stuck on "joining Wi-Fi…" despite a fully successful join.
 
 | Layer | Change | Why |
 |-------|--------|-----|
-| **CSP** (`imager/build*.sh`, `scripts/provision/setup.sh`, `scripts/maintenance/patch-security.sh`) | `connect-src 'self' ws: wss:` → `connect-src 'self' ws: wss: http:` | Lets the browser `fetch` the cross-origin LAN-IP probe. `http:` (not `http://*.local`) is required because **CSP can't express an IP range** — a single `http:` token is the only way to allow `http://<any-lan-ip>/…`, so the fix is independent of the customer's subnet (`172.x`, `192.168.x`, `10.x`). |
-| **Backend** (`internal/device/service.go`) | A goroutine polls `GetCurrentIP()` once per second **in parallel with** `SetupNetwork()` and publishes the STA IP into setup state the instant it appears (skipping the AP's own `192.168.100.1`), before the 60s internet wait completes. | Gives the FE the **largest possible window** to read `lan_ip` during the brief overlap where it's still polling the AP — so the LAN-IP channel actually has an IP to redirect to. A guard keeps an already-captured IP from being clobbered by a later empty read during AP teardown. |
+| **CSP** (`scripts/imager/build*.sh`, `scripts/provision/setup.sh`, `scripts/maintenance/patch-security.sh`) | `connect-src 'self' ws: wss:` → `connect-src 'self' ws: wss: http:` | Lets the browser `fetch` the cross-origin LAN-IP probe. `http:` (not `http://*.local`) is required because **CSP can't express an IP range** — a single `http:` token is the only way to allow `http://<any-lan-ip>/…`, so the fix is independent of the customer's subnet (`172.x`, `192.168.x`, `10.x`). |
+| **Backend** (`system/device/service.go`) | A goroutine polls `GetCurrentIP()` once per second **in parallel with** `SetupNetwork()` and publishes the STA IP into setup state the instant it appears (skipping the AP's own `192.168.100.1`), before the 60s internet wait completes. | Gives the FE the **largest possible window** to read `lan_ip` during the brief overlap where it's still polling the AP — so the LAN-IP channel actually has an IP to redirect to. A guard keeps an already-captured IP from being clobbered by a later empty read during AP teardown. |
 | **Frontend** (`useSetupStatusPolling.ts`) | Removed the `.local` mDNS redirect channel as a *primary* target. The primary redirect is the LAN-IP probe, which carries `pathname + search` and targets `http://<lan_ip>/setup?<params>`; it also serves as the pre-submit canonical-URL upgrade. (A discovery-only `.local` fallback was later re-added for the AP-died-before-lan_ip race — see channels 3–4 above.) | `.local` is unreliable on mDNS-blocking networks, so it can't be the primary redirect target. The IP is read dynamically from the backend — **no hardcoded subnet, no mDNS dependency on the happy path**. |
 | **Frontend** (`Setup.tsx`) | The "save this address" copy field and the "Continue setup" link now use the **raw-IP URL** (`http://<lan_ip>/setup`); both screens gate on `setupLanIP` instead of the mDNS host, falling back to a router-admin hint when no IP is known yet. | IP-only, end to end — the operator is never handed a `.local` address that can't resolve on their network. |
 | **Frontend** (`Setup.tsx`) | The Copy button gained a `document.execCommand("copy")` fallback (hidden textarea) for when `navigator.clipboard` is unavailable. | The Setup page is served over plain HTTP (`http://192.168.100.1`), where `navigator.clipboard` is `undefined` (it needs a secure context) — so the modern API silently no-op'd and the button did nothing. The legacy path works on `http://` origins. |
@@ -351,13 +351,13 @@ full listener example lives in the file header of `lib/setupBridge.ts`.
 
 | File | Role |
 |------|------|
-| `system/internal/device/service.go` | Setup orchestration + early LAN-IP capture goroutine |
+| `system/device/service.go` | Setup orchestration + early LAN-IP capture goroutine |
 | `system/web/src/lib/setupBridge.ts` | Parent-window event bridge (postMessage) |
 | `system/web/src/pages/Setup.tsx` | Setup wizard UI + bridge emit call sites + IP-first copy link |
 | `system/web/src/hooks/setup/useSetupStatusPolling.ts` | AP→STA auto-redirect: phase poll + LAN-IP probe + mDNS probe |
 | `system/web/src/hooks/setup/useWifiConnected.ts` | Post-reload Wi-Fi-done detection from live device state (`check-internet` + `network/current`) |
-| `system/internal/network/service.go` | WiFi connect, AP mode, `CurrentNetwork()` (associated SSID) |
+| `system/network/service.go` | WiFi connect, AP mode, `CurrentNetwork()` (associated SSID) |
 | `system/server/device/delivery/http/handler.go` | HTTP setup handler (async goroutine) |
 | `system/server/config/config.go` | Config load/save |
-| `imager/build-orangepi.sh`, `imager/build.sh`, `scripts/provision/setup.sh` | nginx config baked into the image (incl. `connect-src` CSP) |
+| `scripts/imager/build-orangepi.sh`, `scripts/imager/build.sh`, `scripts/provision/setup.sh` | nginx config baked into the image (incl. `connect-src` CSP) |
 | `scripts/maintenance/patch-security.sh` | OTA security patch for already-provisioned devices (migrates CSP) |

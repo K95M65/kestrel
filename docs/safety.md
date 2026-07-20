@@ -2,7 +2,7 @@
 
 The safety engine enforces a device's `SAFETY.md` bounds **deterministically in the
 runtime**, below the agent. It is the mechanism behind the first principle in
-`contract/SAFETY-SPEC.md`: *safety is below the brain.* The agent requests actions;
+`devices/contract/SAFETY-SPEC.md`: *safety is below the brain.* The agent requests actions;
 the engine decides — on every request, regardless of who issued it — whether the
 hardware is allowed to honour them and within what limits.
 
@@ -38,7 +38,7 @@ hardware
 ```
 
 - **`SAFETY.md` front matter** — the bounds, keyed by capability group. Schema and
-  field table: `contract/SAFETY-SPEC.md`.
+  field table: `devices/contract/SAFETY-SPEC.md`.
 - **`hal/safety/policy.py`** — a pure loader (regex front-matter parse,
   dependency-free, same discipline as `hal/board/device.py`) producing a typed
   `SafetyPolicy`, plus pure gate functions. No hardware, no clock side effects, fully
@@ -54,7 +54,7 @@ device endpoint so the declared bounds are observable: `GET /device` already ret
 
 ## Fail-safe semantics
 
-Per-capability criticality (full rule in `contract/SAFETY-SPEC.md`):
+Per-capability criticality (full rule in `devices/contract/SAFETY-SPEC.md`):
 
 | Capability | Bound absent / unloadable | Rationale |
 |------------|---------------------------|-----------|
@@ -182,7 +182,7 @@ critical dependency it falls into a safe posture deterministically, below the ag
 Three conditions are enforced today; setup-incomplete and servo over-current are reserved.
 
 - [x] **Network / gateway loss → stop agent-driven tracking.** On gateway WebSocket
-      disconnect, `system/internal/agent/runtimes/openclaw/service_ws.go` calls
+      disconnect, `runtimes/openclaw/service_ws.go` calls
       `hal.StopServoTracking()` (`system/lib/hal`) → HAL `POST /servo/track/stop`,
       so the body stops chasing a target it has no fresh vision for. Best-effort and
       guarded by `SetUpCompleted`. Key nuance: the device does **not** freeze or "hold

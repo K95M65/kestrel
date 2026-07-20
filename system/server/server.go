@@ -14,28 +14,28 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"go.autonomous.ai/os/domain"
-	"go.autonomous.ai/os/internal/agent"
-	"go.autonomous.ai/os/internal/ambient"
-	"go.autonomous.ai/os/internal/agent/runtimes/claudecode"
-	"go.autonomous.ai/os/internal/device"
-	"go.autonomous.ai/os/internal/healthwatch"
-	"go.autonomous.ai/os/internal/network"
-	"go.autonomous.ai/os/internal/statusled"
-	"go.autonomous.ai/os/lib/hal"
-	"go.autonomous.ai/os/lib/i18n"
-	"go.autonomous.ai/os/lib/logger"
-	"go.autonomous.ai/os/lib/mqtt"
-	"go.autonomous.ai/os/lib/safego"
-	_agentHttpDeliver "go.autonomous.ai/os/server/agent/delivery/http"
-	_buddyHttpDeliver "go.autonomous.ai/os/server/buddy/delivery/http"
-	"go.autonomous.ai/os/server/config"
-	_deviceHttpDeliver "go.autonomous.ai/os/server/device/delivery/http"
-	_deviceMQTTDeliver "go.autonomous.ai/os/server/device/delivery/mqtt"
-	_healthHttpDeliver "go.autonomous.ai/os/server/health/delivery/http"
-	_networkHttpDeliver "go.autonomous.ai/os/server/network/delivery/http"
-	_sensingHttpDeliver "go.autonomous.ai/os/server/sensing/delivery/http"
-	systemshell "go.autonomous.ai/os/server/system"
+	"go.autonomous.ai/os/runtimes/claudecode"
+	"go.autonomous.ai/os/system/agent"
+	"go.autonomous.ai/os/system/ambient"
+	"go.autonomous.ai/os/system/device"
+	"go.autonomous.ai/os/system/domain"
+	"go.autonomous.ai/os/system/healthwatch"
+	"go.autonomous.ai/os/system/lib/hal"
+	"go.autonomous.ai/os/system/lib/i18n"
+	"go.autonomous.ai/os/system/lib/logger"
+	"go.autonomous.ai/os/system/lib/mqtt"
+	"go.autonomous.ai/os/system/lib/safego"
+	"go.autonomous.ai/os/system/network"
+	_agentHttpDeliver "go.autonomous.ai/os/system/server/agent/delivery/http"
+	_buddyHttpDeliver "go.autonomous.ai/os/system/server/buddy/delivery/http"
+	"go.autonomous.ai/os/system/server/config"
+	_deviceHttpDeliver "go.autonomous.ai/os/system/server/device/delivery/http"
+	_deviceMQTTDeliver "go.autonomous.ai/os/system/server/device/delivery/mqtt"
+	_healthHttpDeliver "go.autonomous.ai/os/system/server/health/delivery/http"
+	_networkHttpDeliver "go.autonomous.ai/os/system/server/network/delivery/http"
+	_sensingHttpDeliver "go.autonomous.ai/os/system/server/sensing/delivery/http"
+	systemshell "go.autonomous.ai/os/system/server/system"
+	"go.autonomous.ai/os/system/statusled"
 )
 
 type Server struct {
@@ -47,8 +47,8 @@ type Server struct {
 	networkHandler    _networkHttpDeliver.NetworkHandler
 	deviceHandler     _deviceHttpDeliver.DeviceHandler
 	deviceMQTTHandler _deviceMQTTDeliver.DeviceMQTTHandler
-	agentHandler      _agentHttpDeliver.AgentHandler
-	sensingHandler    _sensingHttpDeliver.SensingHandler
+	agentHandler      *_agentHttpDeliver.AgentHandler
+	sensingHandler    *_sensingHttpDeliver.SensingHandler
 	buddyHandler      _buddyHttpDeliver.BuddyHandler
 
 	agentGateway     domain.AgentGateway
@@ -120,8 +120,8 @@ func ProvideServer(
 	nh _networkHttpDeliver.NetworkHandler,
 	dh _deviceHttpDeliver.DeviceHandler,
 	dqth _deviceMQTTDeliver.DeviceMQTTHandler,
-	agentH _agentHttpDeliver.AgentHandler,
-	sensingH _sensingHttpDeliver.SensingHandler,
+	agentH *_agentHttpDeliver.AgentHandler,
+	sensingH *_sensingHttpDeliver.SensingHandler,
 	buddyH _buddyHttpDeliver.BuddyHandler,
 	ds *device.Service,
 	agentGW domain.AgentGateway,

@@ -14,9 +14,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"go.autonomous.ai/os/domain"
-	"go.autonomous.ai/os/lib/flow"
-	"go.autonomous.ai/os/server/serializers"
+	"go.autonomous.ai/os/system/domain"
+	"go.autonomous.ai/os/system/lib/flow"
+	"go.autonomous.ai/os/system/server/serializers"
 )
 
 func (h *AgentHandler) Recent(c *gin.Context) {
@@ -102,9 +102,10 @@ func (h *AgentHandler) FlowEvents(c *gin.Context) {
 
 // MoodHistory returns mood-relevant sensing events for music suggestion context.
 // Query params:
-//   user=<name>            (default: current user)
-//   date=YYYY-MM-DD        (default today)
-//   last=<n>               (default 100, max 500)
+//
+//	user=<name>            (default: current user)
+//	date=YYYY-MM-DD        (default today)
+//	last=<n>               (default 100, max 500)
 func (h *AgentHandler) FlowStream(c *gin.Context) {
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")

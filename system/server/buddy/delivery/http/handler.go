@@ -15,9 +15,9 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"go.autonomous.ai/os/internal/buddy"
-	"go.autonomous.ai/os/server/config"
-	"go.autonomous.ai/os/server/serializers"
+	"go.autonomous.ai/os/system/buddy"
+	"go.autonomous.ai/os/system/server/config"
+	"go.autonomous.ai/os/system/server/serializers"
 )
 
 // BuddyHandler bundles the buddy-related Gin handlers.

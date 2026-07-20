@@ -8,6 +8,7 @@ from the repo root — the Makefile targets are thin wrappers around these scrip
 | [`provision/`](provision/) | Runs **on the device**: first-boot setup (AP/STA, nginx, systemd units, HAL, agent runtime) and standalone component installers |
 | [`release/`](release/) | Runs **on a developer machine**: builds/zips each component, uploads to GCS, patches OTA `metadata.json`, promotes fleet rollouts |
 | [`maintenance/`](maintenance/) | Runs **on an existing device**: one-off idempotent patches for fleets provisioned before a fix landed in `setup.sh` |
+| [`imager/`](imager/) | Runs **on a build machine**: builds the flashable SBC golden image (OrangePi/RPi) — own Dockerfile + Makefile, uploads to GCS `os/imager/` |
 
 ## provision/
 

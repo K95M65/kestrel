@@ -26,10 +26,10 @@ rules apply to all code changes:
    | MQTT, dispatch, publish | `docs/mqtt.md` | `docs/vi/mqtt_vi.md` |
    | OTA, bootstrap | `docs/bootstrap-ota.md` | `docs/vi/bootstrap-ota.md` |
    | Speech emotion recognition (SER) | `docs/speech-emotion.md` | `docs/vi/speech-emotion_vi.md` |
-   | Realtime voice agent (HAL `drivers/realtime`, Gemini Live / OpenAI Realtime, delegate) | `docs/realtime-voice.md` | `docs/vi/realtime-voice_vi.md` |
+   | Realtime voice agent (HAL `realtime`, Gemini Live / OpenAI Realtime, delegate) | `docs/realtime-voice.md` | `docs/vi/realtime-voice_vi.md` |
    | Perception service (cloud DL inference), load balancer, encryption, models | `docs/perception-service.md` | `docs/vi/perception-service_vi.md` |
-   | Hermes agent backend (`agent_runtime`, internal/agent/runtimes/hermes) | `docs/agentic/hermes.md` | `docs/vi/agentic/hermes_vi.md` |
-   | PicoClaw agent backend (`agent_runtime`, internal/agent/runtimes/picoclaw, WebSocket) | `docs/agentic/picoclaw.md` | `docs/vi/agentic/picoclaw_vi.md` |
+   | Hermes agent backend (`agent_runtime`, runtimes/hermes) | `docs/agentic/hermes.md` | `docs/vi/agentic/hermes_vi.md` |
+   | PicoClaw agent backend (`agent_runtime`, runtimes/picoclaw, WebSocket) | `docs/agentic/picoclaw.md` | `docs/vi/agentic/picoclaw_vi.md` |
    | Adding/changing an agentic backend (AgentGateway contract, switch, install/presync, migration, skills, hooks, reset) | `docs/agentic/adding-agent-runtime.md` | `docs/vi/agentic/adding-agent-runtime_vi.md` |
    | Safety engine (SAFETY.md bounds, deterministic enforcement gate) | `docs/safety.md` | `docs/vi/safety_vi.md` |
 
@@ -162,23 +162,24 @@ Uses Google Wire for compile-time DI. After changing provider signatures, run
 
 ### Package Layout
 
-**Go backend - `system/`:**
+**Agentic runtimes - `runtimes/` (repo root):** swappable backends,
+one folder per brain: `runtimes/{openclaw,hermes,picoclaw,codex,claudecode}`.
+Selected by `system/agent` (AgentGateway factory).
 
-- `server/` - HTTP layer: Gin router, route handlers organized by domain.
-  Each handler follows the `delivery/http/handler.go` convention.
-- `internal/` - Business logic services (ambient, beclient, buddy, device,
-  healthwatch, intent, monitor, network, skills, statusled, vision) plus the
-  agent hub: `internal/agent/` (AgentGateway factory + migration) with the
-  swappable backends under
-  `internal/agent/runtimes/{openclaw,hermes,picoclaw,codex,claudecode}`.
-- `bootstrap/` - OTA worker: metadata fetching, update execution, state
-  persistence.
-- `domain/` - Shared data structures.
-- `server/serializers/` - Standard JSON response wrapper.
-- `server/config/` - Config management.
-- `lib/` - Shared libraries (mqtt, core/system, i18n, logger, hal HAL
+**Go backend - `system/` (single Go module rooted at the repo root):**
+
+- `system/<domain>/` - System managers, one folder per diagram chip (ambient,
+  beclient, buddy, device, healthwatch, intent, monitor, network, skills,
+  statusled, vision) plus `system/agent/` (AgentGateway factory + migration).
+- `system/server/` - HTTP layer: Gin router, handlers by domain
+  (`delivery/http/handler.go` convention); `server/serializers/`,
+  `server/config/`.
+- `system/bootstrap/` - OTA worker: metadata fetching, update execution,
+  state persistence.
+- `system/domain/` - Shared data structures.
+- `system/lib/` - Shared libraries (mqtt, core/system, i18n, logger, hal HAL
   client, safego, ...).
-- `web/` - React 19 + TypeScript + Vite + Tailwind CSS 4 SPA.
+- `system/web/` - React 19 + TypeScript + Vite + Tailwind CSS 4 SPA.
 
 **HAL - `hal/` (Python hardware runtime, FastAPI on :5001):**
 
@@ -187,10 +188,10 @@ Uses Google Wire for compile-time DI. After changing provider signatures, run
 - `board/` - Per-board profiles (pin maps, debounce).
 - `routes/` - FastAPI route modules (servo, led, camera, audio, emotion, ...).
 
-**OS-level dirs (repo root):** `contract/` (device specs), `skills/` (agent
-skills), `devices/` (per-device declarations + docs), `contract/cts/` (compliance
-tests), `imager/` (OrangePi image build), `scripts/` (setup + OTA upload),
-`integrations/perception-service/`, `integrations/companions/`.
+**OS-level dirs (repo root):** `skills/` (agent skills), `devices/` (per-device
+declarations + docs; `devices/contract/` device specs, `devices/contract/cts/`
+compliance tests), `scripts/imager/` (OrangePi image build), `scripts/` (setup +
+OTA upload), `integrations/perception-service/`, `integrations/companions/`.
 
 ### API Response Format
 

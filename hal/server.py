@@ -768,13 +768,13 @@ app = FastAPI(
 # Mount routes by crossing what this device's DEVICE.md *declares* with which
 # drivers are actually *available* (importable), via hal.board.device.plan_mounts.
 # A device is "the device minus motion+display" by declaring fewer capabilities — not by
-# forking. Per contract/DEVICE-SPEC.md the boot rule is:
+# forking. Per devices/contract/DEVICE-SPEC.md the boot rule is:
 #   declared + available            -> mount
 #   declared + required + missing    -> FAIL LOUD in production (a hardware fault)
 #   declared + optional  + missing    -> skip (graceful degradation)
 #   undeclared                       -> skip (a different device, by design)
 # Falls back to mounting everything when no DEVICE.md is found, so existing
-# deployments are unaffected. See contract/DEVICE-SPEC.md and hal/board/device.py.
+# deployments are unaffected. See devices/contract/DEVICE-SPEC.md and hal/board/device.py.
 
 # Route modules import their own driver stacks, so importing all 12
 # unconditionally would defeat the declaration-gated driver imports above.

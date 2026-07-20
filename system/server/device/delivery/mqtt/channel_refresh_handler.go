@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"time"
 
-	"go.autonomous.ai/os/domain"
-	"go.autonomous.ai/os/internal/device"
+	"go.autonomous.ai/os/system/device"
+	"go.autonomous.ai/os/system/domain"
 )
 
 // channelRefreshTimeout caps the whole channel.refresh_config call. The config

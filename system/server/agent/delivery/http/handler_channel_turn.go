@@ -10,12 +10,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"go.autonomous.ai/os/domain"
-	"go.autonomous.ai/os/lib/flow"
+	"go.autonomous.ai/os/system/domain"
+	"go.autonomous.ai/os/system/lib/flow"
 )
 
 // channelTurnRequest is the payload the Hermes os-server-observer hook POSTs for
-// every gateway turn. See internal/agent/runtimes/hermes/hooks/os-server-observer/handler.py.
+// every gateway turn. See runtimes/hermes/hooks/os-server-observer/handler.py.
 type channelTurnRequest struct {
 	Event   string `json:"event"` // "agent:start" | "agent:end"
 	Context struct {

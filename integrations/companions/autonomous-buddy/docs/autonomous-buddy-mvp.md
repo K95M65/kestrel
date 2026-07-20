@@ -19,7 +19,7 @@ This is the actionable plan for **MVP of Autonomous Buddy** — the macOS compan
 - 6-digit pairing flow (lamp web UI shows code)
 - Persistent WS connection (`buddy → lamp`)
 - Command executors: `open_app`, `close_app`, `open_url`, `type_text`, `key_combo`, `notification`, `ping`
-- Lamp Go: `internal/buddy/` package + 7 HTTP routes + WS gateway
+- Lamp Go: `system/buddy/` package + 7 HTTP routes + WS gateway
 - OpenClaw skill `computer-use` (basic intent → command mapping)
 - Web UI: "Paired Computers" page in `lamp/web/`
 - Audit log (backend file only — no UI in MVP)
@@ -68,7 +68,7 @@ Each phase is independently shippable and reviewable.
 
 **Acceptance:** When a lamp is running on LAN (advertises `_autonomous._tcp.local`), buddy menu shows e.g. `lamp-a1b2.local — 192.168.1.50` as a clickable item. Also: manual hostname entry option.
 
-> Note: the device publishes both the host record `<device_type>-<last4hex>.local` (e.g. `lamp-a1b2.local`) AND the `_autonomous._tcp` service for browsability. The service comes from a static avahi file (`/etc/avahi/services/autonomous.service`, port 80) dropped at provisioning (`scripts/provision/setup.sh` + `imager/build.sh` + `imager/build-orangepi.sh`). It uses avahi's `%h` wildcard, so one file serves every device class.
+> Note: the device publishes both the host record `<device_type>-<last4hex>.local` (e.g. `lamp-a1b2.local`) AND the `_autonomous._tcp` service for browsability. The service comes from a static avahi file (`/etc/avahi/services/autonomous.service`, port 80) dropped at provisioning (`scripts/provision/setup.sh` + `scripts/imager/build.sh` + `scripts/imager/build-orangepi.sh`). It uses avahi's `%h` wildcard, so one file serves every device class.
 
 ### Phase 1C — Pairing flow
 
@@ -80,13 +80,13 @@ Each phase is independently shippable and reviewable.
 - `autonomous-buddy/macos/Sources/AutonomousBuddy/Pairing/PairingWindow.swift` (code entry UI)
 
 **Lamp Go files:**
-- `system/internal/buddy/types.go`
-- `system/internal/buddy/store.go`
-- `system/internal/buddy/pairing.go`
-- `system/internal/buddy/service.go`
+- `system/buddy/types.go`
+- `system/buddy/store.go`
+- `system/buddy/pairing.go`
+- `system/buddy/service.go`
 - `system/server/buddy/delivery/http/handler.go`
 - `system/server/buddy/delivery/http/handler_pair.go`
-- `system/internal/buddy/wire.go`
+- `system/buddy/wire.go`
 - Modify: `system/server/server.go` (register routes)
 - Modify: `system/server/wire.go` (provider)
 - Run: `make generate`
@@ -119,8 +119,8 @@ Each phase is independently shippable and reviewable.
 - `autonomous-buddy/macos/Sources/AutonomousBuddy/Connection/Reconnect.swift`
 
 **Lamp Go files:**
-- `system/internal/buddy/registry.go`
-- `system/internal/buddy/ws.go`
+- `system/buddy/registry.go`
+- `system/buddy/ws.go`
 - `system/server/buddy/delivery/http/handler_ws.go`
 - Update: `system/server/server.go` (register WS route)
 
@@ -161,7 +161,7 @@ Each phase is independently shippable and reviewable.
 **Status:** ✓ Done — sync `/api/buddy/command` (localOnly) + marker-friendly `/api/buddy/exec/:action`. Cross-compile `GOOS=linux GOARCH=arm64 go build ./...` clean. Debug log instrumentation across the chain (handler_hw → exec/command handler → dispatcher → ws read loop) so a failed turn is traceable to the exact stage.
 
 **Files:**
-- `system/internal/buddy/dispatcher.go`
+- `system/buddy/dispatcher.go`
 - `system/server/buddy/delivery/http/handler_command.go`
 - Update: wire providers, run `make generate`
 
@@ -224,7 +224,7 @@ Each phase is independently shippable and reviewable.
 
 ## Lamp-side prerequisites (verify before Phase 1B)
 
-1. **mDNS browsability** — ✓ Done. The device publishes `_autonomous._tcp` for `NWBrowser` via a static avahi service file (`/etc/avahi/services/autonomous.service`, port 80) baked at provisioning (`setup.sh` + `imager/build*.sh`), alongside the `<device_type>-xxxx.local` host record. The `%h` wildcard keeps it device-agnostic.
+1. **mDNS browsability** — ✓ Done. The device publishes `_autonomous._tcp` for `NWBrowser` via a static avahi service file (`/etc/avahi/services/autonomous.service`, port 80) baked at provisioning (`setup.sh` + `scripts/imager/build*.sh`), alongside the `<device_type>-xxxx.local` host record. The `%h` wildcard keeps it device-agnostic.
 2. **Admin auth header convention** — confirm whether new buddy endpoints should use `Authorization: Bearer <token>` (cookie or bearer); reuse `project_security_login_ui_batch.md` patterns.
 3. **OpenClaw skill location** — find where existing skills live, naming convention, how lamp registers them. (Possibly in lamp's filesystem `~/.openclaw/skills/<name>/SKILL.md`.)
 
@@ -273,7 +273,7 @@ Subfolders `autonomous-buddy/windows/` and `autonomous-buddy/linux/` will host f
 
 ### Go (`lamp/`)
 ```
-system/internal/buddy/
+system/buddy/
 ├── types.go
 ├── store.go
 ├── pairing.go

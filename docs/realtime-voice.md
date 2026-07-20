@@ -6,7 +6,7 @@ directly (sub-second audio replies) and **delegates** anything that needs the
 main agent (device control, skills, memory, real-time facts) back to the
 OS-server flow.
 
-Code lives in `hal/drivers/realtime/`; it is driven by
+Code lives in `hal/realtime/`; it is driven by
 `hal/drivers/voice/voice_service.py`.
 
 > **Source of truth:** this doc reflects the code. If they disagree, the code wins.
@@ -158,7 +158,7 @@ stale image) and, when fresh (`HAL_GEMINI_VISION_HANDOFF_MAX_AGE_S`, default 20s
 prepends a `[vision-image] <path>` hint line to the message and ships the frame
 as base64 in the sensing POST's `image` field. What os-server
 then does with the image is decided by the **describe-first gate** in
-`internal/vision` (see `server/sensing/delivery/http/handler.go`): when the
+`system/vision` (see `server/sensing/delivery/http/handler.go`): when the
 active main model does NOT declare image input in the model catalog (the
 Auto-AI case — a raw attachment 404s at the smart-agent-router with "No
 endpoints found that support image input"), the frame is described by the
@@ -412,7 +412,7 @@ when it's absent — so the file always carries an editable realtime config. HAL
 reads it directly (same as `llm_api_key` / `stt_language`), no push down. Because
 HAL reads `config.json` at import, a config change needs a **HAL restart** to take
 effect. A live edit triggers that restart immediately (`RePushRealtimeConfig` /
-`RePushVoiceConfig` in `internal/device/service.go`).
+`RePushVoiceConfig` in `system/device/service.go`).
 
 **Restart only when the config changed.** os-server does *not* restart HAL on
 every os-server restart — that would needlessly drop the voice pipeline. Instead

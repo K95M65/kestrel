@@ -3,7 +3,7 @@ deterministic gate functions the HAL routes/drivers call before actuating.
 
 Mirrors hal/board/device.py: a dependency-free regex front-matter parser (no
 pyyaml in the runtime) and pure functions, fully unit-testable off-hardware. This
-is the mechanism behind the first principle in contract/SAFETY-SPEC.md — *safety
+is the mechanism behind the first principle in devices/contract/SAFETY-SPEC.md — *safety
 is below the brain*: the gate sits in the request path between the agent and the
 hardware, runs on every request regardless of who issued it, and cannot be
 bypassed by prompting.
@@ -22,7 +22,7 @@ is enforced, an absent one is pass-through — the engine never invents a limit
 nobody wrote. Removing a section (or the whole front matter) turns its enforcement
 off; there is no separate kill switch.
 
-The autonomous.safety.v1 ABI only ever gains fields. See contract/SAFETY-SPEC.md
+The autonomous.safety.v1 ABI only ever gains fields. See devices/contract/SAFETY-SPEC.md
 and docs/safety.md.
 """
 from __future__ import annotations
@@ -391,7 +391,7 @@ def load_safety(device_dir: str, safety_ref: str) -> Optional[SafetyPolicy]:
     A SAFETY.md that *does* carry front matter must have a valid schema — a
     missing/malformed/unknown-major tag (or an out-of-range bound) raises and
     aborts boot, since the runtime will not enforce an ABI it cannot read
-    (contract/SAFETY-SPEC.md).
+    (devices/contract/SAFETY-SPEC.md).
     """
     if not safety_ref:
         return None

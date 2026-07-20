@@ -7,10 +7,10 @@ whatever backend `config.agent_runtime` selects through the single
 hardware markers, Flow Monitor SSE, sensing drain, Telegram fan-out) never knows
 which brain is active.
 
-- **`openclaw`** (default): persistent WebSocket to the OpenClaw daemon. See `docs/os-server.md` + `internal/agent/runtimes/openclaw`.
-- **`hermes`**: HTTP + SSE client against a local Hermes API server (OpenAI *Responses API* style). This doc. Code: `system/internal/agent/runtimes/hermes/`.
+- **`openclaw`** (default): persistent WebSocket to the OpenClaw daemon. See `docs/os-server.md` + `runtimes/openclaw`.
+- **`hermes`**: HTTP + SSE client against a local Hermes API server (OpenAI *Responses API* style). This doc. Code: `runtimes/hermes/`.
 
-> Source of truth is the code. This documents `internal/agent/runtimes/hermes/` as implemented;
+> Source of truth is the code. This documents `runtimes/hermes/` as implemented;
 > keep it in sync on change (EN: this file, VI: `docs/vi/agentic/hermes_vi.md`).
 
 > **Agentic-backend docs:** [`adding-agent-runtime.md`](adding-agent-runtime.md)
@@ -21,14 +21,14 @@ which brain is active.
 ## 1. When and how it is selected
 
 `agent_runtime` in `config.json` picks the backend; resolution lives in
-`internal/agent/factory.go` `ProvideGateway()`:
+`system/agent/factory.go` `ProvideGateway()`:
 
 | `agent_runtime` | Backend |
 |---|---|
 | unset | falls back to `gateway.default` in `devices/<type>/DEVICE.md`, then OpenClaw if that is empty too |
 | `"openclaw"` | OpenClaw (default) |
 | `"hermes"` | Hermes (`hermes.ProvideService`) |
-| `"picoclaw"` | PicoClaw (`picoclaw.ProvideService`) — persistent WebSocket client; assumes the PicoClaw service is already running. See `docs/agentic/picoclaw.md` + `internal/agent/runtimes/picoclaw`. |
+| `"picoclaw"` | PicoClaw (`picoclaw.ProvideService`) — persistent WebSocket client; assumes the PicoClaw service is already running. See `docs/agentic/picoclaw.md` + `runtimes/picoclaw`. |
 | anything else | OpenClaw (logged as `FALLBACK — unknown runtime=…`) |
 
 When `agent_runtime` is unset in `config.json`, the backend is taken from the
@@ -38,7 +38,7 @@ only if that is also empty. The banner logs `source` so you can tell which won.
 On startup `ProvideGateway` prints an `AGENT BACKEND ACTIVE → HERMES` banner with
 `base_url`, `conversation`, `model`, and `api_key_set`. There is **no per-unit
 config** for these yet — they are compile-time constants in
-`internal/agent/runtimes/hermes/constants.go`:
+`runtimes/hermes/constants.go`:
 
 | Const | Default | Meaning |
 |---|---|---|
@@ -169,7 +169,7 @@ so the per-turn prompt floor is paid once instead of once per event. This recove
 most of steer's cost saving but not its immediacy: the batch fires only after the
 current turn ends, never mid-turn. Gated by the `mergeDrainEnabled` const
 (set `false` to fall back to one-turn-per-event replay). See
-`internal/agent/runtimes/hermes/events.go`.
+`runtimes/hermes/events.go`.
 
 ## 8. Channels (Telegram/Slack/Discord) — inbound visibility + fan-out
 
@@ -183,7 +183,7 @@ would never show up in Flow Monitor. The gateway has no cross-platform turn
 broadcast to subscribe to either; the only seam is its **hook** system.
 
 So os-server installs a gateway hook, `os-server-observer`
-(`internal/agent/runtimes/hermes/hooks/os-server-observer/{HOOK.yaml,handler.py}`, materialized
+(`runtimes/hermes/hooks/os-server-observer/{HOOK.yaml,handler.py}`, materialized
 to `~/.hermes/hooks/` by `ensureObserverHook` on every boot — see §10). It fires
 on `agent:start` / `agent:end` for **every** platform and POSTs the turn to the
 loopback endpoint `POST /api/agent/channel-turn` (`handler_channel_turn.go`),
@@ -244,7 +244,7 @@ type-asserts the active gateway to `domain.SlackBridge`. When it matches (hermes
 it calls `HandleInboundSlack`; when it does not (openclaw, picoclaw) it keeps the
 existing local-webhook POST path.
 
-`internal/agent/runtimes/hermes/slack.go` `HandleInboundSlack` / `parseSlackInbound` decode the
+`runtimes/hermes/slack.go` `HandleInboundSlack` / `parseSlackInbound` decode the
 Slack Events JSON (`url_verification` challenge — defensive, the public proxy
 normally owns Slack's Request URL check; `event_callback` with `event.type`
 `message`/`app_mention`). It skips bot messages (`bot_id`), `subtype` events
@@ -281,14 +281,14 @@ existing thread, else thread under the user's message), and `recipient_team_id`
 (required for channels, taken from the event's `team_id`).
 
 **Reply finalize** — `handler_event_agent.go` calls `DeliverSlackReply(runID,
-text)` (`internal/agent/runtimes/hermes/slack.go`) for the completed runID. It consumes the
+text)` (`runtimes/hermes/slack.go`) for the completed runID. It consumes the
 origin, **clears the assistant status** (`setSlackAssistantStatus` with `""`),
 removes the 👀 reaction, then `finishSlackStream` does a **final flush +
 `chat.stopStream`** (which also clears the typing indicator and marks the message
 complete). When the stream never opened (no content reached it, or `startStream`
 kept failing), it falls back to a single `chat.postMessage` (`PostSlackReply`). The
 Web API calls all go through the generic `slackAPI` helper in
-`internal/agent/runtimes/hermes/slack_sender.go`.
+`runtimes/hermes/slack_sender.go`.
 
 **TTS suppression (both halves of the turn).** A Slack-origin run never reaches the
 device speaker; suppression is enforced at **two** points via the **non-consuming**
@@ -306,7 +306,7 @@ status), `reactions.add` / `reactions.remove` (👀 ack), `chat.postMessage`
 **Outbound / proactive** — a `SlackSender` (`domain.ChannelSender`, in
 `slack_sender.go`) posts sensing/broadcast messages to `config.SlackUserID` via
 `chat.postMessage`; it is wired into the hermes `channels` list in
-`internal/agent/runtimes/hermes/service.go` alongside `TelegramSender`.
+`runtimes/hermes/service.go` alongside `TelegramSender`.
 
 **`.env`** — `SLACK_BOT_TOKEN` (synced from `config.json` by the presync hook) is
 what the bridge uses for every Bot API call. `SLACK_APP_TOKEN` is irrelevant to the
@@ -325,7 +325,7 @@ regardless of backend.
 
 ## 10. Operating it
 
-Hermes is installed by `system/internal/agent/runtimes/hermes/install.sh` (co-located with
+Hermes is installed by `runtimes/hermes/install.sh` (co-located with
 its implementation). The script is **embedded in os-server** (`go:embed`,
 registered via `lib/runtimereg`), so it ships + OTA-updates with the binary;
 os-server materializes it to `/usr/local/lib/os-runtimes/hermes/install.sh` and
@@ -367,7 +367,7 @@ inline, a direct `bash install.sh` is fully configured and running.
 
 ### The gateway unit is self-healed (image pre-bake + runtime backstop)
 
-`IsReady()` and the device-setup gate (`WaitForAgentReady`, `internal/device/service.go`)
+`IsReady()` and the device-setup gate (`WaitForAgentReady`, `system/device/service.go`)
 both wait on the gateway's HTTP `/health` (`127.0.0.1:8642`). That requires the
 **`hermes-gateway.service` unit to exist** — having the `hermes` binary on `PATH`
 (`hermes --version` works) is **not** sufficient. The unit is normally created by
@@ -378,13 +378,13 @@ times out, `SetUpCompleted` stays `false`, the device falls back to AP mode, and
 symptom reads as "**WiFi won't connect**" even though the WiFi association itself
 succeeded. Two layers close this gap:
 
-- **A — image pre-bake** (`imager/build-orangepi.sh`): right after pre-baking the
+- **A — image pre-bake** (`scripts/imager/build-orangepi.sh`): right after pre-baking the
   Hermes CLI binary, the image runs `hermes gateway install --system` to write the
   unit file, then `systemctl disable hermes-gateway` so it does **not** auto-start at
   boot (OpenClaw is the default active runtime; enabling both would run two agents).
   Best-effort — the build chroot has no running systemd, so if the CLI cannot create
   the unit there, layer B installs it at runtime.
-- **B — runtime backstop** (`ensureGatewayUnit`, `internal/agent/runtimes/hermes/gateway.go`, called
+- **B — runtime backstop** (`ensureGatewayUnit`, `runtimes/hermes/gateway.go`, called
   from `EnsureOnboarding`): when the unit is absent (`systemctl cat hermes-gateway`
   fails), it runs `hermes gateway install --system` on demand and re-declares the
   switch-runtime `service`/`verify` files. This is fast — the binary + venv are
@@ -397,7 +397,7 @@ succeeded. Two layers close this gap:
 ### The presync hook owns `config.yaml` + skills
 
 The Hermes model config in `config.yaml` and the OpenClaw-imported skills are owned
-by the **presync hook** (`internal/agent/runtimes/hermes/presync.sh`), **not** by `install.sh`.
+by the **presync hook** (`runtimes/hermes/presync.sh`), **not** by `install.sh`.
 **os-server materializes the hook to `/usr/local/bin/runtime-hermes-presync` on
 every switch** (`materializePresync`, registered via `runtimereg.RegisterPresync`),
 so a plain os-server OTA refreshes it on disk — unlike a copy written once by
@@ -405,7 +405,7 @@ so a plain os-server OTA refreshes it on disk — unlike a copy written once by
 see `docs/agentic/adding-agent-runtime.md` §3).
 
 **The hook also runs on every os-server boot AND at initial setup**, not only on a
-switch — both via `EnsureOnboarding` (`internal/agent/runtimes/hermes/onboarding.go`), which
+switch — both via `EnsureOnboarding` (`runtimes/hermes/onboarding.go`), which
 executes the embedded `PresyncScript` and restarts `hermes-gateway` only when the
 config actually changed (content-hash guarded — no restart loop). The
 change-detection hash covers **both** `config.yaml` **and** `.env` (`hermesEnvFile`
@@ -423,7 +423,7 @@ the new channel up:
   `SetupRequest`** (unlike OpenClaw, whose `SetupAgent` writes `openclaw.json`
   straight from the request — hence OpenClaw needs *two* distinct functions, Hermes
   *one*). The device setup flow saves `config.json` **before** calling `SetupAgent`
-  (`internal/device/service.go` — the call was deliberately ordered after
+  (`system/device/service.go` — the call was deliberately ordered after
   `config.Save()`), so presync materializes `config.yaml`/`.env` from the
   freshly-entered keys immediately instead of waiting for the next boot.
 
@@ -491,7 +491,7 @@ during install) and does three things, in order:
 every turn 401s. Hermes must listen on `127.0.0.1:8642` to match `BaseURL`.
 
 To target a different Hermes endpoint / key / model today, edit
-`internal/agent/runtimes/hermes/constants.go` and rebuild (making these per-unit configurable is
+`runtimes/hermes/constants.go` and rebuild (making these per-unit configurable is
 future work).
 
 ### SOUL.md skill-priority block (device skills beat Hermes bundled skills)
@@ -506,7 +506,7 @@ an OS-managed **AGENTS.md** block, but Hermes loads no AGENTS.md — **SOUL.md i
 the one prompt file it reads every session** — so the rule rides there instead:
 
 - `EnsureOnboarding` calls `ensureSoulSkillPriorityBlock()`
-  (`internal/agent/runtimes/hermes/onboarding.go`) right **after** presync (whose §0
+  (`runtimes/hermes/onboarding.go`) right **after** presync (whose §0
   `claw migrate` can rewrite the soul). It strips any previous
   `<!-- OS DO NOT REMOVE -->`…`---` block and re-appends the embedded
   `soulSkillPriorityBlock` at the end of `~/.hermes/SOUL.md` — so an os-server
@@ -525,7 +525,7 @@ the one prompt file it reads every session** — so the rule rides there instead
 ### Channel capability & live add/refresh
 
 Hermes is a **first-class channel runtime** in the generic capability flow
-(`internal/agent/runtimes/hermes/channels.go`). Hermes Agent delivers **telegram / slack /
+(`runtimes/hermes/channels.go`). Hermes Agent delivers **telegram / slack /
 discord** natively inside its own server — a channel is enabled by the presence of
 its tokens in `~/.hermes/.env` (Slack uses Socket Mode → `SLACK_APP_TOKEN`), which
 the §10 `.env` mapping table above already populates from `config.json`. os-server
@@ -543,7 +543,7 @@ and bounce the gateway.
   (upserts the `.env` channel vars) → the `config.yaml`+`.env` hash-diff →
   `restartHermesGateway()`. Both reduce to "re-sync `.env` + restart-if-changed", so
   they share one code path.
-- **Persist-then-apply.** The device layer (`internal/device/service.go`
+- **Persist-then-apply.** The device layer (`system/device/service.go`
   `AddChannel`) capability-gates first, then persists the channel creds to
   `config.json` **before** calling the gateway's `AddChannel`, so the presync run
   re-reads `config.json` and sees the new tokens. A transient apply failure leaves
@@ -553,7 +553,7 @@ and bounce the gateway.
   already runs before the gateway starts, so slack/discord carry over
   automatically; the new code closes the **live** add/refresh gap (adding a channel
   while already running on Hermes). The startup `ChannelReconcile`
-  (`internal/agent/channel_reconcile.go`) also re-applies channels after a switch,
+  (`system/agent/channel_reconcile.go`) also re-applies channels after a switch,
   but for Hermes it is effectively a **no-op** — presync already synced `.env`, so
   the hash-diff finds no change and skips the restart. It also records WhatsApp as
   unsupported (`ChannelsUnsupported`) for the info uplink, leaving its creds for a
@@ -563,9 +563,9 @@ and bounce the gateway.
 
 Remote-MCP connectors (Notion, Linear, Asana, GitHub, Ahrefs, …) wired by the
 backend's `connector.set` MQTT flow are first-class on Hermes:
-`WriteMCPEntry`/`RemoveMCPEntry` (`internal/agent/runtimes/hermes/mcp.go`) upsert/delete
+`WriteMCPEntry`/`RemoveMCPEntry` (`runtimes/hermes/mcp.go`) upsert/delete
 `mcp_servers.<name>` in `~/.hermes/config.yaml` and restart `hermes-gateway`,
-mirroring `internal/agent/runtimes/openclaw/mcp.go` (which edits `openclaw.json` `mcp.servers`).
+mirroring `runtimes/openclaw/mcp.go` (which edits `openclaw.json` `mcp.servers`).
 
 The connector writer hands the gateway a canonical, OpenClaw-shaped entry —
 `{type:"http", url, headers}` for hosted MCP, or `{command, args, env}` for stdio.
@@ -578,7 +578,7 @@ serialized under `HermesService.mcpMu`. As with OpenClaw, `config.yaml` must alr
 exist (connectors are configured post-onboarding) — a `hermes setup --reset` wipes
 `mcp_servers` along with the rest, and the next `connector.set` re-pushes.
 
-**Cloned on a runtime switch.** `MCPReconcile` (`internal/agent/mcp_reconcile.go`)
+**Cloned on a runtime switch.** `MCPReconcile` (`system/agent/mcp_reconcile.go`)
 mirrors `ChannelReconcile`: gated by `config.MCPAppliedRuntime`, it fires once in the
 startup sequence on an observed switch, reads the **previous** runtime's MCP entries
 straight from its on-disk config (`openclaw.json` `mcp.servers` ↔ `config.yaml`
@@ -616,13 +616,13 @@ Confirm the swap from the `AGENT BACKEND ACTIVE → HERMES` banner + a healthy
 ## 12. Persona, memory & skills carried across a switch
 
 Switching openclaw→hermes runs a Go persona migration
-(`internal/agent/migrate_persona/openclaw_to_hermes.go`) at os-server boot —
+(`system/agent/migrate_persona/openclaw_to_hermes.go`) at os-server boot —
 **separate from `claw migrate`**. It carries, into `~/.hermes/`:
 
 - **SOUL.md** (rebranded) — and, because Hermes has no separate IDENTITY.md slot,
   inlines the owner's filled IDENTITY fields as a `## Your identity card` block so
   the custom name (e.g. "Ngân") survives. `UpdateIdentityName` (device rename) edits
-  that block; `WatchIdentity` (`internal/agent/runtimes/hermes/identity.go`) polls SOUL.md and, on
+  that block; `WatchIdentity` (`runtimes/hermes/identity.go`) polls SOUL.md and, on
   a name change, pushes the new wake words to HAL + `i18n.SetDeviceName` — mirroring
   OpenClaw's `WatchIdentity`, just watching SOUL.md instead of IDENTITY.md. The
   migration overwrite also drops the OS-managed **skill-priority block**, but
@@ -639,9 +639,9 @@ backed up first). The reverse hermes→openclaw **strips the identity card from 
 SOUL and restores its fields back into OpenClaw's `IDENTITY.md`** (`restoreIdentityCard`,
 the inverse of the inline) — so the name set under Hermes survives the trip back,
 not just the trip out. **Skills** stay fresh under Hermes via
-`internal/agent/runtimes/hermes/skill_watcher.go` — CDN auto-update into `skills/openclaw-imports`,
+`runtimes/hermes/skill_watcher.go` — CDN auto-update into `skills/openclaw-imports`,
 capability-gated, mirroring the OpenClaw watcher (shared engine in
-`internal/skills/skillzip.go`).
+`system/skills/skillzip.go`).
 
 **MCP connectors are carried across too** — the configured remote-MCP servers are
 cloned config→config by `MCPReconcile` on the same switch boot (see §10, *MCP

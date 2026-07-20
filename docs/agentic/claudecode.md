@@ -17,12 +17,12 @@ claudecode-specific protocol, layout, and quirks.
 > and the **claude.ai OAuth login** flow (§7b) as an alternative to the
 > config.json API key. Known caveats are flagged ⚠️ in §11.
 
-Code: `system/internal/agent/runtimes/claudecode/`.
+Code: `runtimes/claudecode/`.
 
 | What | Where on device |
 |------|-----------------|
 | Claude Code CLI | `/usr/local/bin/claude` (symlink → `/root/.local/bin/claude`) |
-| Bridge (systemd `claudecode.service`) | `os-server claudecode-gatewayd` subcommand (compiled into `/usr/local/bin/os-server`; code `system/internal/agent/runtimes/claudecode/gatewayd/`) |
+| Bridge (systemd `claudecode.service`) | `os-server claudecode-gatewayd` subcommand (compiled into `/usr/local/bin/os-server`; code `runtimes/claudecode/gatewayd/`) |
 | Launch env (`ANTHROPIC_*`, channel flags) | `/root/.claudecode/.env` (presync-owned) |
 | Workspace (Claude's cwd) | `/root/.claudecode/workspace/` |
 | Persona / memory | `workspace/{CLAUDE,SOUL,IDENTITY,USER,MEMORY,KNOWLEDGE}.md`, `workspace/memory/*.md` |
@@ -38,7 +38,7 @@ Code: `system/internal/agent/runtimes/claudecode/`.
 ## 1. Selection + install
 
 `config.agent_runtime: "claudecode"` (or DEVICE.md `gateway.default`) resolves the
-backend in `internal/agent/factory.go`. Switching in/out goes through the generic
+backend in `system/agent/factory.go`. Switching in/out goes through the generic
 `switch-runtime` flow — nothing claudecode-specific in the switcher.
 
 **`install.sh`** (embedded, runs once on first switch / failed verify):
@@ -107,7 +107,7 @@ without a switch):
 ## 3. The bridge (`os-server claudecode-gatewayd`)
 
 Claude Code has no server mode, so the systemd unit runs a small Go gatewayd
-(`internal/agent/runtimes/claudecode/gatewayd/`, structurally mirroring the codex gatewayd —
+(`runtimes/claudecode/gatewayd/`, structurally mirroring the codex gatewayd —
 no python3/websockets dependency) that:
 
 - holds **one persistent headless Claude process**:
@@ -159,7 +159,7 @@ fires `{emotion:"thinking"}` to HAL — same skip prefixes, same intensity, same
 capability gate (`skills.SupportedHooks`) as the TS handler. The companion
 `turn-gate` hook is intentionally not mirrored (sendChat already marks the turn
 busy). ⚠️ Keep it in lockstep with
-`system/internal/agent/runtimes/openclaw/hooks/emotion-acknowledge/handler.ts`.
+`runtimes/openclaw/hooks/emotion-acknowledge/handler.ts`.
 
 ## 5. Inbound events → `domain.WSEvent` (`translator.go`)
 
@@ -210,7 +210,7 @@ in-session conversation is lost. `CompactSession` returns
 ## 7. Channels — all device-owned (telegram, discord, slack)
 
 `SupportedChannels() = [telegram, slack, discord]`. All three receive loops
-run inside os-server, mirroring `internal/agent/runtimes/codex` 1:1. Claude Code's native
+run inside os-server, mirroring `runtimes/codex` 1:1. Claude Code's native
 telegram/discord channel plugins are **deliberately not used**: they proved
 undebuggable in the field (bun children with no journal logs, silent
 allowlist drops, silent death on bridge-restart races), and they would compete
@@ -244,7 +244,7 @@ plugin.
   ~30 s, but rotating it while a session is open takes effect on the next
   session cycle. whatsapp → `domain.ErrChannelNotSupported`.
 - **Slack is DEVICE-OWNED** (`slack.go` + `slack_sender.go`, a mirror of
-  `internal/agent/runtimes/codex/slack.go`): Claude Code has no slack channel plugin ("Claude
+  `runtimes/codex/slack.go`): Claude Code has no slack channel plugin ("Claude
   in Slack" is a separate cloud feature that spawns web sessions from `@Claude`
   mentions, not a device channel). Instead the public bff-campaign-service
   proxy receives Slack Events API deliveries and fans them out over MQTT to the
@@ -274,7 +274,7 @@ plugin.
 ## 7b. Auth — claude.ai OAuth login (alternative to the API key)
 
 The device can authenticate with the **user's own Claude subscription** instead
-of `llm_api_key`. The flow (`internal/agent/runtimes/claudecode/login.go`, the
+of `llm_api_key`. The flow (`runtimes/claudecode/login.go`, the
 `domain.ClaudeLoginPairer` optional interface) mirrors the WhatsApp pairing
 flow — streaming `PairingEvent`s — with one extra leg: the OAuth code travels
 back into the flow.

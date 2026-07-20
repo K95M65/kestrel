@@ -20,7 +20,7 @@ def _take_vision_handoff() -> tuple[str, str]:
 
     The frame rides the sensing POST's ``image`` field; os-server describes it
     with a vision model and forwards the description as text (describe-first —
-    see internal/vision in services). The path stays in the hint for
+    see system/vision in services). The path stays in the hint for
     traceability/monitoring only: telling the agent to *read* it does not work
     on a text-only main model (tool-read image blocks are silently dropped).
 

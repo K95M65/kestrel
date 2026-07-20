@@ -18,23 +18,23 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 
-	"go.autonomous.ai/os/domain"
-	"go.autonomous.ai/os/internal/device"
-	"go.autonomous.ai/os/internal/intent"
-	"go.autonomous.ai/os/internal/monitor"
-	"go.autonomous.ai/os/internal/statusled"
-	"go.autonomous.ai/os/internal/vision"
-	"go.autonomous.ai/os/lib/flow"
-	"go.autonomous.ai/os/lib/hal"
-	"go.autonomous.ai/os/lib/i18n"
-	"go.autonomous.ai/os/lib/mood"
-	"go.autonomous.ai/os/lib/musicsuggestion"
-	"go.autonomous.ai/os/lib/posture"
-	"go.autonomous.ai/os/lib/sensingmsg"
-	"go.autonomous.ai/os/lib/usercanon"
-	"go.autonomous.ai/os/lib/wellbeing"
-	"go.autonomous.ai/os/server/config"
-	"go.autonomous.ai/os/server/serializers"
+	"go.autonomous.ai/os/system/device"
+	"go.autonomous.ai/os/system/domain"
+	"go.autonomous.ai/os/system/intent"
+	"go.autonomous.ai/os/system/lib/flow"
+	"go.autonomous.ai/os/system/lib/hal"
+	"go.autonomous.ai/os/system/lib/i18n"
+	"go.autonomous.ai/os/system/lib/mood"
+	"go.autonomous.ai/os/system/lib/musicsuggestion"
+	"go.autonomous.ai/os/system/lib/posture"
+	"go.autonomous.ai/os/system/lib/sensingmsg"
+	"go.autonomous.ai/os/system/lib/usercanon"
+	"go.autonomous.ai/os/system/lib/wellbeing"
+	"go.autonomous.ai/os/system/monitor"
+	"go.autonomous.ai/os/system/server/config"
+	"go.autonomous.ai/os/system/server/serializers"
+	"go.autonomous.ai/os/system/statusled"
+	"go.autonomous.ai/os/system/vision"
 )
 
 // SensingEventRequest is the payload from HAL sensing detectors.
@@ -75,10 +75,10 @@ type SensingHandler struct {
 }
 
 // ProvideSensingHandler constructs a SensingHandler.
-func ProvideSensingHandler(gw domain.AgentGateway, bus *monitor.Bus, cfg *config.Config, sled *statusled.Service, isSleeping func() bool) SensingHandler {
+func ProvideSensingHandler(gw domain.AgentGateway, bus *monitor.Bus, cfg *config.Config, sled *statusled.Service, isSleeping func() bool) *SensingHandler {
 	// Gate local intent rules to what this device's body can do — set once here.
 	intent.Configure(device.Capabilities(cfg.DeviceTypeOrDefault()))
-	return SensingHandler{
+	return &SensingHandler{
 		agentGateway: gw,
 		monitorBus:   bus,
 		config:       cfg,

@@ -43,7 +43,7 @@ system/os-server
 system/os-server.~
 system/bootstrap-server
 system/bootstrap-server.~
-system/vendor/
+/vendor/
 system/web/node_modules/
 system/web/dist/
 *.zip
@@ -57,7 +57,7 @@ integrations/companions/claude-desktop-buddy/claude-desktop-buddy
 __pycache__
 *.egg-info
 
-imager/output/*.img
+scripts/imager/output/*.img
 scripts/release/.skill-hashes
 
 

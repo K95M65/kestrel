@@ -2,7 +2,7 @@
 
 Safety engine thực thi các **giới hạn (bounds)** trong `SAFETY.md` của thiết bị một
 cách **tất định, ngay trong runtime**, *dưới* tầng agent. Đây là cơ chế hiện thực
-nguyên tắc số một trong `contract/SAFETY-SPEC.md`: *an toàn nằm dưới bộ não.* Agent
+nguyên tắc số một trong `devices/contract/SAFETY-SPEC.md`: *an toàn nằm dưới bộ não.* Agent
 yêu cầu hành động; engine quyết định — trên **mọi** yêu cầu, bất kể ai phát ra —
 phần cứng có được phép thực thi không và trong giới hạn nào.
 
@@ -37,7 +37,7 @@ phần cứng
 ```
 
 - **`SAFETY.md` front matter** — các bound, keyed theo capability group. Schema + bảng
-  field: `contract/SAFETY-SPEC.md`.
+  field: `devices/contract/SAFETY-SPEC.md`.
 - **`hal/safety/policy.py`** — loader thuần (parse front-matter bằng regex,
   dependency-free, cùng kỷ luật với `hal/board/device.py`) tạo ra `SafetyPolicy`
   có kiểu, kèm các gate function thuần. Không phần cứng, không tác dụng phụ về đồng hồ,
@@ -52,7 +52,7 @@ resolve cũng hiện ở đó.
 
 ## Ngữ nghĩa fail-safe
 
-Theo mức tới hạn của từng capability (quy tắc đầy đủ ở `contract/SAFETY-SPEC.md`):
+Theo mức tới hạn của từng capability (quy tắc đầy đủ ở `devices/contract/SAFETY-SPEC.md`):
 
 | Capability | Bound vắng / không nạp được | Lý do |
 |------------|------------------------------|-------|
@@ -172,7 +172,7 @@ thuộc tới hạn, nó rơi về tư thế an toàn một cách tất định,
 kiện đã thực thi; setup-incomplete và over-current servo còn dự trữ.
 
 - [x] **Mất mạng / gateway → dừng tracking do agent điều khiển.** Khi gateway
-      WebSocket disconnect, `system/internal/agent/runtimes/openclaw/service_ws.go` gọi
+      WebSocket disconnect, `runtimes/openclaw/service_ws.go` gọi
       `hal.StopServoTracking()` (`system/lib/hal`) → HAL `POST /servo/track/stop`,
       để body thôi đuổi theo một target không còn cập nhật vision mới. Best-effort và
       được gác bởi `SetUpCompleted`. Lưu ý then chốt: thiết bị **không** đóng băng hay

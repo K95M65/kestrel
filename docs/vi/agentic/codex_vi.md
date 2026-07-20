@@ -7,12 +7,12 @@ với backend mà `config.agent_runtime` chọn thông qua một interface duy n
 `[HW:/…]`, Flow Monitor SSE, drain sensing, fan-out Telegram) không cần biết bộ
 não nào đang chạy.
 
-- **`openclaw`** (mặc định): WebSocket bền tới daemon OpenClaw. Xem `docs/os-server.md` + `internal/agent/runtimes/openclaw`.
-- **`hermes`**: client HTTP + SSE tới Hermes API server cục bộ. Xem `docs/agentic/hermes.md` + `internal/agent/runtimes/hermes`.
-- **`picoclaw`**: client WebSocket bền tới runtime PicoClaw cục bộ. Xem `docs/agentic/picoclaw.md` + `internal/agent/runtimes/picoclaw`.
-- **`codex`**: **OpenAI Codex CLI** làm bộ não agent của thiết bị, sau một WS bridge cục bộ. Tài liệu này. Code: `system/internal/agent/runtimes/codex/`.
+- **`openclaw`** (mặc định): WebSocket bền tới daemon OpenClaw. Xem `docs/os-server.md` + `runtimes/openclaw`.
+- **`hermes`**: client HTTP + SSE tới Hermes API server cục bộ. Xem `docs/agentic/hermes.md` + `runtimes/hermes`.
+- **`picoclaw`**: client WebSocket bền tới runtime PicoClaw cục bộ. Xem `docs/agentic/picoclaw.md` + `runtimes/picoclaw`.
+- **`codex`**: **OpenAI Codex CLI** làm bộ não agent của thiết bị, sau một WS bridge cục bộ. Tài liệu này. Code: `runtimes/codex/`.
 
-> Code là nguồn chân lý. Tài liệu này mô tả `internal/agent/runtimes/codex/` đúng như đã triển
+> Code là nguồn chân lý. Tài liệu này mô tả `runtimes/codex/` đúng như đã triển
 > khai; giữ đồng bộ khi thay đổi (EN: `docs/agentic/codex.md`, VI: file này).
 
 > **Nhóm docs agentic-backend:** [`adding-agent-runtime_vi.md`](adding-agent-runtime_vi.md)
@@ -30,7 +30,7 @@ não nào đang chạy.
 
 Codex CLI không có chế độ server riêng, nên thiết bị chạy một **WS bridge**
 mỏng cục bộ: unit systemd `codex.service` chạy **`os-server codex-gatewayd`** —
-bridge được **compile thẳng vào binary os-server** (`internal/agent/runtimes/codex/gatewayd`,
+bridge được **compile thẳng vào binary os-server** (`runtimes/codex/gatewayd`,
 bản Go port của `bridge.py` tham chiếu; **không có Python trên thiết bị**).
 Bridge mở `ws://127.0.0.1:18792/codex/ws/` (bearer token
 `autonomous_codex_token`) và spawn **một subprocess mỗi turn**:
@@ -46,11 +46,11 @@ prompt approval (đi cặp với `approval_policy = "never"` +
 `sandbox_mode = "danger-full-access"` trong config.toml, §1.2).
 
 `agent_runtime` trong `config.json` chọn backend; việc phân giải nằm ở
-`internal/agent/factory.go` `ProvideGateway()` — `"codex"` →
+`system/agent/factory.go` `ProvideGateway()` — `"codex"` →
 `codex.ProvideService`, giá trị lạ rơi về OpenClaw. Khi khởi động, banner
 `AGENT BACKEND ACTIVE → CODEX` in `ws_url` + `conversation`.
 
-Hằng số kết nối (`internal/agent/runtimes/codex/constants.go`, không có config theo máy):
+Hằng số kết nối (`runtimes/codex/constants.go`, không có config theo máy):
 
 | Hằng | Mặc định | Ý nghĩa |
 |---|---|---|
@@ -60,7 +60,7 @@ Hằng số kết nối (`internal/agent/runtimes/codex/constants.go`, không c�
 
 ## 1.1 Cài đặt (`install.sh`)
 
-Một lần switch `codex.setup` chạy `internal/device/switch_runtime.sh`
+Một lần switch `codex.setup` chạy `system/device/switch_runtime.sh`
 (generic), script này materialize các script nhúng của Codex. `install.sh`
 (một lần, tự-đủ — chạy thẳng `bash install.sh` cũng cấu hình VÀ khởi động
 backend đầy đủ):
@@ -258,7 +258,7 @@ method đó.
 Telegram dưới Codex là **device-owned**. Codex CLI không có channel layer riêng
 (khác PicoClaw: binary runtime của PicoClaw tự poll Telegram Bot API — presync
 của nó bật `channel_list.telegram` trong config riêng của PicoClaw), nên
-os-server tự chạy receive loop inbound: `internal/agent/runtimes/codex/telegram_poll.go`, một
+os-server tự chạy receive loop inbound: `runtimes/codex/telegram_poll.go`, một
 goroutine khởi động từ `StartWS` (nằm ngoài vòng reconnect nên sống qua các lần
 WS rớt). Vì loop nằm trong lifecycle của service codex, nó chỉ chạy **khi codex
 là runtime đang active** — không bao giờ tranh `getUpdates` với poller của
@@ -302,13 +302,13 @@ best-effort (lỗi chỉ log ở mức debug rồi bỏ qua).
 ### Slack (đường proxy HTTP-mode)
 
 Slack cũng là **device-owned**, qua đường proxy HTTP-mode (mô phỏng bridge
-của hermes, `internal/agent/runtimes/hermes/slack.go`): proxy công khai bff-campaign-service
+của hermes, `runtimes/hermes/slack.go`): proxy công khai bff-campaign-service
 nhận các delivery Slack Events API và fan-out qua MQTT tới handler
 `slack_event` của thiết bị
 (`server/device/delivery/mqtt/slack_event_handler.go`), handler dedup theo
 `event_id` (LRU trong bộ nhớ, TTL 5 phút) rồi type-assert gateway đang active
 sang `domain.SlackBridge`. `CodexService` implement bridge đó
-(`internal/agent/runtimes/codex/slack.go`), nên event chỉ được route về đây **khi codex là
+(`runtimes/codex/slack.go`), nên event chỉ được route về đây **khi codex là
 runtime đang active** — không sửa gì code dispatch phía server, cùng cách nối
 dây với hermes. Không dùng Socket Mode; thiết bị không bao giờ mở WebSocket
 tới Slack.
@@ -351,7 +351,7 @@ MQTT đã được xác thực.
 Discord cũng là **device-owned**: nó yêu cầu một phiên bot Gateway WebSocket
 (không có API nhận kiểu long-poll), nên os-server chạy phiên đó qua
 [discordgo](https://github.com/bwmarrin/discordgo)
-(`internal/agent/runtimes/codex/discord.go`). Như loop telegram, phiên được khởi động từ
+(`runtimes/codex/discord.go`). Như loop telegram, phiên được khởi động từ
 `StartWS` (`go s.startDiscordBot(ctx)`) và sống trong vòng đời của service
 codex — nó chạy **chỉ khi codex là runtime đang active**, nên không bao giờ
 tranh phiên bot với runtime khác trên cùng token. Loop đọc
@@ -402,7 +402,7 @@ chấp nhận sẽ là fake success). Whatsapp không có đường nhận và t
 
 ### Coding từ xa qua Telegram (`telegram_coding.go`, `coding_sessions.go`)
 
-Mirror `internal/agent/runtimes/claudecode/telegram_coding.go` 1:1 — một chat Telegram có thể
+Mirror `runtimes/claudecode/telegram_coding.go` 1:1 — một chat Telegram có thể
 **gắn vào thread `codex` interactive của một folder và code tiếp từ điện thoại**,
 nhiều folder mỗi folder một thread. Tách biệt với lượt persona device-main.
 
@@ -444,12 +444,12 @@ nhiều folder mỗi folder một thread. Tách biệt với lượt persona dev
 ## 6. Hooks
 
 Codex không có hooks loader, nên hook `emotion-acknowledge` của OpenClaw được
-tái hiện **native bằng Go** (`internal/agent/runtimes/codex/emotion_ack.go`, mirror
+tái hiện **native bằng Go** (`runtimes/codex/emotion_ack.go`, mirror
 `emotion_ack.go` của hermes): mỗi turn user-visible, sendChat bắn
 `{emotion:"thinking"}` sang HAL — cùng prefix skip, cùng intensity, cùng
 capability gate (`skills.SupportedHooks`) như handler TS. Hook `turn-gate` đi
 kèm cố ý không mirror (sendChat đã đánh dấu turn busy rồi). ⚠️ Giữ lockstep với
-`system/internal/agent/runtimes/openclaw/hooks/emotion-acknowledge/handler.ts`.
+`runtimes/openclaw/hooks/emotion-acknowledge/handler.ts`.
 
 ## 7. Connector MCP (`mcp.go`)
 

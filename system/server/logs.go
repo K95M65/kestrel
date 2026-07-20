@@ -17,9 +17,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"go.autonomous.ai/os/domain"
-	"go.autonomous.ai/os/internal/device"
-	"go.autonomous.ai/os/server/serializers"
+	"go.autonomous.ai/os/system/device"
+	"go.autonomous.ai/os/system/domain"
+	"go.autonomous.ai/os/system/server/serializers"
 )
 
 // allowedLogs maps source names to their log file paths (supports glob patterns).
@@ -33,7 +33,7 @@ var allowedLogs = map[string]string{
 }
 
 // hermesAgentLog is Hermes's own rich per-turn agent log under $HERMES_DIR/logs
-// (HERMES_DIR=/root/.hermes, see internal/agent/runtimes/hermes/install.sh) — the analogue of
+// (HERMES_DIR=/root/.hermes, see runtimes/hermes/install.sh) — the analogue of
 // openclaw's agent.log file.
 const hermesAgentLog = "/root/.hermes/logs/agent.log"
 

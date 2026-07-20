@@ -33,7 +33,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go.autonomous.ai/os/lib/usercanon"
+	"go.autonomous.ai/os/system/lib/usercanon"
 )
 
 // Event is one posture history record persisted to JSONL.
@@ -48,12 +48,12 @@ type Event struct {
 
 	// Alert-row fields (Action == ActionAlert).
 	Score      int    `json:"score,omitempty"`
-	Risk       string `json:"risk,omitempty"`        // medium | high (hal filters lower)
+	Risk       string `json:"risk,omitempty"` // medium | high (hal filters lower)
 	LeftScore  int    `json:"left_score,omitempty"`
 	RightScore int    `json:"right_score,omitempty"`
 
 	// Nudge-row fields (Action == ActionNudge).
-	NudgeLevel int    `json:"nudge_level,omitempty"` // 2..5
+	NudgeLevel int `json:"nudge_level,omitempty"` // 2..5
 
 	// Free-text — for nudge/praise, this is the line Lamp spoke.
 	Notes string `json:"notes,omitempty"`

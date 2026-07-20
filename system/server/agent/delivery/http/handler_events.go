@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"go.autonomous.ai/os/domain"
+	"go.autonomous.ai/os/system/domain"
 )
 
 // poseBucketRoot is the on-disk base where hal writes pose buckets.

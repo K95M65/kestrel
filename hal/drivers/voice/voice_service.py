@@ -26,9 +26,9 @@ import requests
 
 from hal import config as hal_config
 from hal import presets
-from hal.drivers.realtime.enums import AgentGateway
-from hal.drivers.realtime.orchestrator import RealtimeOrchestrator
-from hal.drivers.realtime.utils import pcm16_bytes_to_float32, resample_float32
+from hal.realtime.enums import AgentGateway
+from hal.realtime.orchestrator import RealtimeOrchestrator
+from hal.realtime.utils import pcm16_bytes_to_float32, resample_float32
 from hal.drivers.voice._internal import config as voice_cfg
 from hal.drivers.voice._internal.audio_dsp import resample_to_stt, rms
 from hal.drivers.voice._internal.audio_recorder import ArecordStream

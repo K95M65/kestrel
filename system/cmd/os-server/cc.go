@@ -5,7 +5,7 @@ package main
 //
 // Claude's interactive `/resume` picker excludes headless (`claude -p`)
 // sessions BY DESIGN, so sessions created over Telegram remote-coding
-// (internal/agent/runtimes/claudecode/telegram_coding.go) never show up in it — but
+// (runtimes/claudecode/telegram_coding.go) never show up in it — but
 // `claude --resume <id>` opens ANY session by id, including headless ones
 // (device-proven). This subcommand closes that gap: it lists every session
 // for the current folder (or all folders with --all) using the SAME discovery
@@ -34,7 +34,7 @@ import (
 	"syscall"
 	"time"
 
-	"go.autonomous.ai/os/internal/agent/runtimes/claudecode"
+	"go.autonomous.ai/os/runtimes/claudecode"
 )
 
 // ccConfigJSON is the device config carrying agent_runtime.

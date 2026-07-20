@@ -56,7 +56,7 @@ Về build, deploy, cấu hình và pairing, xem [`setup_vi.md`](setup_vi.md).
 | `narrator.go` + `i18n.go` | Các thông báo TTS ngắn về hoạt động của Claude, dedupe theo từng turn, được bản địa hóa (EN/VI). |
 | `stats.go` | Lưu bền các bộ đếm approved/denied trọn đời vào `/var/lib/claude-desktop-buddy/stats.json`. |
 | `config/buddy.json` | Config lúc chạy (xem [`setup_vi.md`](setup_vi.md)). |
-| `skill/SKILL.md` | Chỉ là con trỏ — skill agent biến các lượt cấp quyền thành tương tác giọng nói nay là platform skill [`skills/claude-buddy/SKILL.md`](../../../../../skills/claude-buddy/SKILL.md), gửi tới thiết bị qua skill OTA chuẩn (`upload-skills.sh`) và đăng ký trong `internal/skills/skills.go` (capability `audio`). |
+| `skill/SKILL.md` | Chỉ là con trỏ — skill agent biến các lượt cấp quyền thành tương tác giọng nói nay là platform skill [`skills/claude-buddy/SKILL.md`](../../../../../skills/claude-buddy/SKILL.md), gửi tới thiết bị qua skill OTA chuẩn (`upload-skills.sh`) và đăng ký trong `system/skills/skills.go` (capability `audio`). |
 | `third_party/bluetooth/` | Fork cục bộ của `tinygo.org/x/bluetooth` (xem bên dưới). |
 
 ## Luồng dữ liệu

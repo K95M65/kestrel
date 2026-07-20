@@ -106,7 +106,7 @@ export function useSetupController(mode: SetupMode) {
   // Matches what stage_ap sets via `hostnamectl set-hostname ${DEVICE_TYPE}-${SUFFIX_LC}`
   // — both sides derive from the device's hardware ID (Pi device-tree serial /
   // cpuinfo Serial / eth0 MAC) and the DEVICE_TYPE class, via the same logic in
-  // system/internal/device/hardware.go.
+  // system/device/hardware.go.
   //
   // The backend returns `cfg.mac` already formatted as "<device_type>-XXXX" and
   // lowercase (see GetDeviceMac()), so the lowercased mac IS the hostname. Derive

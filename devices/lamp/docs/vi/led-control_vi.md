@@ -132,14 +132,14 @@ LED phản hồi trạng thái hệ thống (tất cả `breathing` speed 3.0 tr
 | OTA thành công (bootstrap) | Flash xanh lá | `(0, 255, 80)` |
 | OTA thất bại (bootstrap) | Đỏ pulse | `(255, 30, 30)` |
 
-Quản lý bởi `internal/statusled/Service` (lamp) và `lib/hal` trực tiếp (bootstrap).
+Quản lý bởi `system/statusled/Service` (lamp) và `lib/hal` trực tiếp (bootstrap).
 
-Không còn màu nào hardcode trong Go nữa — trạng thái `internal/statusled`, màu OTA-progress
+Không còn màu nào hardcode trong Go nữa — trạng thái `system/statusled`, màu OTA-progress
 của bootstrap, và màu trắng setup-needed đều đi qua HAL. OS giữ máy trạng thái (KHI nào hiện)
 và gửi *tên trạng thái* xuống HAL (`POST /led/status`: booting/error/ota/connectivity/
 hal_down/agent_down/hardware/ready_flash/ota_progress/ota_error/ota_success/setup); HAL tra
 màu/effect/speed từ `STATUS_LED_PRESETS`, override per-device qua section `status_led` trong
-`presets.json` (xem [DEVICE-SPEC.md § Per-device presets](../../../../contract/DEVICE-SPEC.md#per-device-presets-presetsjson)).
+`presets.json` (xem [DEVICE-SPEC.md § Per-device presets](../../../../devices/contract/DEVICE-SPEC.md#per-device-presets-presetsjson)).
 `setup` là solid bền (lưu thành trạng thái hiển thị); còn lại là overlay transient.
 
 ### Đèn báo mic đang mute (idle indicator)
@@ -194,4 +194,4 @@ Mỗi emotion preset có LED color riêng:
 
 Một thiết bị có thể ghi đè các giá trị emotion/scene/aim này (và kích thước vòng LED) mà
 không đổi bảng mặc định dùng chung, qua file `devices/<type>/presets.json`. Đây là cơ chế
-nền tảng — xem [DEVICE-SPEC.md § Per-device presets](../../../../contract/DEVICE-SPEC.md#per-device-presets-presetsjson).
+nền tảng — xem [DEVICE-SPEC.md § Per-device presets](../../../../devices/contract/DEVICE-SPEC.md#per-device-presets-presetsjson).

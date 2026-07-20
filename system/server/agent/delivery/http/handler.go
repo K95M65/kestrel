@@ -6,15 +6,15 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go.autonomous.ai/os/domain"
-	"go.autonomous.ai/os/internal/monitor"
-	"go.autonomous.ai/os/internal/statusled"
-	"go.autonomous.ai/os/lib/flow"
-	"go.autonomous.ai/os/lib/mood"
-	"go.autonomous.ai/os/lib/musicsuggestion"
-	"go.autonomous.ai/os/lib/posture"
-	"go.autonomous.ai/os/lib/wellbeing"
-	"go.autonomous.ai/os/server/config"
+	"go.autonomous.ai/os/system/domain"
+	"go.autonomous.ai/os/system/lib/flow"
+	"go.autonomous.ai/os/system/lib/mood"
+	"go.autonomous.ai/os/system/lib/musicsuggestion"
+	"go.autonomous.ai/os/system/lib/posture"
+	"go.autonomous.ai/os/system/lib/wellbeing"
+	"go.autonomous.ai/os/system/monitor"
+	"go.autonomous.ai/os/system/server/config"
+	"go.autonomous.ai/os/system/statusled"
 )
 
 // AgentHandler handles OpenClaw gateway WebSocket events and exposes monitor endpoints.
@@ -178,7 +178,7 @@ type channelTurnState struct {
 const cronFireWindowMs int64 = 10_000
 
 // ProvideAgentHandler returns an OpenClaw events handler.
-func ProvideAgentHandler(gw domain.AgentGateway, bus *monitor.Bus, sled *statusled.Service, cfg *config.Config) AgentHandler {
+func ProvideAgentHandler(gw domain.AgentGateway, bus *monitor.Bus, sled *statusled.Service, cfg *config.Config) *AgentHandler {
 	// Init flow emitter here so ws_connect events (fired from StartWS before any HTTP request)
 	// are broadcast to SSE. The device is single-user so the global trace ID is sufficient;
 	// concurrent turn interleaving is not a concern in normal operation.
@@ -188,15 +188,13 @@ func ProvideAgentHandler(gw domain.AgentGateway, bus *monitor.Bus, sled *statusl
 	musicsuggestion.Init()
 	posture.Init()
 	// Populate OpenClaw version cache in the background so the first Status
-	// poll has it ready. Stays in package-level state because the handler
-	// struct is returned by value through wire — capturing &h.field here
-	// would write to a soon-to-be-discarded copy.
+	// poll has it ready.
 	go populateOpenClawVersion()
 	go populateHermesVersion()
 	go populatePicoclawVersion()
 	go populateCodexVersion()
 	go populateClaudeCodeVersion()
-	return AgentHandler{
+	return &AgentHandler{
 		agentGateway:         gw,
 		monitorBus:           bus,
 		statusLED:            sled,

@@ -124,7 +124,7 @@ Use case MVP KHÔNG hỗ trợ (chờ phase vision):
 - Audit log local (`~/Library/Application Support/AutonomousBuddy/audit.log`) — đồng thời push lên thiết bị khi có thể
 - OSLog (unified logging) cho debug
 
-### 4.2 `lamp` Go server — package mới `internal/buddy/`
+### 4.2 `lamp` Go server — package mới `system/buddy/`
 
 | File | Trách nhiệm |
 |------|-------------|
@@ -326,7 +326,7 @@ Page mới `Paired Computers`:
 | Lưu pref | **UserDefaults / plist** | Chuẩn macOS cho non-secret |
 | Logging | **OSLog (unified)** | Native, xem được trong Console.app |
 | Test framework | **XCTest** | Chuẩn |
-| Go side | **Pattern hiện có** (Gin, Wire, internal/) | Theo `internal/agent/runtimes/openclaw/`, `server/<domain>/delivery/http/` |
+| Go side | **Pattern hiện có** (Gin, Wire, internal/) | Theo `runtimes/openclaw/`, `server/<domain>/delivery/http/` |
 | Vị trí folder autonomous-buddy | **Root repo** cạnh `lamp/`, `lelamp/` | Self-contained, build độc lập |
 
 ---
@@ -395,7 +395,7 @@ Mac-only MVP → **Swift native**. Tauri/Rust để phase Windows/Linux. Flutter
 ### Quyết định với `lelamp` và `lamp` Go
 
 - `lelamp` (Python) — **không sửa**. Chỉ hardware.
-- `lamp` (Go) — **package mới** `internal/buddy/`, route HTTP mới, WS gateway mới.
+- `lamp` (Go) — **package mới** `system/buddy/`, route HTTP mới, WS gateway mới.
 - `OpenClaw` — skill mới `computer-use`.
 - `lamp/web` — page mới "Paired Computers".
 - `CLAUDE.md` — thêm row docs.

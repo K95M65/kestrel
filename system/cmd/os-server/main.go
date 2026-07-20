@@ -9,11 +9,11 @@ import (
 
 	"github.com/joho/godotenv"
 
-	ccgatewayd "go.autonomous.ai/os/internal/agent/runtimes/claudecode/gatewayd"
-	"go.autonomous.ai/os/internal/agent/runtimes/codex/gatewayd"
-	"go.autonomous.ai/os/lib/logger"
-	"go.autonomous.ai/os/server"
-	"go.autonomous.ai/os/server/config"
+	ccgatewayd "go.autonomous.ai/os/runtimes/claudecode/gatewayd"
+	"go.autonomous.ai/os/runtimes/codex/gatewayd"
+	"go.autonomous.ai/os/system/lib/logger"
+	"go.autonomous.ai/os/system/server"
+	"go.autonomous.ai/os/system/server/config"
 )
 
 func main() {

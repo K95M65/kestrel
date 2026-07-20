@@ -12,7 +12,7 @@ them explicit:
 
 Dependency-free: a focused parser for the DEVICE.md front-matter capability
 block (no pyyaml in the runtime). Pure functions so the logic is unit-testable
-off-hardware. See contract/DEVICE-SPEC.md and contract/capabilities.md.
+off-hardware. See devices/contract/DEVICE-SPEC.md and devices/contract/capabilities.md.
 """
 from __future__ import annotations
 

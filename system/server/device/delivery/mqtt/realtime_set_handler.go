@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"log/slog"
 
-	"go.autonomous.ai/os/domain"
-	"go.autonomous.ai/os/internal/device"
+	"go.autonomous.ai/os/system/device"
+	"go.autonomous.ai/os/system/domain"
 )
 
 // handleRealtimeSet applies a `realtime.set` downlink — configure the realtime

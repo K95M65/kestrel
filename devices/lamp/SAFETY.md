@@ -4,7 +4,7 @@ schema: autonomous.safety.v1
 # Every machine-enforced safety knob, by capability group. Active lines are
 # enforced; lines tagged (optional)/(reserved) are available but left unset — shown
 # so this file reads as the complete picture. Authoritative field list:
-# contract/SAFETY-SPEC.md. Fail-safe BEHAVIORS that aren't numeric bounds
+# devices/contract/SAFETY-SPEC.md. Fail-safe BEHAVIORS that aren't numeric bounds
 # (network/gateway loss, board fault, setup) are not front-matter fields — they
 # live in the "fail-safe states" table in the prose below.
 

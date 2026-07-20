@@ -11,7 +11,7 @@ WARN  busy flag expired — auto-clearing (lifecycle.end likely missed) componen
 INFO  draining pending sensing events component=sensing count=N
 ```
 
-`busyTTL` is `5 * time.Minute` in `system/internal/agent/runtimes/openclaw/service_events.go:29`. After that the flag forcibly clears and queued sensing events drain (with high-frequency events coalesced + 60s expiry per `drainPendingEvents`).
+`busyTTL` is `5 * time.Minute` in `runtimes/openclaw/service_events.go:29`. After that the flag forcibly clears and queued sensing events drain (with high-frequency events coalesced + 60s expiry per `drainPendingEvents`).
 
 ## Root cause
 
@@ -25,9 +25,9 @@ OpenClaw heartbeat turn (target=none) ──────────────
 ```
 
 Files:
-- Hook source: `system/internal/agent/runtimes/openclaw/hooks/turn-gate/handler.ts`
+- Hook source: `runtimes/openclaw/hooks/turn-gate/handler.ts`
 - Lamp handler: `system/server/openclaw/delivery/sse/handler_api_monitor.go` (`SetBusy`)
-- Auto-clear: `system/internal/agent/runtimes/openclaw/service_events.go` (`busyTTL`, `IsBusy`, `drainPendingEvents`)
+- Auto-clear: `runtimes/openclaw/service_events.go` (`busyTTL`, `IsBusy`, `drainPendingEvents`)
 
 ## Confirm (3 commands)
 
@@ -57,7 +57,7 @@ Wedged when:
 
 ## Real fix paths
 
-1. **Hook side (preferred)** — turn-gate skips `/api/openclaw/busy` when OpenClaw turn metadata says `target=none` or `isHeartbeat=true`. Edit `system/internal/agent/runtimes/openclaw/hooks/turn-gate/handler.ts`. This is cheapest and removes the trigger entirely.
+1. **Hook side (preferred)** — turn-gate skips `/api/openclaw/busy` when OpenClaw turn metadata says `target=none` or `isHeartbeat=true`. Edit `runtimes/openclaw/hooks/turn-gate/handler.ts`. This is cheapest and removes the trigger entirely.
 2. **Lamp side** — propagate heartbeat marker into `lifecycle.start` payload and have the SSE handler skip `SetBusy(true)` for those. Or shorten `busyTTL` to 60-90s (heartbeat turns finish in ~20s, no point waiting 5 min).
 
 ## Risk profile

@@ -2,7 +2,7 @@
 
 Everything in this folder runs **off the device** or bridges into it from outside. None of
 it is required for a device to boot or operate — the on-device OS stack lives in `os/`,
-`skills/`, `contract/`, and `devices/`. Remove this whole folder and the device still
+`skills/`, `devices/contract/`, and `devices/`. Remove this whole folder and the device still
 runs; you just lose the optional extras: desktop companions, external chat sources, and
 cloud GPU perception.
 

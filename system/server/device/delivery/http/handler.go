@@ -10,13 +10,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
-	"go.autonomous.ai/os/domain"
-	"go.autonomous.ai/os/internal/device"
-	"go.autonomous.ai/os/internal/network"
-	"go.autonomous.ai/os/lib/hal"
-	"go.autonomous.ai/os/server/config"
-	"go.autonomous.ai/os/server/serializers"
-	"go.autonomous.ai/os/server/session"
+	"go.autonomous.ai/os/system/device"
+	"go.autonomous.ai/os/system/domain"
+	"go.autonomous.ai/os/system/lib/hal"
+	"go.autonomous.ai/os/system/network"
+	"go.autonomous.ai/os/system/server/config"
+	"go.autonomous.ai/os/system/server/serializers"
+	"go.autonomous.ai/os/system/server/session"
 )
 
 // DeviceHandler represents the HTTP handler for device

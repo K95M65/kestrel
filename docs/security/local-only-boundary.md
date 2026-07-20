@@ -43,7 +43,7 @@ Current references found:
   ExecStart=$HAL_DIR/.venv/bin/uvicorn hal.server:app --host 0.0.0.0 --port 5001
   ```
 
-- `imager/build.sh:859`
+- `scripts/imager/build.sh:859`
   ```sh
   ExecStart=/opt/hal/.venv/bin/uvicorn hal.server:app --host 0.0.0.0 --port 5001
   ```
@@ -93,7 +93,7 @@ With:
 ExecStart=$HAL_DIR/.venv/bin/uvicorn hal.server:app --host 127.0.0.1 --port 5001
 ```
 
-#### File: `imager/build.sh`
+#### File: `scripts/imager/build.sh`
 
 Replace:
 
@@ -212,7 +212,7 @@ location /hw/ {
 }
 ```
 
-Current `imager/build.sh` has equivalent `/hw/` proxy.
+Current `scripts/imager/build.sh` has equivalent `/hw/` proxy.
 
 ### Why it is risky
 
@@ -253,7 +253,7 @@ location /hw/ {
 }
 ```
 
-#### File: `imager/build.sh`
+#### File: `scripts/imager/build.sh`
 
 Apply the same `allow/deny` block in its `location /hw/`.
 
@@ -739,7 +739,7 @@ location /gw/ {
 }
 ```
 
-`imager/build.sh` also has `/gw/` proxy.
+`scripts/imager/build.sh` also has `/gw/` proxy.
 
 OpenClaw config created in `scripts/provision/setup.sh` includes:
 
@@ -797,7 +797,7 @@ location /gw/ {
 }
 ```
 
-#### File: `imager/build.sh`
+#### File: `scripts/imager/build.sh`
 
 Apply same local-only deny block to `/gw/`.
 
@@ -1128,12 +1128,12 @@ Document baseline status codes.
 
 1. Change HAL bind host to `127.0.0.1` in:
    - `scripts/provision/setup.sh`
-   - `imager/build.sh`
+   - `scripts/imager/build.sh`
    - `Makefile`
    - `hal/server.py` via `HTTP_HOST`
 2. Block nginx `/hw/` externally in:
    - `scripts/provision/setup.sh`
-   - `imager/build.sh`
+   - `scripts/imager/build.sh`
 3. Add HAL app-level local-only middleware.
 
 ### Phase 2 — Close agent/admin control plane
@@ -1253,7 +1253,7 @@ Files to edit:
   - Add nginx `allow/deny` to `/gw` and `/gw/`.
   - Optionally tighten generated OpenClaw `controlUi` config.
 
-- `imager/build.sh`
+- `scripts/imager/build.sh`
   - Change HAL systemd host to `127.0.0.1`.
   - Add nginx `allow/deny` to `/hw/` and `/gw/`.
 

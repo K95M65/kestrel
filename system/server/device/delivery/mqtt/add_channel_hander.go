@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/go-playground/validator/v10"
-	"go.autonomous.ai/os/domain"
-	"go.autonomous.ai/os/internal/device"
+	"go.autonomous.ai/os/system/device"
+	"go.autonomous.ai/os/system/domain"
 )
 
 // pairingQRFormat is the wire-format identifier for the QR text we ship.

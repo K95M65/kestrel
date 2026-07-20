@@ -113,11 +113,11 @@ Lamp Server modules (in `lamp/` subdirectory):
 - `server/server.go` — Gin HTTP server on port 5000
 - `server/config/` — JSON config with reload
 - `internal/resetbutton/` — GPIO long-press detection
-- `internal/network/` — WiFi AP/STA management
-- `internal/agent/runtimes/openclaw/` — OpenClaw config generation and WebSocket
-- `internal/beclient/` — Backend status reporter
-- `internal/device/` — Setup, MQTT command handling, status reporting
-- `internal/ambient/` — Idle "living creature" behaviors (breathing LED, color drift, micro-movements, TTS mumbles). Runs when no interaction is happening; auto-pauses on real input, resumes after 10s silence. Calls HAL HTTP API.
+- `system/network/` — WiFi AP/STA management
+- `runtimes/openclaw/` — OpenClaw config generation and WebSocket
+- `system/beclient/` — Backend status reporter
+- `system/device/` — Setup, MQTT command handling, status reporting
+- `system/ambient/` — Idle "living creature" behaviors (breathing LED, color drift, micro-movements, TTS mumbles). Runs when no interaction is happening; auto-pauses on real input, resumes after 10s silence. Calls HAL HTTP API.
 - `lib/mqtt/` — MQTT client with auto-reconnect
 - `bootstrap/` — OTA version check and install
 - `domain/` — Shared structs (device, network, OTA, OpenClaw)

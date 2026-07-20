@@ -10,13 +10,13 @@ import (
 	"strings"
 	"time"
 
-	"go.autonomous.ai/os/domain"
-	"go.autonomous.ai/os/internal/device"
-	"go.autonomous.ai/os/internal/network"
-	"go.autonomous.ai/os/lib/core/system"
-	"go.autonomous.ai/os/lib/hal"
-	agenthttp "go.autonomous.ai/os/server/agent/delivery/http"
-	"go.autonomous.ai/os/server/config"
+	"go.autonomous.ai/os/system/device"
+	"go.autonomous.ai/os/system/domain"
+	"go.autonomous.ai/os/system/lib/core/system"
+	"go.autonomous.ai/os/system/lib/hal"
+	"go.autonomous.ai/os/system/network"
+	agenthttp "go.autonomous.ai/os/system/server/agent/delivery/http"
+	"go.autonomous.ai/os/system/server/config"
 )
 
 // System info probes. All bounded by short timeouts — these are read-only

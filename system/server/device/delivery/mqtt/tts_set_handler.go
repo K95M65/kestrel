@@ -4,10 +4,9 @@ import (
 	"encoding/json"
 	"log/slog"
 
-	"go.autonomous.ai/os/domain"
-	"go.autonomous.ai/os/internal/device"
+	"go.autonomous.ai/os/system/device"
+	"go.autonomous.ai/os/system/domain"
 )
-
 
 func (h *DeviceMQTTHandler) publishTTSSetAck(status, errMsg string, data *domain.MQTTTTSSetData) {
 	ack := domain.MQTTTTSSetAck{
@@ -49,4 +48,3 @@ func (h *DeviceMQTTHandler) handleTTSSet(env domain.MQTTDataCommand) error {
 
 	return nil
 }
-

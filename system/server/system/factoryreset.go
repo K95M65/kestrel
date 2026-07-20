@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"go.autonomous.ai/os/domain"
-	"go.autonomous.ai/os/lib/osreset"
-	"go.autonomous.ai/os/server/serializers"
+	"go.autonomous.ai/os/system/domain"
+	"go.autonomous.ai/os/system/lib/osreset"
+	"go.autonomous.ai/os/system/server/serializers"
 )
 
 var deviceWipePaths = []string{

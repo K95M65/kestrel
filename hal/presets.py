@@ -203,7 +203,7 @@ AIM_PRESETS = {
 # machine (WHEN to show a state); HAL owns the appearance (WHAT it looks like) so
 # a device can restyle status feedback via presets.json without the OS knowing.
 # Applied transiently via POST /led/status {state} (does not clobber user state).
-# Keys MUST stay in sync with internal/statusled State constants (Go) + the
+# Keys MUST stay in sync with system/statusled State constants (Go) + the
 # "ready_flash" agent-ready cue. Effects are from VALID_LED_EFFECTS.
 STATUS_LED_PRESETS = {
     "ota": {"effect": FX_BREATHING, "color": [0, 255, 0], "speed": 3.0},  # green — firmware updating
@@ -234,7 +234,7 @@ STATUS_LED_PRESETS = {
 
 # Ambient resting look — the warm-white breathing the strip settles into when
 # no user LED state exists. MUST mirror the Go ambient fallback
-# (system/internal/ambient/service.go breathingLoop: (255,200,140) @ 0.3)
+# (system/ambient/service.go breathingLoop: (255,200,140) @ 0.3)
 # so a HAL-side settle (e.g. mic unmute with no saved state) is visually
 # identical to what ambient paints on idle.
 AMBIENT_RESTING_LED = {"effect": FX_BREATHING, "color": [255, 200, 140], "speed": 0.3}

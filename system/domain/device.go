@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"go.autonomous.ai/os/server/config"
+	"go.autonomous.ai/os/system/server/config"
 )
 
 // Channel type identifiers. WhatsApp is intentionally NOT a valid Setup
@@ -350,17 +350,17 @@ const (
 	KindPicoclawSetup   = "picoclaw.setup"
 	KindClaudecodeSetup = "claudecode.setup"
 	KindOpenclawSetup   = "openclaw.setup"
-	KindCodexSetup    = "codex.setup"
+	KindCodexSetup      = "codex.setup"
 
 	// AgentRuntimeOpenClaw / AgentRuntimeHermes / AgentRuntimePicoclaw /
 	// AgentRuntimeCodex are the swappable agentic backends. Source of truth
 	// AgentRuntimeClaudeCode are the swappable agentic backends. Source of truth
-	// mirrored by internal/agent/factory.go's resolver and
+	// mirrored by system/agent/factory.go's resolver and
 	// /usr/local/bin/switch-runtime.
-	AgentRuntimeOpenClaw = "openclaw"
-	AgentRuntimeHermes   = "hermes"
-	AgentRuntimePicoclaw = "picoclaw"
-	AgentRuntimeCodex    = "codex"
+	AgentRuntimeOpenClaw   = "openclaw"
+	AgentRuntimeHermes     = "hermes"
+	AgentRuntimePicoclaw   = "picoclaw"
+	AgentRuntimeCodex      = "codex"
 	AgentRuntimeClaudeCode = "claudecode"
 
 	KindSystemInfo    = "system.info"    // aggregate: versions + network + host
@@ -559,7 +559,7 @@ type MQTTInfoResponse struct {
 	// installed Claude Code CLI version (e.g. "2.1.83"), empty when not installed.
 	ClaudeCodeVersion string `json:"claudecode_version,omitempty"`
 	AgentRuntime      string `json:"agent_runtime,omitempty"`
-	LocalIP       string `json:"local_ip,omitempty"`
+	LocalIP           string `json:"local_ip,omitempty"`
 	// UnsupportedChannels lists channels configured in config.json that the active
 	// runtime cannot run (populated by ChannelReconcile after a runtime switch — e.g.
 	// slack/discord become unsupported after switching to picoclaw). Empty/omitted

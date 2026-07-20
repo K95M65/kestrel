@@ -75,7 +75,7 @@ class SensingSender:
             OS_SENSING_URL, _json.dumps(log_payload),
         )
         # Image turns wait for the os-server-side vision describe (up to 80s,
-        # internal/vision DescribeTimeout — qwen measured 2026-07-06: scene
+        # system/vision DescribeTimeout — qwen measured 2026-07-06: scene
         # images 8-20s but TEXT-DENSE images 23-38s per attempt) before the
         # response comes back — don't let the plain-text timeout abort them
         # into a spurious "failed to send" warning.

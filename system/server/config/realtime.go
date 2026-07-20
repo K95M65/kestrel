@@ -98,8 +98,8 @@ const (
 	// 3.5-plus over turbo: turbo (legacy) never fires function calls and
 	// ignores turn context (device-tested), breaking the delegate flow.
 	// Voice: 3.5-plus accepts only Serena/Ethan of the qwen voice set.
-	defaultRealtimeQwenModel       = "qwen3.5-omni-plus-realtime"
-	defaultRealtimeQwenVoice       = "Ethan"
+	defaultRealtimeQwenModel = "qwen3.5-omni-plus-realtime"
+	defaultRealtimeQwenVoice = "Ethan"
 )
 
 // DefaultRealtimeConfig returns the realtime block os-server seeds into
@@ -284,7 +284,7 @@ func (c *Config) RealtimeReasoning() string {
 }
 
 // --- Validation (for realtime.set MQTT downlinks) ---------------------------
-// Valid knob values per provider — KEEP IN SYNC with hal/drivers/realtime/
+// Valid knob values per provider — KEEP IN SYNC with hal/realtime/
 // enums (GeminiVoice / GeminiThinkingLevel / OpenAIReasoningEffort) and the
 // OpenAI voice list in hal/routes/voice.py. Case-sensitive to match the HAL
 // StrEnums (Gemini voices are Capitalized, OpenAI voices/efforts are lowercase).
@@ -299,7 +299,7 @@ var (
 // Ordered option lists — the SINGLE SOURCE the web reads via GET realtime options
 // (so the FE never hardcodes/drifts). Order matters: first reasoning entry is the
 // cheapest (the default). Voices match the maps below; KEEP IN SYNC with the HAL
-// enums (hal/drivers/realtime/enums).
+// enums (hal/realtime/enums).
 var (
 	RealtimeProviders           = []string{"gemini", "openai", "qwen", "none"}
 	RealtimeGeminiVoiceList     = []string{"Puck", "Charon", "Kore", "Fenrir", "Aoede"}

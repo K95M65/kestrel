@@ -3,8 +3,8 @@ package mqtthandler
 import (
 	"log/slog"
 
-	"go.autonomous.ai/os/domain"
-	"go.autonomous.ai/os/internal/device"
+	"go.autonomous.ai/os/system/device"
+	"go.autonomous.ai/os/system/domain"
 )
 
 // handleRuntimeSetup applies a `hermes.setup` / `picoclaw.setup` downlink — swap

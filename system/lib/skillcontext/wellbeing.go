@@ -19,9 +19,9 @@ import (
 	"strings"
 	"time"
 
-	"go.autonomous.ai/os/lib/posture"
-	"go.autonomous.ai/os/lib/usercanon"
-	"go.autonomous.ai/os/lib/wellbeing"
+	"go.autonomous.ai/os/system/lib/posture"
+	"go.autonomous.ai/os/system/lib/usercanon"
+	"go.autonomous.ai/os/system/lib/wellbeing"
 )
 
 const (
@@ -58,16 +58,16 @@ var nonActivityActions = map[string]bool{
 // same pattern as sedentary). They count as meal signals for the meal-
 // reminder gate and as user activity for first_activity_today.
 var eatLabels = map[string]bool{
-	"tasting food":     true,
-	"dining":           true,
-	"eating burger":    true,
-	"eating cake":      true,
-	"eating carrots":   true,
-	"eating chips":     true,
-	"eating doughnuts": true,
-	"eating hotdog":    true,
-	"eating ice cream": true,
-	"eating spaghetti": true,
+	"tasting food":      true,
+	"dining":            true,
+	"eating burger":     true,
+	"eating cake":       true,
+	"eating carrots":    true,
+	"eating chips":      true,
+	"eating doughnuts":  true,
+	"eating hotdog":     true,
+	"eating ice cream":  true,
+	"eating spaghetti":  true,
 	"eating watermelon": true,
 }
 
@@ -87,21 +87,21 @@ const (
 // wellbeingContext is the digest the agent reads. Deltas are pre-computed so
 // the skill only applies thresholds; raw history is dropped from the prompt.
 type wellbeingContext struct {
-	HydrationDeltaMin           int                      `json:"hydration_delta_min"` // minutes since last drink/enter/nudge_hydration; -1 if no reset today
-	BreakDeltaMin               int                      `json:"break_delta_min"`     // minutes since last break/enter/nudge_break;     -1 if no reset today
-	LatestActivity              string                   `json:"latest_activity"`     // most recent action label (sedentary or reset); "" if no events today
-	CountToday                  map[string]int           `json:"count_today,omitempty"` // count of reset actions today (drink, break); zeros omitted
-	TimeOfDay                   string                   `json:"time_of_day"`         // morning|noon|afternoon|evening|night — flavors reaction phrasing
-	CurrentHour                 int                      `json:"current_hour"`        // exact hour (0-23) for routing — finer than time_of_day
-	FirstActivityToday          bool                     `json:"first_activity_today"` // true when no wellbeing events logged yet today (this event is the first)
-	MealWindow                  string                   `json:"meal_window,omitempty"` // "lunch" | "dinner" | "" — set when current_hour is inside a meal window
-	MealSignalInWindow          bool                     `json:"meal_signal_in_window"` // true when a meal signal (meal_reminder log OR any raw eat label) was already logged in the current window today — gates meal-reminder so the agent doesn't ask "ăn chưa?" after a real meal
-	MorningGreetingDoneToday    bool                     `json:"morning_greeting_done_today"`    // true when a morning_greeting action exists today
-	SleepWinddownDoneToday      bool                     `json:"sleep_winddown_done_today"`      // true when a sleep_winddown action exists today
-	DrinksSinceToiletNudge      int                      `json:"drinks_since_toilet_nudge"`      // count of `drink` rows logged after the most recent `nudge_toilet` today (or all today's drinks if none); resets via nudge_toilet POST
-	Patterns                    map[string]patternDigest `json:"patterns,omitempty"`  // wellbeing_patterns from patterns.json, keyed by action ("drink"/"break")
-	BootstrapNeeded             bool                     `json:"bootstrap_needed"`    // patterns missing/stale AND days >= 3 → invoke habit Flow A only when nudging
-	LastPostureNudgeAgeMin      int                      `json:"last_posture_nudge_age_min"` // minutes since last nudge_posture today; -1 if none. Lets the skill defend against double-nudging if hal lost its cooldown state (restart), and supports the praise route (recent nudge + improving summary -> praise instead of re-nudge).
+	HydrationDeltaMin        int                      `json:"hydration_delta_min"`         // minutes since last drink/enter/nudge_hydration; -1 if no reset today
+	BreakDeltaMin            int                      `json:"break_delta_min"`             // minutes since last break/enter/nudge_break;     -1 if no reset today
+	LatestActivity           string                   `json:"latest_activity"`             // most recent action label (sedentary or reset); "" if no events today
+	CountToday               map[string]int           `json:"count_today,omitempty"`       // count of reset actions today (drink, break); zeros omitted
+	TimeOfDay                string                   `json:"time_of_day"`                 // morning|noon|afternoon|evening|night — flavors reaction phrasing
+	CurrentHour              int                      `json:"current_hour"`                // exact hour (0-23) for routing — finer than time_of_day
+	FirstActivityToday       bool                     `json:"first_activity_today"`        // true when no wellbeing events logged yet today (this event is the first)
+	MealWindow               string                   `json:"meal_window,omitempty"`       // "lunch" | "dinner" | "" — set when current_hour is inside a meal window
+	MealSignalInWindow       bool                     `json:"meal_signal_in_window"`       // true when a meal signal (meal_reminder log OR any raw eat label) was already logged in the current window today — gates meal-reminder so the agent doesn't ask "ăn chưa?" after a real meal
+	MorningGreetingDoneToday bool                     `json:"morning_greeting_done_today"` // true when a morning_greeting action exists today
+	SleepWinddownDoneToday   bool                     `json:"sleep_winddown_done_today"`   // true when a sleep_winddown action exists today
+	DrinksSinceToiletNudge   int                      `json:"drinks_since_toilet_nudge"`   // count of `drink` rows logged after the most recent `nudge_toilet` today (or all today's drinks if none); resets via nudge_toilet POST
+	Patterns                 map[string]patternDigest `json:"patterns,omitempty"`          // wellbeing_patterns from patterns.json, keyed by action ("drink"/"break")
+	BootstrapNeeded          bool                     `json:"bootstrap_needed"`            // patterns missing/stale AND days >= 3 → invoke habit Flow A only when nudging
+	LastPostureNudgeAgeMin   int                      `json:"last_posture_nudge_age_min"`  // minutes since last nudge_posture today; -1 if none. Lets the skill defend against double-nudging if hal lost its cooldown state (restart), and supports the praise route (recent nudge + improving summary -> praise instead of re-nudge).
 }
 
 type patternDigest struct {
@@ -146,21 +146,21 @@ func BuildWellbeingContext(user string) string {
 	lastPostureNudgeAge := lastPostureNudgeAgeMin(postureEvents, now)
 
 	ctx := wellbeingContext{
-		HydrationDeltaMin:          hydrationDelta,
-		BreakDeltaMin:              breakDelta,
-		LatestActivity:             latestActivity,
-		CountToday:                 countToday,
-		TimeOfDay:                  timeOfDay,
-		CurrentHour:                currentHour,
-		FirstActivityToday:         firstActivityToday,
-		MealWindow:                 mealWindow,
-		MealSignalInWindow:         mealSignalInWindow,
-		MorningGreetingDoneToday:   morningGreetingDone,
-		SleepWinddownDoneToday:     sleepWinddownDone,
-		DrinksSinceToiletNudge:     drinksSinceToiletNudge,
-		Patterns:                   patterns,
-		BootstrapNeeded:            bootstrapNeeded,
-		LastPostureNudgeAgeMin:     lastPostureNudgeAge,
+		HydrationDeltaMin:        hydrationDelta,
+		BreakDeltaMin:            breakDelta,
+		LatestActivity:           latestActivity,
+		CountToday:               countToday,
+		TimeOfDay:                timeOfDay,
+		CurrentHour:              currentHour,
+		FirstActivityToday:       firstActivityToday,
+		MealWindow:               mealWindow,
+		MealSignalInWindow:       mealSignalInWindow,
+		MorningGreetingDoneToday: morningGreetingDone,
+		SleepWinddownDoneToday:   sleepWinddownDone,
+		DrinksSinceToiletNudge:   drinksSinceToiletNudge,
+		Patterns:                 patterns,
+		BootstrapNeeded:          bootstrapNeeded,
+		LastPostureNudgeAgeMin:   lastPostureNudgeAge,
 	}
 
 	body, err := json.Marshal(ctx)

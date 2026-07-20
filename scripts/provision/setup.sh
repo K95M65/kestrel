@@ -657,18 +657,18 @@ EOF
   # Capability gate: a skill that needs a hardware capability (servo/light/...)
   # is only seeded when this device's DEVICE.md declares that capability. Skills
   # with no capability (platform/logic skills) are always seeded. This mirrors
-  # the authoritative gate in os-server (internal/skills.Supported); both read
+  # the authoritative gate in os-server (system/skills.Supported); both read
   # DEVICE.md so a reduced device never ships skills it can't run. Fail-open:
   # if DEVICE.md declares no capabilities, everything is seeded (legacy behavior).
   # os-server re-syncs + prunes on boot, so this is only the first-boot seed.
   SKILLS_GCS_PREFIX="${OTA_METADATA_URL%/ota/metadata.json}/skills"
-  # Full catalog (keep in sync with internal/skills.Catalog).
+  # Full catalog (keep in sync with system/skills.Catalog).
   SKILLS_CATALOG="audio camera computer-use connectors display emotion face-enroll guard led-control music music-suggestion scene sensing sensing-track servo-control servo-tracking voice wellbeing mood speaker-recognizer user-emotion-detection habit input-branching claude-buddy"
   # skill -> required DEVICE.md capability (keep in sync with skills.Capability in
-  # internal/skills/skills.go). Empty = platform skill, always seeded.
+  # system/skills/skills.go). Empty = platform skill, always seeded.
   # Echo the capabilities a skill requires (space-separated, ANY-OF: the skill is
   # kept when the device declares at least one). Empty = platform skill, always
-  # seeded. Keep in sync with skills.Capability in internal/skills/skills.go.
+  # seeded. Keep in sync with skills.Capability in system/skills/skills.go.
   skill_caps() {
     case "$1" in
       audio|voice)                    echo audio ;;
@@ -996,7 +996,7 @@ AVAHI
   # with identical last-4 serial chars on the same LAN is rare (1/65536)
   # but possible — if it happens, the FE's redirect will hit the wrong
   # device, and we'd need to bump the suffix length here and in
-  # system/internal/device/hardware.go.
+  # system/device/hardware.go.
   sleep 1
   if command -v avahi-resolve-host-name >/dev/null 2>&1; then
     if ! avahi-resolve-host-name -4 "${DEVICE_HOSTNAME}.local" >/dev/null 2>&1; then

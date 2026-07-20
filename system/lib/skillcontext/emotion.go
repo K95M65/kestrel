@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"go.autonomous.ai/os/lib/hal"
-	"go.autonomous.ai/os/lib/mood"
-	"go.autonomous.ai/os/lib/musicsuggestion"
-	"go.autonomous.ai/os/lib/usercanon"
+	"go.autonomous.ai/os/system/lib/hal"
+	"go.autonomous.ai/os/system/lib/mood"
+	"go.autonomous.ai/os/system/lib/musicsuggestion"
+	"go.autonomous.ai/os/system/lib/usercanon"
 )
 
 // detectedEmotionRe pulls the label out of either an emotion.detected or
@@ -48,15 +48,15 @@ const (
 // pattern matching are all pre-computed in Lamp; the skills only apply
 // synthesis rules and pick phrasing.
 type emotionContext struct {
-	MappedMood            string                  `json:"mapped_mood"`              // detected emotion → mood signal value (Sad → "sad", Fear → "stressed", ...)
-	RecentSignals         []signalDigest          `json:"recent_signals"`           // mood signals in the last emotionRecentSignalsWindow
-	PriorDecision         *priorDecisionDigest    `json:"prior_decision,omitempty"` // most recent kind=decision row, omitted if none
-	IsDecisionStale       bool                    `json:"is_decision_stale"`        // PriorDecision.AgeMin > decisionStaleAfter, or no decision today
-	AudioPlaying          bool                    `json:"audio_playing"`            // /audio/status shows playback active
-	LastSuggestionAgeMin  int                     `json:"last_suggestion_age_min"`  // minutes since last music-suggestion log row; -1 if none today
-	AudioRecent           *audioRecentDigest      `json:"audio_recent,omitempty"`   // last entry from /audio/history
-	MusicPatternForHour   *musicPatternDigest     `json:"music_pattern_for_hour,omitempty"`
-	SuggestionWorthy      bool                    `json:"suggestion_worthy"`        // true when MappedMood is in the suggestion-worthy bucket
+	MappedMood           string               `json:"mapped_mood"`              // detected emotion → mood signal value (Sad → "sad", Fear → "stressed", ...)
+	RecentSignals        []signalDigest       `json:"recent_signals"`           // mood signals in the last emotionRecentSignalsWindow
+	PriorDecision        *priorDecisionDigest `json:"prior_decision,omitempty"` // most recent kind=decision row, omitted if none
+	IsDecisionStale      bool                 `json:"is_decision_stale"`        // PriorDecision.AgeMin > decisionStaleAfter, or no decision today
+	AudioPlaying         bool                 `json:"audio_playing"`            // /audio/status shows playback active
+	LastSuggestionAgeMin int                  `json:"last_suggestion_age_min"`  // minutes since last music-suggestion log row; -1 if none today
+	AudioRecent          *audioRecentDigest   `json:"audio_recent,omitempty"`   // last entry from /audio/history
+	MusicPatternForHour  *musicPatternDigest  `json:"music_pattern_for_hour,omitempty"`
+	SuggestionWorthy     bool                 `json:"suggestion_worthy"` // true when MappedMood is in the suggestion-worthy bucket
 }
 
 type signalDigest struct {
