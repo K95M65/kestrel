@@ -6,7 +6,7 @@ on:
 
 jobs:
   go:
-    name: Go (services) — build · vet · test
+    name: Go (system) — build · vet · test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

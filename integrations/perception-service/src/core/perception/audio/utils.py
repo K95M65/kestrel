@@ -19,6 +19,7 @@ class AudioEmbedderFactory(PredictorFactory[AudioEmbedder]):
         processor_factory: AudioProcessorFactory | None = None,
         window_frames: int | None = None,
         hop_frames: int | None = None,
+        chunk_threshold_frames: int | None = None,
         sample_rate: int | None = None,
         num_mel_bins: int | None = None,
         batch_size: int | None = None,
@@ -29,6 +30,7 @@ class AudioEmbedderFactory(PredictorFactory[AudioEmbedder]):
         self._processor_factory: AudioProcessorFactory | None = processor_factory
         self._window_frames: int | None = window_frames
         self._hop_frames: int | None = hop_frames
+        self._chunk_threshold_frames: int | None = chunk_threshold_frames
         self._sample_rate: int | None = sample_rate
         self._num_mel_bins: int | None = num_mel_bins
         self._batch_size: int | None = batch_size
@@ -41,6 +43,7 @@ class AudioEmbedderFactory(PredictorFactory[AudioEmbedder]):
             processor_factory=self._processor_factory,
             window_frames=self._window_frames,
             hop_frames=self._hop_frames,
+            chunk_threshold_frames=self._chunk_threshold_frames,
             sample_rate=self._sample_rate,
             num_mel_bins=self._num_mel_bins,
             batch_size=self._batch_size,
@@ -54,6 +57,7 @@ def create_embedder(
     processor_factory: AudioProcessorFactory | None = None,
     window_frames: int | None = None,
     hop_frames: int | None = None,
+    chunk_threshold_frames: int | None = None,
     sample_rate: int | None = None,
     num_mel_bins: int | None = None,
     batch_size: int | None = None,
@@ -74,6 +78,7 @@ def create_embedder(
         processor_factory=processor_factory,
         window_frames=window_frames,
         hop_frames=hop_frames,
+        chunk_threshold_frames=chunk_threshold_frames,
         sample_rate=sample_rate,
         num_mel_bins=num_mel_bins,
         batch_size=batch_size,
