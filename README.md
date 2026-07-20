@@ -30,13 +30,14 @@ calling `motion.move` runs on it and on Lamp alike — skills address capabiliti
 Autonomous OS is a layered stack: each layer exposes an interface to the one above and
 depends only on the one below, so any layer can be replaced without touching the others.
 
-<img width="1061" height="839" alt="image" src="https://github.com/user-attachments/assets/bcdec37b-1720-4af2-9b8b-c36de0476a8a" />
+![Autonomous OS architecture](docs/architecture/autonomous-stack.svg)
 
 ### Skills
 
-What the device does: `guard`, `mood`, `scene`, `habit`, `wellbeing`. Each is a `SKILL.md`
-the runtime invokes. A skill is an *ability*; the device's *character* is its `SOUL.md`.
-First-party skills use the same public contract a third party gets. *(`skills/`)*
+What the device does — 24 skills, each a `SKILL.md` the runtime invokes: apps like `guard`,
+`mood`, `scene`, `habit`, `wellbeing`, plus capability wrappers (`led-control`,
+`servo-control`, `camera`, `music`, …). A skill is an *ability*; the device's *character* is
+its `SOUL.md`. First-party skills use the same public contract a third party gets. *(`skills/`)*
 
 ### Tools
 
@@ -45,10 +46,10 @@ device's own abilities (through the HAL); tools are external capabilities the ru
 
 ### System Managers
 
-The always-on Go daemon: `intent` (fast local commands), `network`, `OTA`, `sensing` routing,
-`health`, and `safety`. Deterministic — they run with or without the runtime, and
-**safety-critical actions (e-stop, motion limits) are enforced here, never by the LLM**.
-*(`os/services`)*
+The always-on Go daemon: `intent` (fast local commands), `network`, `sensing` routing,
+`monitor` (flow event bus), `healthwatch`, `ambient`, and `device`. Deterministic — they run
+with or without the runtime. OTA runs as its own worker (`bootstrap/`).
+*(`os/services/internal`)*
 
 ### Agentic Runtime
 
@@ -61,17 +62,23 @@ your own: `docs/agentic/adding-agent-runtime.md`)*
 
 ### Hardware Abstraction Layer (HAL)
 
-The frozen, versioned interface: `audio`, `vision`, `motion`, `light`, `display`, `presence`.
+The frozen, versioned interface — 12 capabilities: `audio`, `vision`, `sensing`, `presence`,
+`motion`, `light`, `display`, `expression`, `media`, `connectivity`, `companion`, `system`.
 Skills call capabilities (`motion.move`), never hardware models — so one skill runs on any
 body that declares the capability. A device's `DEVICE.md` declares which it has; the runtime
-mounts only those. *(`contract/` + `os/hal` — see [HAL](docs/architecture/hal.md))*
+mounts only those. The HAL also hosts the **safety gate** (`os/hal/safety`): `SAFETY.md`
+bounds — e-stop, motion limits, brightness, quiet hours — **enforced deterministically below
+the brain, never by the LLM**. The realtime voice agent (`os/hal/drivers/realtime`) runs
+in-process here too — runtime-layer code hosted in the HAL, marked purple in the diagram.
+*(`contract/` + `os/hal` — see [HAL](docs/architecture/hal.md))*
 
 ### Linux Kernel
 
 The vendor kernel (Raspberry Pi OS / OrangePi, or the robot's onboard compute) we run on — we
-don't ship one. Our **Drivers** (`feetech`, `ws2812`, `gc9a01`, `camera`, `STT/TTS/VAD` in
-`os/hal/drivers`, with per-board wiring in `os/hal/board`) are userspace programs talking to
-it through GPIO/SPI/ALSA/V4L2; **Power Management** is the foundation.
+don't ship one. Our **Drivers** (`motors`, `rgb`, `display`, `voice` (STT/TTS/VAD),
+`gpio`/`touch`, `bluetooth` in `os/hal/drivers`; the `camera` device in `os/hal/devices`;
+per-board wiring in `os/hal/board`) are userspace programs talking to it through GPIO/SPI/ALSA/V4L2;
+**Power Management** is the foundation.
 *(see [kernel](docs/architecture/kernel.md))*
 
 📖 Full docs: [overview](docs/architecture/overview.md) · [HAL](docs/architecture/hal.md) · [kernel](docs/architecture/kernel.md)
