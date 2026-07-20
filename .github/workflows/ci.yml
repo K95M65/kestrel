@@ -59,6 +59,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      # Catches refactor-leftover broken imports — including a bare `from devices.x`
+      # left over after a module moved (e.g. devices/ -> drivers/camera/), which
+      # py_compile and the unit subset both miss because they never execute it.
+      # No deps: the moved-import check is stdlib AST (pyflakes undefined-name pass
+      # is skipped without the dev extra, so this step can't fail on pre-existing
+      # findings and block a merge).
+      - name: hal lint (broken / moved-away local imports)
+        run: python hal/scripts/lint.py
       - name: unit tests (board + device — no hardware deps)
         run: python -m unittest hal.test.test_board hal.test.test_device hal.test.test_safety -v
       - name: conformance suite (CTS — devices vs COMPATIBILITY.md)
