@@ -474,11 +474,11 @@ Tất cả hardware endpoints chạy trực tiếp trên HAL FastAPI (:5001). Op
 | Thành phần | Trạng thái |
 |---|---|
 | 10 SKILL.md files | ✅ `lamp/resources/openclaw-skills/` |
-| HAL 38 endpoints | ✅ `os/hal/server.py` |
-| Sensing event routing | ✅ `os/services/server/sensing/` |
-| Local intent matching | ✅ `os/services/internal/intent/` |
-| Voice pipeline (VAD + Deepgram) | ✅ `os/hal/drivers/voice/` |
-| Ambient idle behaviors | ✅ `os/services/internal/ambient/` |
+| HAL 38 endpoints | ✅ `hal/server.py` |
+| Sensing event routing | ✅ `services/server/sensing/` |
+| Local intent matching | ✅ `services/internal/intent/` |
+| Voice pipeline (VAD + Deepgram) | ✅ `hal/drivers/voice/` |
+| Ambient idle behaviors | ✅ `services/internal/ambient/` |
 
 ### Phần Cứng ↔ Tầng Mapping
 

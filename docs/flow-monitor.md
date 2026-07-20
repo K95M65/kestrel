@@ -16,7 +16,7 @@ HAL (Python)                       OS Server (Go)                     Web UI (Re
                             │
                             ├─ flow.Log("lifecycle_*") ──→ JSONL file ──→ /flow-stream (SSE)
                             ├─ flow.Log("tool_call")                         ↓
-                            ├─ flow.Log("tts_send")                    os/services/web/.../Monitor.tsx
+                            ├─ flow.Log("tts_send")                    services/web/.../Monitor.tsx
                             └─ monitorBus.Push() ──→ /openclaw/events (SSE)  └─ groupIntoTurns()
 ```
 
@@ -131,7 +131,7 @@ Structured `slog.Info` lines for end-to-end ID alignment (device idempotency key
 
 ## Turn Pipeline (SVG `FlowDiagram`)
 
-Rendered by `FlowDiagram` in `os/services/web/src/pages/Monitor.tsx`. The diagram is **observational only** (zoom/pan, node highlights from recent events). Three **tinted cluster** regions group nodes:
+Rendered by `FlowDiagram` in `services/web/src/pages/Monitor.tsx`. The diagram is **observational only** (zoom/pan, node highlights from recent events). Three **tinted cluster** regions group nodes:
 
 | Region | Color (theme) | Stages |
 |--------|----------------|--------|
@@ -310,7 +310,7 @@ N events
 - **⚡ TTFT** (time-to-first-token): `turn.startTime → first thinking/assistant_delta`. Matches the chat page agent-bubble stamp — the moment the user *sees* a reply begin. Gap between ⚡ and ⏱ = tail streaming + lifecycle close. Green ≤3s, amber ≤8s, red >8s. Hidden when no LLM stream (e.g., local intent match).
 - **Snapshot strip**: extracted from `[snapshot:]` markers in `sensing_input`. For `motion.activity` with a pose bucket, the strip is capped at 3 tiles (the activity snapshot + two worst pose snapshots). Clicking a tile opens the inline lightbox.
 - **Pose bucket popup**: when `[pose_bucket:]` is present, a `LOAD MORE` button surfaces `PoseBucketModal`, which fetches `/api/hardware/sensing/pose-bucket/<id>` (proxied to lelamp) and renders the full per-sample table — same monospace grid + click-thumbnail-to-lightbox as the live Sensing tab. Rows whose filename is in `worst_snapshots` are highlighted (red border, ⭐).
-- **Debug audio clip** (`speech_emotion.detected`): a click-to-play `<audio controls>` player labeled `🎙 debug` is rendered for each audio URL, so you can listen to the exact clip that produced the detected emotion. The clip's on-Pi path arrives as the optional `audio` field in the `POST /api/sensing/event` body. `os/services/server/sensing/delivery/http/handler.go` converts the path's basename into a servable URL (`audioURLForPath` → `/api/sensing/audio/<file>.wav`) and stores it in the monitor event `Detail` under key `audio` — **only the basename URL, never the raw path**. The frontend `turnIO()` (`helpers.ts`) pulls these into `audioUrls` from the `sensing_input` event's `detail.audio`; `TurnBadge.tsx` renders the players. **This is a DEBUG-ONLY affordance — the audio is NEVER sent to the LLM.** The path lives in a separate JSON field, never in the chat message text, so it is naturally excluded from what the agent sees — mirroring how `motion.activity` snapshots are surfaced in the UI but stripped before the LLM.
+- **Debug audio clip** (`speech_emotion.detected`): a click-to-play `<audio controls>` player labeled `🎙 debug` is rendered for each audio URL, so you can listen to the exact clip that produced the detected emotion. The clip's on-Pi path arrives as the optional `audio` field in the `POST /api/sensing/event` body. `services/server/sensing/delivery/http/handler.go` converts the path's basename into a servable URL (`audioURLForPath` → `/api/sensing/audio/<file>.wav`) and stores it in the monitor event `Detail` under key `audio` — **only the basename URL, never the raw path**. The frontend `turnIO()` (`helpers.ts`) pulls these into `audioUrls` from the `sensing_input` event's `detail.audio`; `TurnBadge.tsx` renders the players. **This is a DEBUG-ONLY affordance — the audio is NEVER sent to the LLM.** The path lives in a separate JSON field, never in the chat message text, so it is naturally excluded from what the agent sees — mirroring how `motion.activity` snapshots are surfaced in the UI but stripped before the LLM.
   - **Route**: `GET /api/sensing/audio/:name` (`SensingHandler.GetAudio`) serves the `.wav` by basename from `/var/lib/hal/speech-emotion` or `/tmp/hal-speech-emotion`, with strict basename validation — the name must end in `.wav` and contain no `/`, `\`, or `..` (otherwise `404`).
 
 The two badges are meant to be read together: ⚡ is *perceived* latency (what the user feels), ⏱ is *server* latency (what ops sees). Big gap = lots of tail streaming; small gap = short reply or fast lifecycle close.
@@ -389,7 +389,7 @@ The agent session auto-compacts when context tokens cross ~80k. Every compaction
 }
 ```
 
-Use when the agent cites rules that cannot be found in any `skills/**/SKILL.md` — the source is almost always the compaction summary, not the loaded skill. Handler: `os/services/server/openclaw/delivery/sse/handler_api_compaction.go`.
+Use when the agent cites rules that cannot be found in any `skills/**/SKILL.md` — the source is almost always the compaction summary, not the loaded skill. Handler: `services/server/openclaw/delivery/sse/handler_api_compaction.go`.
 
 ## Turns list vs downloaded log
 
@@ -405,10 +405,10 @@ Turns now show every turn derivable from the fetched events. Comparing server to
 
 | File | Role |
 |---|---|
-| `os/services/lib/flow/flow.go` | Flow event emission, JSONL persistence, per-event runID API |
-| `os/services/server/sensing/delivery/http/handler.go` | Sensing input → flow.Start/End with runID |
-| `os/services/server/openclaw/delivery/sse/handler.go` | Agent events → flow.Log with payload.RunID, turn detection |
-| `os/services/internal/agent/runtimes/openclaw/service.go` | sendChat returns idempotencyKey as runID |
-| `os/services/web/src/pages/Monitor.tsx` | `groupIntoTurns`, `turnIO`, `extractNodeInfo`, `FlowDiagram` |
+| `services/lib/flow/flow.go` | Flow event emission, JSONL persistence, per-event runID API |
+| `services/server/sensing/delivery/http/handler.go` | Sensing input → flow.Start/End with runID |
+| `services/server/openclaw/delivery/sse/handler.go` | Agent events → flow.Log with payload.RunID, turn detection |
+| `services/internal/agent/runtimes/openclaw/service.go` | sendChat returns idempotencyKey as runID |
+| `services/web/src/pages/Monitor.tsx` | `groupIntoTurns`, `turnIO`, `extractNodeInfo`, `FlowDiagram` |
 
 Vietnamese summary: `docs/vi/flow-monitor_vi.md`.

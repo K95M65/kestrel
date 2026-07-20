@@ -8,7 +8,7 @@ kỳ backend nào `config.agent_runtime` chọn, qua đúng một interface
 nào đang chạy.
 
 - **`openclaw`** (mặc định): WebSocket bền tới daemon OpenClaw. Xem `docs/os-server.md` + `internal/agent/runtimes/openclaw`.
-- **`hermes`**: client HTTP + SSE tới một Hermes API server cục bộ (kiểu OpenAI *Responses API*). Tài liệu này. Code: `os/services/internal/agent/runtimes/hermes/`.
+- **`hermes`**: client HTTP + SSE tới một Hermes API server cục bộ (kiểu OpenAI *Responses API*). Tài liệu này. Code: `services/internal/agent/runtimes/hermes/`.
 
 > Nguồn sự thật là code. Tài liệu này mô tả `internal/agent/runtimes/hermes/` đúng như đã hiện
 > thực; phải đồng bộ khi code đổi (EN: `docs/agentic/hermes.md`, VI: file này).
@@ -218,7 +218,7 @@ khởi tạo, dùng bot token và danh sách chat trong `telegramTargetsFile`.
 
 ### Slack — bridge HTTP-mode (cho runtime chỉ-Socket-Mode)
 
-`domain.SlackBridge` (`os/services/domain/slack_bridge.go`) là một **cơ chế
+`domain.SlackBridge` (`services/domain/slack_bridge.go`) là một **cơ chế
 generic**, không riêng cho hermes: nó là interface cho **bất kỳ** runtime nào mà
 hỗ trợ Slack native **chỉ là Socket Mode** (hiện tại: hermes là ví dụ duy nhất) và
 do đó **không có webhook HTTP Slack local** để nhận event. Với một runtime như
@@ -318,7 +318,7 @@ bất kể backend.
 
 ## 10. Vận hành
 
-Hermes được cài bởi `os/services/internal/agent/runtimes/hermes/install.sh` (đặt cạnh phần hiện
+Hermes được cài bởi `services/internal/agent/runtimes/hermes/install.sh` (đặt cạnh phần hiện
 thực của nó). Script này được **embed trong os-server** (`go:embed`, đăng ký qua
 `lib/runtimereg`), nên đi kèm + OTA chung với binary; os-server ghi nó ra
 `/usr/local/lib/os-runtimes/hermes/install.sh` và switch-runtime chạy bản local

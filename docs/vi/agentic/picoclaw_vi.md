@@ -9,7 +9,7 @@ não nào đang chạy.
 
 - **`openclaw`** (mặc định): WebSocket bền tới daemon OpenClaw. Xem `docs/os-server.md` + `internal/agent/runtimes/openclaw`.
 - **`hermes`**: client HTTP + SSE tới Hermes API server cục bộ. Xem `docs/agentic/hermes.md` + `internal/agent/runtimes/hermes`.
-- **`picoclaw`**: client WebSocket bền tới runtime PicoClaw cục bộ. Tài liệu này. Code: `os/services/internal/agent/runtimes/picoclaw/`.
+- **`picoclaw`**: client WebSocket bền tới runtime PicoClaw cục bộ. Tài liệu này. Code: `services/internal/agent/runtimes/picoclaw/`.
 
 > Code là nguồn chân lý. Tài liệu này mô tả `internal/agent/runtimes/picoclaw/` đúng như đã
 > triển khai; giữ đồng bộ khi thay đổi (EN: `docs/agentic/picoclaw.md`, VI: file này).

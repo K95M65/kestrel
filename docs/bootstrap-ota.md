@@ -391,18 +391,18 @@ HAL runtime code is **copied** from the upstream open-source project into this m
 
 **Upstream tracking:**
 - Source: `https://github.com/humancomputerlab/lelamp_runtime`
-- Record the upstream commit hash in `os/hal/UPSTREAM.md` when copying
+- Record the upstream commit hash in `hal/UPSTREAM.md` when copying
 - Periodically check upstream for driver-level fixes (servo protocol, LED timing, etc.)
 - Cherry-pick relevant driver changes manually
 - Ignore upstream AI/LiveKit changes (we replaced that entirely)
 
 **Implementation steps:**
 1. Clone `humancomputerlab/lelamp_runtime` to a temp directory
-2. Copy driver code (`services/motors.py`, `services/rgb.py`, `services/audio.py`, `services/service_base.py`) into `os/hal/services/`
+2. Copy driver code (`services/motors.py`, `services/rgb.py`, `services/audio.py`, `services/service_base.py`) into `hal/services/`
 3. Remove all LiveKit, OpenAI, and conversation code
-4. Add `os/hal/server.py` — new HTTP API server (FastAPI)
-5. Add `os/hal/services/display.py` — new DisplayService for GC9A01
-6. Create `os/hal/UPSTREAM.md` with source commit hash and date
+4. Add `hal/server.py` — new HTTP API server (FastAPI)
+5. Add `hal/services/display.py` — new DisplayService for GC9A01
+6. Create `hal/UPSTREAM.md` with source commit hash and date
 7. Test on device with actual hardware
 
 ### Mono-repo Layout
@@ -411,14 +411,14 @@ HAL lives inside this repo as a Python subfolder alongside Go and TypeScript:
 
 ```
 autonomous/
-├── os/services/          # Go code (forked from lobster)
+├── services/          # Go code (forked from lobster)
 │   ├── cmd/              # Go entrypoints
 │   ├── server/           # Go HTTP layer
 │   ├── internal/         # Go business logic
 │   ├── bootstrap/        # Go OTA worker
 │   └── domain/           # Shared structs
-├── os/services/web/      # TypeScript/React SPA (copied from lobster, renamed intern→lamp)
-├── os/hal/               # Python hardware drivers (NEW)
+├── services/web/      # TypeScript/React SPA (copied from lobster, renamed intern→lamp)
+├── hal/               # Python hardware drivers (NEW)
 │   ├── __init__.py       # Package init, exposes __version__
 │   ├── server.py         # HTTP API server (FastAPI) — NEW, not from upstream
 │   ├── services/
@@ -444,7 +444,7 @@ autonomous/
 
 ### HAL OTA Package
 
-For OTA distribution, HAL is zipped from the `os/hal/` folder:
+For OTA distribution, HAL is zipped from the `hal/` folder:
 
 ```
 hal-{version}.zip
@@ -598,12 +598,12 @@ HAL version is a plain text `VERSION` file in the package root. Read by bootstra
 
 ## 10. Open Questions
 
-- [x] **HAL source**: Mono-repo. Driver code copied from `humancomputerlab/lelamp_runtime` into `os/hal/`, with LiveKit/OpenAI removed and HTTP API + DisplayService added. Upstream tracked manually via `os/hal/UPSTREAM.md`.
+- [x] **HAL source**: Mono-repo. Driver code copied from `humancomputerlab/lelamp_runtime` into `hal/`, with LiveKit/OpenAI removed and HTTP API + DisplayService added. Upstream tracked manually via `hal/UPSTREAM.md`.
 - [x] **HAL HTTP port**: `5001` (OS Server is `5000`).
 - [x] **Bridge protocol**: Simple HTTP proxy. HAL runs FastAPI on `127.0.0.1:5001`, OS Server proxies from port 5000.
 - [x] **Python version**: Pinned to Python 3.12+ (`pyproject.toml`, `.python-version`, `setup.sh` uses `uv sync --python 3.12`).
 - [x] **HAL packaging**: On-device venv via `uv sync --python 3.12 --extra hardware` at `/opt/hal/.venv`. OTA preserves venv, reinstalls only on requirements change.
-- [x] **Display driver**: DisplayService (GC9A01) is part of HAL Python at `os/hal/service/display/display_service.py`.
+- [x] **Display driver**: DisplayService (GC9A01) is part of HAL Python at `hal/service/display/display_service.py`.
 - [x] **HAL config**: Environment variable-based (`config.py` reads from env vars). `.env` file support via `python-dotenv`. No separate config file needed.
 
 ---

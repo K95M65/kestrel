@@ -7,7 +7,7 @@
 
 ## Speech Emotion Recognition (SER)
 
-**File:** `os/hal/config.py`, `os/hal/drivers/voice/voice_service.py` (`_submit_speech_emotion_from_session`, `_identify_and_decorate`, `_session_wav_for_ser`)
+**File:** `hal/config.py`, `hal/drivers/voice/voice_service.py` (`_submit_speech_emotion_from_session`, `_identify_and_decorate`, `_session_wav_for_ser`)
 
 **Tích hợp voice (cuối phiên mic, độc lập transcript):** trong `finally` của `_stream_session`, `_identify_and_decorate(final_text, audio_buffer)` chạy **đúng 1 lần** để lấy đồng thời `final_msg` (cho Lamp POST khi STT có chữ) và `user_name` (cho SER submit). Sau đó gọi `_submit_speech_emotion_from_session(audio_buffer, user=...)` — chỉ build WAV và `SpeechEmotionService.submit`, không gọi speaker lần 2. Người không match / lỗi speaker vẫn enqueue SER dưới key dedup chung `unknown` nếu audio đủ dài.
 
@@ -20,7 +20,7 @@ SPEECH_EMOTION_API_TIMEOUT_S = 15           # Timeout HTTP perception-service
 DL_SER_ENDPOINT = "/lelamp/api/dl/ser/recognize"
 ```
 
-Ngưỡng confidence **per-label** không nằm trong `config.py` — khai báo trong `os/hal/drivers/voice/speech_emotion/constants.py` qua `CONFIDENCE_THRESHOLD_BY_LABEL` (và `DEFAULT_CONFIDENCE_THRESHOLD` cho label không map). Negative emotion siết chặt hơn positive để giảm false positive:
+Ngưỡng confidence **per-label** không nằm trong `config.py` — khai báo trong `hal/drivers/voice/speech_emotion/constants.py` qua `CONFIDENCE_THRESHOLD_BY_LABEL` (và `DEFAULT_CONFIDENCE_THRESHOLD` cho label không map). Negative emotion siết chặt hơn positive để giảm false positive:
 
 ```python
 # constants.py
@@ -63,7 +63,7 @@ Dòng `flushing` hiển thị danh sách label thô — đó là mode trên các
 
 ### Áp dụng thay đổi
 
-Sau khi sửa `os/hal/config.py` hoặc `voice_service.py` trên Pi: restart service HAL (xem [os-server_vi.md](os-server_vi.md)).
+Sau khi sửa `hal/config.py` hoặc `voice_service.py` trên Pi: restart service HAL (xem [os-server_vi.md](os-server_vi.md)).
 
 ---
 
@@ -72,7 +72,7 @@ Sau khi sửa `os/hal/config.py` hoặc `voice_service.py` trên Pi: restart ser
 `MotionPerception` chạy nhận diện hành động Kinetics (qua perception-service) và phát event
 `motion.activity` kèm các label hoạt động nhận được.
 
-**File:** `os/hal/config.py`
+**File:** `hal/config.py`
 
 ```python
 MOTION_CONFIDENCE_THRESHOLD = 0.3    # confidence tối thiểu để buffer 1 label
@@ -119,7 +119,7 @@ INFO hal...motion: [motion] transition bypass: ['sedentary'] → ['eat'] (last e
 
 ## Nhận Diện Hoạt Động Per-Face (Per-Face Motion)
 
-**File:** `os/hal/config.py`
+**File:** `hal/config.py`
 
 ```python
 MOTION_PER_FACE_ENABLED = false            # Bật nhận diện hành động per-face

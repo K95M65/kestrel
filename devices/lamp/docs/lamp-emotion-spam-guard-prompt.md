@@ -28,11 +28,11 @@ What remains open:
 
 ## Files to inspect first
 
-- `os/hal/drivers/sensing/perceptions/processors/emotion.py`
-- `os/hal/drivers/sensing/perceptions/processors/motion.py`
-- `os/hal/drivers/sensing/perceptions/processors/facerecognizer.py`
-- `os/hal/drivers/sensing/sensing_service.py`
-- `os/hal/config.py`
+- `hal/drivers/sensing/perceptions/processors/emotion.py`
+- `hal/drivers/sensing/perceptions/processors/motion.py`
+- `hal/drivers/sensing/perceptions/processors/facerecognizer.py`
+- `hal/drivers/sensing/sensing_service.py`
+- `hal/config.py`
 
 Relevant recent commits:
 

@@ -3,8 +3,8 @@ set -e
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ota-config.sh"
 
-HAL_DIR="${ROOT_DIR}/os/hal"
-VERSION_FILE="${ROOT_DIR}/os/hal/${VERSION_FILE:-VERSION_HAL}"
+HAL_DIR="${ROOT_DIR}/hal"
+VERSION_FILE="${ROOT_DIR}/hal/${VERSION_FILE:-VERSION_HAL}"
 
 # Bucket and path: ${BUCKET_PREFIX}/ota/hal/[semver].zip
 

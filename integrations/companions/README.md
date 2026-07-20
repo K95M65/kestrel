@@ -78,8 +78,8 @@ claude plugins install claude-code-buddy
 
 ## Pairing with the device
 
-Buddy pairing is owned by os-server (`os/services/internal/buddy`, routes in
-`os/services/server/buddy/delivery/http/`):
+Buddy pairing is owned by os-server (`services/internal/buddy`, routes in
+`services/server/buddy/delivery/http/`):
 
 1. `POST /api/buddy/pair/start` (admin-gated) — `IssuePairingCode` generates a
    single-use 6-digit code with a 60s TTL; the device shows it to the user.

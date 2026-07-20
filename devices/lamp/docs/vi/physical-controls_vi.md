@@ -1,6 +1,6 @@
 # Điều khiển vật lý — Nút GPIO + Touchpad TTP223
 
-Lamp có hai thiết bị input vật lý mà user có thể chạm trực tiếp. Chúng dùng chung thư viện action (`os/hal/drivers/button_actions.py`) nên cùng một cử chỉ "single click" sẽ hành xử giống nhau dù đến từ nút bấm cơ học hay touchpad cảm ứng.
+Lamp có hai thiết bị input vật lý mà user có thể chạm trực tiếp. Chúng dùng chung thư viện action (`hal/drivers/button_actions.py`) nên cùng một cử chỉ "single click" sẽ hành xử giống nhau dù đến từ nút bấm cơ học hay touchpad cảm ứng.
 
 ## Tại sao có hai thiết bị
 
@@ -45,13 +45,13 @@ Chuỗi end-to-end:
 
 ### Voice barge-in (tuỳ chọn, mặc định tắt)
 
-Cắt bằng giọng nói — nói trong lúc Lamp đang nói để Lamp dừng và lắng nghe — được gate bởi `HAL_BARGE_IN_ENABLED=true` trong `os/hal/.env`. Khi bật, `voice_service._monitor_barge_in()` mở mic capture song song trong lúc TTS phát, tính RMS trên block 256ms, gọi `tts_service.stop()` khi N block liên tiếp vượt `HAL_BARGE_IN_RMS_THRESHOLD`. Cùng chuỗi downstream với tap-to-interrupt.
+Cắt bằng giọng nói — nói trong lúc Lamp đang nói để Lamp dừng và lắng nghe — được gate bởi `HAL_BARGE_IN_ENABLED=true` trong `hal/.env`. Khi bật, `voice_service._monitor_barge_in()` mở mic capture song song trong lúc TTS phát, tính RMS trên block 256ms, gọi `tts_service.stop()` khi N block liên tiếp vượt `HAL_BARGE_IN_RMS_THRESHOLD`. Cùng chuỗi downstream với tap-to-interrupt.
 
 Tại sao tắt mặc định: software-only AEC không khả thi trên hardware này (Speex AEC tích hợp xuống còn ~13-30% reduction dưới TTS multi-chunk streaming). Chỉ với physical separation mic-loa, bleed RMS (1-7500 đo được) và user voice RMS (6-14k đo được) chồng nhau ở zone 7-9k → 1 threshold RMS không discriminate sạch được. Threshold 9000 + 1 frame trigger thiên về 0 false-trigger, đổi lại phải nói lớn để cắt; threshold 6000-7000 thiên ngược lại. Tune theo deployment là không tránh khỏi cho tới khi device có hardware AEC (ví dụ ReSpeaker XVF3800).
 
 Khi bật, tail log để xem `Barge-in monitor session end: max_rms_seen=N` (peak mỗi session) và sự kiện `BARGE-IN: RMS=N`, sau đó set `HAL_BARGE_IN_RMS_THRESHOLD` ở giữa bleed-max và voice-min quan sát được. Tap-to-interrupt vẫn active bất kể.
 
-## Detect nút GPIO (`os/hal/drivers/gpio_button.py`)
+## Detect nút GPIO (`hal/drivers/gpio_button.py`)
 
 Driver đếm edge nơi **mọi destructive action commit ở rising edge (nhả) dựa trên thời lượng giữ** — không timer nào fire lúc đang giữ. Đây chính là cái cho phép user huỷ giữa chừng (nhả trước ngưỡng) hoặc escalate (giữ tiếp quá 10 s).
 
@@ -80,7 +80,7 @@ Cùng màu đỏ cho cả hai mức arm; nháy vs đứng là cái phân biệt.
 
 Debounce mỗi edge là 200 ms (tick nhấn và nhả track độc lập để tap nhanh không bị drop trong khi bounce lặp của cùng một edge bị lọc).
 
-## Detect TTP223 (`os/hal/drivers/ttp223.py`)
+## Detect TTP223 (`hal/drivers/ttp223.py`)
 
 IC TTP223 trên board này chạy ở **FastMode**: output HIGH khi chạm, rồi tự về LOW trong ~50-80 ms dù ngón tay vẫn ở pad. IC chỉ re-trigger khi điện dung thay đổi (ngón tay di chuyển). "Giữ liên tục" là bất khả thi nếu không đổi chân FM của IC sang LowPowerMode (~12 s max touch).
 
@@ -111,7 +111,7 @@ Sau khi session kết thúc:
 | `PET_SESSION_THRESHOLD` | 2 | 2 session liên tiếp trong decision window = pet. Dễ hơn 3 vì mỗi "stroke" trên phần cứng này chỉ tạo 1 session |
 | `PET_COOLDOWN_S` | 1.5 | Sau pet fire, session thêm trong 1.5 s extend cooldown chứ không bắt đầu count mới. Vuốt liên tục = 1 pet, rồi im |
 
-## Thư viện action chung (`os/hal/drivers/button_actions.py`)
+## Thư viện action chung (`hal/drivers/button_actions.py`)
 
 Các action sống ở một chỗ để nút GPIO, TTP223, và mọi input tương lai (touchpad, remote) hành xử giống nhau:
 
@@ -125,7 +125,7 @@ Các action sống ở một chỗ để nút GPIO, TTP223, và mọi input tư�
 
 ### Factory-reset: wipe những gì
 
-`factory_reset_action` chỉ **báo + uỷ quyền** — phần reset thật nằm ở OS server (`os/services/server/system/factoryreset.go`), gọi được từ thiết bị qua loopback không cần Bearer token (authoritative nhờ hiện diện vật lý: giữ 10 s có chủ ý). `POST /api/system/factory-reset` là reset **mềm** (wipe state, không reflash — kernel / package OS / binary / `.venv` HAL không bị đụng):
+`factory_reset_action` chỉ **báo + uỷ quyền** — phần reset thật nằm ở OS server (`services/server/system/factoryreset.go`), gọi được từ thiết bị qua loopback không cần Bearer token (authoritative nhờ hiện diện vật lý: giữ 10 s có chủ ý). `POST /api/system/factory-reset` là reset **mềm** (wipe state, không reflash — kernel / package OS / binary / `.venv` HAL không bị đụng):
 
 1. Wipe state của agent backend đang chạy (OpenClaw hoặc Hermes, auto-detect từ `config.json` `agent_runtime`).
 2. Wipe các path state của thiết bị: `/root/config` (config.json — API key, channel token, MQTT creds), `/root/local/users` + `/root/local/strangers` (enrollment khuôn mặt/giọng), `/var/lib/hal/snapshots` (snapshot camera), và `/etc/wpa_supplicant/wpa_supplicant-wlan0.conf` (WiFi nhà → ép vào AP mode lần boot kế).
@@ -150,7 +150,7 @@ của record-enroll chủ đích KHÔNG persist.
 
 ## Phrase local
 
-Thông báo của các action đều local theo `stt_language` từ `config.json` của Lamp. Hằng số ngôn ngữ ở `os/hal/presets.py` (`LANG_EN`, `LANG_VI`, `LANG_ZH_CN`, `LANG_ZH_TW`, `DEFAULT_LANG`). Fallback về `DEFAULT_LANG` (English) khi ngôn ngữ hiện tại chưa có bản dịch.
+Thông báo của các action đều local theo `stt_language` từ `config.json` của Lamp. Hằng số ngôn ngữ ở `hal/presets.py` (`LANG_EN`, `LANG_VI`, `LANG_ZH_CN`, `LANG_ZH_TW`, `DEFAULT_LANG`). Fallback về `DEFAULT_LANG` (English) khi ngôn ngữ hiện tại chưa có bản dịch.
 
 ### Thông báo an toàn (1 câu/ngôn ngữ)
 
@@ -174,11 +174,11 @@ Phrase cố tình ngắn — chúng fire giữa lúc vuốt nên cần cảm gi�
 
 | Đường dẫn | Mục đích |
 |---|---|
-| `os/hal/drivers/gpio_button.py` | Handler nút GPIO (cơ học, cả hai board) |
-| `os/hal/drivers/ttp223.py` | Handler touchpad cảm ứng TTP223 (chỉ OrangePi sun60) |
-| `os/hal/drivers/button_actions.py` | Hàm action chung + pool phrase local |
-| `os/hal/presets.py` | Hằng số mã ngôn ngữ (`LANG_EN`, v.v.) |
-| `os/hal/test_ttp223_probe_orangepi.py` | Probe độc lập để verify mapping line TTP223 |
-| `os/hal/test_gpio.py` | Probe độc lập để verify line nút GPIO |
+| `hal/drivers/gpio_button.py` | Handler nút GPIO (cơ học, cả hai board) |
+| `hal/drivers/ttp223.py` | Handler touchpad cảm ứng TTP223 (chỉ OrangePi sun60) |
+| `hal/drivers/button_actions.py` | Hàm action chung + pool phrase local |
+| `hal/presets.py` | Hằng số mã ngôn ngữ (`LANG_EN`, v.v.) |
+| `hal/test_ttp223_probe_orangepi.py` | Probe độc lập để verify mapping line TTP223 |
+| `hal/test_gpio.py` | Probe độc lập để verify line nút GPIO |
 
-Cả hai handler được spawn trong startup lifespan `os/hal/server.py` — fail thì log nhưng không crash runtime (board không có phần cứng tự skip im lặng).
+Cả hai handler được spawn trong startup lifespan `hal/server.py` — fail thì log nhưng không crash runtime (board không có phần cứng tự skip im lặng).

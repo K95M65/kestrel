@@ -139,7 +139,7 @@ OpenClaw / sensing pipeline xử lý như sự kiện sensing khác (xem [sensin
 
 Trong `_process_job`, mọi inference vượt qua ngưỡng confidence theo label đều được ghi ra đĩa bởi `_persist_wav()` trước khi vào buffer:
 
-- **Thư mục:** `SPEECH_EMOTION_AUDIO_DIR` (cấu hình trong `os/hal/config.py`, env `HAL_SPEECH_EMOTION_AUDIO_DIR`), mặc định `<tempdir>/hal-speech-emotion` (tức `/tmp/hal-speech-emotion`). Tạo bằng `os.makedirs(exist_ok=True)` lúc khởi tạo; nếu tạo thất bại thì thư mục bị tắt và mọi POST mang trường `audio` rỗng (graceful degradation — SER vẫn chạy bình thường).
+- **Thư mục:** `SPEECH_EMOTION_AUDIO_DIR` (cấu hình trong `hal/config.py`, env `HAL_SPEECH_EMOTION_AUDIO_DIR`), mặc định `<tempdir>/hal-speech-emotion` (tức `/tmp/hal-speech-emotion`). Tạo bằng `os.makedirs(exist_ok=True)` lúc khởi tạo; nếu tạo thất bại thì thư mục bị tắt và mọi POST mang trường `audio` rỗng (graceful degradation — SER vẫn chạy bình thường).
 - **Tên file:** `<ms>_<user>_<label>.wav`, trong đó `<ms>` là timestamp inference tính bằng mili-giây, còn `<user>`/`<label>` được sanitize về `[a-zA-Z0-9_-]` (ký tự khác gộp thành `_`).
 - **Chọn lúc flush:** khi flush của một user phát ra label dominant non-neutral, nó đính kèm clip **mới nhất** trong nhóm inference cùng label dominant — `max(dom_inferences, key=lambda i: i.ts).audio_path` — làm trường `audio` trong POST.
 
@@ -160,7 +160,7 @@ Mọi inference đạt ngưỡng đều được lưu WAV — kể cả clip neu
 
 ---
 
-## Cấu Hình (`os/hal/config.py`)
+## Cấu Hình (`hal/config.py`)
 
 | Hằng số | Mặc định | Ý nghĩa |
 |---------|----------|---------|
@@ -171,7 +171,7 @@ Mọi inference đạt ngưỡng đều được lưu WAV — kể cả clip neu
 | `SPEECH_EMOTION_API_TIMEOUT_S` | `15` | Timeout HTTP perception-service |
 | `DL_SER_ENDPOINT` | `/lelamp/api/dl/ser/recognize` | Path SER |
 
-**Ngưỡng confidence theo từng label** không lấy từ env nữa — khai báo cố định trong `os/hal/service/voice/speech_emotion/constants.py`:
+**Ngưỡng confidence theo từng label** không lấy từ env nữa — khai báo cố định trong `hal/service/voice/speech_emotion/constants.py`:
 
 ```python
 CONFIDENCE_THRESHOLD_BY_LABEL: dict[str, float] = {

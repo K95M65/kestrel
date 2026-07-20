@@ -55,7 +55,7 @@ HAL's voice pipeline **only calls `submit()`**. All HTTP I/O to perception-servi
 ## File Layout
 
 ```
-os/hal/service/voice/speech_emotion/
+hal/service/voice/speech_emotion/
 ├── __init__.py        # public API: SpeechEmotionService + ABC + engine + result type
 ├── constants.py       # defaults, label vocabulary, bucket map, event type
 ├── base.py            # BaseSpeechEmotionRecognizer (ABC), SpeechEmotionResult dataclass
@@ -150,7 +150,7 @@ To make noisy SER reads debuggable, the service persists the WAV clip behind eac
 
 In `_process_job`, every inference that clears the per-label confidence gate is written to disk by `_persist_wav()` before it lands in the buffer:
 
-- **Directory:** `SPEECH_EMOTION_AUDIO_DIR` (config in `os/hal/config.py`, env `HAL_SPEECH_EMOTION_AUDIO_DIR`), default `<tempdir>/hal-speech-emotion` (i.e. `/tmp/hal-speech-emotion`). Created with `os.makedirs(exist_ok=True)` at init; if creation fails the directory is disabled and every POST carries an empty `audio` field (graceful degradation — SER keeps working).
+- **Directory:** `SPEECH_EMOTION_AUDIO_DIR` (config in `hal/config.py`, env `HAL_SPEECH_EMOTION_AUDIO_DIR`), default `<tempdir>/hal-speech-emotion` (i.e. `/tmp/hal-speech-emotion`). Created with `os.makedirs(exist_ok=True)` at init; if creation fails the directory is disabled and every POST carries an empty `audio` field (graceful degradation — SER keeps working).
 - **Filename:** `<ms>_<user>_<label>.wav`, where `<ms>` is the inference timestamp in milliseconds and `<user>`/`<label>` are sanitized to `[a-zA-Z0-9_-]` (anything else collapsed to `_`).
 - **Flush selection:** when a user's flush emits the dominant non-neutral label, it attaches the **latest** clip among the dominant-label inferences — `max(dom_inferences, key=lambda i: i.ts).audio_path` — as the `audio` field in the POST.
 
@@ -205,7 +205,7 @@ The TTL map is persisted to a boot-scoped sidecar (`/tmp/hal-ser-state.json`, `h
 
 ## Configuration
 
-All knobs live in `os/hal/config.py` as `SPEECH_EMOTION_*`, overridable via env vars. Defaults mirror `EMOTION_*` so the two modalities behave identically out of the box.
+All knobs live in `hal/config.py` as `SPEECH_EMOTION_*`, overridable via env vars. Defaults mirror `EMOTION_*` so the two modalities behave identically out of the box.
 
 | Constant | Env var | Default | Purpose |
 |----------|---------|---------|---------|
@@ -218,7 +218,7 @@ All knobs live in `os/hal/config.py` as `SPEECH_EMOTION_*`, overridable via env 
 | `SPEECH_EMOTION_API_URL` | — | derived | `DL_BACKEND_URL` + `DL_SER_ENDPOINT` |
 | `SPEECH_EMOTION_API_KEY` | — | mirrors `DL_API_KEY` | Sent as `X-API-Key` |
 
-Label vocabulary, bucket map, and **per-label confidence thresholds** are declared in `os/hal/service/voice/speech_emotion/constants.py` (not env-overridable — touching these requires a code change). The threshold dict:
+Label vocabulary, bucket map, and **per-label confidence thresholds** are declared in `hal/service/voice/speech_emotion/constants.py` (not env-overridable — touching these requires a code change). The threshold dict:
 
 ```python
 # constants.py

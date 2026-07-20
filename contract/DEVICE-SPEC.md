@@ -39,7 +39,7 @@ tell "no servo by design" from "servo lib missing" from "servo broken."
 | `id` | yes | Stable device id. **Must equal the device folder name** (`devices/<id>/`); the runtime aborts boot on a mismatch. |
 | `name` | yes | Display name. Exposed via HAL `GET /device`. |
 | `type` | yes | Free-form class (`desk_robot`, `desk_agent`). Exposed via HAL `GET /device`. |
-| `boards` | yes | Supported boards. At boot the runtime resolves the physical board (`os/hal/board`) and aborts if it is unknown or not in this list. |
+| `boards` | yes | Supported boards. At boot the runtime resolves the physical board (`hal/board`) and aborts if it is unknown or not in this list. |
 | `gateway` | yes | Default agentic gateway (`default`) + wire transport (`protocol`). The transport follows from the runtime (openclaw→websocket, hermes→sse); `protocol` is validated for consistency against `default` (a warning, not a driver). |
 | `capabilities` | yes | Map of capability group → declaration (below). |
 | `soul_ref` | no | Soul artifact for this body: a path read relative to the device folder (e.g. `SOUL.md`), or an `http(s)://` URL the runtime downloads. Absent → the gateway's default soul. |
@@ -69,7 +69,7 @@ capabilities:
 ## Per-device presets (`presets.json`)
 
 The emotion / scene / aim preset *values* and the LED ring size live in
-`os/hal/presets.py` as the **platform default** every device inherits. A device
+`hal/presets.py` as the **platform default** every device inherits. A device
 overrides only the values it wants different by shipping an optional
 `devices/<id>/presets.json` — a sibling of `DEVICE.md`, discovered by convention
 (no front-matter field declares it). At boot HAL (`board/presets_overlay.py`)

@@ -29,7 +29,7 @@
   <!-- System Managers -->
   <rect x="382" y="168" width="604" height="148" rx="16" fill="#eab308"/>
   <text x="402" y="198" text-anchor="start" font-size="19" font-weight="600" fill="#ffffff">System Managers</text>
-  <text x="966" y="198" text-anchor="end" font-size="11" fill="#ffffff" fill-opacity="0.85">os/services/internal · Go</text>
+  <text x="966" y="198" text-anchor="end" font-size="11" fill="#ffffff" fill-opacity="0.85">services/internal · Go</text>
   <g fill="#ffffff" fill-opacity="0.2">
     <rect x="402" y="212" width="132" height="38" rx="10"/><rect x="546" y="212" width="132" height="38" rx="10"/><rect x="690" y="212" width="132" height="38" rx="10"/><rect x="834" y="212" width="132" height="38" rx="10"/>
     <rect x="402" y="258" width="132" height="38" rx="10"/><rect x="546" y="258" width="132" height="38" rx="10"/><rect x="690" y="258" width="132" height="38" rx="10"/><rect x="834" y="258" width="132" height="38" rx="10"/>
@@ -57,7 +57,7 @@
   <!-- HAL -->
   <rect x="74" y="488" width="912" height="210" rx="16" fill="#06b6d4"/>
   <text x="94" y="518" text-anchor="start" font-size="19" font-weight="600" fill="#ffffff">Hardware Abstraction Layer (HAL)</text>
-  <text x="966" y="518" text-anchor="end" font-size="11" fill="#ffffff" fill-opacity="0.85">contract/ (ABI) · os/hal (host)</text>
+  <text x="966" y="518" text-anchor="end" font-size="11" fill="#ffffff" fill-opacity="0.85">contract/ (ABI) · hal (host)</text>
   <g fill="#ffffff" fill-opacity="0.2">
     <rect x="94" y="532" width="136" height="34" rx="10"/><rect x="241" y="532" width="136" height="34" rx="10"/><rect x="388" y="532" width="136" height="34" rx="10"/><rect x="535" y="532" width="136" height="34" rx="10"/><rect x="682" y="532" width="136" height="34" rx="10"/><rect x="829" y="532" width="137" height="34" rx="10"/>
     <rect x="94" y="574" width="136" height="34" rx="10"/><rect x="241" y="574" width="136" height="34" rx="10"/><rect x="388" y="574" width="136" height="34" rx="10"/><rect x="535" y="574" width="136" height="34" rx="10"/><rect x="682" y="574" width="136" height="34" rx="10"/><rect x="829" y="574" width="137" height="34" rx="10"/>
@@ -71,7 +71,7 @@
   <text x="306" y="658" text-anchor="middle" font-size="12.5" font-weight="600" fill="#ffffff">realtime voice agent — drivers/realtime</text>
   <text x="306" y="673" text-anchor="middle" font-size="10" fill="#ffffff" fill-opacity="0.85">runtime-layer code hosted in the HAL</text>
   <rect x="534" y="640" width="432" height="40" rx="10" fill="#7f1d1d" fill-opacity="0.9"/>
-  <text x="750" y="658" text-anchor="middle" font-size="12.5" font-weight="600" fill="#ffffff">safety gate — os/hal/safety</text>
+  <text x="750" y="658" text-anchor="middle" font-size="12.5" font-weight="600" fill="#ffffff">safety gate — hal/safety</text>
   <text x="750" y="673" text-anchor="middle" font-size="10" fill="#ffffff" fill-opacity="0.85">SAFETY.md bounds, enforced deterministically — never by the LLM</text>
 
   <!-- Linux Kernel -->
@@ -79,7 +79,7 @@
   <text x="94" y="740" text-anchor="start" font-size="19" font-weight="600" fill="#ffffff">Linux Kernel</text>
   <text x="966" y="740" text-anchor="end" font-size="11" fill="#ffffff" fill-opacity="0.85">vendor kernel — not shipped</text>
   <rect x="94" y="752" width="872" height="68" rx="12" fill="#ffffff" fill-opacity="0.12"/>
-  <text x="530" y="770" text-anchor="middle" font-size="12.5" font-weight="500" fill="#ffffff">Drivers — os/hal/drivers · per-board wiring: os/hal/board</text>
+  <text x="530" y="770" text-anchor="middle" font-size="12.5" font-weight="500" fill="#ffffff">Drivers — hal/drivers · per-board wiring: hal/board</text>
   <g fill="#ffffff" fill-opacity="0.2">
     <rect x="114" y="780" width="100" height="30" rx="8"/><rect x="226" y="780" width="70" height="30" rx="8"/><rect x="308" y="780" width="95" height="30" rx="8"/><rect x="415" y="780" width="95" height="30" rx="8"/><rect x="522" y="780" width="170" height="30" rx="8"/><rect x="704" y="780" width="120" height="30" rx="8"/><rect x="836" y="780" width="105" height="30" rx="8"/>
   </g>

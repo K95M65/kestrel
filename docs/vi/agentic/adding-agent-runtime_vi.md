@@ -11,7 +11,7 @@ không tự cập nhật).
 > phải hoặc làm theo, hoặc **quyết định bỏ một cách có ý thức — và ghi lý do
 > trong comment.** No-op là một quyết định, không bao giờ là mặc định.
 
-Nguồn chân lý cho hợp đồng: `os/services/domain/agent.go` (interface
+Nguồn chân lý cho hợp đồng: `services/domain/agent.go` (interface
 `AgentGateway`). Doc này giải thích phần *nào* quan trọng và *cách* nối switch,
 install, migration, skills, hooks, reset.
 
@@ -285,7 +285,7 @@ vào là đồ chết dưới Hermes).
 - **`turn-gate` → không mirror (thừa).** `sendChat` đã set busy
   (`busySince`/`activeTurn`) trước round-trip mạng, nên gate riêng sẽ trùng lặp.
 
-> ⚠️ **Coupling bảo trì — không có liên kết compile-time.** `os/services/internal/agent/runtimes/openclaw/hooks/emotion-acknowledge/
+> ⚠️ **Coupling bảo trì — không có liên kết compile-time.** `services/internal/agent/runtimes/openclaw/hooks/emotion-acknowledge/
 > handler.ts` (OpenClaw) và các file `emotion_ack.go` trong
 > `internal/agent/runtimes/{hermes,picoclaw,codex,claudecode}` là các bản cài đặt
 > độc lập của cùng một hành vi. **Sửa một cái phải sửa tất cả** — skip rules,

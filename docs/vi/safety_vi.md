@@ -7,7 +7,7 @@ yêu cầu hành động; engine quyết định — trên **mọi** yêu cầu,
 phần cứng có được phép thực thi không và trong giới hạn nào.
 
 > **Trạng thái:** Slice 1 (trần độ sáng) đã **được hiện thực và thực thi** —
-> `os/hal/safety/policy.py` + gate LED trong `rgb_service.py`, nạp từ
+> `hal/safety/policy.py` + gate LED trong `rgb_service.py`, nạp từ
 > `devices/lamp/SAFETY.md`. Các slice sau tái dùng cùng loader + gate. Mỗi dòng bảng
 > dưới được đánh dấu đã-thực-thi / dự-trữ. Tài liệu này bám theo code, không ngược lại.
 
@@ -27,7 +27,7 @@ Ba tầng, soi gương tầng thiết bị (`DEVICE.md` → capability → route
 SAFETY.md front matter        các giới hạn đã khai (contract máy đọc; theo capability group)
         │  resolve qua DEVICE.md safety_ref (path hoặc http), parse lúc boot
         ▼
-os/hal/safety/policy.py        SafetyPolicy thuần + gate functions (không IO, unit-testable)
+hal/safety/policy.py        SafetyPolicy thuần + gate functions (không IO, unit-testable)
         │  clamp_brightness(requested) -> min(requested, ceiling)   [slice 1]
         ▼
 HAL capability routes          gọi gate TRƯỚC khi actuate (led, sau này servo/music)
@@ -38,8 +38,8 @@ phần cứng
 
 - **`SAFETY.md` front matter** — các bound, keyed theo capability group. Schema + bảng
   field: `contract/SAFETY-SPEC.md`.
-- **`os/hal/safety/policy.py`** — loader thuần (parse front-matter bằng regex,
-  dependency-free, cùng kỷ luật với `os/hal/board/device.py`) tạo ra `SafetyPolicy`
+- **`hal/safety/policy.py`** — loader thuần (parse front-matter bằng regex,
+  dependency-free, cùng kỷ luật với `hal/board/device.py`) tạo ra `SafetyPolicy`
   có kiểu, kèm các gate function thuần. Không phần cứng, không tác dụng phụ về đồng hồ,
   unit-testable hoàn toàn off-hardware.
 - **Các route** — mỗi capability route hỏi gate tại điểm actuate. Route LED clamp độ
@@ -74,7 +74,7 @@ mới là pass-through.
 | 1 | trần `light.max_brightness` | `clamp_brightness` / `clamp_color` | gate LED (`rgb_service` `_handle_solid`/`_handle_paint`) | **đã thực thi (v1)** |
 | 2 | `quiet_hours` (light + audio) | `active_max_brightness` (theo giờ) + `audio_quiet_now` | gate LED + route music | **đã thực thi (v1)** |
 | 3 | `motion.max_speed` + `stop_always` (theo sự hiện diện) | `min_move_duration` | route servo | **đã thực thi (v1)** (`max_accel` dự trữ) |
-| 4 | trạng thái fail-safe (mất mạng/gateway → dừng tracking; lỗi board → cô lập `503`; `thermal.max_temp_c` → health event quá nhiệt SoC + dừng tracking; setup + quá dòng servo dự trữ) | hook WS-disconnect + `503` theo từng capability + monitor nhiệt (`thermal_over`/`read_soc_temp_c`) | `os/services` khi gateway WS disconnect + route HAL/`/health` + `server.py` `_thermal_monitor` | **thực thi một phần (v1)** (setup + quá dòng dự trữ) |
+| 4 | trạng thái fail-safe (mất mạng/gateway → dừng tracking; lỗi board → cô lập `503`; `thermal.max_temp_c` → health event quá nhiệt SoC + dừng tracking; setup + quá dòng servo dự trữ) | hook WS-disconnect + `503` theo từng capability + monitor nhiệt (`thermal_over`/`read_soc_temp_c`) | `services` khi gateway WS disconnect + route HAL/`/health` + `server.py` `_thermal_monitor` | **thực thi một phần (v1)** (setup + quá dòng dự trữ) |
 
 Mỗi slice thêm field vào `SafetyPolicy` và gate function rồi nối một/nhiều route;
 loader và contract front-matter **không** đổi hình dạng giữa các slice (chỉ thêm field
@@ -104,7 +104,7 @@ cập: port, RCE, CORS — không phải giới hạn actuation.)
 - [x] **Unit:** `clamp_brightness(255)` với `max_brightness: 180` → `180`;
       `clamp_brightness(120)` → `120`; không khai → giữ nguyên (pass-through).
       `clamp_color` scale giữ hue (trắng→180,180,180; đỏ→180,0,0). Schema
-      thiếu/sai/major-lạ fail-loud. (`os/hal/test/test_safety.py`, 21 test.)
+      thiếu/sai/major-lạ fail-loud. (`hal/test/test_safety.py`, 21 test.)
 - [x] **Runtime:** đã verify trên Lamp thật — `GET /device` trả
       `"safety": {"light": {"max_brightness": 180}}`; `POST /led/solid` trắng đầy (255)
       đọc lại `[180,180,180]`, `[100,50,0]` giữ nguyên, `[255,0,0]` → `[180,0,0]`.
@@ -133,7 +133,7 @@ fallback về giờ local naive.
       23:00 và 06:00, sai lúc 12:00, loại trừ 07:00); `active_max_brightness` trả trần
       giảm (40) trong khung, base (180) ngoài khung; `clamp_color((255,255,255),
       now=23:00)` → `(40,40,40)`, `now=12:00` → `(180,180,180)`; `audio_quiet_now`
-      true trong khung, false ngoài / khi không có policy. (`os/hal/test/test_safety.py`.)
+      true trong khung, false ngoài / khi không có policy. (`hal/test/test_safety.py`.)
 - [x] **Runtime:** `GET /device` báo `safety.light.quiet_hours` +
       `safety.audio.quiet_hours`. Đặt khung trùng giờ hiện tại → vòng LED kẹp xuống
       trần giảm và `POST /audio/play` trả `{"status":"suppressed"}`; ngoài khung thì
@@ -156,7 +156,7 @@ dài duration** (move vẫn tới target, chỉ chậm lại) — không cắt c
       giữ move chậm, kẹp request tức thì (duration 0), pass-through khi không có
       `max_speed` và khi không có policy nào, bỏ qua joint không biết vị trí đầu;
       comment `# stop_always` không bị parse; `max_speed:0` fail-loud.
-      (`os/hal/test/test_safety.py`.)
+      (`hal/test/test_safety.py`.)
 - [ ] **Runtime (CHƯA verify trên máy — bạn deploy):** `GET /device` báo
       `safety.motion`; `/servo/move` duration nhỏ → trả `duration` đã kéo dài, move
       ở tốc độ kẹp; device không có `motion:` bounds → chạy không giới hạn (không 403).
@@ -172,8 +172,8 @@ thuộc tới hạn, nó rơi về tư thế an toàn một cách tất định,
 kiện đã thực thi; setup-incomplete và over-current servo còn dự trữ.
 
 - [x] **Mất mạng / gateway → dừng tracking do agent điều khiển.** Khi gateway
-      WebSocket disconnect, `os/services/internal/agent/runtimes/openclaw/service_ws.go` gọi
-      `hal.StopServoTracking()` (`os/services/lib/hal`) → HAL `POST /servo/track/stop`,
+      WebSocket disconnect, `services/internal/agent/runtimes/openclaw/service_ws.go` gọi
+      `hal.StopServoTracking()` (`services/lib/hal`) → HAL `POST /servo/track/stop`,
       để body thôi đuổi theo một target không còn cập nhật vision mới. Best-effort và
       được gác bởi `SetUpCompleted`. Lưu ý then chốt: thiết bị **không** đóng băng hay
       "giữ pose" — animation idle local vẫn tiếp tục (nó local và vô hại) và các reflex
@@ -197,7 +197,7 @@ kiện đã thực thi; setup-incomplete và over-current servo còn dự trữ.
       trên `resume_temp_c`, clear tại/dưới nó, và là False khi không có policy / không có
       section thermal / nhiệt không đọc được; `read_soc_temp_c` parse millidegrees → °C và
       trả None khi đọc lỗi; parse mặc định `resume = max − 10` và fail-loud khi
-      `max_temp_c ≤ 0` hoặc `resume ≥ max`. (`os/hal/test/test_safety.py`.)
+      `max_temp_c ≤ 0` hoặc `resume ≥ max`. (`hal/test/test_safety.py`.)
 - [ ] **Runtime (CHƯA verify trên máy):** đường WS-disconnect → `/servo/track/stop` và
       monitor nhiệt mới ở mức repo; chưa xác nhận trên thiết bị sống (ngắt link gateway;
       đốt nóng SoC vượt `max_temp_c`).

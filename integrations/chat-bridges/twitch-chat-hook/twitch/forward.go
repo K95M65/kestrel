@@ -1,6 +1,6 @@
 // Forwards Twitch chat lines into the device's sensing pipeline as a sensing
 // event, mirroring how HAL's voice service posts voice
-// transcripts (see os/hal/drivers/voice/voice_service.py: same URL, same
+// transcripts (see hal/drivers/voice/voice_service.py: same URL, same
 // body shape). The "[source: twitch]" prefix lets SOUL.md distinguish this
 // from real microphone input.
 

@@ -110,8 +110,8 @@ build in tab 1 keeps running while you tail a log in tab 2.
   `/root/.claudecode/.env` for the Claude Code runtime), so `claude`,
   `codex`, `opencode` etc. inherit the campaign API key and don't prompt
   for login the way a raw SSH shell would.
-- Source: `os/services/server/system/shell.go` (backend PTY + WebSocket) and
-  `os/services/web/src/pages/monitor/CliSection.tsx` (xterm.js frontend).
+- Source: `services/server/system/shell.go` (backend PTY + WebSocket) and
+  `services/web/src/pages/monitor/CliSection.tsx` (xterm.js frontend).
 
 Use SSH for scripted / long-running work (rsync, tmux sessions that must
 survive a browser close). Use the Web CLI for quick "poke at the device"
@@ -193,7 +193,7 @@ sudo systemctl restart os-server
 
 HAL reads its runtime tuning (audio devices, VAD thresholds, realtime voice
 config, camera settings) from `/opt/hal/.env`. A curated set of presets lives
-in the repo under `os/hal/env-presets/`.
+in the repo under `hal/env-presets/`.
 
 ```bash
 sudo nano /opt/hal/.env
@@ -241,14 +241,14 @@ build step needed.
 
 ```bash
 # From the repo root
-make os-build            # → os/services/os-server
-make os-build-bootstrap  # → os/services/bootstrap
+make os-build            # → services/os-server
+make os-build-bootstrap  # → services/bootstrap
 ```
 
 Push the binary and restart:
 
 ```bash
-sshpass -p 'orangepi' scp os/services/os-server orangepi@<ip>:/tmp/os-server-new
+sshpass -p 'orangepi' scp services/os-server orangepi@<ip>:/tmp/os-server-new
 sshpass -p 'orangepi' ssh orangepi@<ip> "echo orangepi | sudo -S bash -c '
   cp /usr/local/bin/os-server /usr/local/bin/os-server.bak.\$(date +%s)
   mv /tmp/os-server-new /usr/local/bin/os-server
@@ -263,7 +263,7 @@ Sync individual files, or the whole directory:
 
 ```bash
 # One file
-sshpass -p 'orangepi' scp os/hal/drivers/mic_button.py orangepi@<ip>:/tmp/
+sshpass -p 'orangepi' scp hal/drivers/mic_button.py orangepi@<ip>:/tmp/
 sshpass -p 'orangepi' ssh orangepi@<ip> "echo orangepi | sudo -S bash -c '
   mv /tmp/mic_button.py /opt/hal/drivers/mic_button.py
   chown root:root /opt/hal/drivers/mic_button.py
@@ -271,7 +271,7 @@ sshpass -p 'orangepi' ssh orangepi@<ip> "echo orangepi | sudo -S bash -c '
 '"
 
 # Whole HAL tree (destructive — replaces /opt/hal contents)
-sshpass -p 'orangepi' rsync -avz --delete os/hal/ orangepi@<ip>:/tmp/hal/
+sshpass -p 'orangepi' rsync -avz --delete hal/ orangepi@<ip>:/tmp/hal/
 sshpass -p 'orangepi' ssh orangepi@<ip> "echo orangepi | sudo -S bash -c '
   rsync -avz --delete /tmp/hal/ /opt/hal/
   systemctl restart hal
@@ -280,15 +280,15 @@ sshpass -p 'orangepi' ssh orangepi@<ip> "echo orangepi | sudo -S bash -c '
 
 ### 4.3 Web (Setup + Admin UI)
 
-The React SPA lives in `os/services/web/`. Nginx serves the built assets from
+The React SPA lives in `services/web/`. Nginx serves the built assets from
 `/usr/share/nginx/html/setup/`.
 
 ```bash
 # Build
-cd os/services/web && npm install && npm run build   # → dist/
+cd services/web && npm install && npm run build   # → dist/
 
 # Push (from repo root)
-cd os/services/web/dist && zip -qr /tmp/setup-web.zip .
+cd services/web/dist && zip -qr /tmp/setup-web.zip .
 sshpass -p 'orangepi' scp /tmp/setup-web.zip orangepi@<ip>:/tmp/
 sshpass -p 'orangepi' ssh orangepi@<ip> "echo orangepi | sudo -S bash -c '
   find /usr/share/nginx/html/setup -mindepth 1 -not -name VERSION -exec rm -rf {} + 2>/dev/null || true
@@ -334,7 +334,7 @@ sudo journalctl -u bootstrap -f
 
 ## 6. HAL API — TTS / STT / Mic / Speaker / LED
 
-Full HAL routes live in `os/hal/routes/`. Reach them from the device with
+Full HAL routes live in `hal/routes/`. Reach them from the device with
 `curl http://127.0.0.1:5001/…`, or from your laptop / web dashboard via nginx
 at `http://<device-ip>/api/hardware/…`.
 
@@ -356,11 +356,11 @@ for the decorator (e.g. `@router.post("/voice/speak"`) in the same file.
 
 | What | Where |
 |---|---|
-| Route module | `os/hal/routes/voice.py` |
+| Route module | `hal/routes/voice.py` |
 | `POST /voice/speak` — one-shot say (interrupts current speech) | `voice.py:189` — `def speak_text(req: SpeakRequest)` |
 | `POST /voice/speak-queue` — say after current speech finishes | `voice.py:284` — `def speak_queue_text(req: SpeakRequest)` |
 | `POST /tts/stop` — cut off the currently-playing sentence | `voice.py:328` — `def stop_tts()` |
-| `SpeakRequest` schema (text, voice, provider, interruptible, cached…) | `os/hal/models.py:228` |
+| `SpeakRequest` schema (text, voice, provider, interruptible, cached…) | `hal/models.py:228` |
 
 ```bash
 # Fire-and-forget say
@@ -394,9 +394,9 @@ call it to transcribe an ad-hoc WAV. Instead:
 - Live turn stream (VAD → STT → LLM → TTS): subscribe to the OS Server
   flow monitor SSE endpoint — see `docs/flow-monitor.md`.
 - Current voice-pipeline state (STT provider, language, VAD, is speaking): 
-  `GET /voice/status` — `os/hal/routes/voice.py:443` (`def voice_status()`).
+  `GET /voice/status` — `hal/routes/voice.py:443` (`def voice_status()`).
 - Live mic RMS level (SSE, useful for a "am I hearing you?" indicator):
-  `GET /voice/mic-level` — `os/hal/routes/voice.py:376`
+  `GET /voice/mic-level` — `hal/routes/voice.py:376`
   (`async def mic_level_stream(...)`).
 
 ```bash
@@ -405,16 +405,16 @@ curl -N http://127.0.0.1:5001/voice/mic-level   # SSE stream
 ```
 
 The full STT drivers (OpenAI, Whisper local, Google, …) live under
-`os/hal/drivers/stt/` if you need to plug a new one in.
+`hal/drivers/stt/` if you need to plug a new one in.
 
 ### 6.3 Mic — mute / unmute mid-conversation
 
 | What | Where |
 |---|---|
-| Route module | `os/hal/routes/voice.py` |
+| Route module | `hal/routes/voice.py` |
 | `POST /voice/mute` — stops feeding audio into VAD/STT, ignores mic | `voice.py:336` — `def mute_mic()` |
 | `POST /voice/unmute` — re-arms the mic | `voice.py:349` — `def unmute_mic()` |
-| Slide-switch driver (physical mic mute on PD1, Intern v2 Pro) | `os/hal/drivers/mic_button.py` — calls `mute_mic()` / `unmute_mic()` on GPIO edge |
+| Slide-switch driver (physical mic mute on PD1, Intern v2 Pro) | `hal/drivers/mic_button.py` — calls `mute_mic()` / `unmute_mic()` on GPIO edge |
 
 ```bash
 curl -X POST http://127.0.0.1:5001/voice/mute
@@ -429,7 +429,7 @@ button you want to bolt on.
 
 | What | Where |
 |---|---|
-| Route module | `os/hal/routes/music.py` |
+| Route module | `hal/routes/music.py` |
 | `POST /audio/play` — play a music track or WAV path | `music.py:219` — `def audio_play(req: MusicPlayRequest)` |
 | `POST /audio/stop` — stop current playback | `music.py:271` — `def audio_stop()` |
 | `POST /speaker/mute` — mute the speaker at the ALSA level (TTS still runs but silent) | `music.py:280` — `def mute_speaker()` |
@@ -459,7 +459,7 @@ actually shut up.
 
 | What | Where |
 |---|---|
-| Route module | `os/hal/routes/led.py` |
+| Route module | `hal/routes/led.py` |
 | `POST /led/solid` — solid RGB colour | `led.py:73` — `def set_led_solid(req: LEDSolidRequest)` |
 | `POST /led/paint` — per-pixel colours | `led.py:91` — `def set_led_paint(req: LEDPaintRequest)` |
 | `POST /led/effect` — named animation (breathing, blink, pulse, rainbow…) | `led.py:119` — `def start_led_effect(req: LEDEffectRequest)` |
@@ -469,7 +469,7 @@ actually shut up.
 | `POST /led/restore` — hand strip back to user's saved state (after a transient overlay) | `led.py:206` — `def restore_led()` |
 | `GET /led` — current state | `led.py:35` — `def get_led_state()` |
 | `GET /led/color` — current RGB colour of the whole strip | `led.py:43` — `def get_led_color()` |
-| Named status → colour/effect table (STATUS_LED_PRESETS) | `os/hal/presets.py:188` |
+| Named status → colour/effect table (STATUS_LED_PRESETS) | `hal/presets.py:188` |
 
 Concrete calls, all copy-pasteable:
 
@@ -520,14 +520,14 @@ copy patterns from):
 
 | Caller | File | What it does |
 |---|---|---|
-| Status-cue overlay service | `os/services/internal/statusled/service.go:71` — `func (s *Service) Set(state State)` | Priority-stacked overlay: booting / ota / error / connectivity / hal_down / agent_down / hardware / wifi_connecting. Highest priority wins; on `Clear` the strip is restored. |
-| State constants (booting, wifi_connecting, agent_down, …) | `os/services/internal/statusled/service.go:19-26` | The exact set of states you can pass to `/led/status`. |
-| Wi-Fi connecting blue-blink | `os/services/internal/device/service.go:183` — `s.statusLED.Set(statusled.StateWifiConnecting)` | Fires the blue blink while the STA join is happening during setup. |
-| HAL health watchdog | `os/services/internal/healthwatch/service.go:94,107,136` | Sets `StateHALDown` / `StateHardware` when HAL or a driver stops responding. |
-| Agent-runtime health | `os/services/internal/agent/runtimes/openclaw/service_ws.go:43`, `internal/agent/runtimes/claudecode/client.go:57`, `internal/agent/runtimes/codex/client.go:60`, `internal/agent/runtimes/picoclaw/client.go:50`, `internal/agent/runtimes/hermes/health.go:126` | Every agent runtime sets `StateAgentDown` when its socket drops so the user sees the LED go red without having to check logs. |
-| Ambient "breathing" idle behaviour | `os/services/internal/ambient/service.go` | Drives soft colour drift + breathing while there's no interaction. Uses `/led/effect` with `transient=true` so it doesn't clobber the user's saved state. |
-| LLM skill / tool-call bridge (`[HW:/led/…:{...}]`) | `os/services/server/agent/delivery/http/handler_hw.go` | When an OpenClaw / Hermes / Claude Code skill emits e.g. `[HW:/led/solid:{"color":[255,0,0]}]`, this handler forwards it to HAL. This is how any skill turns the LED red without wiring plumbing itself. |
-| Go HAL client (helpers you'd call from an os-server service) | `os/services/lib/hal/client.go:76-131` — `StartEffect`, `StopEffect`, `SetLEDStatus`, `RestoreLED`, `GetColor` | Fire-and-forget wrappers around the endpoints above. New Go services should use these instead of hand-rolling HTTP. |
+| Status-cue overlay service | `services/internal/statusled/service.go:71` — `func (s *Service) Set(state State)` | Priority-stacked overlay: booting / ota / error / connectivity / hal_down / agent_down / hardware / wifi_connecting. Highest priority wins; on `Clear` the strip is restored. |
+| State constants (booting, wifi_connecting, agent_down, …) | `services/internal/statusled/service.go:19-26` | The exact set of states you can pass to `/led/status`. |
+| Wi-Fi connecting blue-blink | `services/internal/device/service.go:183` — `s.statusLED.Set(statusled.StateWifiConnecting)` | Fires the blue blink while the STA join is happening during setup. |
+| HAL health watchdog | `services/internal/healthwatch/service.go:94,107,136` | Sets `StateHALDown` / `StateHardware` when HAL or a driver stops responding. |
+| Agent-runtime health | `services/internal/agent/runtimes/openclaw/service_ws.go:43`, `internal/agent/runtimes/claudecode/client.go:57`, `internal/agent/runtimes/codex/client.go:60`, `internal/agent/runtimes/picoclaw/client.go:50`, `internal/agent/runtimes/hermes/health.go:126` | Every agent runtime sets `StateAgentDown` when its socket drops so the user sees the LED go red without having to check logs. |
+| Ambient "breathing" idle behaviour | `services/internal/ambient/service.go` | Drives soft colour drift + breathing while there's no interaction. Uses `/led/effect` with `transient=true` so it doesn't clobber the user's saved state. |
+| LLM skill / tool-call bridge (`[HW:/led/…:{...}]`) | `services/server/agent/delivery/http/handler_hw.go` | When an OpenClaw / Hermes / Claude Code skill emits e.g. `[HW:/led/solid:{"color":[255,0,0]}]`, this handler forwards it to HAL. This is how any skill turns the LED red without wiring plumbing itself. |
+| Go HAL client (helpers you'd call from an os-server service) | `services/lib/hal/client.go:76-131` — `StartEffect`, `StopEffect`, `SetLEDStatus`, `RestoreLED`, `GetColor` | Fire-and-forget wrappers around the endpoints above. New Go services should use these instead of hand-rolling HTTP. |
 
 Full LED preset catalogue and rendering rules (colours, priorities, per-preset
 behaviour): `docs/led-control.md`.
@@ -536,12 +536,12 @@ behaviour): `docs/led-control.md`.
 
 | Domain | Source file | Highlights |
 |---|---|---|
-| Servo (Lamp only) | `os/hal/routes/servo.py` | `/servo/aim`, `/servo/track`, `/servo/play` |
-| Emotion | `os/hal/routes/emotion.py` | `/emotion/express` — coordinated servo + LED + display |
-| Scene | `os/hal/routes/scene.py` | `/scene/reading`, `/scene/focus`, … |
-| Camera | `os/hal/routes/camera.py` | `/camera/snap`, `/camera/enable`, `/camera/disable` |
-| Display (Lamp) | `os/hal/routes/display.py` | `/display/text`, `/display/eye` |
-| Face recognition | `os/hal/routes/face.py` | Enroll / list / remove |
+| Servo (Lamp only) | `hal/routes/servo.py` | `/servo/aim`, `/servo/track`, `/servo/play` |
+| Emotion | `hal/routes/emotion.py` | `/emotion/express` — coordinated servo + LED + display |
+| Scene | `hal/routes/scene.py` | `/scene/reading`, `/scene/focus`, … |
+| Camera | `hal/routes/camera.py` | `/camera/snap`, `/camera/enable`, `/camera/disable` |
+| Display (Lamp) | `hal/routes/display.py` | `/display/text`, `/display/eye` |
+| Face recognition | `hal/routes/face.py` | Enroll / list / remove |
 
 ---
 
@@ -565,9 +565,9 @@ Example payload:
 
 ### 7.2 Receiving on the device — add a new handler
 
-Adding a new MQTT command is three edits inside `os/services/`:
+Adding a new MQTT command is three edits inside `services/`:
 
-1. **Declare the kind constant** in `os/services/domain/device.go`:
+1. **Declare the kind constant** in `services/domain/device.go`:
 
    ```go
    const (
@@ -578,13 +578,13 @@ Adding a new MQTT command is three edits inside `os/services/`:
    ```
 
 2. **Write the handler** — one file under
-   `os/services/server/device/delivery/mqtt/`. See
+   `services/server/device/delivery/mqtt/`. See
    `device_soft_reset_handler.go` and `device_rename_handler.go` for reference
    patterns (envelope unmarshalling, ack via `publishDataResult`,
    goroutine-off-callback for long work).
 
 3. **Wire it into the dispatcher** — one case in the switch in
-   `os/services/server/device/delivery/mqtt/handler.go` `dispatchData()`:
+   `services/server/device/delivery/mqtt/handler.go` `dispatchData()`:
 
    ```go
    case domain.KindDeviceSoftReset:
@@ -600,7 +600,7 @@ delivery, ack model) lives in `docs/mqtt.md`.
 
 ## 8. Web UI — Setup and Admin
 
-The React SPA in `os/services/web/` covers both flows:
+The React SPA in `services/web/` covers both flows:
 
 | Route | What it is | Key files |
 |---|---|---|
@@ -619,14 +619,14 @@ module load and stripped from the URL for privacy (see `hooks/setup/useSetupUrlP
 
 | Path | Owner |
 |---|---|
-| `os/services/cmd/os-server/main.go` | OS Server entry point |
-| `os/services/cmd/bootstrap/main.go` | OTA worker entry point |
-| `os/services/server/` | HTTP handlers (Gin), organised by domain |
-| `os/services/internal/` | Business services — agent, device, network, openclaw, hermes, mqtt, statusled, healthwatch, … |
-| `os/services/domain/` | Shared Go types |
-| `os/hal/` | Python HAL — drivers, routes, board profiles |
-| `os/hal/drivers/` | Hardware drivers (rgb, motors, voice, sensing, gpio_button, mic_button, …) |
-| `os/hal/routes/` | FastAPI routes (voice, led, camera, emotion, scene, music, servo, …) |
+| `services/cmd/os-server/main.go` | OS Server entry point |
+| `services/cmd/bootstrap/main.go` | OTA worker entry point |
+| `services/server/` | HTTP handlers (Gin), organised by domain |
+| `services/internal/` | Business services — agent, device, network, openclaw, hermes, mqtt, statusled, healthwatch, … |
+| `services/domain/` | Shared Go types |
+| `hal/` | Python HAL — drivers, routes, board profiles |
+| `hal/drivers/` | Hardware drivers (rgb, motors, voice, sensing, gpio_button, mic_button, …) |
+| `hal/routes/` | FastAPI routes (voice, led, camera, emotion, scene, music, servo, …) |
 | `contract/` | Frozen HAL capability ABI (`capabilities.md`, `DEVICE-SPEC.md`) |
 | `skills/` | 24 open-source skills — agents auto-discover these |
 | `devices/` | Per-device declarations (`intern-v2/`, `lamp/`, `unitree-go2w/`) with `DEVICE.md` + `SOUL.md` + `SAFETY.md` |

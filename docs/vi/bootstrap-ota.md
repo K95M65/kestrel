@@ -388,18 +388,18 @@ Code HAL runtime được **copy** từ project upstream open-source vào mono-r
 
 **Theo dõi upstream:**
 - Nguồn: `https://github.com/humancomputerlab/lelamp_runtime`
-- Ghi commit hash upstream vào `os/hal/UPSTREAM.md` khi copy
+- Ghi commit hash upstream vào `hal/UPSTREAM.md` khi copy
 - Định kỳ check upstream cho driver-level fixes (servo protocol, LED timing, ...)
 - Cherry-pick thủ công khi cần
 - Bỏ qua thay đổi AI/LiveKit upstream (mình đã thay thế hoàn toàn)
 
 **Các bước thực hiện:**
 1. Clone `humancomputerlab/lelamp_runtime` về thư mục tạm
-2. Copy driver code (`services/motors.py`, `services/rgb.py`, `services/audio.py`, `services/service_base.py`) vào `os/hal/services/`
+2. Copy driver code (`services/motors.py`, `services/rgb.py`, `services/audio.py`, `services/service_base.py`) vào `hal/services/`
 3. Xoá toàn bộ code LiveKit, OpenAI, conversation
-4. Thêm `os/hal/server.py` — HTTP API server mới (FastAPI)
-5. Thêm `os/hal/services/display.py` — DisplayService mới cho GC9A01
-6. Tạo `os/hal/UPSTREAM.md` ghi commit hash nguồn và ngày copy
+4. Thêm `hal/server.py` — HTTP API server mới (FastAPI)
+5. Thêm `hal/services/display.py` — DisplayService mới cho GC9A01
+6. Tạo `hal/UPSTREAM.md` ghi commit hash nguồn và ngày copy
 7. Test trên thiết bị với phần cứng thật
 
 ### Cấu trúc Mono-repo
@@ -408,14 +408,14 @@ HAL nằm trong repo này dưới dạng subfolder Python, cùng với Go và Ty
 
 ```
 autonomous/
-├── os/services/          # Go code (fork từ lobster)
+├── services/          # Go code (fork từ lobster)
 │   ├── cmd/              # Go entrypoints
 │   ├── server/           # Go HTTP layer
 │   ├── internal/         # Go business logic
 │   ├── bootstrap/        # Go OTA worker
 │   └── domain/           # Struct dùng chung
-├── os/services/web/      # TypeScript/React SPA (copy từ lobster, đổi intern→lamp)
-├── os/hal/               # Python hardware drivers (MỚI)
+├── services/web/      # TypeScript/React SPA (copy từ lobster, đổi intern→lamp)
+├── hal/               # Python hardware drivers (MỚI)
 │   ├── __init__.py       # Package init, expose __version__
 │   ├── server.py         # HTTP API server (FastAPI) — MỚI, không từ upstream
 │   ├── services/
@@ -441,7 +441,7 @@ autonomous/
 
 ### HAL OTA Package
 
-Để phân phối qua OTA, HAL được zip từ folder `os/hal/`:
+Để phân phối qua OTA, HAL được zip từ folder `hal/`:
 
 ```
 hal-{version}.zip
@@ -595,7 +595,7 @@ Version của HAL là file text `VERSION` trong thư mục gốc package. Bootst
 
 ## 10. Câu Hỏi Mở
 
-- [x] **HAL source**: Mono-repo. Driver code copy từ `humancomputerlab/lelamp_runtime` vào `os/hal/`, bỏ LiveKit/OpenAI, thêm HTTP API + DisplayService. Track upstream thủ công qua `os/hal/UPSTREAM.md`.
+- [x] **HAL source**: Mono-repo. Driver code copy từ `humancomputerlab/lelamp_runtime` vào `hal/`, bỏ LiveKit/OpenAI, thêm HTTP API + DisplayService. Track upstream thủ công qua `hal/UPSTREAM.md`.
 - [x] **HAL HTTP port**: `5001` (OS Server là `5000`).
 - [x] **Bridge protocol**: HTTP proxy đơn giản. HAL chạy FastAPI trên `127.0.0.1:5001`, OS Server proxy từ port 5000.
 - [ ] **Python version**: Pin Python 3.11+? Yêu cầu Python hiện tại của HAL?

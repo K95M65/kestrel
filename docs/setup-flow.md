@@ -351,13 +351,13 @@ full listener example lives in the file header of `lib/setupBridge.ts`.
 
 | File | Role |
 |------|------|
-| `os/services/internal/device/service.go` | Setup orchestration + early LAN-IP capture goroutine |
-| `os/services/web/src/lib/setupBridge.ts` | Parent-window event bridge (postMessage) |
-| `os/services/web/src/pages/Setup.tsx` | Setup wizard UI + bridge emit call sites + IP-first copy link |
-| `os/services/web/src/hooks/setup/useSetupStatusPolling.ts` | AP→STA auto-redirect: phase poll + LAN-IP probe + mDNS probe |
-| `os/services/web/src/hooks/setup/useWifiConnected.ts` | Post-reload Wi-Fi-done detection from live device state (`check-internet` + `network/current`) |
-| `os/services/internal/network/service.go` | WiFi connect, AP mode, `CurrentNetwork()` (associated SSID) |
-| `os/services/server/device/delivery/http/handler.go` | HTTP setup handler (async goroutine) |
-| `os/services/server/config/config.go` | Config load/save |
+| `services/internal/device/service.go` | Setup orchestration + early LAN-IP capture goroutine |
+| `services/web/src/lib/setupBridge.ts` | Parent-window event bridge (postMessage) |
+| `services/web/src/pages/Setup.tsx` | Setup wizard UI + bridge emit call sites + IP-first copy link |
+| `services/web/src/hooks/setup/useSetupStatusPolling.ts` | AP→STA auto-redirect: phase poll + LAN-IP probe + mDNS probe |
+| `services/web/src/hooks/setup/useWifiConnected.ts` | Post-reload Wi-Fi-done detection from live device state (`check-internet` + `network/current`) |
+| `services/internal/network/service.go` | WiFi connect, AP mode, `CurrentNetwork()` (associated SSID) |
+| `services/server/device/delivery/http/handler.go` | HTTP setup handler (async goroutine) |
+| `services/server/config/config.go` | Config load/save |
 | `imager/build-orangepi.sh`, `imager/build.sh`, `scripts/provision/setup.sh` | nginx config baked into the image (incl. `connect-src` CSP) |
 | `scripts/maintenance/patch-security.sh` | OTA security patch for already-provisioned devices (migrates CSP) |

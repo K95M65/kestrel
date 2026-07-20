@@ -1,6 +1,6 @@
 # Physical Controls — GPIO Button + TTP223 Touchpad
 
-Lamp has two physical input devices the user can touch directly. They share the same action library (`os/hal/drivers/button_actions.py`) so any gesture mapped to "single click" behaves identically whether it came from the mechanical button or the capacitive touchpad.
+Lamp has two physical input devices the user can touch directly. They share the same action library (`hal/drivers/button_actions.py`) so any gesture mapped to "single click" behaves identically whether it came from the mechanical button or the capacitive touchpad.
 
 ## Why two devices
 
@@ -45,13 +45,13 @@ End-to-end chain:
 
 ### Voice barge-in (optional, off by default)
 
-Voice-driven interrupt — speak during TTS to make Lamp stop and listen — is gated behind `HAL_BARGE_IN_ENABLED=true` in `os/hal/.env`. When enabled, `voice_service._monitor_barge_in()` opens a parallel mic capture during TTS playback, computes RMS over 256ms blocks, and calls `tts_service.stop()` when N consecutive blocks exceed `HAL_BARGE_IN_RMS_THRESHOLD`. Same downstream chain as tap-to-interrupt.
+Voice-driven interrupt — speak during TTS to make Lamp stop and listen — is gated behind `HAL_BARGE_IN_ENABLED=true` in `hal/.env`. When enabled, `voice_service._monitor_barge_in()` opens a parallel mic capture during TTS playback, computes RMS over 256ms blocks, and calls `tts_service.stop()` when N consecutive blocks exceed `HAL_BARGE_IN_RMS_THRESHOLD`. Same downstream chain as tap-to-interrupt.
 
 Why off by default: software-only AEC is not viable on this hardware (Speex AEC integration degrades to ~13-30% reduction under multi-chunk TTS streaming). With only physical mic-speaker separation, bleed RMS (1-7500 observed) and user voice RMS (6-14k observed) overlap in the 7-9k zone, so a single RMS threshold cannot discriminate cleanly. Threshold 9000 + 1-frame trigger biases toward zero false-trigger at the cost of needing loud, deliberate utterance to trigger; threshold 6000-7000 biases the other way. Tuning per deployment is unavoidable until the device gains hardware AEC (e.g. ReSpeaker XVF3800).
 
 When enabled, tail the log for `Barge-in monitor session end: max_rms_seen=N` (peak per session) and `BARGE-IN: RMS=N` events to characterize the deployed mic, then set `HAL_BARGE_IN_RMS_THRESHOLD` midway between observed bleed-max and voice-min. Tap-to-interrupt remains active regardless.
 
-## GPIO button detection (`os/hal/drivers/gpio_button.py`)
+## GPIO button detection (`hal/drivers/gpio_button.py`)
 
 Edge-counting driver where **all destructive actions commit on the release edge based on hold duration** — no timer fires while the button is held. This is what lets the user cancel mid-hold (release before a threshold) or escalate (keep holding past 10 s).
 
@@ -80,7 +80,7 @@ Same red colour for both armed tiers; blink vs solid is the differentiator. The 
 
 Per-edge debounce is 200 ms (press and release ticks tracked independently so a quick tap isn't dropped while bouncy repeats of the same edge are filtered).
 
-## TTP223 detection (`os/hal/drivers/ttp223.py`)
+## TTP223 detection (`hal/drivers/ttp223.py`)
 
 The TTP223 IC on this board runs in **FastMode**: output goes HIGH on touch, then automatically drops back LOW within ~50-80 ms even with the finger still on the pad. The IC re-triggers only when capacitance changes meaningfully (finger moves). Continuous "hold" is impossible without rewiring the IC's FM pin to LowPowerMode (~12 s max touch).
 
@@ -111,7 +111,7 @@ After a session ends:
 | `PET_SESSION_THRESHOLD` | 2 | Two consecutive sessions within the decision window = pet. Easier than 3 because each "stroke" produces only one session on this hardware |
 | `PET_COOLDOWN_S` | 1.5 | After a pet fires, additional sessions within 1.5 s extend the cooldown rather than starting a new count. Stroking continuously = one pet, then silence |
 
-## Shared action library (`os/hal/drivers/button_actions.py`)
+## Shared action library (`hal/drivers/button_actions.py`)
 
 The actions live in one place so the GPIO button, TTP223, and any future input (touchpad, remote) get identical behavior:
 
@@ -125,7 +125,7 @@ The actions live in one place so the GPIO button, TTP223, and any future input (
 
 ### Factory-reset: what gets wiped
 
-`factory_reset_action` only **announces + delegates** — the actual reset lives in the OS server (`os/services/server/system/factoryreset.go`), reachable from the device over loopback without a Bearer token (authoritative because of physical presence: a deliberate 10 s hold). `POST /api/system/factory-reset` is a **soft** reset (state wipe, not a reflash — kernel / OS packages / binaries / HAL `.venv` are untouched):
+`factory_reset_action` only **announces + delegates** — the actual reset lives in the OS server (`services/server/system/factoryreset.go`), reachable from the device over loopback without a Bearer token (authoritative because of physical presence: a deliberate 10 s hold). `POST /api/system/factory-reset` is a **soft** reset (state wipe, not a reflash — kernel / OS packages / binaries / HAL `.venv` are untouched):
 
 1. Wipe the active agent backend's state (OpenClaw or Hermes, auto-detected from `config.json` `agent_runtime`).
 2. Wipe the device state paths: `/root/config` (config.json — API keys, channel tokens, MQTT creds), `/root/local/users` + `/root/local/strangers` (face/voice enrollments), `/var/lib/hal/snapshots` (camera snapshots), and `/etc/wpa_supplicant/wpa_supplicant-wlan0.conf` (home WiFi creds → forces AP mode on next boot).
@@ -151,7 +151,7 @@ anyway). Record-enroll's transient speaker mute is deliberately NOT persisted.
 
 ## Localized phrases
 
-The action announcements are localized per `stt_language` from Lamp's `config.json`. Language constants live in `os/hal/presets.py` (`LANG_EN`, `LANG_VI`, `LANG_ZH_CN`, `LANG_ZH_TW`, `DEFAULT_LANG`). Falls back to `DEFAULT_LANG` (English) when the active language has no translation.
+The action announcements are localized per `stt_language` from Lamp's `config.json`. Language constants live in `hal/presets.py` (`LANG_EN`, `LANG_VI`, `LANG_ZH_CN`, `LANG_ZH_TW`, `DEFAULT_LANG`). Falls back to `DEFAULT_LANG` (English) when the active language has no translation.
 
 ### Safety announcements (one phrase per language)
 
@@ -175,11 +175,11 @@ Phrases are intentionally short — they fire mid-stroke and need to feel respon
 
 | Path | Purpose |
 |---|---|
-| `os/hal/drivers/gpio_button.py` | GPIO button handler (mechanical, both boards) |
-| `os/hal/drivers/ttp223.py` | TTP223 capacitive touchpad handler (OrangePi sun60 only) |
-| `os/hal/drivers/button_actions.py` | Shared action functions + localized phrase pools |
-| `os/hal/presets.py` | Language code constants (`LANG_EN`, etc.) |
-| `os/hal/test_ttp223_probe_orangepi.py` | Standalone probe for verifying TTP223 line mapping |
-| `os/hal/test_gpio.py` | Standalone probe for verifying GPIO button line |
+| `hal/drivers/gpio_button.py` | GPIO button handler (mechanical, both boards) |
+| `hal/drivers/ttp223.py` | TTP223 capacitive touchpad handler (OrangePi sun60 only) |
+| `hal/drivers/button_actions.py` | Shared action functions + localized phrase pools |
+| `hal/presets.py` | Language code constants (`LANG_EN`, etc.) |
+| `hal/test_ttp223_probe_orangepi.py` | Standalone probe for verifying TTP223 line mapping |
+| `hal/test_gpio.py` | Standalone probe for verifying GPIO button line |
 
-Both handlers are spawned in `os/hal/server.py` lifespan startup — failures are logged but never crash the runtime (a board without the hardware just skips silently).
+Both handlers are spawned in `hal/server.py` lifespan startup — failures are logged but never crash the runtime (a board without the hardware just skips silently).
