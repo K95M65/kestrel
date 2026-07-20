@@ -21,7 +21,7 @@ We need a pragmatic production guard. It is better to drop/merge uncertain emoti
 
 What remains open:
 
-- **Layer 1 (upstream sample quality)** — face-crop size/distance gating, multi-frame aggregation, top-2 margin treatment. Still requires dlbackend coordination (@tnk2908). Not blocking downstream.
+- **Layer 1 (upstream sample quality)** — face-crop size/distance gating, multi-frame aggregation, top-2 margin treatment. Still requires perception-service coordination (@tnk2908). Not blocking downstream.
 - **Skill side** — companion fix in `music-suggestion/SKILL.md` and `sensing/SKILL.md` forbids greeting openers on emotion events and adds tone-matched templates per mood. Tracks the same root cause: model over-commits on a noisy "Emotion detected: Fear." cue.
 
 ---
@@ -152,7 +152,7 @@ Discuss/inspect whether current code/backend can support:
 - if backend exposes top-2 scores or margin, treat close calls as uncertain
 - skip or log-only if ambiguous/uncertain
 
-This may require dlbackend/@tnk2908 work. Do not block downstream guard on this.
+This may require integrations/perception-service/@tnk2908 work. Do not block downstream guard on this.
 
 ### Layer 2 — downstream spam guard in HAL
 
@@ -291,6 +291,6 @@ Preferred:
 
 Phase 1 + Phase 2 + message hedge are landed (see Status at top). Remaining work:
 
-- **Layer 1 upstream sample quality** — needs dlbackend coordination. Track separately.
+- **Layer 1 upstream sample quality** — needs perception-service coordination. Track separately.
 - **Tune `EMOTION_DEDUP_WINDOW_S`** if production still shows cross-bucket flips spamming the agent (e.g. genuine Fear↔Happy oscillation that the bucket key can't collapse).
 - **Watch confidence distribution** — now that confidence is in the outbound message, decide whether to gate sends on a higher floor than `EMOTION_CONFIDENCE_THRESHOLD` if low-confidence reads are still leaking through.

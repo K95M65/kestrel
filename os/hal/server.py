@@ -562,7 +562,7 @@ async def lifespan(app: FastAPI):
                     logger.debug("Presence aim restore: scene=%s has no aim -- skipping", state._active_scene)
 
             # `presence` capability gates the people-perception loop: face
-            # identity + facial emotion (ML over the camera via dlbackend). A
+            # identity + facial emotion (ML over the camera via perception-service). A
             # device with a camera but no `presence` (it only streams / does
             # motion) must not run those models. Declaration-driven, not env.
             _has_presence = "presence" in _profile.capabilities

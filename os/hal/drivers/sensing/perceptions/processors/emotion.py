@@ -67,7 +67,7 @@ EMOTION_BUCKETS = {
 
 
 class RemoteEmotionRecognizer:
-    """Calls the dlbackend HTTP emotion-recognize endpoint for a single face crop."""
+    """Calls the perception-service HTTP emotion-recognize endpoint for a single face crop."""
 
     def __init__(
         self,
@@ -178,7 +178,7 @@ class EmotionData:
 
 
 class EmotionPerception(Perception[FaceDetectionData]):
-    """Detects facial emotions via face recognizer callback + dlbackend HTTP.
+    """Detects facial emotions via face recognizer callback + perception-service HTTP.
 
     Registers a callback with FaceRecognizer. When a face is detected,
     sends the face crop to the emotion-recognize HTTP endpoint. Buffers

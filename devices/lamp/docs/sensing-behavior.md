@@ -135,13 +135,13 @@ Only large motion is forwarded — small motion is filtered out by HAL and never
 
 ## Posture (RULA — silently sampled, folded into `motion.activity`)
 
-HAL streams every camera frame to dlbackend `/api/dl/pose-estimation/ws` and receives a per-frame RULA breakdown (whole-body score + `risk_level` + per-side `body_scores` and `*_angle` for `neck / trunk / upper_arm / lower_arm / wrist`). `PosePerception` throttles to **one sample per `POSE_SAMPLE_INTERVAL_S` (default 60s)** into a tumbling window + daily JSONL under `/tmp/hal-sensing-snapshots/sensing_pose/samples_YYYY-MM-DD.jsonl`. **No event is emitted directly** — `MotionPerception` checks `is_window_complete()` once per tick and folds the aggregate into the next `motion.activity` when the gate trips.
+HAL streams every camera frame to perception-service `/api/dl/pose-estimation/ws` and receives a per-frame RULA breakdown (whole-body score + `risk_level` + per-side `body_scores` and `*_angle` for `neck / trunk / upper_arm / lower_arm / wrist`). `PosePerception` throttles to **one sample per `POSE_SAMPLE_INTERVAL_S` (default 60s)** into a tumbling window + daily JSONL under `/tmp/hal-sensing-snapshots/sensing_pose/samples_YYYY-MM-DD.jsonl`. **No event is emitted directly** — `MotionPerception` checks `is_window_complete()` once per tick and folds the aggregate into the next `motion.activity` when the gate trips.
 
 ### Tumbling window (when does the summary inject)
 
 A window opens on the **first sedentary motion-activity flush** — `MotionPerception` calls `pose.start_window()` the moment any of the sedentary labels (`using computer`, `writing`, `reading book`, …) show up. Pose samples that arrived before that point (e.g. user was standing or stretching but still present) are cleared so the window's bad_ratio reflects only the sitting period. Once open, the window runs purely on time: it stays open for the full `POSE_WINDOW_DURATION_S` regardless of whether the user later breaks sedentary state — later stretch breaks just leave the bad_ratio honest. Default **600 s = 10 min** for testing; flip to 3600 for production — one variable, no test/prod code paths.
 
-When the window completes, `MotionPerception` performs exactly one decision and **always calls `reset_window()`** — no carry-over of stale samples into the next cycle. If the user is still sedentary on the next flush, `start_window()` opens a fresh cycle immediately; if not, the window stays unanchored until the next sedentary flush. Detection misses (dlbackend returns no `ergo`, occlusion, low confidence) don't extend the window; they simply lower the in-window sample count.
+When the window completes, `MotionPerception` performs exactly one decision and **always calls `reset_window()`** — no carry-over of stale samples into the next cycle. If the user is still sedentary on the next flush, `start_window()` opens a fresh cycle immediately; if not, the window stays unanchored until the next sedentary flush. Detection misses (perception-service returns no `ergo`, occlusion, low confidence) don't extend the window; they simply lower the in-window sample count.
 
 A sample counts as **bad** when **either**:
 
@@ -154,7 +154,7 @@ Injection fires when **all** of the following hold:
 
 - window complete (`time.time() - _window_start_ts >= POSE_WINDOW_DURATION_S`)
 - user is still sedentary on this flush (`has_sedentary` is True — don't nag mid-stretch)
-- in-window samples `>= POSE_WINDOW_MIN_SAMPLES` (default `3`) — noise floor that suppresses windows where dlbackend dropped most frames
+- in-window samples `>= POSE_WINDOW_MIN_SAMPLES` (default `3`) — noise floor that suppresses windows where perception-service dropped most frames
 - `bad_ratio >= POSE_BAD_RATIO` (default **0.6**)
 
 There is no separate "minimum sedentary streak" gate and no separate "nudge cooldown" — the window itself is the rhythm. Window start requires sedentary, so when it completes the user has been at the computer for at least `POSE_WINDOW_DURATION_S`; the unconditional reset after each cycle means the next fire is naturally one window away.
@@ -210,7 +210,7 @@ When the agent decides to nudge via `/dm`, Lamp's SSE handler calls `ConsumePose
 
 ### Angle sign workaround (temporary)
 
-dlbackend's `signed_flexion_angle` currently returns the opposite sign of its docstring ("Positive = forward flexion") — a user clearly hunched forward registers a **negative** neck angle, not positive. HAL negates `upper_arm_angle`, `neck_angle`, `trunk_angle` on receive (`POSE_FLIP_DLBACKEND_ANGLE_SIGN=True`, default on) so the monitor table and JSONL match reality. `lower_arm_angle` is unsigned and skipped. RULA scores already use `abs(angle)` so risk/score are unaffected by either sign convention. **Revert** by setting the flag to `False` (or removing `_flip_signed_angles`) once dlbackend ships the upstream fix.
+perception-service's `signed_flexion_angle` currently returns the opposite sign of its docstring ("Positive = forward flexion") — a user clearly hunched forward registers a **negative** neck angle, not positive. HAL negates `upper_arm_angle`, `neck_angle`, `trunk_angle` on receive (`POSE_FLIP_DLBACKEND_ANGLE_SIGN=True`, default on) so the monitor table and JSONL match reality. `lower_arm_angle` is unsigned and skipped. RULA scores already use `abs(angle)` so risk/score are unaffected by either sign convention. **Revert** by setting the flag to `False` (or removing `_flip_signed_angles`) once perception-service ships the upstream fix.
 
 ---
 
@@ -623,15 +623,15 @@ Includes the `face_id` in parentheses so the agent knows which person the activi
 
 Lamp detects the **user's** emotional state via three channels:
 
-1. **Facial expression** (primary) — `emotion.detected` event from `os/hal/drivers/sensing/perceptions/emotion.py`. Uses a dedicated emotion classifier running on self-hosted dlbackend via WebSocket. Detects 7 emotions: Angry, Disgust, Fear, Happy, Sad, Surprise, Neutral. Configurable confidence threshold (`EMOTION_CONFIDENCE_THRESHOLD`).
-2. **Speech emotion** (secondary) — `speech_emotion.detected` event from `os/hal/drivers/voice/speech_emotion/`. Runs at the end of every speaker-identified STT session against the same WAV used for speaker recognition. Uses `emotion2vec_plus_large` on dlbackend via HTTP. See [Speech Emotion Recognition](speech-emotion.md) for the full pipeline.
+1. **Facial expression** (primary) — `emotion.detected` event from `os/hal/drivers/sensing/perceptions/emotion.py`. Uses a dedicated emotion classifier running on self-hosted perception-service via WebSocket. Detects 7 emotions: Angry, Disgust, Fear, Happy, Sad, Surprise, Neutral. Configurable confidence threshold (`EMOTION_CONFIDENCE_THRESHOLD`).
+2. **Speech emotion** (secondary) — `speech_emotion.detected` event from `os/hal/drivers/voice/speech_emotion/`. Runs at the end of every speaker-identified STT session against the same WAV used for speaker recognition. Uses `emotion2vec_plus_large` on perception-service via HTTP. See [Speech Emotion Recognition](speech-emotion.md) for the full pipeline.
 3. **Body action** (tertiary) — emotional X3D actions from action recognition are **intentionally dropped** from `motion.activity` (which is purely physical: sedentary/drink/break). A dedicated `motion.emotional` event type is planned for these.
 
 > **Not to be confused with Emotion Expression** (`emotion/SKILL.md`) — which controls Lamp's own emotional output (servo + LED + eyes). Emotion Detection is about sensing what the *user* feels; Emotion Expression is how *Lamp* shows its feelings.
 
 ### `emotion.detected` event
 
-Fired by HAL when the dlbackend emotion classifier detects a facial expression above the confidence threshold. Message format:
+Fired by HAL when the perception-service emotion classifier detects a facial expression above the confidence threshold. Message format:
 
 ```
 Emotion detected: <Label>. (weak camera cue; confidence=<0.00-1.00>; bucket=<positive|negative|other>; treat as uncertain, <bucket-tuned hedge>.)
@@ -673,7 +673,7 @@ See `user-emotion-detection/SKILL.md` for the agent's full response rules.
 
 ### `speech_emotion.detected` event
 
-Fired by HAL at the end of every speaker-identified STT session, after the same WAV bytes used for speaker `/embed` are forwarded to `dlbackend /api/dl/ser/recognize` (emotion2vec_plus_large). Buffering, per-user aggregation, polarity-bucket dedup, and the Lamp POST are all handled inside `os/hal/drivers/voice/speech_emotion/SpeechEmotionService` — `voice_service.py` only calls `submit(user, wav, duration)`. Message format mirrors the facial pipeline:
+Fired by HAL at the end of every speaker-identified STT session, after the same WAV bytes used for speaker `/embed` are forwarded to `perception-service /api/dl/ser/recognize` (emotion2vec_plus_large). Buffering, per-user aggregation, polarity-bucket dedup, and the Lamp POST are all handled inside `os/hal/drivers/voice/speech_emotion/SpeechEmotionService` — `voice_service.py` only calls `submit(user, wav, duration)`. Message format mirrors the facial pipeline:
 
 ```
 Speech emotion detected: <Label>. (weak voice cue; confidence=<0.00-1.00>; bucket=<positive|negative|other>; treat as uncertain, <bucket-tuned hedge>.)

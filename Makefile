@@ -6,9 +6,9 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev
 # Directories
 OS_DIR         := os/services
 HAL_DIR        := os/hal
-BUDDY_DIR      := companions/claude-desktop-buddy
-TWITCH_DIR     := chat-hooks/twitch-chat-hook
-AUTONOMOUS_DIR := chat-hooks/autonomous-chat-hook
+BUDDY_DIR      := integrations/companions/claude-desktop-buddy
+TWITCH_DIR     := integrations/chat-hooks/twitch-chat-hook
+AUTONOMOUS_DIR := integrations/chat-hooks/autonomous-chat-hook
 WEB_DIR        := $(OS_DIR)/web
 
 # Go build

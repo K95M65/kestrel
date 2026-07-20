@@ -16,7 +16,7 @@ Lamp identifies who is speaking via **WeSpeaker ResNet34** (256-dim embedding, O
 │    ├─ STT transcript ready                                          │
 │    ├─ _identify_and_decorate(transcript)                            │
 │    │   ├─ audio_buffer → WAV bytes → base64                        │
-│    │   ├─ POST /audio-recognizer/embed → dlbackend (RunPod)        │
+│    │   ├─ POST /audio-recognizer/embed → perception-service (RunPod)        │
 │    │   │   └─ WeSpeaker ResNet34 ONNX → 256-dim L2-normalized      │
 │    │   ├─ Per-chunk voting vs enrolled embeddings                   │
 │    │   ├─ Match ≥ 0.7 → "Speaker - Name: transcript"               │
@@ -78,7 +78,7 @@ Four layers prevent the agent from repeatedly asking "who are you?":
 |----------|-------|
 | Model | WeSpeaker ResNet34 (VoxCeleb trained) |
 | Embedding dim | 256 |
-| Runtime | ONNX Runtime (CPU) on dlbackend (RunPod) |
+| Runtime | ONNX Runtime (CPU) on perception-service (RunPod) |
 | Endpoint | `POST {DL_BACKEND_URL}/lelamp/api/dl/audio-recognizer/embed` |
 | Auth | `X-API-Key` header |
 | Timeout | 15s |
@@ -94,7 +94,7 @@ Four layers prevent the agent from repeatedly asking "who are you?":
 
 ### Enrollment Quality
 
-1. Each WAV sample → embedding via dlbackend
+1. Each WAV sample → embedding via perception-service
 2. Filter by consistency threshold `0.7` (cosine similarity between samples)
 3. Aggregate remaining embeddings via weighted average
 4. Store L2-normalized vector at `/root/local/users/{name}/voice/embedding.npy`
@@ -170,7 +170,7 @@ Every unknown voice is locally clustered so the server can say "this is the same
 
 | HTTP | When | Skill behavior |
 |------|------|----------------|
-| `400` | Audio-level reject (too short, silent, VAD found no speech, dlbackend returned 4xx) | Ask user to re-record / speak more clearly |
+| `400` | Audio-level reject (too short, silent, VAD found no speech, perception-service returned 4xx) | Ask user to re-record / speak more clearly |
 | `503` | Embedding service unreachable (network, 5xx, malformed response) | Tell user to try again shortly — nothing on disk was modified |
 
 `/speaker/recognize` never fails with 5xx for embedding outages — it returns `200` with `{name: "unknown", error: "<reason>"}` so the skill can gracefully degrade. Only input-level problems (missing WAV, bad base64) return `400`.
@@ -187,8 +187,8 @@ Every unknown voice is locally clustered so the server can say "this is the same
 | Direct event path | `os/services/server/sensing/delivery/http/handler.go` | `PostEvent()` |
 | Drain/replay path | `os/services/internal/agent/runtimes/openclaw/service.go` | `drainPendingEvents()` |
 | Agent skill | `lamp/resources/openclaw-skills/speaker-recognizer/SKILL.md` | — |
-| Embedding model | `dlbackend/src/core/audio_recognition/audio_recognizer.py` | `ResNet34Recognizer` (default), `EcapaTdnn1024Recognizer`, `CamPPlusRecognizer` — chọn qua env `AUDIO_RECOGNIZER_ENGINE` |
-| Embedding endpoint | `dlbackend/src/protocols/htpp/audio_recognizer.py` | `embed_audio()` |
+| Embedding model | `integrations/perception-service/src/core/audio_recognition/audio_recognizer.py` | `ResNet34Recognizer` (default), `EcapaTdnn1024Recognizer`, `CamPPlusRecognizer` — chọn qua env `AUDIO_RECOGNIZER_ENGINE` |
+| Embedding endpoint | `integrations/perception-service/src/protocols/htpp/audio_recognizer.py` | `embed_audio()` |
 | Config | `os/hal/config.py` | `SPEAKER_*` constants |
 
 ## Message Flow Examples

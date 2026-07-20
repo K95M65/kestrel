@@ -32,9 +32,9 @@ asking: does it take the world **IN**, or does it drive the body **OUT**?
 
 - **Perception (IN).** `vision`, `sensing`, `presence` take the world *in*. `presence`
   (face identity, user emotion) is **routeless on purpose**: it runs a background loop —
-  camera → dlbackend ML → `sensing` events POSTed up to the os-server — it is not a route
+  camera → perception-service ML → `sensing` events POSTed up to the os-server — it is not a route
   the agent calls *down*. Declaring `presence` is what tells HAL to run that people-
-  perception loop and which dlbackend models to call. (Raw ambient sensors are `sensing`;
+  perception loop and which perception-service models to call. (Raw ambient sensors are `sensing`;
   raw frames are `vision`. `presence` is the ML people-layer over them.) It also gates the
   idle→away→sleep auto-light state machine (dim → lights-off + `presence.away` sleep
   announcement): that machine's only `on_motion()` source is the people-perception loop, so

@@ -2,7 +2,7 @@
 
 HAL phân tích cảm xúc từ giọng nói **sau mỗi phiên mic** (VAD trigger → im lặng ~2.5 s đóng phiên), độc lập với việc STT có trả transcript hay không. Nhờ vậy, tiếng cười, thở dài, "ờ ờ" và các tín hiệu phi-lời nói (vốn để lại transcript rỗng) vẫn được phân loại. Kết quả được gom theo người dùng, lọc trùng theo bucket cảm xúc, rồi gửi sự kiện `speech_emotion.detected` tới OS server để OpenClaw phản ứng. Speaker recognition vẫn được gọi nội bộ để xác định trường `user` (rơi về `unknown` khi không nhận diện được); nó **không còn là cổng chặn** trước SER.
 
-**Tài liệu liên quan:** [Tuning sensing (SER)](../sensing-tuning.md#speech-emotion-recognition-ser) · [dlbackend](../dlbackend.md) · [Sensing behavior](sensing-behavior_vi.md)
+**Tài liệu liên quan:** [Tuning sensing (SER)](../sensing-tuning.md#speech-emotion-recognition-ser) · [perception-service](../perception-service.md) · [Sensing behavior](sensing-behavior_vi.md)
 
 ---
 
@@ -29,7 +29,7 @@ VoiceService._stream_session(...) finally   ← cuối MỌI phiên mic
             │
             └─ SpeechEmotionService.submit(user, wav_bytes, duration_s)
                     │
-                    ├─ Worker: POST dlbackend /api/dl/ser/recognize
+                    ├─ Worker: POST perception-service /api/dl/ser/recognize
                     │       → label + confidence → buffer _Inference theo user
                     │
                     └─ Flush mỗi SPEECH_EMOTION_FLUSH_S:
@@ -49,13 +49,13 @@ VoiceService._stream_session(...) finally   ← cuối MỌI phiên mic
 | File | Vai trò |
 |------|---------|
 | `service.py` | `SpeechEmotionService`: queue, worker HTTP, flush, dedup |
-| `recognizer.py` | `Emotion2VecRecognizer`: POST WAV tới dlbackend |
+| `recognizer.py` | `Emotion2VecRecognizer`: POST WAV tới perception-service |
 | `labels.py` | Map label model → bucket OS server (`positive` / `negative` / `neutral`) |
 | `messages.py` | Chuỗi human-readable cho event message |
 
 ### `SpeechEmotionService`
 
-- **Khởi tạo:** `VoiceService` tạo instance khi `SPEECH_EMOTION_ENABLED` và dlbackend URL sẵn sàng.
+- **Khởi tạo:** `VoiceService` tạo instance khi `SPEECH_EMOTION_ENABLED` và perception-service URL sẵn sàng.
 - **`submit(user, wav_bytes, duration_s)`** — trả về ngay (non-blocking). Bỏ qua nếu: service tắt, `user`/`wav` rỗng, `duration_s < SPEECH_EMOTION_MIN_AUDIO_S` (mặc định **3.0s**), queue đầy.
 - **Worker:** gọi API; bỏ mẫu có `confidence < CONFIDENCE_THRESHOLD_BY_LABEL[label]` (per-label, khai báo trong `constants.py` — xem mục Cấu Hình).
 - **Flush:** mỗi `SPEECH_EMOTION_FLUSH_S` giây, gom buffer theo `user`, lấy **mode** label, map bucket, bỏ **neutral**, dedup `(user, bucket)` trong `SPEECH_EMOTION_DEDUP_WINDOW_S`, POST OS server.
@@ -95,7 +95,7 @@ Transcript gửi OS server vẫn có thể là `Unknown Speaker:` trong khi SER 
 | Điều kiện | Ghi chú |
 |-----------|---------|
 | Device không khai báo capability `audio` | Voice people-perception (speaker-ID + SER) gate theo **mic** → `VoiceService` khởi tạo với `enable_people_perception=False`, service SER không chạy. Gate là `audio` chứ **không** phải `presence` (SER chỉ cần mic). Face emotion ở vòng sensing vẫn gate theo `presence`. |
-| `SPEECH_EMOTION_ENABLED = False` | Hoặc dlbackend không cấu hình |
+| `SPEECH_EMOTION_ENABLED = False` | Hoặc perception-service không cấu hình |
 | Buffer STT quá ngắn | `_session_wav_for_ser` trả `None` (< `SPEAKER_MIN_AUDIO_S`) |
 | `duration_s < SPEECH_EMOTION_MIN_AUDIO_S` | `submit()` bỏ qua (mặc định 3.0s) |
 | Queue đầy | Log warning, bỏ job |
@@ -168,7 +168,7 @@ Mọi inference đạt ngưỡng đều được lưu WAV — kể cả clip neu
 | `SPEECH_EMOTION_FLUSH_S` | `10.0` | Chu kỳ flush buffer / user |
 | `SPEECH_EMOTION_DEDUP_WINDOW_S` | `300.0` | TTL dedup `(user, bucket)` |
 | `SPEECH_EMOTION_MIN_AUDIO_S` | `3.0` | Độ dài tối thiểu utterance |
-| `SPEECH_EMOTION_API_TIMEOUT_S` | `15` | Timeout HTTP dlbackend |
+| `SPEECH_EMOTION_API_TIMEOUT_S` | `15` | Timeout HTTP perception-service |
 | `DL_SER_ENDPOINT` | `/lelamp/api/dl/ser/recognize` | Path SER |
 
 **Ngưỡng confidence theo từng label** không lấy từ env nữa — khai báo cố định trong `os/hal/service/voice/speech_emotion/constants.py`:
@@ -197,7 +197,7 @@ Chi tiết tuning / log: [sensing-tuning_vi.md](sensing-tuning_vi.md).
 |----------|---------|
 | Speaker recognition | Cùng WAV session; decorate transcript tách với SER |
 | STT (Deepgram) | SER chạy sau khi phiên mic kết thúc, **độc lập với transcript** — gọi từ `_stream_session` finally sau khi OS server POST (nếu có) |
-| dlbackend | ONNX emotion2vec; xem [dlbackend.md](../dlbackend.md) |
+| perception-service | ONNX emotion2vec; xem [perception-service.md](../perception-service.md) |
 | Face / motion emotion | Khác pipeline (camera); không dùng chung buffer SER |
 | OS server dedup / cooldown | `speech_emotion.detected` có cooldown riêng trên OS server (nếu cấu hình) |
 
@@ -218,4 +218,4 @@ INFO ... [speech_emotion] dedup drop: angry bucket=negative (key seen 87.4s ago)
 |-------------|-------------|
 | Không có event | Kiểm tra enabled, độ dài audio ≥ 3s, confidence, label neutral |
 | Quá nhiều event `unknown` | Kỳ vọng với người lạ; tăng threshold / dedup — không tắt SER chỉ vì transcript `Unknown Speaker:` |
-| Queue full | Độ trễ dlbackend; xem timeout và tải Pi |
+| Queue full | Độ trễ perception-service; xem timeout và tải Pi |

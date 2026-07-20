@@ -3,8 +3,8 @@ set -e
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ota-config.sh"
 
-AUTONOMOUS_CHAT_BIN="${ROOT_DIR}/chat-hooks/autonomous-chat-hook/autonomous-chat"
-VERSION_FILE="${ROOT_DIR}/chat-hooks/autonomous-chat-hook/${VERSION_FILE:-VERSION_AUTONOMOUS_CHAT}"
+AUTONOMOUS_CHAT_BIN="${ROOT_DIR}/integrations/chat-hooks/autonomous-chat-hook/autonomous-chat"
+VERSION_FILE="${ROOT_DIR}/integrations/chat-hooks/autonomous-chat-hook/${VERSION_FILE:-VERSION_AUTONOMOUS_CHAT}"
 
 # Bucket and path: ${BUCKET_PREFIX}/ota/autonomous-chat/[semver].zip
 

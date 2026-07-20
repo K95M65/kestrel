@@ -2,7 +2,7 @@
 
 Bucketing mirrors the face emotion processor so downstream skills/dedup
 share the same polarity language. emotion2vec_plus_large labels (from
-dlbackend `/api/dl/ser/labels`) are enumerated by `SpeechEmotionLabel`
+perception-service `/api/dl/ser/labels`) are enumerated by `SpeechEmotionLabel`
 below.
 """
 

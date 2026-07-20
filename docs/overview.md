@@ -62,7 +62,7 @@ os/hal/
 devices/                          — Per-device configs and overlays
 skills/                           — SKILL.md files for agent runtime
 hooks/                            — HOOK.md lifecycle hooks for agent runtime
-companions/                       — Companion apps (e.g. Autonomous Buddy)
+integrations/companions/                       — Companion apps (e.g. Autonomous Buddy)
 contract/                         — Shared API contracts
 cts/                              — Compatibility test suite
 ```

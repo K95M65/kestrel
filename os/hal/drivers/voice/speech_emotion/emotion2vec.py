@@ -1,4 +1,4 @@
-"""emotion2vec recognizer — POSTs WAV to dlbackend /api/dl/ser/recognize.
+"""emotion2vec recognizer — POSTs WAV to perception-service /api/dl/ser/recognize.
 
 Mirrors `RemoteEmotionRecognizer` in the face emotion processor: stateless
 HTTP wrapper, returns `None` on any transport/parse failure so the caller
@@ -57,9 +57,9 @@ _SILERO_MODEL_PATH: Path = (
 
 
 class Emotion2VecRecognizer(BaseSpeechEmotionRecognizer):
-    """HTTP wrapper around dlbackend `/api/dl/ser/recognize`.
+    """HTTP wrapper around perception-service `/api/dl/ser/recognize`.
 
-    Request body (per dlbackend README):
+    Request body (per perception-service README):
         {"audio_b64": "<base64 WAV>", "return_scores": false}
     Response body:
         {"label": "happy", "confidence": 0.9981, "scores": null}

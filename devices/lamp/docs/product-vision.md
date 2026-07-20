@@ -116,8 +116,8 @@ Lamp Server runs a lightweight sensing loop that emits events:
 | `presence.enter` | Camera (InsightFace recognition) | On change | Low | ✅ Done — identifies owner by name or stranger_N |
 | `presence.leave` | Camera (no face timeout) | On change | Low | ✅ Done |
 | `presence.away` | Camera (extended absence) | On change | Low | ✅ Done |
-| `motion.activity` | Camera (dlbackend action recognition) | On activity change | Medium | ✅ Done — Kinetics labels (using computer, drink, etc.) |
-| `emotion.detected` | Camera (dlbackend emotion classifier) | On expression change | Medium | ✅ Done — 7 emotions (Happy, Sad, Angry, etc.) |
+| `motion.activity` | Camera (perception-service action recognition) | On activity change | Medium | ✅ Done — Kinetics labels (using computer, drink, etc.) |
+| `emotion.detected` | Camera (perception-service emotion classifier) | On expression change | Medium | ✅ Done — 7 emotions (Happy, Sad, Angry, etc.) |
 | `light.level` | Camera (frame brightness) | Every 30s | Minimal | ✅ Done |
 | `sound` | Mic (ambient sound level) | On threshold | Minimal | ✅ Done |
 | `voice` / `voice_command` | Mic (Deepgram STT) | On speech | Medium | ✅ Done — wake word detection |
@@ -699,17 +699,17 @@ The Lamp server is forked from openclaw-lobster. Approximately 70-80% of Layer 1
 - User looks focused and calm → Lamp holds current environment, suppresses all interruptions
 
 **Implementation**:
-- Emotion classifier runs via **dlbackend WebSocket** (remote inference server), not on-device ONNX. HAL sends camera frames, receives emotion predictions.
-- `os/hal/drivers/sensing/perceptions/emotion.py` — `RemoteEmotionChecker` connects to dlbackend, fires `emotion.detected` sensing event with detected emotion (Angry, Disgust, Fear, Happy, Sad, Surprise, Neutral).
+- Emotion classifier runs via **perception-service WebSocket** (remote inference server), not on-device ONNX. HAL sends camera frames, receives emotion predictions.
+- `os/hal/drivers/sensing/perceptions/emotion.py` — `RemoteEmotionChecker` connects to perception-service, fires `emotion.detected` sensing event with detected emotion (Angry, Disgust, Fear, Happy, Sad, Surprise, Neutral).
 - Lamp `user-emotion-detection/SKILL.md` maps detected facial emotion → mood signal via `POST /api/mood/log`.
 - Lamp `mood/SKILL.md` fuses signals (camera emotion, conversation context, voice tone) into mood decisions.
 - Mood decisions trigger downstream actions: `music-suggestion` (proactive music), `wellbeing` (break/hydration nudges), `emotion` (lamp expression).
 - Configurable confidence threshold via `EMOTION_CONFIDENCE_THRESHOLD` in HAL config.
 
 **Resolved questions**:
-- [x] Which emotion model? → Remote dlbackend (not on-device ONNX). Offloads inference, no Pi 4 RAM/CPU impact.
+- [x] Which emotion model? → Remote perception-service (not on-device ONNX). Offloads inference, no Pi 4 RAM/CPU impact.
 - [x] Accuracy threshold → Configurable `EMOTION_CONFIDENCE_THRESHOLD` (default in HAL config).
-- [x] Privacy → Frames sent to self-hosted dlbackend only, not third-party cloud.
+- [x] Privacy → Frames sent to self-hosted perception-service only, not third-party cloud.
 - [x] Voice-tone interaction → Both feed into Mood skill fusion logic; camera emotion = signal, mood decision = fused output.
 
 #### UC-M2: Proactive Wellness Reminders [DONE]
@@ -725,7 +725,7 @@ The Lamp server is forked from openclaw-lobster. Approximately 70-80% of Layer 1
 
 **Implementation**:
 - **Event-driven, not timer-based.** The `wellbeing/SKILL.md` triggers on every `motion.activity` event (from action recognition).
-- Action recognition via dlbackend classifies user activity: `using computer`, `writing`, `reading book`, `texting`, `drawing`, `playing controller` (sedentary) vs `drink`, `break` (reset activities).
+- Action recognition via perception-service classifies user activity: `using computer`, `writing`, `reading book`, `texting`, `drawing`, `playing controller` (sedentary) vs `drink`, `break` (reset activities).
 - Each activity is logged to per-user JSONL timeline via `POST /api/openclaw/wellbeing/log`.
 - On each event, skill reads recent history, computes time since last hydration/break reset, and nudges if thresholds exceeded.
 - Per-user tracking: `current_user` from sensing context tag, strangers share `"unknown"` timeline.
@@ -854,7 +854,7 @@ The Lamp server is forked from openclaw-lobster. Approximately 70-80% of Layer 1
 
 ### Architecture — All Resolved ✅
 
-- [x] **Camera processing**: HAL Python runs on-device OpenCV for face detection/recognition (InsightFace). Heavy inference (emotion, action recognition) offloaded to self-hosted dlbackend via WebSocket. Camera snapshots forwarded to OpenClaw LLM for vision understanding.
+- [x] **Camera processing**: HAL Python runs on-device OpenCV for face detection/recognition (InsightFace). Heavy inference (emotion, action recognition) offloaded to self-hosted perception-service via WebSocket. Camera snapshots forwarded to OpenClaw LLM for vision understanding.
 - [x] **Audio input ownership**: HAL owns mic. Local VAD (Silero) gates Deepgram STT connection (cost saving). Wake word "Hey Lamp" detected in transcript → `voice_command` event. No wake word → `voice` (ambient sensing).
 - [x] **HAL driver integration**: HTTP proxy. HAL FastAPI on `127.0.0.1:5001`, Lamp Go server proxies from port `5000`. Simple, debuggable, no shared state.
 

@@ -111,9 +111,10 @@ docs/             documentation, incl. docs/architecture/
 scripts/  imager/ build, OTA, and SBC image tooling
 
 # Off-device & integrations
-companions/       desktop companion apps (autonomous-buddy, claude-desktop-buddy)
-chat-hooks/       on-device chat bridges (Twitch, web chat)
-dlbackend/        off-device cloud inference service
+integrations/
+  companions/     desktop companion apps (autonomous-buddy, claude-desktop-buddy)
+  chat-hooks/     on-device chat bridges (Twitch, web chat)
+  perception-service/  off-device cloud perception inference (was dlbackend)
 ```
 
 > `Drivers` and `Board Support` are surfaced as `os/hal/drivers` and `os/hal/board`.

@@ -29,7 +29,7 @@ INFO lelamp.service.sensing.sensing_service: [sensing] motion: Small movement de
 
 ## Motion Detection (Activity Recognition)
 
-`MotionPerception` runs Kinetics action recognition (via dlbackend) and emits a
+`MotionPerception` runs Kinetics action recognition (via perception-service) and emits a
 `motion.activity` event with the recognized activity labels.
 
 **File:** `os/hal/config.py`
@@ -218,7 +218,7 @@ SPEECH_EMOTION_ENABLED = True
 SPEECH_EMOTION_FLUSH_S = 10.0               # Per-user buffer drain cadence
 SPEECH_EMOTION_DEDUP_WINDOW_S = 300.0       # (user, bucket) TTL — 5 min
 SPEECH_EMOTION_MIN_AUDIO_S = 3.0            # Skip utterances shorter than this (hal.config default)
-SPEECH_EMOTION_API_TIMEOUT_S = 15           # dlbackend HTTP timeout
+SPEECH_EMOTION_API_TIMEOUT_S = 15           # perception-service HTTP timeout
 DL_SER_ENDPOINT = "/lelamp/api/dl/ser/recognize"
 ```
 
@@ -260,7 +260,7 @@ The `flushing` line shows the raw label list — that's the mode-over-samples th
 | Single-utterance noisy reads slip through | Raise the offending label's entry in `CONFIDENCE_THRESHOLD_BY_LABEL` (`constants.py`) — e.g. nudge `"sad": 0.6 → 0.7`. Bump `DEFAULT_CONFIDENCE_THRESHOLD` only if the noise is across the board |
 | Short "yeah" / "ok" utterances flagged | Increase `SPEECH_EMOTION_MIN_AUDIO_S` (3.0 → 4.0) |
 | Mood lag — Lamp too slow to react after a real shift | Decrease `SPEECH_EMOTION_FLUSH_S` (10 → 5) |
-| Worker queue full warnings in log | Investigate dlbackend latency; raising queue size is not enough — backlog means something downstream is wedged |
+| Worker queue full warnings in log | Investigate perception-service latency; raising queue size is not enough — backlog means something downstream is wedged |
 | Too many `speech_emotion.detected` for strangers | Expected: unknown speakers use `user="unknown"`; tighten the per-label entry in `CONFIDENCE_THRESHOLD_BY_LABEL` (`constants.py`) or dedup window — do not disable SER solely because Lamp transcript says `Unknown Speaker:` |
 
 ---

@@ -135,13 +135,13 @@ Chỉ chuyển động lớn được forward — HAL lọc và không gửi chu
 
 ## Tư thế (RULA — sampling thầm lặng, gắn vào `motion.activity`)
 
-HAL stream từng frame camera lên dlbackend `/api/dl/pose-estimation/ws` và nhận RULA breakdown từng frame (whole-body score + `risk_level` + `body_scores` + `*_angle` cho `neck / trunk / upper_arm / lower_arm / wrist`, mỗi bên trái/phải). `PosePerception` throttle thành **một sample mỗi `POSE_SAMPLE_INTERVAL_S` (default 60s)** vào tumbling window + JSONL theo ngày tại `/tmp/hal-sensing-snapshots/sensing_pose/samples_YYYY-MM-DD.jsonl`. **Không emit event trực tiếp** — `MotionPerception` check `is_window_complete()` mỗi tick và gắn aggregate vào `motion.activity` kế tiếp khi gate đỏ.
+HAL stream từng frame camera lên perception-service `/api/dl/pose-estimation/ws` và nhận RULA breakdown từng frame (whole-body score + `risk_level` + `body_scores` + `*_angle` cho `neck / trunk / upper_arm / lower_arm / wrist`, mỗi bên trái/phải). `PosePerception` throttle thành **một sample mỗi `POSE_SAMPLE_INTERVAL_S` (default 60s)** vào tumbling window + JSONL theo ngày tại `/tmp/hal-sensing-snapshots/sensing_pose/samples_YYYY-MM-DD.jsonl`. **Không emit event trực tiếp** — `MotionPerception` check `is_window_complete()` mỗi tick và gắn aggregate vào `motion.activity` kế tiếp khi gate đỏ.
 
 ### Tumbling window (lúc nào summary được inject)
 
 Window mở khi **motion flush đầu tiên có label sedentary** — `MotionPerception` gọi `pose.start_window()` ngay lúc thấy bất kỳ label sedentary nào (`using computer`, `writing`, `reading book`, …). Pose samples đã đến trước thời điểm đó (vd user đang đứng/stretching nhưng vẫn present) bị clear, để bad_ratio chỉ phản ánh giai đoạn ngồi. Sau khi mở, window chạy **chỉ theo thời gian**: stay open đủ `POSE_WINDOW_DURATION_S` bất kể user có break sedentary giữa chừng — stretch break không stop clock, chỉ làm bad_ratio honest hơn. Default **600 s = 10 phút** test; đổi 3600 cho production — 1 biến duy nhất, không có nhánh code test/prod.
 
-Khi window complete, `MotionPerception` ra đúng 1 quyết định và **luôn gọi `reset_window()`** — không carry-over samples cũ. Nếu user vẫn sedentary ở flush kế tiếp, `start_window()` mở cycle mới ngay; nếu không, window stay unanchored đến lần sedentary tiếp theo. Detection miss (dlbackend không trả `ergo`, bị che, low confidence) không kéo dài window; chỉ làm giảm số sample trong window.
+Khi window complete, `MotionPerception` ra đúng 1 quyết định và **luôn gọi `reset_window()`** — không carry-over samples cũ. Nếu user vẫn sedentary ở flush kế tiếp, `start_window()` mở cycle mới ngay; nếu không, window stay unanchored đến lần sedentary tiếp theo. Detection miss (perception-service không trả `ergo`, bị che, low confidence) không kéo dài window; chỉ làm giảm số sample trong window.
 
 Sample được tính là **bad** khi **một trong hai**:
 
@@ -154,7 +154,7 @@ Inject fire khi **tất cả** điều kiện sau đúng:
 
 - window complete (`time.time() - _window_start_ts >= POSE_WINDOW_DURATION_S`)
 - user vẫn sedentary ở flush này (`has_sedentary` True — không nag giữa stretch break)
-- samples trong window `>= POSE_WINDOW_MIN_SAMPLES` (default `3`) — noise floor, bỏ qua window mà dlbackend miss quá nhiều frame
+- samples trong window `>= POSE_WINDOW_MIN_SAMPLES` (default `3`) — noise floor, bỏ qua window mà perception-service miss quá nhiều frame
 - `bad_ratio >= POSE_BAD_RATIO` (default **0.6**)
 
 Không có gate "minimum sedentary streak" riêng và không có "nudge cooldown" riêng — window chính là rhythm. Window-start yêu cầu sedentary nên khi complete, user đã ở máy tính ít nhất `POSE_WINDOW_DURATION_S`; unconditional reset sau mỗi cycle khiến lần fire kế tiếp tự nhiên cách 1 window.
@@ -210,7 +210,7 @@ Khi agent quyết định nudge qua `/dm`, SSE handler của Lamp gọi `Consume
 
 ### Workaround sign góc (tạm thời)
 
-`signed_flexion_angle` ở dlbackend hiện trả về dấu ngược với docstring ("Positive = forward flexion") — user chúi cổ rõ ràng lại ra **góc âm**, không phải dương. HAL negate `upper_arm_angle`, `neck_angle`, `trunk_angle` khi nhận từ dlbackend (`POSE_FLIP_DLBACKEND_ANGLE_SIGN=True`, mặc định bật) để bảng monitor + JSONL khớp thực tế. `lower_arm_angle` unsigned nên bỏ qua. RULA score đã dùng `abs(angle)` nên risk/score không đổi dù theo convention nào. **Revert** bằng cách set flag `False` (hoặc xóa `_flip_signed_angles`) ngay khi dlbackend ship fix upstream.
+`signed_flexion_angle` ở perception-service hiện trả về dấu ngược với docstring ("Positive = forward flexion") — user chúi cổ rõ ràng lại ra **góc âm**, không phải dương. HAL negate `upper_arm_angle`, `neck_angle`, `trunk_angle` khi nhận từ perception-service (`POSE_FLIP_DLBACKEND_ANGLE_SIGN=True`, mặc định bật) để bảng monitor + JSONL khớp thực tế. `lower_arm_angle` unsigned nên bỏ qua. RULA score đã dùng `abs(angle)` nên risk/score không đổi dù theo convention nào. **Revert** bằng cách set flag `False` (hoặc xóa `_flip_signed_angles`) ngay khi perception-service ship fix upstream.
 
 ---
 
@@ -581,15 +581,15 @@ Tùy chọn thay thế cho `MotionPerception` — chạy nhận diện hành đ�
 
 Lamp nhận diện trạng thái cảm xúc **của người dùng** qua ba kênh:
 
-1. **Biểu cảm khuôn mặt** (chính) — event `emotion.detected` từ `os/hal/drivers/sensing/perceptions/emotion.py`. Dùng emotion classifier chuyên dụng chạy trên dlbackend tự host qua WebSocket. Nhận diện 7 cảm xúc: Angry, Disgust, Fear, Happy, Sad, Surprise, Neutral. Ngưỡng confidence cấu hình được (`EMOTION_CONFIDENCE_THRESHOLD`).
-2. **Cảm xúc giọng nói** (phụ) — event `speech_emotion.detected` từ `os/hal/drivers/voice/speech_emotion/`. Chạy ở cuối mỗi phiên STT đã nhận diện được speaker, cùng WAV bytes đã dùng cho speaker recognition. Dùng `emotion2vec_plus_large` trên dlbackend qua HTTP. Xem [Speech Emotion Recognition](../speech-emotion.md) cho pipeline đầy đủ.
+1. **Biểu cảm khuôn mặt** (chính) — event `emotion.detected` từ `os/hal/drivers/sensing/perceptions/emotion.py`. Dùng emotion classifier chuyên dụng chạy trên perception-service tự host qua WebSocket. Nhận diện 7 cảm xúc: Angry, Disgust, Fear, Happy, Sad, Surprise, Neutral. Ngưỡng confidence cấu hình được (`EMOTION_CONFIDENCE_THRESHOLD`).
+2. **Cảm xúc giọng nói** (phụ) — event `speech_emotion.detected` từ `os/hal/drivers/voice/speech_emotion/`. Chạy ở cuối mỗi phiên STT đã nhận diện được speaker, cùng WAV bytes đã dùng cho speaker recognition. Dùng `emotion2vec_plus_large` trên perception-service qua HTTP. Xem [Speech Emotion Recognition](../speech-emotion.md) cho pipeline đầy đủ.
 3. **Body action** (cấp 3) — emotional X3D actions từ action recognition **cố ý bị loại** khỏi `motion.activity` (giờ thuần vật lý: sedentary/drink/break). Một event type `motion.emotional` riêng đang được lên kế hoạch.
 
 > **Đừng nhầm lẫn với Emotion Expression** (`emotion/SKILL.md`) — cái đó điều khiển cảm xúc đầu ra của Lamp (servo + LED + eyes). Emotion Detection là cảm nhận *user* đang cảm thấy gì; Emotion Expression là cách *Lamp* thể hiện cảm xúc của chính nó.
 
 ### Event `emotion.detected`
 
-Được HAL fire khi dlbackend emotion classifier nhận diện biểu cảm khuôn mặt vượt ngưỡng confidence. Format message:
+Được HAL fire khi perception-service emotion classifier nhận diện biểu cảm khuôn mặt vượt ngưỡng confidence. Format message:
 
 ```
 Emotion detected: <Label>. (weak camera cue; confidence=<0.00-1.00>; bucket=<positive|negative|other>; treat as uncertain, <hedge theo bucket>.)
@@ -631,7 +631,7 @@ Xem `user-emotion-detection/SKILL.md` để biết rules phản hồi đầy đ�
 
 ### Event `speech_emotion.detected`
 
-Được HAL fire ở cuối mỗi phiên STT đã nhận diện được speaker, sau khi WAV bytes (cùng bytes đã dùng cho speaker `/embed`) được forward sang `dlbackend /api/dl/ser/recognize` (emotion2vec_plus_large). Buffering, aggregation theo từng user, dedup theo polarity bucket, và POST sang Lamp đều nằm trong `os/hal/drivers/voice/speech_emotion/SpeechEmotionService` — `voice_service.py` chỉ gọi `submit(user, wav, duration)`. Format message giống pipeline khuôn mặt:
+Được HAL fire ở cuối mỗi phiên STT đã nhận diện được speaker, sau khi WAV bytes (cùng bytes đã dùng cho speaker `/embed`) được forward sang `perception-service /api/dl/ser/recognize` (emotion2vec_plus_large). Buffering, aggregation theo từng user, dedup theo polarity bucket, và POST sang Lamp đều nằm trong `os/hal/drivers/voice/speech_emotion/SpeechEmotionService` — `voice_service.py` chỉ gọi `submit(user, wav, duration)`. Format message giống pipeline khuôn mặt:
 
 ```
 Speech emotion detected: <Label>. (weak voice cue; confidence=<0.00-1.00>; bucket=<positive|negative|other>; treat as uncertain, <hedge theo bucket>.)

@@ -3,7 +3,7 @@ set -e
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ota-config.sh"
 
-BUDDY_DIR="${ROOT_DIR}/companions/autonomous-buddy"
+BUDDY_DIR="${ROOT_DIR}/integrations/companions/autonomous-buddy"
 VERSION_FILE="${BUDDY_DIR}/VERSION_AUTONOMOUS_BUDDY"
 DIST_DIR="${BUDDY_DIR}/dist"
 

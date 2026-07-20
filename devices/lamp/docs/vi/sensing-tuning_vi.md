@@ -16,7 +16,7 @@ SPEECH_EMOTION_ENABLED = True
 SPEECH_EMOTION_FLUSH_S = 10.0               # Chu kỳ drain buffer theo user
 SPEECH_EMOTION_DEDUP_WINDOW_S = 300.0       # TTL (user, bucket) — 5 phút
 SPEECH_EMOTION_MIN_AUDIO_S = 3.0            # Bỏ utterance ngắn hơn (mặc định config)
-SPEECH_EMOTION_API_TIMEOUT_S = 15           # Timeout HTTP dlbackend
+SPEECH_EMOTION_API_TIMEOUT_S = 15           # Timeout HTTP perception-service
 DL_SER_ENDPOINT = "/lelamp/api/dl/ser/recognize"
 ```
 
@@ -58,7 +58,7 @@ Dòng `flushing` hiển thị danh sách label thô — đó là mode trên các
 | Một utterance nhiễu vẫn lọt | Tăng entry tương ứng trong `CONFIDENCE_THRESHOLD_BY_LABEL` (`constants.py`) — ví dụ `"sad": 0.6 → 0.7`. Chỉ tăng `DEFAULT_CONFIDENCE_THRESHOLD` khi nhiễu diện rộng |
 | "Ừ" / "ok" ngắn bị flag | Tăng `SPEECH_EMOTION_MIN_AUDIO_S` (3.0 → 4.0) |
 | Lamp phản ứng chậm sau đổi mood thật | Giảm `SPEECH_EMOTION_FLUSH_S` (10 → 5) |
-| Cảnh báo worker queue full | Kiểm tra độ trễ dlbackend; tăng queue không đủ nếu downstream kẹt |
+| Cảnh báo worker queue full | Kiểm tra độ trễ perception-service; tăng queue không đủ nếu downstream kẹt |
 | Quá nhiều `speech_emotion.detected` cho người lạ | **Kỳ vọng:** `user="unknown"`; siết entry per-label trong `CONFIDENCE_THRESHOLD_BY_LABEL` (`constants.py`) hoặc dedup — **không** tắt SER chỉ vì transcript có `Unknown Speaker:` |
 
 ### Áp dụng thay đổi
@@ -69,7 +69,7 @@ Sau khi sửa `os/hal/config.py` hoặc `voice_service.py` trên Pi: restart ser
 
 ## Nhận Diện Hoạt Động (Motion / Activity Recognition)
 
-`MotionPerception` chạy nhận diện hành động Kinetics (qua dlbackend) và phát event
+`MotionPerception` chạy nhận diện hành động Kinetics (qua perception-service) và phát event
 `motion.activity` kèm các label hoạt động nhận được.
 
 **File:** `os/hal/config.py`

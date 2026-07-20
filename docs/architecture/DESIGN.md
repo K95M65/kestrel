@@ -48,8 +48,8 @@ os/
 devices/               declarative overlays: _base/, lamp/, intern/, examples/
 cts/                   conformance test suite — "is this an Autonomous device?"
 tools/                 imager, scripts (build + SBC images)
-companions/            off-device apps (autonomous-buddy, claude-desktop-buddy)
-backend/               off-device cloud inference (dlbackend)
+integrations/companions/            off-device apps (autonomous-buddy, claude-desktop-buddy)
+backend/               off-device cloud inference (perception-service)
 docs/  LICENSE  CONTRIBUTING.md
 ```
 

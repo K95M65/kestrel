@@ -48,7 +48,7 @@ flush:
     ⑤ POST OS server /api/sensing/event with type="speech_emotion.detected"
 ```
 
-HAL's voice pipeline **only calls `submit()`**. All HTTP I/O to dlbackend, buffering, bucketing, dedup, retry, and the OS server POST are contained inside the `speech_emotion/` module — they never block the STT path.
+HAL's voice pipeline **only calls `submit()`**. All HTTP I/O to perception-service, buffering, bucketing, dedup, retry, and the OS server POST are contained inside the `speech_emotion/` module — they never block the STT path.
 
 ---
 
@@ -59,7 +59,7 @@ os/hal/service/voice/speech_emotion/
 ├── __init__.py        # public API: SpeechEmotionService + ABC + engine + result type
 ├── constants.py       # defaults, label vocabulary, bucket map, event type
 ├── base.py            # BaseSpeechEmotionRecognizer (ABC), SpeechEmotionResult dataclass
-├── emotion2vec.py     # Emotion2VecRecognizer — HTTP wrapper for dlbackend /api/dl/ser/recognize
+├── emotion2vec.py     # Emotion2VecRecognizer — HTTP wrapper for perception-service /api/dl/ser/recognize
 ├── utils.py           # normalize_label, is_neutral, bucket_for, hedge_for, format_message
 └── service.py         # SpeechEmotionService — queue + worker + flush + dedup + send-to-lamp
 ```
@@ -79,7 +79,7 @@ Two daemon threads, started in `SpeechEmotionService.__init__` only when `recogn
 
 Both threads exit cleanly on `stop()` — the worker is poisoned with a `None` sentinel, the flush thread observes the stop event during its `Event.wait`.
 
-`submit()` is non-blocking by design. If the worker queue is full (32 jobs backlog) the new submission is dropped with a warning — this signals real overload (dlbackend wedged or down) and the caller should not retry. Audio is single-utterance, not streaming, so a one-second drop is acceptable.
+`submit()` is non-blocking by design. If the worker queue is full (32 jobs backlog) the new submission is dropped with a warning — this signals real overload (perception-service wedged or down) and the caller should not retry. Audio is single-utterance, not streaming, so a one-second drop is acceptable.
 
 ---
 
@@ -95,7 +95,7 @@ service.submit(
 )
 ```
 
-### Engine call → dlbackend
+### Engine call → perception-service
 
 ```http
 POST {DL_BACKEND_URL}/lelamp/api/dl/ser/recognize
@@ -213,7 +213,7 @@ All knobs live in `os/hal/config.py` as `SPEECH_EMOTION_*`, overridable via env 
 | `SPEECH_EMOTION_FLUSH_S` | `HAL_SPEECH_EMOTION_FLUSH_S` | `10.0` | Buffer drain cadence |
 | `SPEECH_EMOTION_DEDUP_WINDOW_S` | `HAL_SPEECH_EMOTION_DEDUP_WINDOW_S` | `300.0` | TTL for `(user, bucket)` |
 | `SPEECH_EMOTION_MIN_AUDIO_S` | `HAL_SPEECH_EMOTION_MIN_AUDIO_S` | `3.0` | Min utterance length |
-| `SPEECH_EMOTION_API_TIMEOUT_S` | `HAL_SPEECH_EMOTION_API_TIMEOUT_S` | `15` | dlbackend HTTP timeout |
+| `SPEECH_EMOTION_API_TIMEOUT_S` | `HAL_SPEECH_EMOTION_API_TIMEOUT_S` | `15` | perception-service HTTP timeout |
 | `DL_SER_ENDPOINT` | `DL_SER_ENDPOINT` | `/lelamp/api/dl/ser/recognize` | Path suffix on `DL_BACKEND_URL` |
 | `SPEECH_EMOTION_API_URL` | — | derived | `DL_BACKEND_URL` + `DL_SER_ENDPOINT` |
 | `SPEECH_EMOTION_API_KEY` | — | mirrors `DL_API_KEY` | Sent as `X-API-Key` |
@@ -312,8 +312,8 @@ This is the reason the finally block ordering is: wake-word split → `_identify
 | Failure | Effect | Recovery |
 |---------|--------|----------|
 | `DL_BACKEND_URL` not configured | `recognizer.available` is False, threads never start, `submit()` is a no-op | Set `llm_base_url` in the OS server config |
-| dlbackend down (connection refused) | Worker logs warning, sample dropped, no retry | Next utterance retries automatically |
-| dlbackend returns non-200 | Worker logs warning, sample dropped | Same as above |
+| perception-service down (connection refused) | Worker logs warning, sample dropped, no retry | Next utterance retries automatically |
+| perception-service returns non-200 | Worker logs warning, sample dropped | Same as above |
 | Worker queue full | `submit()` logs warning, returns immediately | Indicates backend overload; investigate |
 | OS server sensing endpoint down | 3 retries with 2 s back-off, then sample dropped | Buffer continues filling for next flush |
 | `duration_s < MIN_AUDIO_S` | Dropped in `submit()` with debug log | Expected — short utterances aren't worth classifying |

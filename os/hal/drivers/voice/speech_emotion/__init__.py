@@ -8,7 +8,7 @@ Public surface:
 
 Engine layer:
     BaseSpeechEmotionRecognizer — ABC
-    Emotion2VecRecognizer       — concrete, talks to dlbackend /api/dl/ser
+    Emotion2VecRecognizer       — concrete, talks to perception-service /api/dl/ser
 
 All env-overridable defaults live in `hal.config.SPEECH_EMOTION_*`;
 label vocabulary and bucket map live in `constants.py`.

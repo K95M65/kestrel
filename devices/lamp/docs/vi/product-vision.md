@@ -642,17 +642,17 @@ Body: {"x": 3, "y": 2, "r": 255, "g": 0, "b": 0}
 - User tập trung và bình tĩnh → Lamp giữ nguyên environment, suppress mọi interruption
 
 **Triển khai**:
-- Emotion classifier chạy qua **dlbackend WebSocket** (remote inference server), không phải on-device ONNX. HAL gửi camera frames, nhận emotion predictions.
-- `os/hal/drivers/sensing/perceptions/emotion.py` — `RemoteEmotionChecker` kết nối dlbackend, fire event `emotion.detected` với cảm xúc phát hiện được (Angry, Disgust, Fear, Happy, Sad, Surprise, Neutral).
+- Emotion classifier chạy qua **perception-service WebSocket** (remote inference server), không phải on-device ONNX. HAL gửi camera frames, nhận emotion predictions.
+- `os/hal/drivers/sensing/perceptions/emotion.py` — `RemoteEmotionChecker` kết nối perception-service, fire event `emotion.detected` với cảm xúc phát hiện được (Angry, Disgust, Fear, Happy, Sad, Surprise, Neutral).
 - Lamp `user-emotion-detection/SKILL.md` map cảm xúc khuôn mặt → mood signal qua `POST /api/mood/log`.
 - Lamp `mood/SKILL.md` fusion signals (camera emotion, conversation, voice tone) thành mood decisions.
 - Mood decisions trigger downstream: `music-suggestion` (nhạc chủ động), `wellbeing` (nhắc uống nước/nghỉ), `emotion` (biểu cảm đèn).
 - Configurable confidence threshold qua `EMOTION_CONFIDENCE_THRESHOLD` trong HAL config.
 
 **Câu hỏi đã giải quyết**:
-- [x] Model nào? → Remote dlbackend (không ONNX on-device). Offload inference, không ảnh hưởng Pi 4 RAM/CPU.
+- [x] Model nào? → Remote perception-service (không ONNX on-device). Offload inference, không ảnh hưởng Pi 4 RAM/CPU.
 - [x] Ngưỡng accuracy → Configurable `EMOTION_CONFIDENCE_THRESHOLD` (default trong HAL config).
-- [x] Privacy → Frames chỉ gửi tới self-hosted dlbackend, không qua cloud bên thứ ba.
+- [x] Privacy → Frames chỉ gửi tới self-hosted perception-service, không qua cloud bên thứ ba.
 - [x] Kết hợp voice-tone → Cả hai feed vào Mood skill fusion logic; camera emotion = signal, mood decision = output đã fusion.
 
 #### UC-M2: Nhắc Nhở Sức Khỏe Chủ Động [DONE]
@@ -668,7 +668,7 @@ Body: {"x": 3, "y": 2, "r": 255, "g": 0, "b": 0}
 
 **Triển khai**:
 - **Event-driven, không dùng timer cố định.** `wellbeing/SKILL.md` trigger mỗi event `motion.activity` (từ action recognition).
-- Action recognition qua dlbackend phân loại hoạt động: `using computer`, `writing`, `reading book`, `texting`, `drawing`, `playing controller` (sedentary) vs `drink`, `break` (reset activities).
+- Action recognition qua perception-service phân loại hoạt động: `using computer`, `writing`, `reading book`, `texting`, `drawing`, `playing controller` (sedentary) vs `drink`, `break` (reset activities).
 - Mỗi activity logged vào per-user JSONL timeline qua `POST /api/openclaw/wellbeing/log`.
 - Mỗi event, skill đọc history gần nhất, tính thời gian từ lần hydration/break reset cuối, nhắc nếu vượt threshold.
 - Per-user tracking: `current_user` từ sensing context tag, stranger dùng chung timeline `"unknown"`.
@@ -743,7 +743,7 @@ Body: {"x": 3, "y": 2, "r": 255, "g": 0, "b": 0}
 
 | UC | Tính Năng | Trạng Thái | Triển Khai |
 |---|---|---|---|
-| UC-M1 | Nhận diện cảm xúc khuôn mặt | **DONE** | dlbackend emotion WS + `user-emotion-detection` + `mood` skills |
+| UC-M1 | Nhận diện cảm xúc khuôn mặt | **DONE** | perception-service emotion WS + `user-emotion-detection` + `mood` skills |
 | UC-M2 | Nhắc nhở sức khỏe chủ động | **DONE** | `wellbeing` skill, event-driven từ `motion.activity` |
 | UC-M3 | Gợi ý nhạc chủ động | **DONE** | `music-suggestion` skill, mood + sedentary triggers |
 | UC-M4a | Thời gian nhìn màn hình / Eye-care | **CHƯA LÀM** | Cần gaze estimation model |

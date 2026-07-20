@@ -1005,7 +1005,7 @@ func extractPostureSummaryJSON(message string) string {
 	return ""
 }
 
-// riskLevelLabel maps the dlbackend RULA risk_level enum to the string
+// riskLevelLabel maps the perception-service RULA risk_level enum to the string
 // vocabulary the habit skill expects on posture_alert rows.
 func riskLevelLabel(level int) string {
 	switch level {

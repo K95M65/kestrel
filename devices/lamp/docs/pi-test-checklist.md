@@ -74,7 +74,7 @@ Track which features have been manually tested on the Raspberry Pi 4.
 
 | # | Use Case | How to test | Status | Notes |
 |---|---|---|---|---|
-| EX-12 | Facial emotion detection | Ngồi trước camera, thể hiện cảm xúc → xem log có `emotion.detected` event | ✅ | HAL `emotion.py` via dlbackend WS, 7 emotions (Angry/Disgust/Fear/Happy/Sad/Surprise/Neutral) |
+| EX-12 | Facial emotion detection | Ngồi trước camera, thể hiện cảm xúc → xem log có `emotion.detected` event | ✅ | HAL `emotion.py` via perception-service WS, 7 emotions (Angry/Disgust/Fear/Happy/Sad/Surprise/Neutral) |
 | EX-13 | Mood logging from emotion | `emotion.detected` → agent tự POST `/api/mood/log` → `curl http://pi:5000/api/openclaw/mood-history` có entry | ✅ | `user-emotion-detection` skill → `mood` skill pipeline |
 | EX-14 | Proactive wellness nudge | Ngồi làm việc lâu (sedentary activity detected) → Lamp nhắc uống nước / đứng dậy | ✅ | `wellbeing` skill, event-driven from `motion.activity` sedentary labels |
 | EX-15 | Proactive music suggestion | Mood decision logged (stressed/tired/etc.) → Lamp gợi ý nhạc phù hợp | ✅ | `music-suggestion` skill, triggers on mood decisions + sedentary activity |

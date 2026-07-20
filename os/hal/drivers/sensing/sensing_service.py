@@ -107,16 +107,16 @@ class SensingService:
             sound_device_id=self._input_device,
             perception_config=PerceptionConfig(
                 # People perception (face identity + facial emotion) is the
-                # `presence` capability — ML over the camera via dlbackend. Gated
+                # `presence` capability — ML over the camera via perception-service. Gated
                 # on enable_people_perception so a device that doesn't declare
                 # `presence` (e.g. a camera that only streams / does motion) never
-                # runs face/emotion recognition or calls dlbackend for them. These
+                # runs face/emotion recognition or calls perception-service for them. These
                 # processors are also the only source of on_motion() for the
                 # presence light/away state machine, so without `presence` that
                 # state machine is started disabled (see PresenseService below).
                 enable_face=enable_people_perception,
                 # `motion` here is human ACTIVITY recognition (Kinetics action
-                # labels — drinking/eating/sedentary — via dlbackend), i.e. what
+                # labels — drinking/eating/sedentary — via perception-service), i.e. what
                 # the person is doing: people perception, gated on presence too.
                 # (presence.enter/leave is emitted by face recognition, not this,
                 # so gating motion off does not break person detection.)

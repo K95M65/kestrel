@@ -9,7 +9,7 @@ Architecture mirrors `EmotionPerception` in the face sensing pipeline:
     submit()                            # non-blocking
         │  (queue.put_nowait)
         ▼
-    worker thread  ── HTTP recognize ──▶ dlbackend /api/dl/ser/recognize
+    worker thread  ── HTTP recognize ──▶ perception-service /api/dl/ser/recognize
         │
         ▼
     per-user buffer[user] = [Inference, …]

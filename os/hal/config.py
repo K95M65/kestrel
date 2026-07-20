@@ -155,12 +155,12 @@ DEVICE_AUTH_TOKEN = (
     or DL_API_KEY
 )
 DL_HEARTBEAT_INTERVAL_S = float(os.environ.get("HAL_DL_HEARTBEAT_INTERVAL_S", "60.0"))
-# Max time to wait for a dlbackend WS response (pose/motion frame, heartbeat,
+# Max time to wait for a perception-service WS response (pose/motion frame, heartbeat,
 # key exchange). Without this, a non-responding backend blocks the recv() call
 # forever, holding a shared perception-pool worker and starving every other
 # camera perception (face/light). On timeout the session is dropped + retried.
 DL_WS_RECV_TIMEOUT_S = float(os.environ.get("HAL_DL_WS_RECV_TIMEOUT_S", "15.0"))
-# Append-only file that records every dlbackend WS stall (recv timeout) so the
+# Append-only file that records every perception-service WS stall (recv timeout) so the
 # issue can be tracked over time without scraping the journal. One line per
 # stall: <iso_ts>\t<task>\t<detail>.
 DL_STALL_LOG_FILE = os.environ.get("HAL_DL_STALL_LOG", "/root/local/dl_ws_stall.log")
@@ -183,7 +183,7 @@ DL_SPEAKER_BACKEND_URL: str = DL_BACKEND_URL.rstrip("/") + "/" + DL_SPEAKER_ENDP
 DL_SER_ENDPOINT: str = os.environ.get("DL_SER_ENDPOINT", "/hal/api/dl/ser/recognize")
 DL_SER_BACKEND_URL: str = DL_BACKEND_URL.rstrip("/") + "/" + DL_SER_ENDPOINT.strip("/") if DL_BACKEND_URL else ""
 
-# --- Sensing: Motion detection (action recognition via dlbackend) ---
+# --- Sensing: Motion detection (action recognition via perception-service) ---
 MOTION_ENABLED = os.environ.get("HAL_MOTION_ENABLED", "true").lower() == "true"
 MOTION_PER_FACE_ENABLED = os.environ.get("HAL_MOTION_PER_FACE_ENABLED", "false").lower() == "true"
 MOTION_PER_FACE_DEDUP_WINDOW_S = float(os.environ.get("HAL_MOTION_PER_FACE_DEDUP_WINDOW_S", "300.0"))
@@ -216,7 +216,7 @@ MOTION_SNAPSHOT_DIR = os.environ.get(
 )
 MOTION_SNAPSHOT_MAX_COUNT = int(os.environ.get("HAL_MOTION_SNAPSHOT_MAX_COUNT", "100"))
 
-# --- Sensing: Emotion detection (face emotion via dlbackend) ---
+# --- Sensing: Emotion detection (face emotion via perception-service) ---
 EMOTION_ENABLED = os.environ.get("HAL_EMOTION_ENABLED", "true").lower() == "true"
 EMOTION_CONFIDENCE_THRESHOLD = float(
     os.environ.get("HAL_EMOTION_CONFIDENCE_THRESHOLD", "0.5")
@@ -229,7 +229,7 @@ EMOTION_SNAPSHOT_DIR = os.environ.get(
 )
 EMOTION_SNAPSHOT_MAX_COUNT = int(os.environ.get("HAL_EMOTION_SNAPSHOT_MAX_COUNT", "100"))
 
-# --- Sensing: Fire hazard detection (object detection via dlbackend) ---
+# --- Sensing: Fire hazard detection (object detection via perception-service) ---
 FIRE_HAZARD_ENABLED = os.environ.get("HAL_FIRE_HAZARD_ENABLED", "true").lower() == "true"
 # Min gap between two detection API calls. The old default 0 disabled the
 # gate entirely — one OWLv2 call per sensing tick (~2s), ~43k calls/day.
@@ -257,7 +257,7 @@ POSE_MOTION_ANGLE_THRESHOLD = float(
     os.environ.get("HAL_POSE_MOTION_ANGLE_THRESHOLD", "30.0")
 )
 
-# --- Sensing: Pose estimation + ergonomic assessment (via dlbackend) ---
+# --- Sensing: Pose estimation + ergonomic assessment (via perception-service) ---
 POSE_ENABLED = os.environ.get("HAL_POSE_ENABLED", "true").lower() == "true"
 POSE_ERGO_HIGH_RISK_THRESHOLD = int(os.environ.get("HAL_POSE_ERGO_HIGH_RISK_THRESHOLD", "5"))
 # Posture is now sampled silently into a rolling buffer; MotionPerception
@@ -274,11 +274,11 @@ POSE_SAMPLE_INTERVAL_S = float(os.environ.get("HAL_POSE_SAMPLE_INTERVAL_S", "30.
 # — one variable, no test/prod branches in code.
 POSE_WINDOW_DURATION_S = float(os.environ.get("HAL_POSE_WINDOW_DURATION_S", "600.0"))
 # Noise floor — if the window completed but had fewer than this many real
-# samples (dlbackend missed most frames, presence flicker, etc.), skip the
+# samples (perception-service missed most frames, presence flicker, etc.), skip the
 # inject. Statistical confidence is too low to nag the user.
 POSE_WINDOW_MIN_SAMPLES = int(os.environ.get("HAL_POSE_WINDOW_MIN_SAMPLES", "3"))
 # Bad-sample definition: any single region (L or R) at sub-score >= this.
-# Catches "head thrust forward, rest of body OK" cases that dlbackend's
+# Catches "head thrust forward, rest of body OK" cases that perception-service's
 # whole-body risk_level alone misses (RULA total stays at "low" because
 # trunk+arms are fine, but neck sub-score = 4 by itself is worth nagging).
 POSE_REGION_HIGH_SUBSCORE = int(os.environ.get("HAL_POSE_REGION_HIGH_SUBSCORE", "4"))
@@ -310,11 +310,11 @@ POSE_SNAPSHOT_MAX_BYTES = int(
 POSE_WORST_SNAPSHOTS_PER_BUCKET = int(
     os.environ.get("HAL_POSE_WORST_SNAPSHOTS_PER_BUCKET", "3")
 )
-# TEMPORARY WORKAROUND — dlbackend's signed_flexion_angle returns the
+# TEMPORARY WORKAROUND — perception-service's signed_flexion_angle returns the
 # opposite sign of its docstring ("Positive = forward flexion"): user
 # clearly hunched forward produces angle = -72°, not +72°. Flip on
 # receive so the monitor table and JSONL match reality. Revert (set to
-# False) the moment dlbackend's utils.signed_flexion_angle is fixed
+# False) the moment perception-service's utils.signed_flexion_angle is fixed
 # upstream. Only the three signed angles need flipping; lower_arm_angle
 # is unsigned (angle_between_3d) and the RULA scores already use
 # abs(angle) so risk_level / score are unaffected.
@@ -342,7 +342,7 @@ IDLE_TIMEOUT_S = float(os.environ.get("HAL_IDLE_TIMEOUT_S", "300"))
 AWAY_TIMEOUT_S = float(os.environ.get("HAL_AWAY_TIMEOUT_S", "900"))
 IDLE_BRIGHTNESS = float(os.environ.get("HAL_IDLE_BRIGHTNESS", "0.20"))
 
-# --- Sensing: Speaker recognition (voice embedding via dlbackend) ---
+# --- Sensing: Speaker recognition (voice embedding via perception-service) ---
 SPEAKER_RECOGNITION_ENABLED: bool = (
     os.environ.get("HAL_SPEAKER_RECOGNITION_ENABLED", "true").lower() == "true"
 )
@@ -362,7 +362,7 @@ DL_SPEAKER_ENDPOINT = os.environ.get("DL_SPEAKER_ENDPOINT", "/hal/api/dl/audio-r
 SPEAKER_EMBEDDING_API_URL: str = DL_BACKEND_URL.rstrip("/") + "/" + DL_SPEAKER_ENDPOINT.strip("/") if DL_BACKEND_URL else ""
 SPEAKER_EMBEDDING_API_KEY: str = DL_API_KEY
 
-# --- Sensing: Speech emotion recognition (SER via dlbackend) ---
+# --- Sensing: Speech emotion recognition (SER via perception-service) ---
 SPEECH_EMOTION_ENABLED: bool = (
     os.environ.get("HAL_SPEECH_EMOTION_ENABLED", "true").lower() == "true"
 )
