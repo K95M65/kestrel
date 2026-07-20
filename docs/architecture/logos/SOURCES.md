@@ -13,5 +13,5 @@ trademarks belong to their owners.
 | OpenClaw | `openclaw.svg` | Official favicon — openclaw.ai/favicon.svg (inlined as vector) |
 | Hermes (Nous Research) | `nousresearch.png` | GitHub org avatar — github.com/nousresearch.png |
 | PicoClaw | `picoclaw.ico` | Site favicon — picoclaw.io/favicon.ico |
-| Codex (OpenAI) | `openai.svg` | Simple Icons (CC0) |
+| Codex | `codex.svg` | LobeHub icons (official Codex mark: cloud + `>_` prompt, inlined as vector) |
 | Claude Code | `claude.svg` | Simple Icons (CC0) |
