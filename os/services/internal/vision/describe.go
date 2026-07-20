@@ -27,7 +27,7 @@ import (
 	"time"
 
 	"go.autonomous.ai/os/domain"
-	"go.autonomous.ai/os/internal/openclaw"
+	"go.autonomous.ai/os/internal/agent/runtimes/openclaw"
 	"go.autonomous.ai/os/server/config"
 )
 

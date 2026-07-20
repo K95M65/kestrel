@@ -9,7 +9,7 @@ import (
 	"sync"
 
 	"go.autonomous.ai/os/domain"
-	"go.autonomous.ai/os/internal/openclaw"
+	"go.autonomous.ai/os/internal/agent/runtimes/openclaw"
 )
 
 // skillsInstallMu serializes role-skill installs: concurrent extracts into the

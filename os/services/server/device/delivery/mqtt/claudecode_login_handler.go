@@ -12,7 +12,7 @@ import (
 
 // claudeLoginTimeout caps the whole OAuth login flow: the user opens the URL on
 // another device, authorizes, and pastes the code back — much slower than a QR
-// scan, hence the generous budget (mirrors internal/claudecode/login.go).
+// scan, hence the generous budget (mirrors internal/agent/runtimes/claudecode/login.go).
 const claudeLoginTimeout = 10 * time.Minute
 
 func (h *DeviceMQTTHandler) publishClaudeLoginResult(status, errMsg string, evt *domain.PairingEvent) error {

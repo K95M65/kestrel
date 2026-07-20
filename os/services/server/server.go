@@ -17,7 +17,7 @@ import (
 	"go.autonomous.ai/os/domain"
 	"go.autonomous.ai/os/internal/agent"
 	"go.autonomous.ai/os/internal/ambient"
-	"go.autonomous.ai/os/internal/claudecode"
+	"go.autonomous.ai/os/internal/agent/runtimes/claudecode"
 	"go.autonomous.ai/os/internal/device"
 	"go.autonomous.ai/os/internal/healthwatch"
 	"go.autonomous.ai/os/internal/network"
