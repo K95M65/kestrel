@@ -273,6 +273,26 @@ def _v2_landmarks_out_of_bounds(pts5: np.ndarray, bbox, frame_shape) -> bool:
     )
 
 
+def _v2_box_from_landmarks(landmarks_xy: np.ndarray, w: int, h: int) -> list[int]:
+    """Axis-aligned face box ``[x1, y1, x2, y2]`` from dense landmarks in FRAME
+    pixel coords.
+
+    Reproduces the Emo-AffectNet reference ``get_box`` (onnx_face_utils): floor
+    each landmark, clamp to ``[0, w-1] / [0, h-1]``, and take the min/max extent.
+    This is the MediaPipe-mesh framing the cloud emotion model expects — tighter
+    and better-centered on the face than the raw detector bbox — with NO rotation
+    applied (the crop stays axis-aligned). ``landmarks_xy`` is the (468, 2) array
+    already mapped back to full-frame pixels by ``detect_in_frame``.
+    """
+    xs = np.minimum(np.floor(landmarks_xy[:, 0]).astype(int), w - 1)
+    ys = np.minimum(np.floor(landmarks_xy[:, 1]).astype(int), h - 1)
+    start_x = max(0, int(xs.min()))
+    start_y = max(0, int(ys.min()))
+    end_x = min(w - 1, int(xs.max()))
+    end_y = min(h - 1, int(ys.max()))
+    return [start_x, start_y, end_x, end_y]
+
+
 # =============================================================================
 # MediaPipe FaceMesh landmark regressor (ONNX) — ported & renamed from
 # temp-updated-for-facerecognizer/mediapipe_landmark_onnx.py
@@ -421,9 +441,14 @@ class _OnnxLandmarkAligner:
     def align_crop_from_bbox(self, frame: np.ndarray, bbox, kps=None):
         """Aligned 112x112 crop for one detection.
 
-        Returns ``(aligned, pts5, score)``:
+        Returns ``(aligned, pts5, emotion_box)``:
             * ``aligned``: 112x112 BGR crop, or None if the face cannot align.
             * ``pts5``: the 5 alignment points used for the warp, or None.
+            * ``emotion_box``: axis-aligned ``[x1, y1, x2, y2]`` face box in frame
+              pixels, derived from the dense 468 landmarks (the framing the cloud
+              emotion model expects), or None. Computed here so the emotion
+              pipeline can reuse it instead of re-running the face mesh; NO
+              rotation is applied.
 
         Faces whose landmark confidence is below ``conf_thresh`` (or whose
         landmarks fall outside the bbox/image) are dropped: there is NO SCRFD
@@ -435,17 +460,20 @@ class _OnnxLandmarkAligner:
             landmarks, score = self._landmarker.detect_in_frame(frame, bbox, kps=kps)
         except Exception as e:  # noqa: BLE001
             logger.debug("[face-v2] landmark inference error: %s", e)
-            return None, None
+            return None, None, None
 
         if landmarks is not None and score >= self._landmarker.conf_thresh:
             pts5 = self._landmarker.to_5points(landmarks)
             if not _v2_landmarks_out_of_bounds(pts5, bbox, frame.shape):
                 try:
-                    return _v2_warp_and_crop_face(frame, pts5), pts5
+                    aligned = _v2_warp_and_crop_face(frame, pts5)
+                    h, w = frame.shape[:2]
+                    emotion_box = _v2_box_from_landmarks(landmarks, w, h)
+                    return aligned, pts5, emotion_box
                 except Exception as e:  # noqa: BLE001
                     logger.debug("[face-v2] landmark alignment error: %s", e)
 
-        return None, None
+        return None, None, None
 
 
 # =============================================================================
@@ -742,9 +770,10 @@ class _EdgeFacePipeline:
     """SCRFD (detect) -> ONNX landmark (align) -> EdgeFace (embed).
 
     ``get(frame)`` returns one dict per face, drop-in compatible with
-    ``insightface.app.FaceAnalysis.get``:
+    ``insightface.app.FaceAnalysis.get`` (plus an extra ``emotion_box`` key):
         {'bbox': float32[4], 'kps': float32[5,2]|None,
-         'det_score': np.float32, 'embedding': float32[D]}
+         'det_score': np.float32, 'embedding': float32[D],
+         'emotion_box': list[int]|None}
     Faces that cannot be aligned are skipped (same as the reference).
     """
 
@@ -796,7 +825,7 @@ class _EdgeFacePipeline:
             bbox = det["bbox"]
             kps = det["kps"]
 
-            aligned, kps = self.aligner.align_crop_from_bbox(
+            aligned, kps, emotion_box = self.aligner.align_crop_from_bbox(
                 frame, bbox, kps=kps
             )
             if aligned is None:
@@ -809,6 +838,7 @@ class _EdgeFacePipeline:
                     "kps": None if kps is None else kps.astype(np.float32),
                     "det_score": np.float32(det["det_score"]),
                     "embedding": embedding.astype(np.float32),
+                    "emotion_box": emotion_box,
                 }
             )
         return results
@@ -1635,7 +1665,14 @@ class FaceRecognizer:
 
             faces.append(
                 Face(
-                    bbox=bbox, kind=face_kind, person_id=person_id, confidence=det_score
+                    bbox=bbox,
+                    kind=face_kind,
+                    person_id=person_id,
+                    confidence=det_score,
+                    # Re-centered face-mesh box (get_box over the 468 landmarks)
+                    # computed during alignment above; reused by the emotion
+                    # pipeline so it never re-runs the mesh. None if unavailable.
+                    emotion_box=raw_results[i].get("emotion_box"),
                 )
             )
 

@@ -14,7 +14,7 @@ HAL folds two extra blocks into `motion.activity` ONLY when ALL hold:
   sedentary in this cycle).
 - The user is still sedentary on this flush (no nag mid-stretch).
 - At least `POSE_WINDOW_MIN_SAMPLES` valid pose samples landed in that
-  span (default 3, noise-floor for windows where dlbackend missed
+  span (default 3, noise-floor for windows where perception-service missed
   most frames).
 - `bad_ratio ≥ POSE_BAD_RATIO` (default 0.6).
 

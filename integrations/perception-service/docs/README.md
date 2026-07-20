@@ -74,7 +74,7 @@ python -m dlserver --host 0.0.0.0 --port 8001
 
 On first use each perception auto-downloads its weights from the public bucket
 (`CDN_BASE`, default `https://storage.googleapis.com/autonomous-models`) into
-`~/.cache/dlbackend/models`, so the first call to a model is slower. Weights are
+`~/.cache/perception-service/models`, so the first call to a model is slower. Weights are
 not committed to the repo. See
 [configuration.md#model-downloading](configuration.md#model-downloading) for the
 per-model URLs and how to self-host or override them.

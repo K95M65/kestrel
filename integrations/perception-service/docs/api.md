@@ -82,8 +82,8 @@ Server → client (`EmotionResponse`):
 ]}
 ```
 
-`valence` / `arousal` are populated only by the EmoNet models; POSTER V2 leaves
-them `null`.
+`valence` / `arousal` are populated only by the EmoNet models; POSTER V2 and
+Emo-AffectNet leave them `null`.
 
 **HTTP `POST /hal/api/dl/emotion-recognize`** — classify a single pre-cropped face:
 

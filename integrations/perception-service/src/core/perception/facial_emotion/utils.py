@@ -46,5 +46,9 @@ def create_emotion_recognizer(
         from core.perception.facial_emotion.predictors.emonet import EmoNetRecognizer
 
         return EmoNetRecognizer(n_expression=5, model_path=model_path, remote_url=remote_url, batch_size=batch_size)
+    elif model_name == EmotionRecognizerEnum.EMOAFFECTNET:
+        from core.perception.facial_emotion.predictors.emoaffectnet import EmoAffectNetRecognizer
+
+        return EmoAffectNetRecognizer(model_path=model_path, remote_url=remote_url, batch_size=batch_size)
     else:
         raise ValueError(f"Unknown emotion recognition model: {model_name}")

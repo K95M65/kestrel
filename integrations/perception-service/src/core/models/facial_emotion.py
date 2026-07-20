@@ -44,3 +44,5 @@ class EmotionDetection:
 class EmotionPerceptionSessionConfig:
     confidence_threshold: float = 0.5
     frame_interval: float = 1.0
+    label_thresholds: dict[str, float] | None = None
+    """Per-label minimum confidence; None uses DEFAULT_LABEL_THRESHOLDS, {} disables gating."""

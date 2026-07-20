@@ -17,6 +17,8 @@ class ModelEnum(StrEnum):
     EMONET_8_PTH = "emonet_8_pth"
     EMONET_5_ONNX = "emonet_5_onnx"
     EMONET_5_PTH = "emonet_5_pth"
+    EMOAFFECTNET_ONNX = "emoaffectnet_onnx"
+    EMOAFFECTNET_PTH = "emoaffectnet_pth"
 
     # Action recognition
     X3D_ONNX = "x3d_onnx"
