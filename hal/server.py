@@ -84,8 +84,10 @@ def _resolve_device_type() -> str:
 
 
 def _devices_dir() -> str:
+    # hal/server.py -> hal -> repo root (dev fallback; real installs always
+    # set DEVICES_DIR, default /opt/devices)
     return os.environ.get("DEVICES_DIR") or os.path.normpath(
-        os.path.join(os.path.dirname(__file__), "..", "..", "..", "devices")
+        os.path.join(os.path.dirname(__file__), "..", "devices")
     )
 
 

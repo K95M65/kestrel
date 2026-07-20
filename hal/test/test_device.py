@@ -19,8 +19,8 @@ from hal.board.device import (
 )
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-# test -> hal -> hal -> os -> repo root
-DEVICES_DIR = os.path.normpath(os.path.join(HERE, "..", "..", "..", "devices"))
+# hal/test -> hal -> repo root
+DEVICES_DIR = os.path.normpath(os.path.join(HERE, "..", "..", "devices"))
 
 SAMPLE = """---
 schema: autonomous.device.v1

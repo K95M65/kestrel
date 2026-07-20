@@ -146,7 +146,7 @@ class TestApplyDevicePresets(unittest.TestCase):
         # cleanly — it is the copy-paste reference, so a typo there is a bug.
         here = os.path.dirname(os.path.abspath(__file__))
         example = os.path.normpath(
-            os.path.join(here, "..", "..", "..", "devices", "_base", "presets.example.json")
+            os.path.join(here, "..", "..", "devices", "_base", "presets.example.json")
         )
         with open(example, "r", encoding="utf-8") as f:
             payload = json.load(f)
