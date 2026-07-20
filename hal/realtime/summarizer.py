@@ -4,7 +4,7 @@ import logging
 import threading
 
 import hal.config as app_config
-from hal.drivers.realtime.constants import RESOURCES_DIR
+from hal.realtime.constants import RESOURCES_DIR
 
 logger = logging.getLogger(__name__)
 

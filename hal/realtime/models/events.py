@@ -6,9 +6,9 @@ Receive queue: AgentOutputEvent subclasses.
 
 from pydantic import BaseModel, ConfigDict
 
-from hal.drivers.realtime.enums import InputEventTypeEnum, OutputEventTypeEnum
-from hal.drivers.realtime.models.input import InputBase
-from hal.drivers.realtime.models.output import OutputBase
+from hal.realtime.enums import InputEventTypeEnum, OutputEventTypeEnum
+from hal.realtime.models.input import InputBase
+from hal.realtime.models.output import OutputBase
 
 # --- Send queue events ---
 

@@ -5,7 +5,7 @@ import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict
 from typing_extensions import ClassVar
 
-from hal.drivers.realtime.enums import OutputTypeEnum
+from hal.realtime.enums import OutputTypeEnum
 
 
 class OutputBase(BaseModel):

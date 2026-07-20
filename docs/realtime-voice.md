@@ -6,7 +6,7 @@ directly (sub-second audio replies) and **delegates** anything that needs the
 main agent (device control, skills, memory, real-time facts) back to the
 OS-server flow.
 
-Code lives in `hal/drivers/realtime/`; it is driven by
+Code lives in `hal/realtime/`; it is driven by
 `hal/drivers/voice/voice_service.py`.
 
 > **Source of truth:** this doc reflects the code. If they disagree, the code wins.

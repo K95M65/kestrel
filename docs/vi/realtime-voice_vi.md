@@ -6,7 +6,7 @@ Lớp giọng nói speech-to-speech độ trễ thấp, chạy **song song** v�
 (điều khiển thiết bị, skills, memory, thông tin thời gian thực) về luồng
 OS-server.
 
-Code nằm ở `hal/drivers/realtime/`; được điều khiển bởi
+Code nằm ở `hal/realtime/`; được điều khiển bởi
 `hal/drivers/voice/voice_service.py`.
 
 > **Nguồn chân lý:** doc phản ánh code. Nếu lệch nhau, code đúng.

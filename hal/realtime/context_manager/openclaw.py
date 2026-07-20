@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import override
 
 import hal.config as app_config
-from hal.drivers.realtime.context_manager.base import ContextManagerBase
+from hal.realtime.context_manager.base import ContextManagerBase
 
 logger = logging.getLogger(__name__)
 

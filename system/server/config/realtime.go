@@ -284,7 +284,7 @@ func (c *Config) RealtimeReasoning() string {
 }
 
 // --- Validation (for realtime.set MQTT downlinks) ---------------------------
-// Valid knob values per provider — KEEP IN SYNC with hal/drivers/realtime/
+// Valid knob values per provider — KEEP IN SYNC with hal/realtime/
 // enums (GeminiVoice / GeminiThinkingLevel / OpenAIReasoningEffort) and the
 // OpenAI voice list in hal/routes/voice.py. Case-sensitive to match the HAL
 // StrEnums (Gemini voices are Capitalized, OpenAI voices/efforts are lowercase).
@@ -299,7 +299,7 @@ var (
 // Ordered option lists — the SINGLE SOURCE the web reads via GET realtime options
 // (so the FE never hardcodes/drifts). Order matters: first reasoning entry is the
 // cheapest (the default). Voices match the maps below; KEEP IN SYNC with the HAL
-// enums (hal/drivers/realtime/enums).
+// enums (hal/realtime/enums).
 var (
 	RealtimeProviders           = []string{"gemini", "openai", "qwen", "none"}
 	RealtimeGeminiVoiceList     = []string{"Puck", "Charon", "Kore", "Fenrir", "Aoede"}

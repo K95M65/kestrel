@@ -25,9 +25,9 @@ from websockets.exceptions import ConnectionClosed
 from websockets.sync.client import ClientConnection
 from websockets.sync.client import connect as ws_connect
 
-from hal.drivers.realtime.config import QwenConfig
-from hal.drivers.realtime.exceptions import QwenRealtimeError
-from hal.drivers.realtime.models import (
+from hal.realtime.config import QwenConfig
+from hal.realtime.exceptions import QwenRealtimeError
+from hal.realtime.models import (
     AgentInputEvent,
     AudioCommitEvent,
     AudioInput,
@@ -42,11 +42,11 @@ from hal.drivers.realtime.models import (
     TextOutput,
     TurnDoneEvent,
 )
-from hal.drivers.realtime.utils import (
+from hal.realtime.utils import (
     base64_pcm16_to_float32,
     float32_to_base64_pcm16,
 )
-from hal.drivers.realtime.voice_agent.base import VoiceAgentBase
+from hal.realtime.voice_agent.base import VoiceAgentBase
 
 logger = logging.getLogger(__name__)
 # Per-turn token/cost lines go to their own file (qwen_usage.log) via a

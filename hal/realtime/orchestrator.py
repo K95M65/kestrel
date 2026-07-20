@@ -25,30 +25,30 @@ import numpy.typing as npt
 
 import hal.config as config
 import hal.presets as presets
-from hal.drivers.realtime.config import (
+from hal.realtime.config import (
     GeminiConfig,
     OpenAIConfig,
     QwenConfig,
     _load_language,
     gemini_needs_idle_workaround,
 )
-from hal.drivers.realtime.context_manager import (
+from hal.realtime.context_manager import (
     ClaudeCodeContextManager,
     ContextManagerBase,
     HermesContextManager,
     OpenClawContextManager,
 )
-from hal.drivers.realtime.enums import AgentGateway
-from hal.drivers.realtime.models import (
+from hal.realtime.enums import AgentGateway
+from hal.realtime.models import (
     FunctionCallOutput,
     FunctionCallResultInput,
     ImageInput,
     OutputBase,
     TextInput,
 )
-from hal.drivers.realtime.models.signal import DelegateSignal, LookReplaySignal
-from hal.drivers.realtime.summarizer import RealtimeSummarizer
-from hal.drivers.realtime.voice_agent.base import VoiceAgentBase
+from hal.realtime.models.signal import DelegateSignal, LookReplaySignal
+from hal.realtime.summarizer import RealtimeSummarizer
+from hal.realtime.voice_agent.base import VoiceAgentBase
 
 logger = logging.getLogger(__name__)
 
@@ -306,13 +306,13 @@ class RealtimeOrchestrator:
         """Build (not connect) a fresh agent for the provider. Shared by start()
         and the zombie rebuild so both create the agent identically."""
         if provider == "gemini":
-            from hal.drivers.realtime.voice_agent.gemini_live import GeminiLiveAgent
+            from hal.realtime.voice_agent.gemini_live import GeminiLiveAgent
 
             return GeminiLiveAgent(
                 config=GeminiConfig(instructions=instructions), tools=self._tools,
             )
         if provider == "openai":
-            from hal.drivers.realtime.voice_agent.openai_realtime import (
+            from hal.realtime.voice_agent.openai_realtime import (
                 OpenAIRealtimeAgent,
             )
 
@@ -320,7 +320,7 @@ class RealtimeOrchestrator:
                 config=OpenAIConfig(instructions=instructions), tools=self._tools,
             )
         if provider == "qwen":
-            from hal.drivers.realtime.voice_agent.qwen_realtime import (
+            from hal.realtime.voice_agent.qwen_realtime import (
                 QwenRealtimeAgent,
             )
 

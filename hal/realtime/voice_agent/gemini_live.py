@@ -18,9 +18,9 @@ from google.genai import types
 from google.genai.live import AsyncSession
 from websockets.exceptions import ConnectionClosed
 
-from hal.drivers.realtime.config import GeminiConfig, gemini_needs_idle_workaround
-from hal.drivers.realtime.enums import GeminiThinkingLevel
-from hal.drivers.realtime.models import (
+from hal.realtime.config import GeminiConfig, gemini_needs_idle_workaround
+from hal.realtime.enums import GeminiThinkingLevel
+from hal.realtime.models import (
     AgentInputEvent,
     AudioCommitEvent,
     AudioInput,
@@ -35,8 +35,8 @@ from hal.drivers.realtime.models import (
     TextOutput,
     TurnDoneEvent,
 )
-from hal.drivers.realtime.utils import float32_to_pcm16_bytes, pcm16_bytes_to_float32
-from hal.drivers.realtime.voice_agent.base import VoiceAgentBase
+from hal.realtime.utils import float32_to_pcm16_bytes, pcm16_bytes_to_float32
+from hal.realtime.voice_agent.base import VoiceAgentBase
 
 logger = logging.getLogger(__name__)
 # Per-turn token/cost lines go to their own file (gemini_usage.log) via a

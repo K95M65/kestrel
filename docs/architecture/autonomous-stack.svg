@@ -1,10 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1060" height="900" viewBox="0 0 1060 900" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" width="1060" height="910" viewBox="0 0 1060 910" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif">
   <defs>
     <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" fill="#64748b"/>
     </marker>
+    <marker id="arrUp" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#c7d2fe"/>
+    </marker>
   </defs>
-  <rect x="0" y="0" width="1060" height="900" fill="#f7f7f8"/>
+  <rect x="0" y="0" width="1060" height="910" fill="#f7f7f8"/>
   <text x="530" y="40" text-anchor="middle" font-size="30" font-weight="700" fill="#111111">Autonomous OS</text>
 
   <!-- Skills -->
@@ -54,44 +57,51 @@
   </g>
   <text x="826" y="442" text-anchor="middle" font-size="13" fill="#ffffff" fill-opacity="0.8">custom runtime</text>
 
+  <!-- Agentic Middle: slim interstitial band — realtime voice agent, brain-tier, hosted in the HAL -->
+  <rect x="74" y="488" width="912" height="52" rx="14" fill="#6366f1"/>
+  <text x="94" y="510" text-anchor="start" font-size="15" font-weight="600" fill="#ffffff">Agentic Middle</text>
+  <text x="94" y="527" text-anchor="start" font-size="10" fill="#ffffff" fill-opacity="0.85">realtime voice agent · hal/realtime — voice turns land here first</text>
+  <rect x="512" y="500" width="214" height="28" rx="8" fill="#ffffff" fill-opacity="0.16"/>
+  <text x="619" y="518" text-anchor="middle" font-size="11" font-weight="600" fill="#ffffff">answer directly · no skills/tools</text>
+  <rect x="734" y="500" width="224" height="28" rx="8" fill="#ffffff" fill-opacity="0.16"/>
+  <text x="846" y="518" text-anchor="middle" font-size="11" font-weight="600" fill="#ffffff">delegate ↑ · needs skills or tools</text>
+  <!-- delegate hand-off up into the Agentic Runtime band -->
+  <line x1="846" y1="500" x2="846" y2="478" stroke="#c7d2fe" stroke-width="2" marker-end="url(#arrUp)"/>
+
   <!-- HAL -->
-  <rect x="74" y="488" width="912" height="210" rx="16" fill="#06b6d4"/>
-  <text x="94" y="518" text-anchor="start" font-size="19" font-weight="600" fill="#ffffff">Hardware Abstraction Layer (HAL)</text>
-  <text x="966" y="518" text-anchor="end" font-size="11" fill="#ffffff" fill-opacity="0.85">devices/contract/ (ABI) · hal (host)</text>
+  <rect x="74" y="552" width="912" height="170" rx="16" fill="#06b6d4"/>
+  <text x="94" y="582" text-anchor="start" font-size="19" font-weight="600" fill="#ffffff">Hardware Abstraction Layer (HAL)</text>
+  <text x="966" y="582" text-anchor="end" font-size="11" fill="#ffffff" fill-opacity="0.85">devices/contract/ (ABI) · hal (host)</text>
   <g fill="#ffffff" fill-opacity="0.2">
-    <rect x="94" y="532" width="136" height="34" rx="10"/><rect x="241" y="532" width="136" height="34" rx="10"/><rect x="388" y="532" width="136" height="34" rx="10"/><rect x="535" y="532" width="136" height="34" rx="10"/><rect x="682" y="532" width="136" height="34" rx="10"/><rect x="829" y="532" width="137" height="34" rx="10"/>
-    <rect x="94" y="574" width="136" height="34" rx="10"/><rect x="241" y="574" width="136" height="34" rx="10"/><rect x="388" y="574" width="136" height="34" rx="10"/><rect x="535" y="574" width="136" height="34" rx="10"/><rect x="682" y="574" width="136" height="34" rx="10"/><rect x="829" y="574" width="137" height="34" rx="10"/>
+    <rect x="94" y="596" width="136" height="32" rx="10"/><rect x="241" y="596" width="136" height="32" rx="10"/><rect x="388" y="596" width="136" height="32" rx="10"/><rect x="535" y="596" width="136" height="32" rx="10"/><rect x="682" y="596" width="136" height="32" rx="10"/><rect x="829" y="596" width="137" height="32" rx="10"/>
+    <rect x="94" y="634" width="136" height="32" rx="10"/><rect x="241" y="634" width="136" height="32" rx="10"/><rect x="388" y="634" width="136" height="32" rx="10"/><rect x="535" y="634" width="136" height="32" rx="10"/><rect x="682" y="634" width="136" height="32" rx="10"/><rect x="829" y="634" width="137" height="32" rx="10"/>
   </g>
   <g fill="#ffffff" font-size="13" text-anchor="middle">
-    <text x="162" y="554">audio</text><text x="309" y="554">vision</text><text x="456" y="554">sensing</text><text x="603" y="554">presence</text><text x="750" y="554">motion</text><text x="897" y="554">light</text>
-    <text x="162" y="596">display</text><text x="309" y="596">expression</text><text x="456" y="596">media</text><text x="603" y="596">connectivity</text><text x="750" y="596">companion</text><text x="897" y="596">system</text>
+    <text x="162" y="617">audio</text><text x="309" y="617">vision</text><text x="456" y="617">sensing</text><text x="603" y="617">presence</text><text x="750" y="617">motion</text><text x="897" y="617">light</text>
+    <text x="162" y="655">display</text><text x="309" y="655">expression</text><text x="456" y="655">media</text><text x="603" y="655">connectivity</text><text x="750" y="655">companion</text><text x="897" y="655">system</text>
   </g>
-  <!-- Brain-layer code that lives inside the HAL (known divergence) + the deterministic safety gate -->
-  <rect x="94" y="640" width="424" height="40" rx="10" fill="#4f46e5"/>
-  <text x="306" y="658" text-anchor="middle" font-size="12.5" font-weight="600" fill="#ffffff">realtime voice agent — drivers/realtime</text>
-  <text x="306" y="673" text-anchor="middle" font-size="10" fill="#ffffff" fill-opacity="0.85">runtime-layer code hosted in the HAL</text>
-  <rect x="534" y="640" width="432" height="40" rx="10" fill="#7f1d1d" fill-opacity="0.9"/>
-  <text x="750" y="658" text-anchor="middle" font-size="12.5" font-weight="600" fill="#ffffff">safety gate — hal/safety</text>
-  <text x="750" y="673" text-anchor="middle" font-size="10" fill="#ffffff" fill-opacity="0.85">SAFETY.md bounds, enforced deterministically — never by the LLM</text>
+  <!-- deterministic safety gate — slim one-line bar -->
+  <rect x="94" y="674" width="872" height="30" rx="9" fill="#7f1d1d" fill-opacity="0.9"/>
+  <text x="530" y="693" text-anchor="middle" font-size="11" fill="#ffffff"><tspan font-weight="600">safety gate — hal/safety</tspan><tspan fill-opacity="0.85">   ·   SAFETY.md bounds, enforced deterministically — never by the LLM</tspan></text>
 
   <!-- Linux Kernel -->
-  <rect x="74" y="710" width="912" height="168" rx="16" fill="#ea580c"/>
-  <text x="94" y="740" text-anchor="start" font-size="19" font-weight="600" fill="#ffffff">Linux Kernel</text>
-  <text x="966" y="740" text-anchor="end" font-size="11" fill="#ffffff" fill-opacity="0.85">vendor kernel — not shipped</text>
-  <rect x="94" y="752" width="872" height="68" rx="12" fill="#ffffff" fill-opacity="0.12"/>
-  <text x="530" y="770" text-anchor="middle" font-size="12.5" font-weight="500" fill="#ffffff">Drivers — hal/drivers · per-board wiring: hal/board</text>
+  <rect x="74" y="734" width="912" height="168" rx="16" fill="#ea580c"/>
+  <text x="94" y="764" text-anchor="start" font-size="19" font-weight="600" fill="#ffffff">Linux Kernel</text>
+  <text x="966" y="764" text-anchor="end" font-size="11" fill="#ffffff" fill-opacity="0.85">vendor kernel — not shipped</text>
+  <rect x="94" y="776" width="872" height="68" rx="12" fill="#ffffff" fill-opacity="0.12"/>
+  <text x="530" y="794" text-anchor="middle" font-size="12.5" font-weight="500" fill="#ffffff">Drivers — hal/drivers · per-board wiring: hal/board</text>
   <g fill="#ffffff" fill-opacity="0.2">
-    <rect x="114" y="780" width="100" height="30" rx="8"/><rect x="226" y="780" width="70" height="30" rx="8"/><rect x="308" y="780" width="95" height="30" rx="8"/><rect x="415" y="780" width="95" height="30" rx="8"/><rect x="522" y="780" width="170" height="30" rx="8"/><rect x="704" y="780" width="120" height="30" rx="8"/><rect x="836" y="780" width="105" height="30" rx="8"/>
+    <rect x="114" y="804" width="100" height="30" rx="8"/><rect x="226" y="804" width="70" height="30" rx="8"/><rect x="308" y="804" width="95" height="30" rx="8"/><rect x="415" y="804" width="95" height="30" rx="8"/><rect x="522" y="804" width="170" height="30" rx="8"/><rect x="704" y="804" width="120" height="30" rx="8"/><rect x="836" y="804" width="105" height="30" rx="8"/>
   </g>
   <g fill="#ffffff" font-size="12" text-anchor="middle">
-    <text x="164" y="800">motors</text><text x="261" y="800">rgb</text><text x="355" y="800">display</text><text x="462" y="800">camera</text><text x="607" y="800">voice — STT · TTS · VAD</text><text x="764" y="800">gpio · touch</text><text x="888" y="800">bluetooth</text>
+    <text x="164" y="824">motors</text><text x="261" y="824">rgb</text><text x="355" y="824">display</text><text x="462" y="824">camera</text><text x="607" y="824">voice — STT · TTS · VAD</text><text x="764" y="824">gpio · touch</text><text x="888" y="824">bluetooth</text>
   </g>
-  <rect x="94" y="830" width="872" height="32" rx="10" fill="#ffffff" fill-opacity="0.12"/>
-  <text x="530" y="851" text-anchor="middle" font-size="14" font-weight="500" fill="#ffffff">Power Management</text>
+  <rect x="94" y="854" width="872" height="32" rx="10" fill="#ffffff" fill-opacity="0.12"/>
+  <text x="530" y="875" text-anchor="middle" font-size="14" font-weight="500" fill="#ffffff">Power Management</text>
 
   <!-- The two directions of the runtime loop -->
-  <line x1="44" y1="380" x2="44" y2="690" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
-  <text x="30" y="535" text-anchor="middle" font-size="11" fill="#475569" transform="rotate(-90 30 535)">act — capability calls (HAL :5001)</text>
-  <line x1="1016" y1="690" x2="1016" y2="380" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
-  <text x="1032" y="535" text-anchor="middle" font-size="11" fill="#475569" transform="rotate(90 1032 535)">sense — events → intent → agent turn</text>
+  <line x1="44" y1="390" x2="44" y2="700" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
+  <text x="30" y="545" text-anchor="middle" font-size="11" fill="#475569" transform="rotate(-90 30 545)">act — capability calls (HAL :5001)</text>
+  <line x1="1016" y1="700" x2="1016" y2="390" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
+  <text x="1032" y="545" text-anchor="middle" font-size="11" fill="#475569" transform="rotate(90 1032 545)">sense — events → intent → agent turn</text>
 </svg>

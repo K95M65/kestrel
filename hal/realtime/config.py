@@ -6,7 +6,7 @@ All values are read from hal.config (environment variables).
 from pydantic import BaseModel
 
 import hal.config as app_config
-from hal.drivers.realtime.enums import (
+from hal.realtime.enums import (
     GeminiThinkingLevel,
     GeminiVoice,
     OpenAIReasoningEffort,

@@ -68,9 +68,17 @@ Skills call capabilities (`motion.move`), never hardware models — so one skill
 body that declares the capability. A device's `DEVICE.md` declares which it has; the runtime
 mounts only those. The HAL also hosts the **safety gate** (`hal/safety`): `SAFETY.md`
 bounds — e-stop, motion limits, brightness, quiet hours — **enforced deterministically below
-the brain, never by the LLM**. The realtime voice agent (`hal/drivers/realtime`) runs
-in-process here too — runtime-layer code hosted in the HAL, marked purple in the diagram.
+the brain, never by the LLM**.
 *(`devices/contract/` + `hal` — see [HAL](docs/architecture/hal.md))*
+
+### Agentic Middle
+
+The realtime voice agent (`hal/realtime`) — brain-tier code the HAL hosts in-process, so it sits
+between the runtime and the HAL. Voice turns land here first and it decides per turn: **answer
+directly** when the turn is simple (small talk, nothing that needs skills or tools), or **delegate
+up** to the main agentic runtime when the turn needs skills or complex tool calls. Runs on Gemini
+Live, OpenAI Realtime, or Qwen.
+*(`hal/realtime` — see [realtime-voice.md](docs/realtime-voice.md))*
 
 ### Linux Kernel
 

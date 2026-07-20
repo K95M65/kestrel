@@ -12,8 +12,8 @@ from pathlib import Path
 from typing import Any
 
 import hal.config as app_config
-from hal.drivers.realtime.constants import RESOURCES_DIR
-from hal.drivers.realtime.summarizer import RealtimeSummarizer
+from hal.realtime.constants import RESOURCES_DIR
+from hal.realtime.summarizer import RealtimeSummarizer
 
 logger = logging.getLogger(__name__)
 

@@ -1,14 +1,14 @@
 """Enumerations for the realtime voice agent service."""
 
-from hal.drivers.realtime.enums.gemini import GeminiThinkingLevel, GeminiVoice
-from hal.drivers.realtime.enums.openai import (
+from hal.realtime.enums.gemini import GeminiThinkingLevel, GeminiVoice
+from hal.realtime.enums.openai import (
     OpenAIReasoningEffort,
     OpenAITruncationType,
     OpenAITurnDetectionType,
     OpenAIVoice,
 )
-from hal.drivers.realtime.enums.qwen import QwenVoice
-from hal.drivers.realtime.enums.shared import (
+from hal.realtime.enums.qwen import QwenVoice
+from hal.realtime.enums.shared import (
     AgentGateway,
     InputEventTypeEnum,
     InputTypeEnum,

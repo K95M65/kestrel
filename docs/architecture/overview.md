@@ -34,9 +34,14 @@ skill runs on any body that declares the capability — Lamp's servo arm and the
 wheels both serve `motion`. A device's `DEVICE.md` declares which it has; the runtime mounts
 only those. The HAL also hosts the **safety gate** (`hal/safety`): `SAFETY.md` bounds —
 e-stop, motion limits, brightness, quiet hours — enforced deterministically below the brain,
-never by the LLM. The realtime voice agent (`hal/drivers/realtime`) runs in-process here
-too — runtime-layer code hosted in the HAL, marked purple in the diagram.
+never by the LLM.
 *(`devices/contract/` + `hal` — see [hal.md](hal.md))*
+
+**Agentic Middle** — the realtime voice agent (`hal/realtime`, hosted in-process by the HAL but
+brain-tier, so it is drawn as its own band). Voice turns land here first, and it decides per turn:
+**answer directly** when the turn is simple (small talk, no skills or tools), or **delegate up** to
+the main agentic runtime (`[DELEGATE]`) when the turn needs skills or complex tool calls. Runs on
+Gemini Live, OpenAI Realtime, or Qwen — see [realtime-voice.md](../realtime-voice.md).
 
 **Linux Kernel** — the vendor kernel (Raspberry Pi OS / OrangePi, or a robot's onboard compute)
 we run on; we don't ship one. Our **Drivers** (`motors`, `rgb`, `display`, `camera`, `voice`

@@ -1,6 +1,6 @@
 """Claude Code context manager — OpenClaw workspace layout, skills under .claude/skills."""
 
-from hal.drivers.realtime.context_manager.openclaw import OpenClawContextManager
+from hal.realtime.context_manager.openclaw import OpenClawContextManager
 
 
 class ClaudeCodeContextManager(OpenClawContextManager):

@@ -6,7 +6,7 @@ import numpy as np
 import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict
 
-from hal.drivers.realtime.enums import InputTypeEnum
+from hal.realtime.enums import InputTypeEnum
 
 
 class InputBase(BaseModel):

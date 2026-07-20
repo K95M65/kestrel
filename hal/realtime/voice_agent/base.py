@@ -11,7 +11,7 @@ import numpy as np
 import numpy.typing as npt
 
 from hal import config as app_config
-from hal.drivers.realtime.models import (
+from hal.realtime.models import (
     AgentInputEvent,
     AgentOutputEvent,
     AudioCommitEvent,

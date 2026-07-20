@@ -12,10 +12,10 @@ import numpy as np
 from openai import OpenAI
 from openai.resources.realtime.realtime import RealtimeConnection
 
-from hal.drivers.realtime.config import OpenAIConfig
-from hal.drivers.realtime.enums import OpenAITurnDetectionType
-from hal.drivers.realtime.exceptions import OpenAIRealtimeError
-from hal.drivers.realtime.models import (
+from hal.realtime.config import OpenAIConfig
+from hal.realtime.enums import OpenAITurnDetectionType
+from hal.realtime.exceptions import OpenAIRealtimeError
+from hal.realtime.models import (
     AgentInputEvent,
     AudioCommitEvent,
     AudioInput,
@@ -30,11 +30,11 @@ from hal.drivers.realtime.models import (
     TextOutput,
     TurnDoneEvent,
 )
-from hal.drivers.realtime.utils import (
+from hal.realtime.utils import (
     base64_pcm16_to_float32,
     float32_to_base64_pcm16,
 )
-from hal.drivers.realtime.voice_agent.base import VoiceAgentBase
+from hal.realtime.voice_agent.base import VoiceAgentBase
 
 logger = logging.getLogger(__name__)
 
