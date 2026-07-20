@@ -37,7 +37,7 @@ contract/              the frozen ABI — what skills + devices build against
   COMPATIBILITY.md     the CDD — what a compliant device MUST do
 skills/                the apps (SKILL.md), by domain
 os/
-  services/            System Services (Go): intent, network, OTA, sensing routing
+  system/            System Services (Go): intent, network, OTA, sensing routing
   runtime/             the agentic-runtime bridge (gateway client, skill loader)
   hal/
     contract/          the capability interface (the routes/IDL)
@@ -53,8 +53,8 @@ backend/               off-device cloud inference (perception-service)
 docs/  LICENSE  CONTRIBUTING.md
 ```
 
-The `Drivers` and `Board` layers are surfaced as `os/hal/drivers/<subsystem>` and
-`os/hal/board/<board>` — the Linux split made physical. This requires renaming today's
+The `Drivers` and `Board` layers are surfaced as `hal/drivers/<subsystem>` and
+`hal/board/<board>` — the Linux split made physical. This requires renaming today's
 `lelamp` package and its deployed identifiers; see [Migration](#migration).
 
 ## The device contract (our "VINTF")
@@ -104,9 +104,9 @@ committees, no heavy process. Docs live in-tree beside the code they describe.
 The restructure landed in CI-gated stages:
 
 1. ✅ **Conformance + base**: `contract/COMPATIBILITY.md`, `contract/cts/`, `devices/_base`.
-2. ✅ **Go layer**: `os/core` → `os/services` (runtime bridge stays `os/services/internal/agent/runtimes/openclaw`).
-3. ✅ **HAL package**: `lelamp` → `hal`, surfaced as `os/hal/drivers` (by subsystem) +
-   `os/hal/board` (by board). Deploy identifiers renamed consistently (`/opt/hal`,
+2. ✅ **Go layer**: `os/core` → `services` (runtime bridge stays `runtimes/openclaw`).
+3. ✅ **HAL package**: `lelamp` → `hal`, surfaced as `hal/drivers` (by subsystem) +
+   `hal/board` (by board). Deploy identifiers renamed consistently (`/opt/hal`,
    `os/ota/hal`, `python -m hal.server`). On-device `LELAMP_*` env vars remain as **legacy
    aliases** until a field OTA cycle migrates them.
 4. ✅ **Lamp + Intern**: unchanged — they are `DEVICE.md` overlays over the shared core, so the

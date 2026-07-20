@@ -33,7 +33,7 @@ Các gate per-type ở trên độc lập với nhau — không có gate xuyên-
 
 ### Cơ chế hoạt động
 
-HAL bắn một sound event cho mỗi audio sample vượt ngưỡng `SOUND_RMS_THRESHOLD` — có thể nhiều lần mỗi giây. Python-side **sound tracker** (`os/hal/drivers/sensing/perceptions/sound.py`) áp dụng dedup và escalation trước khi forward lên Go. Go chỉ nhận các event đã pass và forward thẳng lên agent.
+HAL bắn một sound event cho mỗi audio sample vượt ngưỡng `SOUND_RMS_THRESHOLD` — có thể nhiều lần mỗi giây. Python-side **sound tracker** (`hal/drivers/sensing/perceptions/sound.py`) áp dụng dedup và escalation trước khi forward lên Go. Go chỉ nhận các event đã pass và forward thẳng lên agent.
 
 ### Hành vi leo thang (Escalation)
 
@@ -284,7 +284,7 @@ HAL (port 5001) theo dõi số lần mỗi stranger đã xuất hiện:
 
 ### Prompt enroll khi quen mặt (familiar-stranger)
 
-Khi visit count của một stranger lần đầu chạm ngưỡng (`_FAMILIAR_VISIT_THRESHOLD = 2`, xem `os/hal/drivers/sensing/perceptions/processors/facerecognizer.py`), HAL:
+Khi visit count của một stranger lần đầu chạm ngưỡng (`_FAMILIAR_VISIT_THRESHOLD = 2`, xem `hal/drivers/sensing/perceptions/processors/facerecognizer.py`), HAL:
 
 1. Lưu raw frame hiện tại ra `<STRANGERS_DIR>/snapshots/<stranger_id>_<ts_ms>.jpg`.
 2. Thêm hint vào message `presence.enter` đang gửi:
@@ -319,13 +319,13 @@ Wellbeing hoạt động **event-driven**. **KHÔNG còn cron wellbeing** nào. 
 
 **Dedup nằm ở 2 nơi.**
 
-*Activity dedup (window 5 phút).* `os/hal/drivers/sensing/perceptions/motion.py` giữ `_last_sent_key = (current_user, frozenset(labels))` và `_last_sent_ts`, trong đó `labels` khớp với outbound message (bucket names cho drink/break, raw Kinetics labels cho sedentary). Trước khi gửi `motion.activity` **và trước khi POST các row tới `/api/wellbeing/log`**, nếu key không đổi **và** khoảng cách từ lần gửi cuối chưa vượt `MOTION_DEDUP_WINDOW_S = 300` giây (5 phút) → drop cả chu kỳ. Nên `eating burger → eating cake` gộp thành cùng key `break` và bị drop, còn `writing → drawing` lật key (sedentary giữ raw) nên pass qua.
+*Activity dedup (window 5 phút).* `hal/drivers/sensing/perceptions/motion.py` giữ `_last_sent_key = (current_user, frozenset(labels))` và `_last_sent_ts`, trong đó `labels` khớp với outbound message (bucket names cho drink/break, raw Kinetics labels cho sedentary). Trước khi gửi `motion.activity` **và trước khi POST các row tới `/api/wellbeing/log`**, nếu key không đổi **và** khoảng cách từ lần gửi cuối chưa vượt `MOTION_DEDUP_WINDOW_S = 300` giây (5 phút) → drop cả chu kỳ. Nên `eating burger → eating cake` gộp thành cùng key `break` và bị drop, còn `writing → drawing` lật key (sedentary giữ raw) nên pass qua.
 
 - Đổi user (owner→owner, owner→unknown, unknown→owner) lật key ngay → event pass qua.
 - Stranger khác nhau (`stranger_46` → `stranger_54`) đều collapse về `"unknown"` qua `FaceRecognizer.current_user()` → đổi stranger không phá dedup.
 - Sau 5 phút cùng state, event tiếp theo vẫn pass — để Lamp agent "thức dậy" định kỳ chạy threshold check.
 
-*Presence dedup (safety net tại log).* `os/services/lib/wellbeing/wellbeing.go::LogForUser` scan file JSONL của user từ dưới lên để tìm **presence row** gần nhất (enter/leave, bỏ qua activity rows xen giữa). `enter` khi presence cuối đã là `enter` → drop; `leave` khi chưa có session mở → drop. Vì HAL đã fire 1 enter / 1 session thật (per-friend + unknown gộp), layer này chỉ là safety net cho restart / out-of-order edge case, không load-bearing.
+*Presence dedup (safety net tại log).* `system/lib/wellbeing/wellbeing.go::LogForUser` scan file JSONL của user từ dưới lên để tìm **presence row** gần nhất (enter/leave, bỏ qua activity rows xen giữa). `enter` khi presence cuối đã là `enter` → drop; `leave` khi chưa có session mở → drop. Vì HAL đã fire 1 enter / 1 session thật (per-friend + unknown gộp), layer này chỉ là safety net cho restart / out-of-order edge case, không load-bearing.
 
 **Retention:** 30 ngày. Goroutine trong `wellbeing.Init()` xoá file cũ hàng ngày.
 
@@ -386,7 +386,7 @@ Caller ngoài (web UI, skill) có thể query cùng giá trị qua `GET http://1
 
 Các skill Wellbeing, Mood, Music đều bắt buộc dùng đúng giá trị này cho field `user` trong API call — **cấm** suy luận từ memory, KNOWLEDGE.md, chat history, hay `senderLabel`.
 
-Cùng với `[context: current_user=X]`, handler còn inject thêm `[user_info: {"name","is_friend","telegram_id","telegram_username"}]` (build bởi `os/services/lib/skillcontext/BuildUserContext`, fetch từ lelamp `/user/info`). Skill phải đọc `telegram_id` từ block này — **cấm** `curl /user/info`. Block bị bỏ khi fetch fail hoặc `current_user` là `unknown`; SKILL.md vẫn giữ fallback path.
+Cùng với `[context: current_user=X]`, handler còn inject thêm `[user_info: {"name","is_friend","telegram_id","telegram_username"}]` (build bởi `system/lib/skillcontext/BuildUserContext`, fetch từ lelamp `/user/info`). Skill phải đọc `telegram_id` từ block này — **cấm** `curl /user/info`. Block bị bỏ khi fetch fail hoặc `current_user` là `unknown`; SKILL.md vẫn giữ fallback path.
 
 ### Marker presence do HAL tự ghi
 
@@ -581,8 +581,8 @@ Tùy chọn thay thế cho `MotionPerception` — chạy nhận diện hành đ�
 
 Lamp nhận diện trạng thái cảm xúc **của người dùng** qua ba kênh:
 
-1. **Biểu cảm khuôn mặt** (chính) — event `emotion.detected` từ `os/hal/drivers/sensing/perceptions/emotion.py`. Dùng emotion classifier chuyên dụng chạy trên perception-service tự host qua WebSocket. Nhận diện 7 cảm xúc: Angry, Disgust, Fear, Happy, Sad, Surprise, Neutral. Ngưỡng confidence cấu hình được (`EMOTION_CONFIDENCE_THRESHOLD`).
-2. **Cảm xúc giọng nói** (phụ) — event `speech_emotion.detected` từ `os/hal/drivers/voice/speech_emotion/`. Chạy ở cuối mỗi phiên STT đã nhận diện được speaker, cùng WAV bytes đã dùng cho speaker recognition. Dùng `emotion2vec_plus_large` trên perception-service qua HTTP. Xem [Speech Emotion Recognition](../speech-emotion.md) cho pipeline đầy đủ.
+1. **Biểu cảm khuôn mặt** (chính) — event `emotion.detected` từ `hal/drivers/sensing/perceptions/emotion.py`. Dùng emotion classifier chuyên dụng chạy trên perception-service tự host qua WebSocket. Nhận diện 7 cảm xúc: Angry, Disgust, Fear, Happy, Sad, Surprise, Neutral. Ngưỡng confidence cấu hình được (`EMOTION_CONFIDENCE_THRESHOLD`).
+2. **Cảm xúc giọng nói** (phụ) — event `speech_emotion.detected` từ `hal/drivers/voice/speech_emotion/`. Chạy ở cuối mỗi phiên STT đã nhận diện được speaker, cùng WAV bytes đã dùng cho speaker recognition. Dùng `emotion2vec_plus_large` trên perception-service qua HTTP. Xem [Speech Emotion Recognition](../speech-emotion.md) cho pipeline đầy đủ.
 3. **Body action** (cấp 3) — emotional X3D actions từ action recognition **cố ý bị loại** khỏi `motion.activity` (giờ thuần vật lý: sedentary/drink/break). Một event type `motion.emotional` riêng đang được lên kế hoạch.
 
 > **Đừng nhầm lẫn với Emotion Expression** (`emotion/SKILL.md`) — cái đó điều khiển cảm xúc đầu ra của Lamp (servo + LED + eyes). Emotion Detection là cảm nhận *user* đang cảm thấy gì; Emotion Expression là cách *Lamp* thể hiện cảm xúc của chính nó.
@@ -604,7 +604,7 @@ Emotion detected: Happy. (weak camera cue; confidence=0.78; bucket=positive; tre
 
 Prefix `Emotion detected: <Label>.` được giữ nguyên để parser của `user-emotion-detection/SKILL.md` và mood mapping Fear→stressed / Sad→sad vẫn chạy như cũ. Phần ngoặc đơn phía sau là để LLM không over-commit khi FER read nhiễu (bug từng gặp: Fear → "Oh hello there again"). Hedge theo bucket: `negative` → "do not assume the user is distressed"; `positive` → "do not over-celebrate"; `other` → "do not over-react".
 
-**Dedup theo polarity bucket** (`EMOTION_BUCKETS` trong `os/hal/drivers/sensing/perceptions/processors/emotion.py`) gộp các label chi tiết thành `positive` / `negative` / `other` và dedup theo `(current_user, bucket)` trong window 5 phút. Nhiễu trong cùng bucket (Fear↔Sad↔Anger) gộp thành 1 event/window; flip giữa hai bucket (Fear→Happy) vẫn fire như mood change thật. Confidence trong message được average **chỉ trên các lần xuất hiện của dominant label** — confidence của label khác không pha loãng. Map dedup được persist vào sidecar boot-scoped (`/tmp/hal-emotion-state.json`) nên restart HAL service không re-fire emotion cuối cùng ở flush đầu tiên; reboot cả device thì bắt đầu sạch.
+**Dedup theo polarity bucket** (`EMOTION_BUCKETS` trong `hal/drivers/sensing/perceptions/processors/emotion.py`) gộp các label chi tiết thành `positive` / `negative` / `other` và dedup theo `(current_user, bucket)` trong window 5 phút. Nhiễu trong cùng bucket (Fear↔Sad↔Anger) gộp thành 1 event/window; flip giữa hai bucket (Fear→Happy) vẫn fire như mood change thật. Confidence trong message được average **chỉ trên các lần xuất hiện của dominant label** — confidence của label khác không pha loãng. Map dedup được persist vào sidecar boot-scoped (`/tmp/hal-emotion-state.json`) nên restart HAL service không re-fire emotion cuối cùng ở flush đầu tiên; reboot cả device thì bắt đầu sạch.
 
 Sensing handler (`handler.go`) route `emotion.detected` events tới agent. Khi agent đang bận, events được queue và replay khi agent rảnh.
 
@@ -631,7 +631,7 @@ Xem `user-emotion-detection/SKILL.md` để biết rules phản hồi đầy đ�
 
 ### Event `speech_emotion.detected`
 
-Được HAL fire ở cuối mỗi phiên STT đã nhận diện được speaker, sau khi WAV bytes (cùng bytes đã dùng cho speaker `/embed`) được forward sang `perception-service /api/dl/ser/recognize` (emotion2vec_plus_large). Buffering, aggregation theo từng user, dedup theo polarity bucket, và POST sang Lamp đều nằm trong `os/hal/drivers/voice/speech_emotion/SpeechEmotionService` — `voice_service.py` chỉ gọi `submit(user, wav, duration)`. Format message giống pipeline khuôn mặt:
+Được HAL fire ở cuối mỗi phiên STT đã nhận diện được speaker, sau khi WAV bytes (cùng bytes đã dùng cho speaker `/embed`) được forward sang `perception-service /api/dl/ser/recognize` (emotion2vec_plus_large). Buffering, aggregation theo từng user, dedup theo polarity bucket, và POST sang Lamp đều nằm trong `hal/drivers/voice/speech_emotion/SpeechEmotionService` — `voice_service.py` chỉ gọi `submit(user, wav, duration)`. Format message giống pipeline khuôn mặt:
 
 ```
 Speech emotion detected: <Label>. (weak voice cue; confidence=<0.00-1.00>; bucket=<positive|negative|other>; treat as uncertain, <hedge theo bucket>.)
@@ -682,7 +682,7 @@ Các sensing event có kèm camera frame (`motion`, `presence.enter`, `presence.
 
 Mỗi loại event ghi vào subdir riêng (`sensing_<prefix>`, ví dụ `sensing_presence/`, `sensing_motion_activity/`, `sensing_emotion/`). Tên file là `<ms>.jpg`. Snapshot được lưu vào tmp trước, rồi copy sang persistent dir. Đường dẫn persistent được ghi trong event message (`[snapshot: /var/lib/hal/snapshots/sensing_<prefix>/<ms>.jpg]`) để agent có thể xem lại — kể cả sau khi thiết bị reboot. Monitor phục vụ ảnh qua `GET /api/sensing/snapshot/<category>/<name>`.
 
-Các hằng số cấu hình nằm trong `os/hal/config.py`:
+Các hằng số cấu hình nằm trong `hal/config.py`:
 - `SNAPSHOT_TMP_MAX_COUNT` — số file tối đa trong tmp (mặc định 50)
 - `SNAPSHOT_PERSIST_TTL_S` — TTL file persistent tính bằng giây (mặc định 72h)
 - `SNAPSHOT_PERSIST_MAX_BYTES` — dung lượng tối đa thư mục persistent (mặc định 50 MB)

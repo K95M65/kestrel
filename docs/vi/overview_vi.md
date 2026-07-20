@@ -15,7 +15,7 @@ Agentic Runtime (AI/LLM) → OS Server (Go, :5000) → HAL (Python, :5001) → P
 ## Thư Mục Dự Án
 
 ```
-os/services/
+system/
 ├── cmd/os-server/main.go              — Entry point OS Server
 ├── cmd/bootstrap/main.go         — OTA bootstrap worker
 ├── server/
@@ -26,22 +26,17 @@ os/services/
 │   ├── device/delivery/          — Setup (HTTP + MQTT handlers)
 │   ├── sensing/delivery/http/    — Sensing event → intent match / agent gateway
 │   └── openclaw/delivery/sse/    — OpenClaw status, SSE events
-├── internal/
-│   ├── agent/                    — Agent gateway (WebSocket)
-│   ├── ambient/                  — Idle behaviors (breathing LED, micro-movements)
-│   ├── beclient/                 — Backend status reporting
-│   ├── device/                   — Device setup orchestration
-│   ├── intent/                   — Local intent matching (voice commands)
-│   ├── monitor/                  — Event bus (ring buffer 200 events)
-│   ├── network/                  — WiFi AP/STA management
-│   ├── openclaw/                 — Agent runtime config + SOUL.md
-│   └── resetbutton/              — GPIO reset button
+├── agent/  ambient/  beclient/  buddy/  device/  healthwatch/
+├── intent/  monitor/  network/  skills/  statusled/  vision/
+│                                 — System managers, one folder per diagram chip
 ├── lib/mqtt/                     — MQTT client (Eclipse Paho autopaho)
 ├── domain/                       — Shared structs
 ├── bootstrap/                    — OTA worker
 └── web/                          — React 19 + Vite + Tailwind CSS 4 SPA
 
-os/hal/
+runtimes/                   — Swappable brains: openclaw/ hermes/ picoclaw/ codex/ claudecode/
+
+hal/
 ├── server.py                     — FastAPI server (38 endpoints)
 ├── config.py                     — Hằng số runtime (ngưỡng sensing, timeout, URL)
 ├── drivers/camera/               — Camera device (LocalVideoCaptureDevice, V4L2)
@@ -61,9 +56,9 @@ os/hal/
 └── pyproject.toml                — Python dependencies (opencv-python, insightface)
 
 devices/                          — Per-device configs and overlays
+  contract/                       — Shared API contracts (+ cts/ compliance suite)
 skills/                           — SKILL.md files cho agent runtime
 integrations/                     — Off-device: companions/, chat-bridges/, perception-service/
-contract/                         — Shared API contracts (+ cts/ compliance suite)
 ```
 
 ## Nguyên Tắc

@@ -19,11 +19,11 @@ User sends photo + @mention via Telegram
 
 ## Changes
 
-### 1. `os/hal/drivers/sensing/sensing_service.py`
+### 1. `hal/drivers/sensing/sensing_service.py`
 - Keep named `self._face_recognizer` reference (currently anonymous in `_perceptions` list)
 - On init after creating FaceRecognizer, call `self._face_recognizer.load_from_disk()` to re-train from saved photos
 
-### 2. `os/hal/drivers/sensing/perceptions/facerecognizer.py`
+### 2. `hal/drivers/sensing/perceptions/facerecognizer.py`
 - Add constant `ENROLLED_PHOTOS_DIR = Path(os.environ.get("HAL_DATA_DIR", "/root/lelamp/data")) / "enrolled_photos"`
 - Add `save_photo(image_bytes: bytes, label: str) -> str`:
   - Create dir `{ENROLLED_PHOTOS_DIR}/{label}/`
@@ -40,7 +40,7 @@ User sends photo + @mention via Telegram
 - Add `enrolled_count() -> int` and `enrolled_names() -> list[str]`
 - Modify `reset_enrolled()`: also delete all photos from disk
 
-### 3. `os/hal/server.py`
+### 3. `hal/server.py`
 - Add Pydantic models: `FaceEnrollRequest(image_base64, label)`, `FaceEnrollResponse`, `FaceStatusResponse`
 - `POST /face/enroll` — decode base64 → save photo → train → return status
 - `POST /face/reset` — clear all enrolled photos + embeddings
@@ -58,15 +58,15 @@ User sends photo + @mention via Telegram
   - Also handle: "who do you recognize?" → GET /face/status
   - Also handle: "forget face" / "reset faces" → POST /face/remove or /face/reset
 
-### 5. `os/services/internal/agent/runtimes/openclaw/onboarding.go`
+### 5. `runtimes/openclaw/onboarding.go`
 - Add `"face-enroll"` to the skills download list (~line 38-50)
 
 ## File list
-- `os/hal/drivers/sensing/perceptions/facerecognizer.py` — persistence + photo storage
-- `os/hal/drivers/sensing/sensing_service.py` — named reference + load on init
-- `os/hal/server.py` — HTTP endpoints
+- `hal/drivers/sensing/perceptions/facerecognizer.py` — persistence + photo storage
+- `hal/drivers/sensing/sensing_service.py` — named reference + load on init
+- `hal/server.py` — HTTP endpoints
 - `lamp/resources/openclaw-skills/face-enroll/SKILL.md` — new skill (new file)
-- `os/services/internal/agent/runtimes/openclaw/onboarding.go` — register skill
+- `runtimes/openclaw/onboarding.go` — register skill
 
 ## Storage
 ```

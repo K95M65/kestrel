@@ -2,7 +2,7 @@
 
 Everything in this folder runs **off the device** or bridges into it from outside. None of
 it is required for a device to boot or operate — the on-device OS stack lives in `os/`,
-`skills/`, `contract/`, and `devices/`. Remove this whole folder and the device still
+`skills/`, `devices/contract/`, and `devices/`. Remove this whole folder and the device still
 runs; you just lose the optional extras: desktop companions, external chat sources, and
 cloud GPU perception.
 
@@ -21,10 +21,10 @@ cloud GPU perception.
 ![Integrations map](integrations-map.svg)
 
 - **Chat bridges** enter through the same door as every other sense: `POST /api/sensing/event`
-  on os-server (`:5000`, LAN-gated — see `os/services/server/server.go`). Messages get an
+  on os-server (`:5000`, LAN-gated — see `system/server/server.go`). Messages get an
   intent match first, then an agent turn, exactly like voice or camera input.
 - **Perception service** is reached from the HAL via `DL_BACKEND_URL` and the `DL_*_ENDPOINT`
-  paths in `os/hal/config.py`. If the URL is unset, remote perceptions simply stay off.
+  paths in `hal/config.py`. If the URL is unset, remote perceptions simply stay off.
 
 ## Projects
 

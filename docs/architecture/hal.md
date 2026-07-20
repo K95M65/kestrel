@@ -10,7 +10,7 @@ not a fork" true.
 | | Capability | Driver |
 |---|---|---|
 | Example | `motion.move` | feetech servo on `/dev/ttyACM0` |
-| Lives in | `contract/capabilities.md` | `os/hal/drivers/*` |
+| Lives in | `devices/contract/capabilities.md` | `hal/drivers/*` |
 | Stability | **frozen** — never renamed/removed in a major version | internal — changes freely |
 | Addressed by | skills and the runtime | nothing above the HAL |
 
@@ -21,10 +21,10 @@ that one rule lets a skill run on Lamp, Intern, or any third-party body.
 ## How a capability resolves
 
 ```
-motion.move   capability   contract/capabilities.md      frozen
-  └ route      os/hal/routes/servo.py             HTTP surface
-    └ driver   os/hal/drivers/motors/*            talks to hardware
-      └ board  os/hal/board/board.py                     which bus / pins
+motion.move   capability   devices/contract/capabilities.md      frozen
+  └ route      hal/routes/servo.py             HTTP surface
+    └ driver   hal/drivers/motors/*            talks to hardware
+      └ board  hal/board/board.py                     which bus / pins
         └ node /dev/ttyACM0                              kernel device node
 ```
 
@@ -44,14 +44,14 @@ only those:
 | undeclared | skip (a different device) |
 
 This is why **Intern is Lamp minus `motion` and `display`** — same image, fewer
-declarations, no fork. *(planner: `os/hal/board/device.py`)*
+declarations, no fork. *(planner: `hal/board/device.py`)*
 
 ## Adding a capability
 
 Three existing artifacts, no new file type:
 
-1. **Driver** under `os/hal/drivers/<subsystem>/`, exposing a route.
-2. **`contract/capabilities.md`** — add the name to the frozen vocabulary.
+1. **Driver** under `hal/drivers/<subsystem>/`, exposing a route.
+2. **`devices/contract/capabilities.md`** — add the name to the frozen vocabulary.
 3. **`DEVICE.md`** — declare it on each device that has the hardware.
 
 If it moves, heats, or emits light/sound, it must expose a deterministic stop governed by
@@ -59,4 +59,4 @@ If it moves, heats, or emits light/sound, it must expose a deterministic stop go
 
 ## See also
 
-[overview.md](overview.md) · [kernel.md](kernel.md) · [`DEVICE-SPEC.md`](../../contract/DEVICE-SPEC.md)
+[overview.md](overview.md) · [kernel.md](kernel.md) · [`DEVICE-SPEC.md`](../../devices/contract/DEVICE-SPEC.md)

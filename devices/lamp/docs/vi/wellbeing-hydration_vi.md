@@ -224,22 +224,22 @@ Observations: Bỏ qua hydration đầu tiên, phản hồi tốt từ lần 2.
 
 | File | Vai trò |
 |------|---------|
-| `os/services/server/openclaw/delivery/sse/handler.go` | Xử lý lifecycle end: fire HW calls (emotion), broadcast qua Telegram, suppress TTS nếu cần |
-| `os/services/lib/mood/mood.go` | Log `wellbeing.hydration`, `wellbeing.break` events. `IsMoodEvent()` whitelist cả 2 type |
+| `system/server/openclaw/delivery/sse/handler.go` | Xử lý lifecycle end: fire HW calls (emotion), broadcast qua Telegram, suppress TTS nếu cần |
+| `system/lib/mood/mood.go` | Log `wellbeing.hydration`, `wellbeing.break` events. `IsMoodEvent()` whitelist cả 2 type |
 
 ### OpenClaw Skills
 
 | File | Vai trò |
 |------|---------|
 | `lamp/resources/openclaw-skills/sensing/SKILL.md` | Toàn bộ wellbeing logic: bootstrap crons, science reference, principles, presence.enter/leave workflow, motion activity reset |
-| `os/services/internal/agent/runtimes/openclaw/resources/SOUL.md` | Định nghĩa user folder structure (wellbeing.md, wellbeing/YYYY-MM-DD.md) |
+| `runtimes/openclaw/resources/SOUL.md` | Định nghĩa user folder structure (wellbeing.md, wellbeing/YYYY-MM-DD.md) |
 
 ### HAL (Python)
 
 | File | Vai trò |
 |------|---------|
-| `os/hal/drivers/sensing/perceptions/wellbeing.py` | **Stub/no-op** — class placeholder, tất cả logic đã chuyển sang AI cron |
-| `os/hal/drivers/sensing/sensing_service.py` | Instantiate WellbeingPerception (no-op) trong sensing pipeline |
+| `hal/drivers/sensing/perceptions/wellbeing.py` | **Stub/no-op** — class placeholder, tất cả logic đã chuyển sang AI cron |
+| `hal/drivers/sensing/sensing_service.py` | Instantiate WellbeingPerception (no-op) trong sensing pipeline |
 
 ### Frontend (React)
 
@@ -495,7 +495,7 @@ curl -s "http://127.0.0.1:5000/api/openclaw/mood-history?date=$(date +%Y-%m-%d)&
 | Per-user | Không | Có — mỗi người folder riêng |
 | Học thói quen | Không | Có — wellbeing.md + daily logs |
 | Reset timer | Không | Có — motion.activity reset khi user tự uống/vươn vai |
-| Code | `os/hal/drivers/sensing/perceptions/wellbeing.py` (active) | Stub no-op, logic trong SKILL.md |
+| Code | `hal/drivers/sensing/perceptions/wellbeing.py` (active) | Stub no-op, logic trong SKILL.md |
 
 ---
 

@@ -3,15 +3,15 @@ set -e
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ota-config.sh"
 
-DIST_DIR="${ROOT_DIR}/os/services/web/dist"
+DIST_DIR="${ROOT_DIR}/system/web/dist"
 ZIP_NAME="setup-web.zip"
 ZIP_PATH="${ROOT_DIR}/${ZIP_NAME}"
-VERSION_FILE="${ROOT_DIR}/os/services/VERSION_WEB"
+VERSION_FILE="${ROOT_DIR}/system/VERSION_WEB"
 
 # Bucket for web bundle
 
 echo "========== npm install =========="
-(cd "$ROOT_DIR/os/services/web" && npm install)
+(cd "$ROOT_DIR/system/web" && npm install)
 
 # Auto-increment semver (patch) before upload
 if [[ -f "$VERSION_FILE" ]]; then
@@ -30,7 +30,7 @@ fi
 GCS_PATH="${GCS_PATH:-${BUCKET_PREFIX}/ota/web/${new_version}.zip}"
 
 echo "========== npm run build =========="
-(cd "$ROOT_DIR/os/services/web" && npm run build)
+(cd "$ROOT_DIR/system/web" && npm run build)
 
 if [[ ! -d "$DIST_DIR" ]]; then
   echo "Error: dist not found at $DIST_DIR"

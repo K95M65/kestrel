@@ -132,15 +132,15 @@ LED feedback for system states (all `breathing` at speed 3.0 unless noted):
 | OTA success (bootstrap) | Green flash | `(0, 255, 80)` |
 | OTA failure (bootstrap) | Red pulse | `(255, 30, 30)` |
 
-Managed by `internal/statusled/Service` (lamp) and `lib/hal` directly (bootstrap).
+Managed by `system/statusled/Service` (lamp) and `lib/hal` directly (bootstrap).
 
-None of these colors are hardcoded in Go anymore — `internal/statusled` states, the
+None of these colors are hardcoded in Go anymore — `system/statusled` states, the
 bootstrap OTA-progress colors, and the setup-needed white all flow through HAL. The OS
 owns the state machine (WHEN a state shows) and sends the state *name* to HAL
 (`POST /led/status`: booting/error/ota/connectivity/hal_down/agent_down/hardware/
 ready_flash/ota_progress/ota_error/ota_success/setup); HAL resolves the color/effect/speed
 from `STATUS_LED_PRESETS`, overridable per device via `presets.json`'s `status_led` section
-(see [DEVICE-SPEC.md § Per-device presets](../../../contract/DEVICE-SPEC.md#per-device-presets-presetsjson)).
+(see [DEVICE-SPEC.md § Per-device presets](../../../devices/contract/DEVICE-SPEC.md#per-device-presets-presetsjson)).
 `setup` is a persistent solid (saved as the displayed state); the rest are transient overlays.
 
 ### Mic-muted idle indicator
@@ -179,10 +179,10 @@ See [emotion-led-mapping.md](emotion-led-mapping.md) for the full emotion → LE
 
 ### Unknown emotion names
 
-`POST /emotion` (`os/hal/routes/emotion.py`) never rejects a non-empty emotion name. Names are lowercased/trimmed; anything not in `EMOTION_PRESETS` falls back to `curious` (a neutral, always-safe expression) with a warning logged — callers are AI agents that sometimes invent emotion names, and a 400 would waste their turn with nothing showing on the device. Exception: while the device is sleeping, an unknown name is **ignored** (`status: ignored`) instead of falling back — `curious` is a wake emotion, so the fallback would let an invented name bypass the sleep gate and wake the device. Otherwise everything downstream (servo, LED) uses the resolved emotion.
+`POST /emotion` (`hal/routes/emotion.py`) never rejects a non-empty emotion name. Names are lowercased/trimmed; anything not in `EMOTION_PRESETS` falls back to `curious` (a neutral, always-safe expression) with a warning logged — callers are AI agents that sometimes invent emotion names, and a 400 would waste their turn with nothing showing on the device. Exception: while the device is sleeping, an unknown name is **ignored** (`status: ignored`) instead of falling back — `curious` is a wake emotion, so the fallback would let an invented name bypass the sleep gate and wake the device. Otherwise everything downstream (servo, LED) uses the resolved emotion.
 
 ## Per-device preset overrides
 
 A device can override these emotion/scene/aim values (and the LED ring size) without
 changing the shared defaults, via a `devices/<type>/presets.json` file. This is a
-platform mechanism — see [DEVICE-SPEC.md § Per-device presets](../../../contract/DEVICE-SPEC.md#per-device-presets-presetsjson).
+platform mechanism — see [DEVICE-SPEC.md § Per-device presets](../../../devices/contract/DEVICE-SPEC.md#per-device-presets-presetsjson).

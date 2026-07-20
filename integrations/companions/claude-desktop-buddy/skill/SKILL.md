@@ -10,7 +10,7 @@ interaction (and surfaces Claude activity) is now a **platform skill** so it
 ships to devices through the standard skill pipeline:
 
 - Source of truth: **`skills/claude-buddy/SKILL.md`** (repo root)
-- Registered in `os/services/internal/skills/skills.go` (`Catalog` + `Capability`
+- Registered in `system/skills/skills.go` (`Catalog` + `Capability`
   → `audio`) and `scripts/provision/setup.sh` (`skill_caps`)
 - Deployed via `scripts/release/upload-skills.sh` (OTA) → loaded by the agent
   runtime (`openclaw/skill_watcher`)

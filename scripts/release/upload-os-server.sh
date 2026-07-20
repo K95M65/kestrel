@@ -3,8 +3,8 @@ set -e
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ota-config.sh"
 
-OS_BIN="${ROOT_DIR}/os/services/os-server"
-VERSION_FILE="${ROOT_DIR}/os/services/${VERSION_FILE:-VERSION_OS_SERVER}"
+OS_BIN="${ROOT_DIR}/system/os-server"
+VERSION_FILE="${ROOT_DIR}/system/${VERSION_FILE:-VERSION_OS_SERVER}"
 
 # Bucket and path: ${BUCKET_PREFIX}/ota/os-server/[semver].zip
 

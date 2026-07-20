@@ -8,6 +8,7 @@ from the repo root — the Makefile targets are thin wrappers around these scrip
 | [`provision/`](provision/) | Runs **on the device**: first-boot setup (AP/STA, nginx, systemd units, HAL, agent runtime) and standalone component installers |
 | [`release/`](release/) | Runs **on a developer machine**: builds/zips each component, uploads to GCS, patches OTA `metadata.json`, promotes fleet rollouts |
 | [`maintenance/`](maintenance/) | Runs **on an existing device**: one-off idempotent patches for fleets provisioned before a fix landed in `setup.sh` |
+| [`imager/`](imager/) | Runs **on a build machine**: builds the flashable SBC golden image (OrangePi/RPi) — own Dockerfile + Makefile, uploads to GCS `os/imager/` |
 
 ## provision/
 
@@ -30,7 +31,7 @@ All scripts source **`ota-config.sh`** (single edit point: `GCS_BUCKET=s3-autono
 |--------|----------------------|----------------------------------------|
 | `upload-os-server.sh` | `os-server` binary (zip) | `os/ota/os-server/<ver>.zip` |
 | `upload-bootstrap.sh` | `bootstrap-server` binary (zip) | `os/ota/bootstrap/<ver>.zip` |
-| `upload-hal.sh` | `os/hal` source tree (zip) | `os/ota/hal/<ver>.zip` |
+| `upload-hal.sh` | `hal` source tree (zip) | `os/ota/hal/<ver>.zip` |
 | `upload-web.sh` | web `dist/` bundle (zip) | `os/ota/web/<ver>.zip` |
 | `upload-device.sh <type>` | one device profile: DEVICE/SOUL/SAFETY.md + rootfs overlay (zip) | `os/ota/devices/<type>/<ver>.zip` |
 | `upload-claude-desktop-buddy.sh` | `buddy-plugin` linux/arm64 (zip) | `os/ota/claude-desktop-buddy/<ver>.zip` |
@@ -53,12 +54,12 @@ data. `upload-device.sh` merges into the nested `devices.<type>` entry so
 independent device teams never clobber each other.
 
 **VERSION auto-bump.** Each upload script auto-increments the patch component of
-its version file (`os/services/VERSION_OS_SERVER`, `os/hal/VERSION_HAL`,
-`os/services/VERSION_WEB`, `devices/<type>/VERSION`, …) and injects it into the
+its version file (`system/VERSION_OS_SERVER`, `hal/VERSION_HAL`,
+`system/VERSION_WEB`, `devices/<type>/VERSION`, …) and injects it into the
 build (Go binaries via `make … VERSION=x.y.z` → ldflags). Never hand-edit these
 for a release, and never commit built binaries.
 
-**Upload ≠ rollout.** The device's `bootstrap` worker (`os/services/bootstrap/`)
+**Upload ≠ rollout.** The device's `bootstrap` worker (`system/bootstrap/`)
 polls `metadata.json` (default every 5m) and auto-applies a component only when
 its current version is strictly **below the floor** = `min_version` (falling
 back to `version` when unset). Uploading bumps `version` but preserves

@@ -1,6 +1,6 @@
 # Wiring
 
-Pin-by-pin map for everything connected to the SBC. Two columns: **Raspberry Pi 5** and **OrangePi 4 Pro (Allwinner A733 / sun60iw2)**. Numbers come straight from the code so this stays verifiable — `os/hal/drivers/...` references are noted in each row.
+Pin-by-pin map for everything connected to the SBC. Two columns: **Raspberry Pi 5** and **OrangePi 4 Pro (Allwinner A733 / sun60iw2)**. Numbers come straight from the code so this stays verifiable — `hal/drivers/...` references are noted in each row.
 
 Keep this in sync when wiring changes. Mismatch between this file and the code is a bug.
 
@@ -23,7 +23,7 @@ Single momentary tactile, normally-open. Single-click = stop / unmute. Triple-cl
 | Signal | BCM 17 | PL9 |
 | Char device | `/dev/gpiochip0` line 17 | `/dev/gpiochip1` line 9 |
 | GND | pin 9 | pin 9 |
-| Code | `os/hal/drivers/gpio_button.py:22-24` | `os/hal/drivers/gpio_button.py:30-32` |
+| Code | `hal/drivers/gpio_button.py:22-24` | `hal/drivers/gpio_button.py:30-32` |
 
 ---
 
@@ -39,9 +39,9 @@ Single momentary tactile, normally-open. Single-click = stop / unmute. Triple-cl
 | Bus speed | 6.4 MHz | 6.4 MHz |
 | 5 V | external 5 V rail (not header) | external 5 V rail (not header) |
 | GND | header pin 6 (common with rail) | header pin 6 (common with rail) |
-| Code | `os/hal/drivers/rgb/rgb_service.py:102-111` | `os/hal/drivers/rgb/rgb_service.py:176-180` |
+| Code | `hal/drivers/rgb/rgb_service.py:102-111` | `hal/drivers/rgb/rgb_service.py:176-180` |
 
-> **Pi 4 fallback**: PWM driver on GPIO 12 (header pin 32). See `os/hal/drivers/rgb/rgb_service.py:182-186`.
+> **Pi 4 fallback**: PWM driver on GPIO 12 (header pin 32). See `hal/drivers/rgb/rgb_service.py:182-186`.
 
 > **Power note**: 64 px × 60 mA white worst-case = 3.84 A. Software caps brightness; do not test at full white without a 5 A-capable rail.
 
@@ -58,10 +58,10 @@ Feetech STS3215 servos on a TTL daisy chain, driven by a USB-to-TTL servo contro
 | Servo count | 5 (chained) | 5 |
 | Servo power | external 5 V (NOT from USB) | external 5 V (NOT from USB) |
 | Protocol | Feetech SCS via `scservo_sdk` | same |
-| `P_Coefficient` | 16 (do **not** override — see `os/hal/UPSTREAM.md:37`) | 16 |
-| Code | `os/hal/config.py:13`, `os/hal/routes/servo.py:383` | same |
+| `P_Coefficient` | 16 (do **not** override — see `hal/UPSTREAM.md:37`) | 16 |
+| Code | `hal/config.py:13`, `hal/routes/servo.py:383` | same |
 
-> Servo and camera **share serialization** in software because of bus contention (`os/hal/UPSTREAM.md:26-27`). Mechanically they're independent — this is purely a runtime concern.
+> Servo and camera **share serialization** in software because of bus contention (`hal/UPSTREAM.md:26-27`). Mechanically they're independent — this is purely a runtime concern.
 
 ---
 
@@ -119,7 +119,7 @@ USB UVC. Plug into any free USB port (prefer USB 3 if available for headroom; 10
 | Enumeration | `/dev/video0` (first UVC device) | `/dev/video0` |
 | Pixel format | MJPG @ 1080p / 30 fps | MJPG @ 1080p / 30 fps |
 | Notes | Camera + servo serialize in software | same |
-| Code | `os/hal/routes/camera.py`, `os/hal/server.py` | same |
+| Code | `hal/routes/camera.py`, `hal/server.py` | same |
 
 ---
 

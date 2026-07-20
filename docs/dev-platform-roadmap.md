@@ -29,7 +29,7 @@ Key implication: **everything is local-only with no auth**. That is the first bl
 
 | Item | Why | Touches |
 |------|-----|---------|
-| API token auth on HAL + OS server | Without this, devs must SSH into device forever | `os/services/server`, `os/hal/server.py` |
+| API token auth on HAL + OS server | Without this, devs must SSH into device forever | `system/server`, `hal/server.py` |
 | Bind 0.0.0.0 + firewall guidance | LAN access from dev laptop | systemd units, web UI doc |
 | API versioning `/v1/*` | Lock contract before opening | All HTTP handlers |
 | OpenAPI spec | Codegen feedstock for SDKs | FastAPI auto for HAL; swaggo / kin-openapi for the OS server |
@@ -76,7 +76,7 @@ Goal: external dev writes skill, publishes, user installs in 1 click.
 | Registry | Cloud | `publish/install/list/remove` API + web UI |
 | Permission prompt | OS server UI | User approves on install (mobile-app style) |
 | Sandbox | Hard | Limit fs/network. Initially: only Autonomous-reviewed skills bypass |
-| Marketplace web UI | `os/services/web` or new site | Browse, install, manage |
+| Marketplace web UI | `system/web` or new site | Browse, install, manage |
 
 **Product/legal decisions required:** review process, revenue model, abuse policy, content guidelines.
 

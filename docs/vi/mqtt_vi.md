@@ -75,8 +75,8 @@ chuyển runtime — vd chuyển `openclaw` → `picoclaw` (chỉ telegram) khi�
 `config.channels_unsupported`, được `ChannelReconcile` ghi lại mỗi lần chuyển runtime.
 
 **HTTP backend ping mirror các field này.** Cú ping do device chủ động gửi
-(`POST {llm_base}/ping`, build bởi `internal/device.buildPingPayload`, gửi qua
-`internal/beclient`) mang cùng bộ field trạng thái thiết bị như uplink `info`
+(`POST {llm_base}/ping`, build bởi `system/device.buildPingPayload`, gửi qua
+`system/beclient`) mang cùng bộ field trạng thái thiết bị như uplink `info`
 này — `local_ip`, `device`, `device_id`, `timezone`, `tts_provider`,
 `tts_voice`, `stt_language`, `hal_version`, `unsupported_channels` — cộng thêm
 `agent_runtime` và `agent_runtime_version`. Khác với `info` (báo version của
@@ -386,7 +386,7 @@ nên code không tin cậy không thể thoát khỏi thư mục configs qua pat
 
 **Bảng fallback:** với các connector ra đời trước khi wire mang các khóa này
 (`notion`, `asana`, `linear`, `github`, `ahrefs`), một bảng compile-in cung
-cấp `mcp_url` + kiểu header từ catalog openclaw (`internal/agent/runtimes/openclaw/mcp.go`). Payload
+cấp `mcp_url` + kiểu header từ catalog openclaw (`runtimes/openclaw/mcp.go`). Payload
 **luôn thắng** — `mcp_url` trong payload override bảng fallback — nên bảng chỉ là lưới
 an toàn cho di trú đến khi backend gửi các khóa routing.
 
@@ -447,28 +447,28 @@ Xử lý bởi bootstrap worker, không qua MQTT handler trực tiếp.
 
 | File | Vai trò |
 |------|---------|
-| `os/services/lib/mqtt/client.go` | MQTT client (connect, subscribe, publish) |
-| `os/services/lib/mqtt/config.go` | Config struct |
-| `os/services/lib/mqtt/options.go` | Connection options |
-| `os/services/lib/mqtt/factory.go` | Factory tạo client với unique ID |
-| `os/services/server/device/delivery/mqtt/handler.go` | Command dispatcher |
-| `os/services/server/device/delivery/mqtt/info_handler.go` | Handle `info` command |
-| `os/services/server/device/delivery/mqtt/add_channel_hander.go` | Handle `add_channel` command (stream pairing events cho WhatsApp) |
-| `os/services/server/device/delivery/mqtt/slack_event_handler.go` | Handle `slack_event` / `slack_command` (runtime-aware: forward Slack HTTP-mode events tới gateway OpenClaw local, hoặc drive hermes turn nếu runtime là `SlackBridge`) |
-| `os/services/server/device/delivery/mqtt/data_handler.go` | Handle `data` command kinds `oauth.set`/`oauth.remove` (+ access-token store) |
-| `os/services/server/device/delivery/mqtt/connector_handler.go` | Handle `connector.set.<code>`/`connector.remove.<code>` (bất đồng bộ, dispatch writer qua `connectorWriterFor`) |
-| `os/services/server/device/delivery/mqtt/connector_writer.go` | Interface `ConnectorWriter` + file helpers `<code>_access_tokens.json` dùng chung |
-| `os/services/server/device/delivery/mqtt/connector_writer_generic.go` | `connectorWriter` data-driven: routing MCP theo payload, bảng fallback, chặn path-traversal, token file per-connector |
-| `os/services/server/device/delivery/mqtt/mcp_connector_writer.go` | Writer MCP stdio đặc biệt (`figma-api`): token file + entry MCP wrapper cục bộ trong `openclaw.json` |
-| `os/services/server/device/delivery/mqtt/connector_refresh.go` | Loop refresh token connector (`/connector/refresh-token`) |
-| `os/services/server/device/delivery/mqtt/system_info_handler.go` | Handle `data` kinds `system.info`/`system.version`/`system.network` |
-| `os/services/server/device/delivery/mqtt/channel_refresh_handler.go` | Handle `data` kind `channel.refresh_config` (re-apply block config của channel, bất đồng bộ) |
-| `os/services/server/device/delivery/mqtt/timezone_set_handler.go` | Handle `data` kind `timezone.set` (áp dụng múi giờ IANA của device, bất đồng bộ) |
-| `os/services/internal/device/timezone.go` | `SetTimezone`/`CurrentTimezone`: validate zone, ghi lại `/etc/localtime` + `/etc/timezone`, `timedatectl` best-effort, lưu config |
-| `os/services/internal/device/service.go` | `RefreshChannelConfig` (dựng request per-channel + capability gate) |
-| `os/services/internal/agent/channel_reconcile.go` | `ChannelReconcile`: áp dụng lại channel sau khi chuyển runtime, ghi `channels_unsupported` |
-| `os/services/server/device/delivery/mqtt/whatsapp_pair_handler.go` | Handle `whatsapp_pair` re-pair command |
-| `os/services/server/device/delivery/mqtt/claudecode_login_handler.go` | Handle `claudecode_login` / `claudecode_login_code` (claude.ai OAuth login) |
-| `os/services/internal/agent/runtimes/openclaw/pairing.go` | WhatsApp Baileys QR pairing subprocess driver |
-| `os/services/domain/device.go` | MQTTMessage, command constants |
-| `os/services/domain/pairing.go` | PairingEvent + status enum |
+| `system/lib/mqtt/client.go` | MQTT client (connect, subscribe, publish) |
+| `system/lib/mqtt/config.go` | Config struct |
+| `system/lib/mqtt/options.go` | Connection options |
+| `system/lib/mqtt/factory.go` | Factory tạo client với unique ID |
+| `system/server/device/delivery/mqtt/handler.go` | Command dispatcher |
+| `system/server/device/delivery/mqtt/info_handler.go` | Handle `info` command |
+| `system/server/device/delivery/mqtt/add_channel_hander.go` | Handle `add_channel` command (stream pairing events cho WhatsApp) |
+| `system/server/device/delivery/mqtt/slack_event_handler.go` | Handle `slack_event` / `slack_command` (runtime-aware: forward Slack HTTP-mode events tới gateway OpenClaw local, hoặc drive hermes turn nếu runtime là `SlackBridge`) |
+| `system/server/device/delivery/mqtt/data_handler.go` | Handle `data` command kinds `oauth.set`/`oauth.remove` (+ access-token store) |
+| `system/server/device/delivery/mqtt/connector_handler.go` | Handle `connector.set.<code>`/`connector.remove.<code>` (bất đồng bộ, dispatch writer qua `connectorWriterFor`) |
+| `system/server/device/delivery/mqtt/connector_writer.go` | Interface `ConnectorWriter` + file helpers `<code>_access_tokens.json` dùng chung |
+| `system/server/device/delivery/mqtt/connector_writer_generic.go` | `connectorWriter` data-driven: routing MCP theo payload, bảng fallback, chặn path-traversal, token file per-connector |
+| `system/server/device/delivery/mqtt/mcp_connector_writer.go` | Writer MCP stdio đặc biệt (`figma-api`): token file + entry MCP wrapper cục bộ trong `openclaw.json` |
+| `system/server/device/delivery/mqtt/connector_refresh.go` | Loop refresh token connector (`/connector/refresh-token`) |
+| `system/server/device/delivery/mqtt/system_info_handler.go` | Handle `data` kinds `system.info`/`system.version`/`system.network` |
+| `system/server/device/delivery/mqtt/channel_refresh_handler.go` | Handle `data` kind `channel.refresh_config` (re-apply block config của channel, bất đồng bộ) |
+| `system/server/device/delivery/mqtt/timezone_set_handler.go` | Handle `data` kind `timezone.set` (áp dụng múi giờ IANA của device, bất đồng bộ) |
+| `system/device/timezone.go` | `SetTimezone`/`CurrentTimezone`: validate zone, ghi lại `/etc/localtime` + `/etc/timezone`, `timedatectl` best-effort, lưu config |
+| `system/device/service.go` | `RefreshChannelConfig` (dựng request per-channel + capability gate) |
+| `system/agent/channel_reconcile.go` | `ChannelReconcile`: áp dụng lại channel sau khi chuyển runtime, ghi `channels_unsupported` |
+| `system/server/device/delivery/mqtt/whatsapp_pair_handler.go` | Handle `whatsapp_pair` re-pair command |
+| `system/server/device/delivery/mqtt/claudecode_login_handler.go` | Handle `claudecode_login` / `claudecode_login_code` (claude.ai OAuth login) |
+| `runtimes/openclaw/pairing.go` | WhatsApp Baileys QR pairing subprocess driver |
+| `system/domain/device.go` | MQTTMessage, command constants |
+| `system/domain/pairing.go` | PairingEvent + status enum |

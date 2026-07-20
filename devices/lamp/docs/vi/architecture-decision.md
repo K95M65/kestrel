@@ -132,11 +132,11 @@ Sensing Loop (Lamp Server, luôn chạy):
 server/server.go          — HTTP server (Gin, port 5000)
 server/config/            — Quản lý cấu hình JSON
 internal/resetbutton/     — GPIO 26 nhấn giữ
-internal/network/         — WiFi AP/STA
-internal/agent/runtimes/openclaw/        — Cấu hình OpenClaw & WebSocket
-internal/beclient/        — Backend client, báo cáo trạng thái
-internal/device/          — Setup, xử lý lệnh MQTT, báo cáo trạng thái
-internal/ambient/         — Hành vi idle "sinh vật sống" (breathing LED, color drift, servo micro-movements, TTS mumbles). Gọi HAL HTTP API. Tự pause/resume.
+system/network/         — WiFi AP/STA
+runtimes/openclaw/        — Cấu hình OpenClaw & WebSocket
+system/beclient/        — Backend client, báo cáo trạng thái
+system/device/          — Setup, xử lý lệnh MQTT, báo cáo trạng thái
+system/ambient/         — Hành vi idle "sinh vật sống" (breathing LED, color drift, servo micro-movements, TTS mumbles). Gọi HAL HTTP API. Tự pause/resume.
 lib/mqtt/                 — MQTT client, tự kết nối lại
 bootstrap/                — OTA, kiểm tra version
 domain/                   — Struct dùng chung (device, network, OTA, OpenClaw)
@@ -474,11 +474,11 @@ Tất cả hardware endpoints chạy trực tiếp trên HAL FastAPI (:5001). Op
 | Thành phần | Trạng thái |
 |---|---|
 | 10 SKILL.md files | ✅ `lamp/resources/openclaw-skills/` |
-| HAL 38 endpoints | ✅ `os/hal/server.py` |
-| Sensing event routing | ✅ `os/services/server/sensing/` |
-| Local intent matching | ✅ `os/services/internal/intent/` |
-| Voice pipeline (VAD + Deepgram) | ✅ `os/hal/drivers/voice/` |
-| Ambient idle behaviors | ✅ `os/services/internal/ambient/` |
+| HAL 38 endpoints | ✅ `hal/server.py` |
+| Sensing event routing | ✅ `system/server/sensing/` |
+| Local intent matching | ✅ `system/intent/` |
+| Voice pipeline (VAD + Deepgram) | ✅ `hal/drivers/voice/` |
+| Ambient idle behaviors | ✅ `system/ambient/` |
 
 ### Phần Cứng ↔ Tầng Mapping
 

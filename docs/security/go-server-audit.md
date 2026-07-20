@@ -2,7 +2,7 @@
 
 Date: 2026-05-16  
 Repo: `lamp`  
-Scope: Lamp Go server only (`os/services/server`, `os/services/internal`, `os/services/domain`, nginx `/api/` wiring).  
+Scope: Lamp Go server only (`system/server`, `system/`, `system/domain`, nginx `/api/` wiring).  
 Instruction: report issues and exact remediation guidance only; do **not** patch runtime code in this document.
 
 ## Executive summary
@@ -59,11 +59,11 @@ location /api/ {
 upstream backend { server 127.0.0.1:5000; }
 ```
 
-Equivalent config exists in `imager/build.sh`.
+Equivalent config exists in `scripts/imager/build.sh`.
 
 ### Lamp Go server listens on all interfaces
 
-In `os/services/server/server.go`:
+In `system/server/server.go`:
 
 ```go
 srv := &http.Server{
@@ -76,7 +76,7 @@ This binds to all interfaces. If port `5000` is reachable directly, nginx is not
 
 ### Routes are registered without auth middleware
 
-In `os/services/server/server.go`, the router uses:
+In `system/server/server.go`, the router uses:
 
 ```go
 r := gin.Default()
@@ -99,7 +99,7 @@ No authentication middleware is applied to `api` or sensitive subgroups.
 
 ### Evidence
 
-`os/services/server/server.go` creates `api := r.Group("api")` and then registers sensitive routes directly. Examples:
+`system/server/server.go` creates `api := r.Group("api")` and then registers sensitive routes directly. Examples:
 
 ```go
 system.POST("software-update/:target", s.softwareUpdate)
@@ -145,7 +145,7 @@ Introduce explicit API zones:
 
 ### Suggested implementation pattern
 
-#### File: `os/services/server/server.go`
+#### File: `system/server/server.go`
 
 Create middleware helpers:
 
@@ -206,7 +206,7 @@ Expected after fix:
 
 ### Evidence
 
-`os/services/server/server.go`:
+`system/server/server.go`:
 
 ```go
 func corsMiddleware() gin.HandlerFunc {
@@ -242,7 +242,7 @@ Best option: **remove CORS entirely** if web UI and `/api/` are same-origin thro
 
 If CORS is needed for dev, make it opt-in and restricted.
 
-#### File: `os/services/server/server.go`
+#### File: `system/server/server.go`
 
 Replace wildcard CORS with same-origin/explicit allowlist:
 
@@ -310,7 +310,7 @@ Expected: `403 Forbidden`.
 
 ### Evidence
 
-Route registration in `os/services/server/server.go`:
+Route registration in `system/server/server.go`:
 
 ```go
 system.POST("exec", s.execCommand)
@@ -350,7 +350,7 @@ Options:
 
 #### Option A — Delete route from production
 
-In `os/services/server/server.go`, remove:
+In `system/server/server.go`, remove:
 
 ```go
 system.POST("exec", s.execCommand)
@@ -617,7 +617,7 @@ func (h *DeviceHandler) GetConfig(c *gin.Context) {
 }
 ```
 
-Response struct includes secrets in `os/services/domain/device.go`:
+Response struct includes secrets in `system/domain/device.go`:
 
 ```go
 type ConfigResponse struct {
@@ -653,7 +653,7 @@ Split config into two APIs:
 1. **Public/sanitized config view**: no secrets, only booleans or masked values.
 2. **Secret update endpoint**: write-only; never returns stored secret values.
 
-#### File: `os/services/domain/device.go`
+#### File: `system/domain/device.go`
 
 Create sanitized response:
 
@@ -688,11 +688,11 @@ func maskSecret(v string) string {
 }
 ```
 
-#### File: `os/services/internal/device/service.go`
+#### File: `system/device/service.go`
 
 Change `GetConfig()` to return sanitized response for remote UI. If a full config is needed internally, expose a separate internal method not bound to HTTP.
 
-#### File: `os/services/server/device/delivery/http/handler.go`
+#### File: `system/server/device/delivery/http/handler.go`
 
 Protect config endpoint:
 
@@ -1069,7 +1069,7 @@ Expected: `401`/`403`.
 
 ### Evidence
 
-Routes in `os/services/server/server.go`:
+Routes in `system/server/server.go`:
 
 ```go
 sensing.POST("event", s.sensingHandler.PostEvent)
@@ -1144,13 +1144,13 @@ Expected: `401`/`403`.
 
 ### Evidence
 
-`os/services/server/server.go`:
+`system/server/server.go`:
 
 ```go
 Addr: fmt.Sprintf(":%d", s.config.HttpPort)
 ```
 
-`os/services/server/config/config.go` has only:
+`system/server/config/config.go` has only:
 
 ```go
 HttpPort int `json:"httpPort" yaml:"httpPort" validate:"required"`
@@ -1239,7 +1239,7 @@ Expected: still works.
 
 ### Evidence
 
-`os/services/bootstrap/bootstrap.go`:
+`system/bootstrap/bootstrap.go`:
 
 ```go
 srv := &http.Server{Addr: fmt.Sprintf(":%d", port), Handler: r}
@@ -1298,7 +1298,7 @@ Expected: works.
 
 ### Local-only middleware
 
-File: `os/services/server/server.go` or new file `os/services/server/security.go`.
+File: `system/server/server.go` or new file `system/server/security.go`.
 
 ```go
 func isLoopbackHost(host string) bool {
@@ -1538,7 +1538,7 @@ Expected: `401`/`403` without auth; redacted with auth.
 
 ### Core server security
 
-- `os/services/server/server.go`
+- `system/server/server.go`
   - Replace wildcard CORS.
   - Add `localOnlyMiddleware`.
   - Add/admin wire auth middleware.
@@ -1546,33 +1546,33 @@ Expected: `401`/`403` without auth; redacted with auth.
   - Protect logs and OTA routes.
   - Optionally bind `Addr` using explicit `HttpHost`.
 
-- `os/services/server/config/config.go`
+- `system/server/config/config.go`
   - Add `HttpHost` if direct bind control is desired.
   - Add admin token path/config if implementing token auth.
   - Avoid exposing admin token via `ConfigResponse`.
 
 ### Device config/secret handling
 
-- `os/services/domain/device.go`
+- `system/domain/device.go`
   - Replace `ConfigResponse` for HTTP with redacted/sanitized response.
   - Keep internal config struct separate from API response.
 
-- `os/services/internal/device/service.go`
+- `system/device/service.go`
   - Update `GetConfig()` to return sanitized data for HTTP.
   - Add validation to `UpdateConfig()` for base URLs and high-risk fields.
   - Debounce/rate-limit service restarts triggered by config updates.
 
-- `os/services/server/device/delivery/http/handler.go`
+- `system/server/device/delivery/http/handler.go`
   - Require auth for `GetConfig`, `UpdateConfig`, `ChangeChannel`.
   - Restrict `Setup` to setup mode only.
 
 ### OpenClaw config exposure
 
-- `os/services/internal/agent/runtimes/openclaw/service_chat.go`
+- `runtimes/openclaw/service_chat.go`
   - Avoid returning raw `openclaw.json` to remote handlers.
   - Add redacted config summary method.
 
-- `os/services/server/openclaw/delivery/sse/handler_api_monitor.go`
+- `system/server/openclaw/delivery/sse/handler_api_monitor.go`
   - Replace raw `ConfigJSON` response or local-only guard it.
 
 - Frontend callers to update if endpoint changes:
@@ -1582,13 +1582,13 @@ Expected: `401`/`403` without auth; redacted with auth.
 
 ### Logs
 
-- `os/services/server/server.go`
+- `system/server/server.go`
   - Protect `logs.GET("tail")` and `logs.GET("stream")`.
   - Redact secret-like patterns in log output.
 
 ### Bootstrap
 
-- `os/services/bootstrap/bootstrap.go`
+- `system/bootstrap/bootstrap.go`
   - Bind health/update server to `127.0.0.1` or protect `/force-check`.
 
 ### Nginx integration
@@ -1597,7 +1597,7 @@ Expected: `401`/`403` without auth; redacted with auth.
   - If shell remains, add `allow/deny` to `location = /api/system/shell`.
   - Consider restricting `/api/` by route at nginx only as defense-in-depth; app auth should be primary.
 
-- `imager/build.sh`
+- `scripts/imager/build.sh`
   - Mirror production nginx restrictions.
 
 ---

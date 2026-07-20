@@ -20,7 +20,7 @@ integrations/perception-service/local
 
 # Runtime config (contains device-specific values and secrets)
 config/config.json
-os/services/config/config.json
+system/config/config.json
 
 # Voice biometric data — never commit (PII)
 **/mock_data/audio/speaker_db*.json
@@ -39,13 +39,13 @@ os/services/config/config.json
 *.pprof
 
 # Lamp (Go)
-os/services/os-server
-os/services/os-server.~
-os/services/bootstrap-server
-os/services/bootstrap-server.~
-os/services/vendor/
-os/services/web/node_modules/
-os/services/web/dist/
+system/os-server
+system/os-server.~
+system/bootstrap-server
+system/bootstrap-server.~
+/vendor/
+system/web/node_modules/
+system/web/dist/
 *.zip
 
 # Claude Desktop Buddy (Go) — binary outputs
@@ -57,7 +57,7 @@ integrations/companions/claude-desktop-buddy/claude-desktop-buddy
 __pycache__
 *.egg-info
 
-imager/output/*.img
+scripts/imager/output/*.img
 scripts/release/.skill-hashes
 
 

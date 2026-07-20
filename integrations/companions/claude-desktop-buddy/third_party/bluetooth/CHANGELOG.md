@@ -60,7 +60,7 @@
 * **core**
   - gap: do not add ADFlags to advertising data for AdvertisingTypeNonConnInd, to leave room for FindMy data
   - gap: make generic services function for HCI separate function
-  - update to latest version of Bluetooth numbers database for latest services/characteristics
+  - update to latest version of Bluetooth numbers database for latest system/characteristics
 * **linux**
   - gap: add implementation for SetRandomAddress() function
   - gap: correct HCI implementation so it can Configure/Start/Stop advertising correctly. Needed to update ServiceData after Advertisment is already started.
@@ -237,7 +237,7 @@ update the EnableNotifications Method, add the parameter to specifing… (#293)
   - correct badge link for GH actions
   - README: add note on macOS Big Sur and iTerm2
 * **linux**
-  - do not randomize order of returned discovered services/chars
+  - do not randomize order of returned discovered system/chars
   - fix characteristic scan order
   - implement disconnect handling
 * **macos**

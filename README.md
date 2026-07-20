@@ -49,7 +49,7 @@ device's own abilities (through the HAL); tools are external capabilities the ru
 The always-on Go daemon: `intent` (fast local commands), `network`, `sensing` routing,
 `monitor` (flow event bus), `healthwatch`, `ambient`, and `device`. Deterministic — they run
 with or without the runtime. OTA runs as its own worker (`bootstrap/`).
-*(`os/services/internal`)*
+*(`system/`)*
 
 ### Agentic Runtime
 
@@ -57,7 +57,7 @@ with or without the runtime. OTA runs as its own worker (`bootstrap/`).
 runtime. Runs the skills, embodies the device's `SOUL.md`, and decides what to act on.
 Swappable at runtime (web Settings or MQTT) — and where Autonomous OS's differentiated value
 (the default brain, memory, character) lives.
-*(`os/services/internal/agent/runtimes/{openclaw,hermes,picoclaw,codex,claudecode}`; adding
+*(`runtimes/{openclaw,hermes,picoclaw,codex,claudecode}`; adding
 your own: `docs/agentic/adding-agent-runtime.md`)*
 
 ### Hardware Abstraction Layer (HAL)
@@ -66,17 +66,25 @@ The frozen, versioned interface — 12 capabilities: `audio`, `vision`, `sensing
 `motion`, `light`, `display`, `expression`, `media`, `connectivity`, `companion`, `system`.
 Skills call capabilities (`motion.move`), never hardware models — so one skill runs on any
 body that declares the capability. A device's `DEVICE.md` declares which it has; the runtime
-mounts only those. The HAL also hosts the **safety gate** (`os/hal/safety`): `SAFETY.md`
+mounts only those. The HAL also hosts the **safety gate** (`hal/safety`): `SAFETY.md`
 bounds — e-stop, motion limits, brightness, quiet hours — **enforced deterministically below
-the brain, never by the LLM**. The realtime voice agent (`os/hal/drivers/realtime`) runs
-in-process here too — runtime-layer code hosted in the HAL, marked purple in the diagram.
-*(`contract/` + `os/hal` — see [HAL](docs/architecture/hal.md))*
+the brain, never by the LLM**.
+*(`devices/contract/` + `hal` — see [HAL](docs/architecture/hal.md))*
+
+### Agentic Middle
+
+The realtime voice agent (`hal/realtime`) — brain-tier code the HAL hosts in-process, so it sits
+between the runtime and the HAL. Voice turns land here first and it decides per turn: **answer
+directly** when the turn is simple (small talk, nothing that needs skills or tools), or **delegate
+up** to the main agentic runtime when the turn needs skills or complex tool calls. Runs on Gemini
+Live, OpenAI Realtime, or Qwen.
+*(`hal/realtime` — see [realtime-voice.md](docs/realtime-voice.md))*
 
 ### Linux Kernel
 
 The vendor kernel (Raspberry Pi OS / OrangePi, or the robot's onboard compute) we run on — we
 don't ship one. Our **Drivers** (`motors`, `rgb`, `display`, `camera`, `voice` (STT/TTS/VAD),
-`gpio`/`touch`, `bluetooth` in `os/hal/drivers`, with per-board wiring in `os/hal/board`) are
+`gpio`/`touch`, `bluetooth` in `hal/drivers`, with per-board wiring in `hal/board`) are
 userspace programs talking to it through GPIO/SPI/ALSA/V4L2;
 **Power Management** is the foundation.
 *(see [kernel](docs/architecture/kernel.md))*
@@ -94,8 +102,8 @@ Every device is self-describing to both humans and the runtime, in four files:
 | `SOUL.md` | the **self** — who it is | the runtime |
 | `SAFETY.md` | the **bounds** — what it must never do | the OS (deterministic) |
 
-The contract that governs them lives under [`contract/`](contract/) — see
-[`DEVICE-SPEC.md`](contract/DEVICE-SPEC.md) and [`capabilities.md`](contract/capabilities.md).
+The contract that governs them lives under [`devices/contract/`](devices/contract/) — see
+[`DEVICE-SPEC.md`](devices/contract/DEVICE-SPEC.md) and [`capabilities.md`](devices/contract/capabilities.md).
 
 ## Repository layout
 
@@ -103,20 +111,20 @@ The tree maps onto the architecture layers (top of the stack first):
 
 ```
 # The OS
-contract/         HAL capability ABI — frozen, versioned (what skills build against)
-  cts/            compliance test suite — validates devices against the contract
 skills/           Skills — the apps (SKILL.md)
-os/
-  services/       Agentic-runtime bridge + System Services (Go): intent, network, OTA, sensing
-    web/          on-device setup + monitor UI (React)
-  hal/            HAL (Python) — the package; capability host + routes
-    drivers/      Drivers — by subsystem (motion, audio, vision, light, display, sensing)
-    board/        Board Support — per-board profiles + declaration-driven mounting
+system/           System Managers (Go): one folder per manager — intent, network, monitor, OTA…
+  web/            on-device setup + monitor UI (React)
+runtimes/         Agentic Runtime — one folder per swappable brain (openclaw, hermes, picoclaw, codex, claudecode)
+hal/              HAL (Python) — the package; capability host + routes
+  drivers/        Drivers — by subsystem (motion, audio, vision, light, display, sensing)
+  board/          Board Support — per-board profiles + declaration-driven mounting
 devices/          reference devices: lamp/, intern-v2/ (DEVICE · SOUL · SAFETY · README · hardware/)
+  contract/       HAL capability ABI — frozen, versioned (what skills build against)
+    cts/          compliance test suite — validates devices against the contract
 
 # Supporting
 docs/             documentation, incl. docs/architecture/
-scripts/  imager/ build, OTA, and SBC image tooling
+scripts/          build, OTA, and SBC image tooling (incl. scripts/imager/)
 
 # Off-device & integrations
 integrations/
@@ -125,17 +133,17 @@ integrations/
   perception-service/  off-device cloud perception inference
 ```
 
-> `Drivers` and `Board Support` are surfaced as `os/hal/drivers` and `os/hal/board`.
+> `Drivers` and `Board Support` are surfaced as `hal/drivers` and `hal/board`.
 
 ## Quick start
 
 ```bash
 # Go system services (cross-compiled to linux/arm64 — Pi or OrangePi)
-make os-build              # builds the system server (os/services)
+make os-build              # builds the system server (system/)
 make os-test               # go test ./...
 
 # Hardware runtime (runs on the Pi or OrangePi)
-cd os/hal && uv sync
+cd hal && uv sync
 make hal-dev               # uvicorn reload on :5001
 make hal-test              # pytest
 

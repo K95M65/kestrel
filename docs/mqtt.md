@@ -76,8 +76,8 @@ any configured `slack`/`discord` as unsupported. The list is sourced from
 `config.channels_unsupported`, which `ChannelReconcile` rewrites on each switch.
 
 **HTTP backend ping mirrors these fields.** The device-initiated ping
-(`POST {llm_base}/ping`, built by `internal/device.buildPingPayload`, sent via
-`internal/beclient`) carries the same device-state fields as this `info` uplink —
+(`POST {llm_base}/ping`, built by `system/device.buildPingPayload`, sent via
+`system/beclient`) carries the same device-state fields as this `info` uplink —
 `local_ip`, `device`, `device_id`, `timezone`, `tts_provider`, `tts_voice`,
 `stt_language`, `hal_version`, `unsupported_channels` — plus `agent_runtime` and
 `agent_runtime_version`. Unlike `info` (which reports every installed backend's
@@ -394,7 +394,7 @@ payload's `credentials` map:
 **Fallback table:** for connectors that shipped before the wire carried these keys
 (`notion`, `asana`, `linear`, `github`, `ahrefs`), a compiled-in table
 supplies the `mcp_url` + header style from the openclaw catalog
-(`internal/agent/runtimes/openclaw/mcp.go`). The payload **always wins** — `mcp_url` in the payload
+(`runtimes/openclaw/mcp.go`). The payload **always wins** — `mcp_url` in the payload
 overrides the fallback — so the table is only a migration safety net until the
 backend pushes the routing keys.
 
@@ -458,28 +458,28 @@ Handled by bootstrap worker, not through MQTT handler directly.
 
 | File | Role |
 |------|------|
-| `os/services/lib/mqtt/client.go` | MQTT client (connect, subscribe, publish) |
-| `os/services/lib/mqtt/config.go` | Config struct |
-| `os/services/lib/mqtt/options.go` | Connection options |
-| `os/services/lib/mqtt/factory.go` | Factory to create client with unique ID |
-| `os/services/server/device/delivery/mqtt/handler.go` | Command dispatcher |
-| `os/services/server/device/delivery/mqtt/info_handler.go` | Handle `info` command |
-| `os/services/server/device/delivery/mqtt/add_channel_hander.go` | Handle `add_channel` command (streams pairing events for WhatsApp) |
-| `os/services/server/device/delivery/mqtt/slack_event_handler.go` | Handle `slack_event` / `slack_command` (runtime-aware: forwards Slack HTTP-mode events/slash commands to the local OpenClaw gateway, or drives a hermes turn when the runtime is a `SlackBridge`) |
-| `os/services/server/device/delivery/mqtt/data_handler.go` | Handle `data` command kinds `oauth.set`/`oauth.remove` (+ access-token store) |
-| `os/services/server/device/delivery/mqtt/connector_handler.go` | Handle `connector.set.<code>`/`connector.remove.<code>` (async, writer dispatch via `connectorWriterFor`) |
-| `os/services/server/device/delivery/mqtt/connector_writer.go` | `ConnectorWriter` interface + shared `<code>_access_tokens.json` file helpers |
-| `os/services/server/device/delivery/mqtt/connector_writer_generic.go` | Data-driven `connectorWriter`: payload-driven MCP routing, fallback table, path-traversal guard, per-connector token files |
-| `os/services/server/device/delivery/mqtt/mcp_connector_writer.go` | Special stdio MCP writer (`figma-api`): token file + local-wrapper `openclaw.json` MCP entry |
-| `os/services/server/device/delivery/mqtt/connector_refresh.go` | Connector token refresh loop (`/connector/refresh-token`) |
-| `os/services/server/device/delivery/mqtt/system_info_handler.go` | Handle `data` kinds `system.info`/`system.version`/`system.network` |
-| `os/services/server/device/delivery/mqtt/channel_refresh_handler.go` | Handle `data` kind `channel.refresh_config` (async re-apply of a channel's config block) |
-| `os/services/server/device/delivery/mqtt/timezone_set_handler.go` | Handle `data` kind `timezone.set` (async apply of the device IANA timezone) |
-| `os/services/internal/device/timezone.go` | `SetTimezone`/`CurrentTimezone`: validate zone, rewrite `/etc/localtime` + `/etc/timezone`, best-effort `timedatectl`, persist config |
-| `os/services/internal/device/service.go` | `RefreshChannelConfig` (generic per-channel request build + capability gate) |
-| `os/services/internal/agent/channel_reconcile.go` | `ChannelReconcile`: re-applies channels after a runtime switch, records `channels_unsupported` |
-| `os/services/server/device/delivery/mqtt/whatsapp_pair_handler.go` | Handle `whatsapp_pair` re-pair command |
-| `os/services/server/device/delivery/mqtt/claudecode_login_handler.go` | Handle `claudecode_login` / `claudecode_login_code` (claude.ai OAuth login) |
-| `os/services/internal/agent/runtimes/openclaw/pairing.go` | WhatsApp Baileys QR pairing subprocess driver |
-| `os/services/domain/device.go` | MQTTMessage, command constants |
-| `os/services/domain/pairing.go` | PairingEvent + status enum |
+| `system/lib/mqtt/client.go` | MQTT client (connect, subscribe, publish) |
+| `system/lib/mqtt/config.go` | Config struct |
+| `system/lib/mqtt/options.go` | Connection options |
+| `system/lib/mqtt/factory.go` | Factory to create client with unique ID |
+| `system/server/device/delivery/mqtt/handler.go` | Command dispatcher |
+| `system/server/device/delivery/mqtt/info_handler.go` | Handle `info` command |
+| `system/server/device/delivery/mqtt/add_channel_hander.go` | Handle `add_channel` command (streams pairing events for WhatsApp) |
+| `system/server/device/delivery/mqtt/slack_event_handler.go` | Handle `slack_event` / `slack_command` (runtime-aware: forwards Slack HTTP-mode events/slash commands to the local OpenClaw gateway, or drives a hermes turn when the runtime is a `SlackBridge`) |
+| `system/server/device/delivery/mqtt/data_handler.go` | Handle `data` command kinds `oauth.set`/`oauth.remove` (+ access-token store) |
+| `system/server/device/delivery/mqtt/connector_handler.go` | Handle `connector.set.<code>`/`connector.remove.<code>` (async, writer dispatch via `connectorWriterFor`) |
+| `system/server/device/delivery/mqtt/connector_writer.go` | `ConnectorWriter` interface + shared `<code>_access_tokens.json` file helpers |
+| `system/server/device/delivery/mqtt/connector_writer_generic.go` | Data-driven `connectorWriter`: payload-driven MCP routing, fallback table, path-traversal guard, per-connector token files |
+| `system/server/device/delivery/mqtt/mcp_connector_writer.go` | Special stdio MCP writer (`figma-api`): token file + local-wrapper `openclaw.json` MCP entry |
+| `system/server/device/delivery/mqtt/connector_refresh.go` | Connector token refresh loop (`/connector/refresh-token`) |
+| `system/server/device/delivery/mqtt/system_info_handler.go` | Handle `data` kinds `system.info`/`system.version`/`system.network` |
+| `system/server/device/delivery/mqtt/channel_refresh_handler.go` | Handle `data` kind `channel.refresh_config` (async re-apply of a channel's config block) |
+| `system/server/device/delivery/mqtt/timezone_set_handler.go` | Handle `data` kind `timezone.set` (async apply of the device IANA timezone) |
+| `system/device/timezone.go` | `SetTimezone`/`CurrentTimezone`: validate zone, rewrite `/etc/localtime` + `/etc/timezone`, best-effort `timedatectl`, persist config |
+| `system/device/service.go` | `RefreshChannelConfig` (generic per-channel request build + capability gate) |
+| `system/agent/channel_reconcile.go` | `ChannelReconcile`: re-applies channels after a runtime switch, records `channels_unsupported` |
+| `system/server/device/delivery/mqtt/whatsapp_pair_handler.go` | Handle `whatsapp_pair` re-pair command |
+| `system/server/device/delivery/mqtt/claudecode_login_handler.go` | Handle `claudecode_login` / `claudecode_login_code` (claude.ai OAuth login) |
+| `runtimes/openclaw/pairing.go` | WhatsApp Baileys QR pairing subprocess driver |
+| `system/domain/device.go` | MQTTMessage, command constants |
+| `system/domain/pairing.go` | PairingEvent + status enum |

@@ -141,11 +141,11 @@ Agent: POST /api/music-suggestion/status → status="rejected"
 
 | File | Vai trò |
 |------|---------|
-| `os/services/lib/musicsuggestion/suggestion.go` | Logger JSONL per-user per-day. Log, Query, UpdateStatus, LastSuggestion, Days |
-| `os/services/lib/mood/mood.go` | Logger mood events |
-| `os/services/server/sensing/delivery/http/handler.go` | PostSuggestionLog/PostSuggestionStatus: API handlers. Motion.activity sedentary nudge agent follow Music skill |
-| `os/services/server/openclaw/delivery/sse/handler.go` | SuggestionHistory: GET endpoint |
-| `os/services/server/server.go` | Routes: /api/music-suggestion/*, /api/openclaw/music-suggestion-history |
+| `system/lib/musicsuggestion/suggestion.go` | Logger JSONL per-user per-day. Log, Query, UpdateStatus, LastSuggestion, Days |
+| `system/lib/mood/mood.go` | Logger mood events |
+| `system/server/sensing/delivery/http/handler.go` | PostSuggestionLog/PostSuggestionStatus: API handlers. Motion.activity sedentary nudge agent follow Music skill |
+| `system/server/openclaw/delivery/sse/handler.go` | SuggestionHistory: GET endpoint |
+| `system/server/server.go` | Routes: /api/music-suggestion/*, /api/openclaw/music-suggestion-history |
 
 ### OpenClaw Skills
 
@@ -159,8 +159,8 @@ Agent: POST /api/music-suggestion/status → status="rejected"
 
 | File | Vai trò |
 |------|---------|
-| `os/hal/models.py` | FacePersonDetail: includes music_suggestion_days |
-| `os/hal/server.py` | /face/owners endpoint: reads music_suggestion_days from JSONL files |
+| `hal/models.py` | FacePersonDetail: includes music_suggestion_days |
+| `hal/server.py` | /face/owners endpoint: reads music_suggestion_days from JSONL files |
 
 ### Frontend (React)
 

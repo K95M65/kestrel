@@ -6,8 +6,8 @@ directly (sub-second audio replies) and **delegates** anything that needs the
 main agent (device control, skills, memory, real-time facts) back to the
 OS-server flow.
 
-Code lives in `os/hal/drivers/realtime/`; it is driven by
-`os/hal/drivers/voice/voice_service.py`.
+Code lives in `hal/realtime/`; it is driven by
+`hal/drivers/voice/voice_service.py`.
 
 > **Source of truth:** this doc reflects the code. If they disagree, the code wins.
 
@@ -158,7 +158,7 @@ stale image) and, when fresh (`HAL_GEMINI_VISION_HANDOFF_MAX_AGE_S`, default 20s
 prepends a `[vision-image] <path>` hint line to the message and ships the frame
 as base64 in the sensing POST's `image` field. What os-server
 then does with the image is decided by the **describe-first gate** in
-`internal/vision` (see `server/sensing/delivery/http/handler.go`): when the
+`system/vision` (see `server/sensing/delivery/http/handler.go`): when the
 active main model does NOT declare image input in the model catalog (the
 Auto-AI case — a raw attachment 404s at the smart-agent-router with "No
 endpoints found that support image input"), the frame is described by the
@@ -412,7 +412,7 @@ when it's absent — so the file always carries an editable realtime config. HAL
 reads it directly (same as `llm_api_key` / `stt_language`), no push down. Because
 HAL reads `config.json` at import, a config change needs a **HAL restart** to take
 effect. A live edit triggers that restart immediately (`RePushRealtimeConfig` /
-`RePushVoiceConfig` in `internal/device/service.go`).
+`RePushVoiceConfig` in `system/device/service.go`).
 
 **Restart only when the config changed.** os-server does *not* restart HAL on
 every os-server restart — that would needlessly drop the voice pipeline. Instead
@@ -431,8 +431,8 @@ spurious HAL restart on the next boot after an os-server-only field changes.
 
 ### `config.json` `realtime` block
 
-Modelled in Go at `os/services/server/config/realtime.go`; read in HAL at
-`os/hal/config.py`. Shared fields sit at the top; per-provider knobs live in
+Modelled in Go at `system/server/config/realtime.go`; read in HAL at
+`hal/config.py`. Shared fields sit at the top; per-provider knobs live in
 `gemini` / `openai` / `qwen` sub-objects, with `provider` selecting the active
 one (`none` or absent → realtime off). Empty `api_key` / `base_url` fall back to
 `llm_api_key` / `llm_base_url` — **except qwen**: its credentials are its own
@@ -497,12 +497,12 @@ is still caught, while a reply-language sentence quoting English is not.
 Every dropped sentence is logged as `CoT leak dropped`.
 
 The main-agent path (openclaw/hermes replies spoken via os-server) has a Go
-port of this filter — `os/services/server/agent/delivery/http/cot_leak_filter.go`
+port of this filter — `system/server/agent/delivery/http/cot_leak_filter.go`
 (adds a snake_case-identifier TRIGGER for the DeepSeek leak corpus); see
 `docs/flow-monitor.md` § "CoT-leak filter (agent path)". Keep the two in sync
 when hardening either side.
 
-### Environment variables (`os/hal/config.py`)
+### Environment variables (`hal/config.py`)
 
 Each knob's `HAL_*` env var overrides the block (and is the dev-box path):
 

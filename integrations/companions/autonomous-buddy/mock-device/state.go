@@ -23,7 +23,7 @@ type PairingRecord struct {
 // State holds all server-side state: the pending pairing code, the (single) paired buddy,
 // the current WebSocket, and the table of in-flight requests waiting for their response.
 //
-// Mirrors what the device's `internal/buddy/service.go` + `registry.go` + `pairing.go` will look like.
+// Mirrors what the device's `system/buddy/service.go` + `registry.go` + `pairing.go` will look like.
 type State struct {
 	mu      sync.Mutex
 	code    string

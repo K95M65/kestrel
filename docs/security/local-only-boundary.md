@@ -43,12 +43,12 @@ Current references found:
   ExecStart=$HAL_DIR/.venv/bin/uvicorn hal.server:app --host 0.0.0.0 --port 5001
   ```
 
-- `imager/build.sh:859`
+- `scripts/imager/build.sh:859`
   ```sh
   ExecStart=/opt/hal/.venv/bin/uvicorn hal.server:app --host 0.0.0.0 --port 5001
   ```
 
-- `os/hal/server.py:707`
+- `hal/server.py:707`
   ```py
   uvicorn.run(app, host="0.0.0.0", port=HTTP_PORT)
   ```
@@ -93,7 +93,7 @@ With:
 ExecStart=$HAL_DIR/.venv/bin/uvicorn hal.server:app --host 127.0.0.1 --port 5001
 ```
 
-#### File: `imager/build.sh`
+#### File: `scripts/imager/build.sh`
 
 Replace:
 
@@ -121,17 +121,17 @@ With:
 cd $(HAL_DIR) && PYTHONPATH=.. .venv/bin/uvicorn hal.server:app --host 127.0.0.1 --port $(HAL_PORT) --reload
 ```
 
-#### File: `os/hal/server.py`
+#### File: `hal/server.py`
 
 Prefer introducing config instead of hardcoding:
 
 ```py
-# os/hal/config.py
+# hal/config.py
 HTTP_HOST = os.environ.get("HAL_HTTP_HOST", "127.0.0.1")
 HTTP_PORT = int(os.environ.get("HAL_HTTP_PORT", "5001"))
 ```
 
-Then in `os/hal/server.py` import `HTTP_HOST` and replace:
+Then in `hal/server.py` import `HTTP_HOST` and replace:
 
 ```py
 uvicorn.run(app, host="0.0.0.0", port=HTTP_PORT)
@@ -143,7 +143,7 @@ With:
 uvicorn.run(app, host=HTTP_HOST, port=HTTP_PORT)
 ```
 
-#### File: `os/hal/.env.example`
+#### File: `hal/.env.example`
 
 Add:
 
@@ -212,7 +212,7 @@ location /hw/ {
 }
 ```
 
-Current `imager/build.sh` has equivalent `/hw/` proxy.
+Current `scripts/imager/build.sh` has equivalent `/hw/` proxy.
 
 ### Why it is risky
 
@@ -253,7 +253,7 @@ location /hw/ {
 }
 ```
 
-#### File: `imager/build.sh`
+#### File: `scripts/imager/build.sh`
 
 Apply the same `allow/deny` block in its `location /hw/`.
 
@@ -303,7 +303,7 @@ HTTP/1.1 200 OK
 
 ### Evidence
 
-`os/hal/server.py` currently has only request logging middleware:
+`hal/server.py` currently has only request logging middleware:
 
 ```py
 @app.middleware("http")
@@ -321,9 +321,9 @@ Also, if nginx proxies external clients, the TCP peer appears as `127.0.0.1` unl
 
 ### Required remediation
 
-Add a local-only middleware in `os/hal/server.py` and default-enable it via config.
+Add a local-only middleware in `hal/server.py` and default-enable it via config.
 
-#### File: `os/hal/config.py`
+#### File: `hal/config.py`
 
 Add:
 
@@ -336,7 +336,7 @@ LOCAL_ONLY_API = os.environ.get("HAL_LOCAL_ONLY_API", "true").strip().lower() in
 )
 ```
 
-#### File: `os/hal/server.py`
+#### File: `hal/server.py`
 
 Add imports:
 
@@ -415,7 +415,7 @@ async def local_only_api_middleware(request, call_next):
     return await call_next(request)
 ```
 
-#### File: `os/hal/.env.example`
+#### File: `hal/.env.example`
 
 Add:
 
@@ -459,7 +459,7 @@ HTTP/1.1 200 OK
 
 ### Evidence
 
-`os/services/server/server.go:196-205`:
+`system/server/server.go:196-205`:
 
 ```go
 func corsMiddleware() gin.HandlerFunc {
@@ -591,7 +591,7 @@ Expected: works normally.
 
 ### Evidence
 
-`os/services/server/server.go` routes:
+`system/server/server.go` routes:
 
 ```go
 system.POST("exec", s.execCommand)
@@ -640,7 +640,7 @@ Use build tags or config flag, e.g. `LAMP_ENABLE_DEV_ADMIN=false` default.
 
 #### Recommended strategy B — Local-only middleware
 
-Add a local-only middleware in `os/services/server/server.go`:
+Add a local-only middleware in `system/server/server.go`:
 
 ```go
 func localOnlyMiddleware() gin.HandlerFunc {
@@ -739,7 +739,7 @@ location /gw/ {
 }
 ```
 
-`imager/build.sh` also has `/gw/` proxy.
+`scripts/imager/build.sh` also has `/gw/` proxy.
 
 OpenClaw config created in `scripts/provision/setup.sh` includes:
 
@@ -797,7 +797,7 @@ location /gw/ {
 }
 ```
 
-#### File: `imager/build.sh`
+#### File: `scripts/imager/build.sh`
 
 Apply same local-only deny block to `/gw/`.
 
@@ -1128,12 +1128,12 @@ Document baseline status codes.
 
 1. Change HAL bind host to `127.0.0.1` in:
    - `scripts/provision/setup.sh`
-   - `imager/build.sh`
+   - `scripts/imager/build.sh`
    - `Makefile`
-   - `os/hal/server.py` via `HTTP_HOST`
+   - `hal/server.py` via `HTTP_HOST`
 2. Block nginx `/hw/` externally in:
    - `scripts/provision/setup.sh`
-   - `imager/build.sh`
+   - `scripts/imager/build.sh`
 3. Add HAL app-level local-only middleware.
 
 ### Phase 2 — Close agent/admin control plane
@@ -1231,16 +1231,16 @@ After remediation, this should be true:
 
 Files to edit:
 
-- `os/hal/config.py`
+- `hal/config.py`
   - Add `HTTP_HOST=127.0.0.1` default.
   - Add `LOCAL_ONLY_API=true` default.
 
-- `os/hal/server.py`
+- `hal/server.py`
   - Import `HTTP_HOST`, `LOCAL_ONLY_API`.
   - Add local-only middleware checking client IP and forwarded headers.
   - Change `uvicorn.run(... host=HTTP_HOST ...)`.
 
-- `os/hal/.env.example`
+- `hal/.env.example`
   - Add `HAL_HTTP_HOST=127.0.0.1`.
   - Add `HAL_LOCAL_ONLY_API=true`.
 
@@ -1253,14 +1253,14 @@ Files to edit:
   - Add nginx `allow/deny` to `/gw` and `/gw/`.
   - Optionally tighten generated OpenClaw `controlUi` config.
 
-- `imager/build.sh`
+- `scripts/imager/build.sh`
   - Change HAL systemd host to `127.0.0.1`.
   - Add nginx `allow/deny` to `/hw/` and `/gw/`.
 
 - `scripts/maintenance/patch-nginx-gw.sh`
   - Ensure any generated `/gw/` block includes local-only deny rules.
 
-- `os/services/server/server.go`
+- `system/server/server.go`
   - Replace wildcard CORS.
   - Add local-only middleware.
   - Protect or remove `system exec`, `system shell`, `openclaw config-json`.

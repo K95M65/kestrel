@@ -12,7 +12,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// Mirrors what the device's `internal/buddy/ws.go` and `internal/buddy/dispatcher.go` will look like.
+// Mirrors what the device's `system/buddy/ws.go` and `system/buddy/dispatcher.go` will look like.
 
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  4096,

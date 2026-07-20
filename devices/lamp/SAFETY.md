@@ -4,7 +4,7 @@ schema: autonomous.safety.v1
 # Every machine-enforced safety knob, by capability group. Active lines are
 # enforced; lines tagged (optional)/(reserved) are available but left unset — shown
 # so this file reads as the complete picture. Authoritative field list:
-# contract/SAFETY-SPEC.md. Fail-safe BEHAVIORS that aren't numeric bounds
+# devices/contract/SAFETY-SPEC.md. Fail-safe BEHAVIORS that aren't numeric bounds
 # (network/gateway loss, board fault, setup) are not front-matter fields — they
 # live in the "fail-safe states" table in the prose below.
 
@@ -46,7 +46,7 @@ That is the template for everything here.
   behind the gateway, the network, or any in-flight skill. A spoken "stop" maps to a
   local intent that halts servos in the runtime, then informs the agent.
 - Motion is **conservative by default** — bounded speed and acceleration, set in
-  `os/hal/board/board.py`, not chosen by the agent.
+  `hal/board/board.py`, not chosen by the agent.
 - The agent **does not drive raw servo loops.** It requests poses and tracking targets;
   the runtime clamps to mechanical limits.
 - No motion during a declared privacy-sensitive moment, during setup failure, or when
@@ -78,7 +78,7 @@ spirit of "what isn't enforced isn't claimed as enforced").
 
 | Condition | Behavior | Enforced |
 |-----------|----------|----------|
-| Network / gateway loss | Stop any in-flight object-tracking (don't chase a target with no fresh vision updates); local idle presence + reflexes (stop, mute, sleep, wake) stay alive; no new agent-driven motion | **yes** — `os/services` calls HAL `/servo/track/stop` on gateway WebSocket disconnect |
+| Network / gateway loss | Stop any in-flight object-tracking (don't chase a target with no fresh vision updates); local idle presence + reflexes (stop, mute, sleep, wake) stay alive; no new agent-driven motion | **yes** — `services` calls HAL `/servo/track/stop` on gateway WebSocket disconnect |
 | Board / driver fault | Disable the faulting capability, keep the rest, report health | **yes** — per-capability `503` isolation in HAL routes + `/health` |
 | Setup incomplete | Setup / identity reflexes only | reserved — not gated in the runtime yet |
 | Thermal (SoC over-temp) | At SoC temp ≥ `thermal.max_temp_c`: health event on `/health` + stop discretionary tracking; clears on cool-down to `resume_temp_c` (hysteresis). Idle stays alive | **yes** (when `thermal` declared) — background monitor reads `/sys/class/thermal` |

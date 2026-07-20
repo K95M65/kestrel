@@ -179,17 +179,17 @@ Every unknown voice is locally clustered so the server can say "this is the same
 
 | Component | File | Function/Struct |
 |-----------|------|-----------------|
-| STT → speaker ID | `os/hal/drivers/voice/voice_service.py` | `_identify_and_decorate()` |
-| Enroll gate | `os/hal/drivers/voice/voice_service.py` | `_should_request_enroll()` |
-| Message formatting | `os/hal/drivers/voice/voice_service.py` | `_format_unknown_speaker()` |
-| Speaker recognizer | `os/hal/drivers/voice/speaker_recognizer/speaker_recognizer.py` | `SpeakerRecognizer` |
-| Nudge injection + cooldown | `os/services/domain/voice.go` | `AppendEnrollNudge()` |
-| Direct event path | `os/services/server/sensing/delivery/http/handler.go` | `PostEvent()` |
-| Drain/replay path | `os/services/internal/agent/runtimes/openclaw/service.go` | `drainPendingEvents()` |
+| STT → speaker ID | `hal/drivers/voice/voice_service.py` | `_identify_and_decorate()` |
+| Enroll gate | `hal/drivers/voice/voice_service.py` | `_should_request_enroll()` |
+| Message formatting | `hal/drivers/voice/voice_service.py` | `_format_unknown_speaker()` |
+| Speaker recognizer | `hal/drivers/voice/speaker_recognizer/speaker_recognizer.py` | `SpeakerRecognizer` |
+| Nudge injection + cooldown | `system/domain/voice.go` | `AppendEnrollNudge()` |
+| Direct event path | `system/server/sensing/delivery/http/handler.go` | `PostEvent()` |
+| Drain/replay path | `runtimes/openclaw/service.go` | `drainPendingEvents()` |
 | Agent skill | `lamp/resources/openclaw-skills/speaker-recognizer/SKILL.md` | — |
 | Embedding model | `integrations/perception-service/src/core/audio_recognition/audio_recognizer.py` | `ResNet34Recognizer` (default), `EcapaTdnn1024Recognizer`, `CamPPlusRecognizer` — chọn qua env `AUDIO_RECOGNIZER_ENGINE` |
 | Embedding endpoint | `integrations/perception-service/src/protocols/htpp/audio_recognizer.py` | `embed_audio()` |
-| Config | `os/hal/config.py` | `SPEAKER_*` constants |
+| Config | `hal/config.py` | `SPEAKER_*` constants |
 
 ## Message Flow Examples
 

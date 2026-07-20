@@ -15,7 +15,7 @@ Build output (`dist/`) is served by nginx at root `/` on the device.
 
 ### 1.1 Browser Tab Title
 
-The browser tab title (`document.title`) reflects the focused page/tab so multiple device tabs are distinguishable. Driven by the shared `useDocumentTitle` hook (`os/services/web/src/hooks/useDocumentTitle.ts`); format is `Lamp · <segment>[· <sub-segment>]`.
+The browser tab title (`document.title`) reflects the focused page/tab so multiple device tabs are distinguishable. Driven by the shared `useDocumentTitle` hook (`system/web/src/hooks/useDocumentTitle.ts`); format is `Lamp · <segment>[· <sub-segment>]`.
 
 | Route / state | Title |
 |---------------|-------|
@@ -31,7 +31,7 @@ The static `<title>Lamp Setup</title>` in `index.html` is the pre-mount fallback
 ## 2. Directory Structure
 
 ```
-os/services/web/
+system/web/
 ├── src/
 │   ├── pages/
 │   │   ├── Monitor.tsx        # Dashboard monitor (main file)
@@ -69,7 +69,7 @@ Layout: **Fixed 216px sidebar + flexible main area**, 100vh height.
 
 Bottom of sidebar shows OpenClaw status (online/offline) and last update time.
 
-**Feature search.** A search box (`SidebarSearch`, `os/services/web/src/pages/monitor/index.tsx`) sits at the top of the rail to tame the long nav. It filters nav leaves by label **or** parent-group name (case-insensitive substring) and honours the same visibility gates as the rendered nav — debug-only sections (`PUBLIC_SECTIONS`) and absent-hardware tabs (`sectionVisible`) never appear in results. While a query is active the grouped tree is hidden and replaced by a flat result list; each row reuses `.lm-snav-item` so the amber active/hover treatment carries over, and shows a small parent-group chip (e.g. `General` · `Settings`). The leading magnifier turns amber on focus; a trailing clear (×) button appears once there's a query (also cleared by `Esc`). `Enter` jumps to the first result.
+**Feature search.** A search box (`SidebarSearch`, `system/web/src/pages/monitor/index.tsx`) sits at the top of the rail to tame the long nav. It filters nav leaves by label **or** parent-group name (case-insensitive substring) and honours the same visibility gates as the rendered nav — debug-only sections (`PUBLIC_SECTIONS`) and absent-hardware tabs (`sectionVisible`) never appear in results. While a query is active the grouped tree is hidden and replaced by a flat result list; each row reuses `.lm-snav-item` so the amber active/hover treatment carries over, and shows a small parent-group chip (e.g. `General` · `Settings`). The leading magnifier turns amber on focus; a trailing clear (×) button appears once there's a query (also cleared by `Esc`). `Enter` jumps to the first result.
 
 ### 3.3 Dark Theme Variables
 
@@ -97,9 +97,9 @@ Defined at `.lm-root` in `index.css`:
 
 ### 3.4 Settings (`/setting`) — shared shell
 
-Settings is **not a separate page**. It is an area of the same Monitor shell (`os/services/web/src/pages/monitor/index.tsx`), reached at the `/setting` route. In `App.tsx`, `/monitor` and `/setting` are child routes of a single layout route whose element renders `<Monitor/>`; React Router keeps that element mounted while only the matched child path changes, so the sidebar does **not** remount when switching between Monitor and Settings (no full-page flash). The shell derives its area — `"monitor"` or `"setting"` — from `useLocation().pathname`.
+Settings is **not a separate page**. It is an area of the same Monitor shell (`system/web/src/pages/monitor/index.tsx`), reached at the `/setting` route. In `App.tsx`, `/monitor` and `/setting` are child routes of a single layout route whose element renders `<Monitor/>`; React Router keeps that element mounted while only the matched child path changes, so the sidebar does **not** remount when switching between Monitor and Settings (no full-page flash). The shell derives its area — `"monitor"` or `"setting"` — from `useLocation().pathname`.
 
-The Settings collapsible group lives in the shared sidebar `NAV` (`os/services/web/src/pages/monitor/types.ts`). Clicking a Settings leaf navigates to `/setting` and renders `SettingsPanel` (`os/services/web/src/pages/settings/SettingsPanel.tsx`) in the main area; clicking a Monitor leaf navigates to `/monitor`.
+The Settings collapsible group lives in the shared sidebar `NAV` (`system/web/src/pages/monitor/types.ts`). Clicking a Settings leaf navigates to `/setting` and renders `SettingsPanel` (`system/web/src/pages/settings/SettingsPanel.tsx`) in the main area; clicking a Monitor leaf navigates to `/monitor`.
 
 **URL hash scheme** — the in-memory section keeps internal `settings:*` ids, but the URL hash uses short labels in the setting area (helpers `sectionToHash`/`hashToSection` in `types.ts`):
 
@@ -293,7 +293,7 @@ Each event displays: type badge, phase (if any), runId (first 8 chars), timestam
 - Fallback polling (2s) is used only if live stream disconnects.
 - Displayed turns/events are fully derived from JSONL flow logs.
 
-**Turn Pipeline (SVG)** — Implemented by `FlowDiagram` in `os/services/web/src/pages/Monitor.tsx`. Full layout (three clusters: OS server / HAL / OpenClaw, column grid, Cron vs OpenClaw, HAL row aligned with Tool, approximate coordinates) is documented in **`docs/flow-monitor.md`**; Vietnamese summary in **`docs/vi/flow-monitor_vi.md`**.
+**Turn Pipeline (SVG)** — Implemented by `FlowDiagram` in `system/web/src/pages/Monitor.tsx`. Full layout (three clusters: OS server / HAL / OpenClaw, column grid, Cron vs OpenClaw, HAL row aligned with Tool, approximate coordinates) is documented in **`docs/flow-monitor.md`**; Vietnamese summary in **`docs/vi/flow-monitor_vi.md`**.
 
 Turn Pipeline grouping behavior:
 - Turns are still started by input/trigger events (`sensing_input`, `chat_input`, `schedule_trigger`, etc.).
@@ -362,7 +362,7 @@ Interactive chat interface for communicating with the agent. Layout: sidebar (co
 **Message Input**
 - Textarea with Shift+Enter for multi-line, Enter to send
 - File/image attachment (max 10 MB): button, drag-drop, clipboard paste
-- Messages sent via `POST /api/sensing/event` with `type: "web_chat"`. The handler tags the run via `MarkWebChatRun(runID)` so the agent reply is suppressed at TTS (rendered in this UI only) and skips the physical wake greeting / opening filler. An image attachment rides the payload's `image` field (raw base64); the handler (1) saves it to `/tmp/web-chat-*.jpg` and appends an `[image: <path>]` tag so tools can read the file directly (e.g. face enrollment), and (2) runs the describe-first gate in `internal/vision` (see `docs/realtime-voice.md`, "Frame handoff"): a text-only main model gets an `[image description]` line produced by the catalog's vision model, a vision-capable one gets the raw attachment. Both steps run BEFORE the agent-busy queue fork, so a queued turn replays with the description already inlined.
+- Messages sent via `POST /api/sensing/event` with `type: "web_chat"`. The handler tags the run via `MarkWebChatRun(runID)` so the agent reply is suppressed at TTS (rendered in this UI only) and skips the physical wake greeting / opening filler. An image attachment rides the payload's `image` field (raw base64); the handler (1) saves it to `/tmp/web-chat-*.jpg` and appends an `[image: <path>]` tag so tools can read the file directly (e.g. face enrollment), and (2) runs the describe-first gate in `system/vision` (see `docs/realtime-voice.md`, "Frame handoff"): a text-only main model gets an `[image description]` line produced by the catalog's vision model, a vision-capable one gets the raw attachment. Both steps run BEFORE the agent-busy queue fork, so a queued turn replays with the description already inlined.
 
 **Real-time Streaming**
 - **Thinking indicator**: collapsible purple block showing LLM reasoning tokens as they stream in (`thinking` events). Click to expand full text (max-height 200px scrollable). Auto-hides on response completion.
@@ -382,7 +382,7 @@ Interactive chat interface for communicating with the agent. Layout: sidebar (co
 - When a conversation has no messages, the chat area shows a large breathing assistant orb, a localized title/subtitle, and four clickable **suggestion chips**. Clicking a chip fills the composer (does not auto-send) so the user can edit first.
 
 **Localization (i18n)**
-- The chat's own UI strings (empty-state title/subtitle, suggestion chips, the top-bar "thinking"/"online" status) are localized via `src/lib/i18n.ts` — a lightweight hand-rolled module mirroring the Go backend's `os/services/lib/i18n` conventions (canonical codes `en` / `vi` / `zh-CN` / `zh-TW`, alias normalization, **English fallback** per key).
+- The chat's own UI strings (empty-state title/subtitle, suggestion chips, the top-bar "thinking"/"online" status) are localized via `src/lib/i18n.ts` — a lightweight hand-rolled module mirroring the Go backend's `system/lib/i18n` conventions (canonical codes `en` / `vi` / `zh-CN` / `zh-TW`, alias normalization, **English fallback** per key).
 - The active language is resolved from the device config's `stt_language` field (the same source Go's `i18n.Lang()` reads from `config.STTLanguage`) via `setLanguage()` in `App.tsx` on first config load, with the Chat section re-applying it from its own config fetch. Components read strings through the `useT()` hook, which re-renders when the language resolves.
 - This i18n module currently covers only the chat strings added with the redesign; the rest of the Monitor UI remains hardcoded English.
 
@@ -402,7 +402,7 @@ Chat UI → POST /api/sensing/event → SensingHandler
 Original `GET /hw/led` only returned `{ led_count: 64 }` — no current color info.
 
 ### Solution
-Added `GET /hw/led/color` to `os/hal/server.py`:
+Added `GET /hw/led/color` to `hal/server.py`:
 
 ```python
 @app.get("/led/color", response_model=LEDColorResponse, tags=["LED"])
@@ -438,11 +438,11 @@ def get_led_color():
 
 ## 8. Global Source Footer (GPL v3 §6 Compliance)
 
-`os/services/web/src/components/SourceFooter.tsx` is a tiny `position: fixed` link mounted at the App root (`App.tsx`, outside `<Routes>`), so it appears on every page — Setup, Login, Monitor, GwConfig.
+`system/web/src/components/SourceFooter.tsx` is a tiny `position: fixed` link mounted at the App root (`App.tsx`, outside `<Routes>`), so it appears on every page — Setup, Login, Monitor, GwConfig.
 
 Renders at `bottom: 6px, right: 8px` with monospace 10px text and opacity `0.7` — visible to anyone who looks for it without blocking form action buttons (Back / Next / Setup / Save) or scroll. Link target: `https://github.com/autonomous-ai/autonomous-os`.
 
-Reason it exists: HAL Python (`os/hal/`) ships GPL v3, baked into the board image. GPL §6 requires recipients of the binary to be informed where corresponding source lives. The footer satisfies the "written offer" alternative by exposing the public repo URL on the device itself. See also `scripts/release/tag-release.sh` + `Makefile:tag-release` for the version → commit traceability piece.
+Reason it exists: HAL Python (`hal/`) ships GPL v3, baked into the board image. GPL §6 requires recipients of the binary to be informed where corresponding source lives. The footer satisfies the "written offer" alternative by exposing the public repo URL on the device itself. See also `scripts/release/tag-release.sh` + `Makefile:tag-release` for the version → commit traceability piece.
 
 ---
 
@@ -450,7 +450,7 @@ Reason it exists: HAL Python (`os/hal/`) ships GPL v3, baked into the board imag
 
 ```bash
 # Build production
-make web-build        # tsc + vite build → os/services/web/dist/
+make web-build        # tsc + vite build → system/web/dist/
 
 # Deploy to Pi
 make web-deploy       # web-build + rsync dist/ → /usr/share/nginx/html/setup/

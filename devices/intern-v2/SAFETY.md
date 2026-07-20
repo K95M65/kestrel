@@ -11,7 +11,7 @@ light:
 
 The bounds contract: `DEVICE.md` says what the body *can* do; `SAFETY.md` says what it
 *must never* do, enforced deterministically by the OS — not by prompting the agent
-(see `contract/SAFETY-SPEC.md`, and `devices/lamp/SAFETY.md` for the fuller reference).
+(see `devices/contract/SAFETY-SPEC.md`, and `devices/lamp/SAFETY.md` for the fuller reference).
 
 Intern declares fewer capabilities than Lamp, so it carries fewer bounds: it has **no
 motion** (nothing to speed-limit) and audio is **voice-only** (no `media`/music route, so

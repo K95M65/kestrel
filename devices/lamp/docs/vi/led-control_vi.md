@@ -132,14 +132,14 @@ LED phản hồi trạng thái hệ thống (tất cả `breathing` speed 3.0 tr
 | OTA thành công (bootstrap) | Flash xanh lá | `(0, 255, 80)` |
 | OTA thất bại (bootstrap) | Đỏ pulse | `(255, 30, 30)` |
 
-Quản lý bởi `internal/statusled/Service` (lamp) và `lib/hal` trực tiếp (bootstrap).
+Quản lý bởi `system/statusled/Service` (lamp) và `lib/hal` trực tiếp (bootstrap).
 
-Không còn màu nào hardcode trong Go nữa — trạng thái `internal/statusled`, màu OTA-progress
+Không còn màu nào hardcode trong Go nữa — trạng thái `system/statusled`, màu OTA-progress
 của bootstrap, và màu trắng setup-needed đều đi qua HAL. OS giữ máy trạng thái (KHI nào hiện)
 và gửi *tên trạng thái* xuống HAL (`POST /led/status`: booting/error/ota/connectivity/
 hal_down/agent_down/hardware/ready_flash/ota_progress/ota_error/ota_success/setup); HAL tra
 màu/effect/speed từ `STATUS_LED_PRESETS`, override per-device qua section `status_led` trong
-`presets.json` (xem [DEVICE-SPEC.md § Per-device presets](../../../../contract/DEVICE-SPEC.md#per-device-presets-presetsjson)).
+`presets.json` (xem [DEVICE-SPEC.md § Per-device presets](../../../../devices/contract/DEVICE-SPEC.md#per-device-presets-presetsjson)).
 `setup` là solid bền (lưu thành trạng thái hiển thị); còn lại là overlay transient.
 
 ### Đèn báo mic đang mute (idle indicator)
@@ -188,10 +188,10 @@ Mỗi emotion preset có LED color riêng:
 
 ### Tên emotion không nhận diện được
 
-`POST /emotion` (`os/hal/routes/emotion.py`) không bao giờ từ chối tên emotion khác rỗng. Tên được lowercase/trim; tên nào không có trong `EMOTION_PRESETS` sẽ fallback về `curious` (biểu cảm trung tính, luôn an toàn) kèm log warning — caller là AI agent đôi khi bịa tên emotion, trả 400 sẽ phí lượt mà thiết bị không hiển thị gì. Ngoại lệ: khi thiết bị đang ngủ, tên lạ bị **ignore** (`status: ignored`) thay vì fallback — `curious` là wake emotion, nên fallback sẽ cho tên bịa vượt sleep gate và đánh thức thiết bị. Ngoài trường hợp đó, downstream (servo, LED) dùng emotion đã resolve.
+`POST /emotion` (`hal/routes/emotion.py`) không bao giờ từ chối tên emotion khác rỗng. Tên được lowercase/trim; tên nào không có trong `EMOTION_PRESETS` sẽ fallback về `curious` (biểu cảm trung tính, luôn an toàn) kèm log warning — caller là AI agent đôi khi bịa tên emotion, trả 400 sẽ phí lượt mà thiết bị không hiển thị gì. Ngoại lệ: khi thiết bị đang ngủ, tên lạ bị **ignore** (`status: ignored`) thay vì fallback — `curious` là wake emotion, nên fallback sẽ cho tên bịa vượt sleep gate và đánh thức thiết bị. Ngoài trường hợp đó, downstream (servo, LED) dùng emotion đã resolve.
 
 ## Override preset theo từng thiết bị
 
 Một thiết bị có thể ghi đè các giá trị emotion/scene/aim này (và kích thước vòng LED) mà
 không đổi bảng mặc định dùng chung, qua file `devices/<type>/presets.json`. Đây là cơ chế
-nền tảng — xem [DEVICE-SPEC.md § Per-device presets](../../../../contract/DEVICE-SPEC.md#per-device-presets-presetsjson).
+nền tảng — xem [DEVICE-SPEC.md § Per-device presets](../../../../devices/contract/DEVICE-SPEC.md#per-device-presets-presetsjson).

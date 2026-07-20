@@ -11,7 +11,7 @@ identity rename that did nothing, no skill auto-update).
 > must either do too or **consciously decide to skip — and say why in a comment.**
 > A no-op is a decision, never a default.
 
-Source of truth for the contract: `os/services/domain/agent.go` (the
+Source of truth for the contract: `system/domain/agent.go` (the
 `AgentGateway` interface). This doc explains *which* parts matter and *how* to
 wire the switch, install, migration, skills, hooks, and reset.
 
@@ -27,7 +27,7 @@ wire the switch, install, migration, skills, hooks, and reset.
 ## 0. Mental model
 
 - `config.agent_runtime` (`/root/config/config.json`) selects the active backend.
-- `internal/agent/factory.go` `ProvideGateway` resolves it at boot via Wire DI:
+- `system/agent/factory.go` `ProvideGateway` resolves it at boot via Wire DI:
   `config.agent_runtime` > DEVICE.md `gateway.default` > openclaw.
 - **Seed-on-empty:** at boot `device.ProvideService` calls
   `SeedAgentRuntimeFromGateway` — when `config.agent_runtime` is empty/null **and**
@@ -69,11 +69,11 @@ Your backend lives in `internal/<name>/` and its `*Service` must satisfy the
 | **Lifecycle / onboarding** | `SetupAgent`, `EnsureOnboarding`, `ResetAgent`, `RestartAgent`, `RefreshModelsConfig` | Decide per backend; document the no-op. |
 | **Migration-adjacent** | `UpdateIdentityName`, `StartSkillWatcher`, `WatchIdentity`, `StartModelSync`, `UpdatePrimaryModel`, `StartPrimaryModelWatch`, `CompactSession`, `NewSession`, `FetchChatHistory`, `WriteMCPEntry`/`RemoveMCPEntry`, `GetConfigJSON` | **The danger zone** — easy to no-op, expensive to discover missing. See §4–§6. |
 
-**Lesson (Hermes):** ~15 of these were stubbed no-op in `internal/agent/runtimes/hermes/stubs.go`.
+**Lesson (Hermes):** ~15 of these were stubbed no-op in `runtimes/hermes/stubs.go`.
 Some are legitimately N/A (`PairWhatsapp` — no plugin); `WriteMCPEntry`/`RemoveMCPEntry`
 were initially deferred (`TODO(hermes-mcp)`) and **later implemented** against
-`config.yaml` `mcp_servers` (`internal/agent/runtimes/hermes/mcp.go`), with a config→config clone on
-runtime switch (`internal/agent/mcp_reconcile.go`). But `StartSkillWatcher`,
+`config.yaml` `mcp_servers` (`runtimes/hermes/mcp.go`), with a config→config clone on
+runtime switch (`system/agent/mcp_reconcile.go`). But `StartSkillWatcher`,
 `UpdateIdentityName`, and the config-sync path
 were **functional gaps**, not N/A — they shipped as no-ops and we only noticed when
 skills went stale / rename did nothing / config broke after a reset. Audit every
@@ -84,7 +84,7 @@ bare empty body.
 return `domain.ErrNotSupportedByRuntime`** (domain/agent.go), never `nil` —
 `nil` tells the caller the change was applied when nothing happened. Callers
 branch on `errors.Is`: the LLM model/baseURL save path
-(`internal/device/service.go`) logs it as informational and falls back to
+(`system/device/service.go`) logs it as informational and falls back to
 `EnsureOnboarding` (whose presync re-reads `llm_*` from config.json), and the
 gw-config endpoint reports "no device-side config file" instead of `{}`.
 Current sentinel-returning stubs: `UpdatePrimaryModel`, `RefreshModelsConfig`,
@@ -96,7 +96,7 @@ has a real config.json). Mirrors the `ErrChannelNotSupported` rule in §9.
 ## 2. Register + wire the switch
 
 1. `domain/device.go`: add `AgentRuntime<Name>` const + the entry in `AgentRuntimes`.
-2. `internal/agent/factory.go`: add the `case` in `ProvideGateway`.
+2. `system/agent/factory.go`: add the `case` in `ProvideGateway`.
 3. **Embedded installer**: `internal/<name>/install.sh` + `install.go`
    (`//go:embed install.sh` → `runtimereg.Register(name, InstallScript)`).
 4. `switch_runtime.sh` is **generic** — it knows no backend names. Do **not** edit
@@ -115,7 +115,7 @@ The installer contract (`switch_runtime.sh` expects):
 `old`, then runs the switcher under `systemd-run --wait` and **blocks on its exit
 code**. `config.agent_runtime` is persisted **only after a clean exit 0** — so a
 crash/reboot mid-switch resolves the still-installed `old`, and there is nothing to
-revert. `switch-runtime <new> <old>` (generic, `internal/device/switch_runtime.sh`,
+revert. `switch-runtime <new> <old>` (generic, `system/device/switch_runtime.sh`,
 `go:embed`-materialized to `/usr/local/bin/switch-runtime`):
 
 1. resolves `<new>`'s unit name (default `<new>.service`, or the name declared in
@@ -156,11 +156,11 @@ This is the **activation gap** and we hit it twice on Hermes:
 The fix pattern (use it for everything stateful):
 - Put the logic in a **presync hook** (`runtime-<name>-presync`).
 - Embed it: `//go:embed presync.sh` → `runtimereg.RegisterPresync(name, PresyncScript)`.
-- `os-server` materializes it every switch (`internal/device/runtime_installers.go`
+- `os-server` materializes it every switch (`system/device/runtime_installers.go`
   `materializePresync`, called from the switch flow next to `materializeInstaller`).
 - `switch_runtime.sh` runs `runtime-<name>-presync` right before the backend starts.
 
-Hermes's presync (`internal/agent/runtimes/hermes/presync.sh`) now owns **both** the
+Hermes's presync (`runtimes/hermes/presync.sh`) now owns **both** the
 `config.yaml` model wiring (idempotent — coerces a reset-blanked `model: ''` back
 to a map, asserts `provider`/`custom_providers` structure, syncs `llm_*`/secrets)
 **and** the skill restore (re-runs `claw migrate` when `skills/openclaw-imports`
@@ -174,7 +174,7 @@ is empty). Keep `verify` CLI-only (`command -v <bin>`) — a structure-check in
 **Hub-and-spoke, not per-pair.** Migration goes through a runtime-neutral
 `PersonaBundle`: each runtime has ONE **read** adapter (its on-disk layout →
 bundle) and ONE **write** adapter (bundle → its layout), in
-`internal/agent/migrate_persona/runtime_<name>.go`. A migration is
+`system/agent/migrate_persona/runtime_<name>.go`. A migration is
 `read[from] → write[to]` (`RunMigration(from, to, opts)`). So adding a runtime is
 **one adapter file** that interoperates with every existing runtime in both
 directions — file count is **linear (2 per runtime)**, not the quadratic N×(N-1)
@@ -191,7 +191,7 @@ Note its INBOUND skills still come from presync's `picoclaw migrate --workspace-
 on a switch INTO picoclaw the two overlap on persona (same source, harmless) while
 presync remains the only skills path.
 
-> **Copy-me template:** `internal/agent/migrate_persona/runtime_example.go` is a
+> **Copy-me template:** `system/agent/migrate_persona/runtime_example.go` is a
 > build-ignored, fully-annotated skeleton — copy it to `runtime_<name>.go`, delete
 > the `//go:build ignore` line, and fill in the 5 wiring steps + read/write. It
 > spells out the per-field decision (separate slot vs inline vs fold) inline.
@@ -254,9 +254,9 @@ in its backend doc (e.g. `docs/agentic/hermes.md`), not a blanket guarantee here
 - **Restore-after-reset** belongs in **presync**, guarded on the dir being empty
   (so a normal switch is a no-op — no churn). See §3.
 - **Skill watcher** (auto-update from CDN, capability-gated): the generic
-  fetch/extract/hash plumbing is shared in `internal/skills/skillzip.go`
+  fetch/extract/hash plumbing is shared in `system/skills/skillzip.go`
   (`FetchSkillVersions`/`DownloadToTempFile`/`FolderHash`/`ExtractSkillZip`). Add a
-  thin `internal/<name>/skill_watcher.go` parallel to `internal/agent/runtimes/openclaw/skill_watcher.go`
+  thin `internal/<name>/skill_watcher.go` parallel to `runtimes/openclaw/skill_watcher.go`
   — only the **target dir** and the **notify path** differ. Gate with
   `skills.Supported(device.Capabilities(...))`. Notify the agent with
   `SendSystemChatMessage`.
@@ -275,7 +275,7 @@ them.
 inside the daemon; os-server pushes the message over WebSocket and loses the
 thread, so the only place to inject "thinking" at the right moment is the hook.
 With Hermes the interception point is already on the Go side — **every turn sent
-to Hermes flows through `internal/agent/runtimes/hermes/chat.go:sendChat`** (voice, sensing, web,
+to Hermes flows through `runtimes/hermes/chat.go:sendChat`** (voice, sensing, web,
 and Telegram, whose receive loop is Lumi-side — see `telegramRunOrigin`). So we
 reimplement the hook natively in Go and fire from `sendChat`, instead of
 materializing hook files into a workspace (Hermes has no Go onboarding to do that,
@@ -283,7 +283,7 @@ and no `~/.hermes/hooks/HOOK.yaml` loader to execute them — the `handler.ts`
 copied in by `claw migrate` is dead weight under Hermes).
 
 What was done:
-- **`emotion-acknowledge` → native Go** in `internal/agent/runtimes/hermes/emotion_ack.go`
+- **`emotion-acknowledge` → native Go** in `runtimes/hermes/emotion_ack.go`
   (`fireAckEmotion`, called from `sendChat`). It mirrors `handler.ts` 1:1: same
   emotion (`thinking`, intensity `0.7`), same skip prefixes
   (`[sensing:`/`[activity]`/`[emotion]`/`[speech_emotion]` + empty), and the
@@ -296,9 +296,9 @@ What was done:
   busy (`busySince`/`activeTurn`) before the network round-trip, so a separate
   gate would duplicate it.
 
-> ⚠️ **Maintenance coupling — no compile-time link.** `os/services/internal/agent/runtimes/openclaw/hooks/emotion-acknowledge/
+> ⚠️ **Maintenance coupling — no compile-time link.** `runtimes/openclaw/hooks/emotion-acknowledge/
 > handler.ts` (OpenClaw) and the `emotion_ack.go` files in
-> `internal/agent/runtimes/{hermes,picoclaw,codex,claudecode}` are independent
+> `runtimes/{hermes,picoclaw,codex,claudecode}` are independent
 > implementations of the same behavior. **When you change one, change them
 > all** — skip rules, emotion name/intensity, and capability gate must stay
 > identical, or the backends drift apart silently. Keep the cross-reference
@@ -338,7 +338,7 @@ when such a turn source appears.
 
 ## 8. Capability gating
 
-Use the runtime-agnostic platform metadata in `internal/skills`:
+Use the runtime-agnostic platform metadata in `system/skills`:
 - `skills.Supported(deviceCaps)` for skills, `skills.SupportedHooks(deviceCaps)`
   for hooks, where `deviceCaps = device.Capabilities(config.DeviceTypeOrDefault())`.
 - Never hardcode a skill/hook list per backend — gate the same way OpenClaw does.
@@ -356,10 +356,10 @@ runtime changes.
 
 - **`SupportedChannels() []string`** (new `AgentGateway` method,
   `domain/agent.go`) — returns the channels the runtime can run. Per backend:
-  - openclaw → `[telegram, slack, discord, whatsapp]` (`internal/agent/runtimes/openclaw/channels.go`)
-  - hermes → `[telegram, slack, discord]` (`internal/agent/runtimes/hermes/channels.go`)
-  - picoclaw → `[telegram]` (`internal/agent/runtimes/picoclaw/channels.go`)
-  - claudecode → `[telegram, slack, discord]` (`internal/agent/runtimes/claudecode/channels.go`
+  - openclaw → `[telegram, slack, discord, whatsapp]` (`runtimes/openclaw/channels.go`)
+  - hermes → `[telegram, slack, discord]` (`runtimes/hermes/channels.go`)
+  - picoclaw → `[telegram]` (`runtimes/picoclaw/channels.go`)
+  - claudecode → `[telegram, slack, discord]` (`runtimes/claudecode/channels.go`
     — all device-owned, mirroring codex: `telegram_poll.go` getUpdates loop,
     `discord.go` discordgo session, `slack.go` MQTT bridge; Claude Code's
     native channel plugins are deliberately not used)
@@ -380,7 +380,7 @@ runtime changes.
 
 A **supported** channel is applied; an **unsupported** one returns
 `domain.ErrChannelNotSupported` from the gateway. The device layer
-(`internal/device/service.go` `AddChannel`) now gates on `SupportedChannels()`
+(`system/device/service.go` `AddChannel`) now gates on `SupportedChannels()`
 **before** persisting credentials, so an unsupported channel never leaves a dead
 token in `config.json`. The order is:
 
@@ -396,7 +396,7 @@ transient apply failure then leaves creds persisted — the recoverable directio
 
 ### Switch self-heal: `ChannelReconcile`
 
-`ChannelReconcile` (`internal/agent/channel_reconcile.go`) is a sibling of
+`ChannelReconcile` (`system/agent/channel_reconcile.go`) is a sibling of
 `PersonaMigration`. It runs in the startup sequence **right after**
 `personaMigration.Reconcile()` (`server/config_watch.go`). It is **non-blocking**.
 
@@ -455,7 +455,7 @@ re-syncs `.env` before the gateway starts, so the re-apply is an idempotent no-o
       its native slot (identity → its own file, or inline if no slot) and folds
       slots the backend lacks. `Overwrite=true` for SOUL. No new `Direction` enum.
 - [ ] Skills: copy-import + **restore-in-presync** (guarded) + `skill_watcher.go`
-      (parallel to openclaw, shared `internal/skills/skillzip.go`).
+      (parallel to openclaw, shared `system/skills/skillzip.go`).
 - [ ] Hooks: backend-native or OS-side — decided & documented (not silently absent).
       If reimplemented OS-side in Go (no compile-time link to the TS hook), add
       cross-reference comments in both files so a change to one flags the other.

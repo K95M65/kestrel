@@ -19,7 +19,7 @@
 - Pairing 6-digit (web UI lamp hiện code)
 - WS connection persistent (`buddy → lamp`)
 - Command executor: `open_app`, `close_app`, `open_url`, `type_text`, `key_combo`, `notification`, `ping`
-- Lamp Go: package `internal/buddy/` + 7 HTTP route + WS gateway
+- Lamp Go: package `system/buddy/` + 7 HTTP route + WS gateway
 - OpenClaw skill `computer-use` (intent → command cơ bản)
 - Web UI: page "Paired Computers" ở `lamp/web/`
 - Audit log (backend file only — chưa có UI ở MVP)
@@ -68,7 +68,7 @@ Mỗi phase ship & review độc lập được.
 
 **Acceptance:** Khi lamp đang chạy trên LAN (advertise `_autonomous._tcp.local`), menu buddy hiện ví dụ `lamp-a1b2.local — 192.168.1.50` như item bấm được. Cũng có: option nhập hostname thủ công.
 
-> Note: thiết bị publish cả host record `<device_type>-<last4hex>.local` (ví dụ `lamp-a1b2.local`) LẪN service `_autonomous._tcp` cho browsable. Service đến từ file avahi tĩnh (`/etc/avahi/services/autonomous.service`, port 80) drop lúc provisioning (`scripts/provision/setup.sh` + `imager/build.sh` + `imager/build-orangepi.sh`). Dùng wildcard `%h` của avahi nên một file dùng chung mọi device class.
+> Note: thiết bị publish cả host record `<device_type>-<last4hex>.local` (ví dụ `lamp-a1b2.local`) LẪN service `_autonomous._tcp` cho browsable. Service đến từ file avahi tĩnh (`/etc/avahi/services/autonomous.service`, port 80) drop lúc provisioning (`scripts/provision/setup.sh` + `scripts/imager/build.sh` + `scripts/imager/build-orangepi.sh`). Dùng wildcard `%h` của avahi nên một file dùng chung mọi device class.
 
 ### Phase 1C — Luồng pairing
 
@@ -80,15 +80,15 @@ Mỗi phase ship & review độc lập được.
 - `autonomous-buddy/macos/Sources/AutonomousBuddy/Pairing/PairingWindow.swift` (UI nhập code)
 
 **File Lamp Go:**
-- `os/services/internal/buddy/types.go`
-- `os/services/internal/buddy/store.go`
-- `os/services/internal/buddy/pairing.go`
-- `os/services/internal/buddy/service.go`
-- `os/services/server/buddy/delivery/http/handler.go`
-- `os/services/server/buddy/delivery/http/handler_pair.go`
-- `os/services/internal/buddy/wire.go`
-- Sửa: `os/services/server/server.go` (đăng ký route)
-- Sửa: `os/services/server/wire.go` (provider)
+- `system/buddy/types.go`
+- `system/buddy/store.go`
+- `system/buddy/pairing.go`
+- `system/buddy/service.go`
+- `system/server/buddy/delivery/http/handler.go`
+- `system/server/buddy/delivery/http/handler_pair.go`
+- `system/buddy/wire.go`
+- Sửa: `system/server/server.go` (đăng ký route)
+- Sửa: `system/server/wire.go` (provider)
 - Chạy: `make generate`
 
 **File Lamp web:**
@@ -119,10 +119,10 @@ Mỗi phase ship & review độc lập được.
 - `autonomous-buddy/macos/Sources/AutonomousBuddy/Connection/Reconnect.swift`
 
 **File Lamp Go:**
-- `os/services/internal/buddy/registry.go`
-- `os/services/internal/buddy/ws.go`
-- `os/services/server/buddy/delivery/http/handler_ws.go`
-- Update: `os/services/server/server.go` (đăng ký route WS)
+- `system/buddy/registry.go`
+- `system/buddy/ws.go`
+- `system/server/buddy/delivery/http/handler_ws.go`
+- Update: `system/server/server.go` (đăng ký route WS)
 
 **Route thêm:**
 - `GET /api/buddy/ws` (WS upgrade)
@@ -161,8 +161,8 @@ Mỗi phase ship & review độc lập được.
 **Status:** ✓ Done — sync `/api/buddy/command` (localOnly) + marker-friendly `/api/buddy/exec/:action`. Cross-compile `GOOS=linux GOARCH=arm64 go build ./...` sạch. Có debug log instrumentation suốt chain (handler_hw → exec/command handler → dispatcher → ws read loop) để truy từng stage khi turn fail.
 
 **Files:**
-- `os/services/internal/buddy/dispatcher.go`
-- `os/services/server/buddy/delivery/http/handler_command.go`
+- `system/buddy/dispatcher.go`
+- `system/server/buddy/delivery/http/handler_command.go`
 - Update: wire provider, chạy `make generate`
 
 **Route thêm:**
@@ -224,7 +224,7 @@ Mỗi phase ship & review độc lập được.
 
 ## Lamp-side cần verify trước Phase 1B
 
-1. **mDNS browsability** — ✓ Xong. Thiết bị publish `_autonomous._tcp` cho `NWBrowser` qua file avahi tĩnh (`/etc/avahi/services/autonomous.service`, port 80) bake lúc provisioning (`setup.sh` + `imager/build*.sh`), cạnh host record `<device_type>-xxxx.local`. Wildcard `%h` giữ device-agnostic.
+1. **mDNS browsability** — ✓ Xong. Thiết bị publish `_autonomous._tcp` cho `NWBrowser` qua file avahi tĩnh (`/etc/avahi/services/autonomous.service`, port 80) bake lúc provisioning (`setup.sh` + `scripts/imager/build*.sh`), cạnh host record `<device_type>-xxxx.local`. Wildcard `%h` giữ device-agnostic.
 2. **Convention header admin auth** — confirm endpoint buddy mới dùng `Authorization: Bearer <token>` (cookie hay bearer); reuse pattern `project_security_login_ui_batch.md`.
 3. **Vị trí OpenClaw skill** — tìm xem skill đang sống ở đâu, naming convention, lamp đăng ký skill thế nào. (Có thể trong filesystem lamp `~/.openclaw/skills/<name>/SKILL.md`.)
 
@@ -273,7 +273,7 @@ Subfolder `autonomous-buddy/windows/` và `autonomous-buddy/linux/` sẽ host po
 
 ### Go (`lamp/`)
 ```
-os/services/internal/buddy/
+system/buddy/
 ├── types.go
 ├── store.go
 ├── pairing.go
@@ -283,7 +283,7 @@ os/services/internal/buddy/
 ├── service.go
 └── wire.go
 
-os/services/server/buddy/delivery/http/
+system/server/buddy/delivery/http/
 ├── handler.go
 ├── handler_pair.go
 ├── handler_ws.go
@@ -291,9 +291,9 @@ os/services/server/buddy/delivery/http/
 ```
 
 Sửa:
-- `os/services/server/server.go` (đăng ký route)
-- `os/services/server/wire.go` (provider set)
-- `os/services/server/wire_gen.go` (regenerated)
+- `system/server/server.go` (đăng ký route)
+- `system/server/wire.go` (provider set)
+- `system/server/wire_gen.go` (regenerated)
 
 ### Web (`lamp/web/`)
 ```

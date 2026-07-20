@@ -2,7 +2,7 @@
 
 Lamp có thể theo dõi và hướng theo bất kỳ vật thể nào mà người dùng gọi tên. Một detector tìm vật thể theo tên và seed một ViT tracker, sau đó một vòng lặp vision tốc độ cao bám theo nó real-time, trong khi một servo worker tách rời điều khiển đầu trượt mượt về phía target.
 
-Toàn bộ code tracking nằm trong package `os/hal/drivers/tracking/`:
+Toàn bộ code tracking nằm trong package `hal/drivers/tracking/`:
 
 | Module | Nội dung |
 |--------|----------|
@@ -59,11 +59,11 @@ Camera chạy **1280×720**. Mọi thành phần vision nặng — ViT tracker v
 - Bộ lọc chất lượng detection: confidence ≥ `DETECT_MIN_CONFIDENCE` (0.15), diện tích nằm giữa `DETECT_MIN_AREA_RATIO` (0.3%) và `DETECT_MAX_AREA_RATIO` (80%) của frame.
 - **Chống nhầm vật giống nhau (đường local)** — YOLO local detect **mở** (không filter `classes=`) để các class cạnh tranh còn hiện diện, sau đó: (a) cụm dễ nhầm cell phone / mouse / remote cần conf ≥ 0.35 (`_CONFUSABLE_CONF_FLOOR`) thay vì 0.15 chung; (b) **cross-class disambiguation** — nếu một box class khác đè lên candidate (IoU ≥ 0.5) với confidence *cao hơn*, candidate bị từ chối ("đó chắc là con chuột, không phải cái điện thoại anh hỏi") và code rơi xuống remote fallback. Floor 0.35 chỉ áp cho detect lúc *bắt đầu* session (`strict=True`); redetect giữa session dùng floor chung 0.15 (phone đang phẩy nhanh thường chỉ reconfirm ở conf 0.2–0.3, và các gate reinit đã bảo vệ lock) — cross-class check giữ nguyên cả hai chế độ.
 
-Weights được check vào repo (`os/hal/drivers/tracking/models/`) nên deploy chỉ một lần rsync và Pi không bao giờ cần internet lúc boot để bắt đầu tracking.
+Weights được check vào repo (`hal/drivers/tracking/models/`) nên deploy chỉ một lần rsync và Pi không bao giờ cần internet lúc boot để bắt đầu tracking.
 
 ## Tracker: TrackerVit
 
-**Model:** `os/hal/drivers/tracking/models/vittrack.onnx` (đã check vào repo)
+**Model:** `hal/drivers/tracking/models/vittrack.onnx` (đã check vào repo)
 
 | Tính năng | Giá trị |
 |-----------|---------|
@@ -166,7 +166,7 @@ pitch_correction = clamp(PID(soft_deadband(dy)) + VFF·vy·deg_per_px·dt,  ±5�
 | `MAX_TRACK_DURATION_S` | 300 | Timeout tự động dừng (5 phút) |
 | `_LOCAL_IMGSZ` | 320 | Kích thước inference local YOLO (640 → 1.3–2.9 s, quá chậm) |
 
-Mọi knob nằm trong `os/hal/drivers/tracking/constants.py`. (Đường proportional chết `GIMBAL_*` / `EMA_ALPHA` đã bị xoá khi tách package.)
+Mọi knob nằm trong `hal/drivers/tracking/constants.py`. (Đường proportional chết `GIMBAL_*` / `EMA_ALPHA` đã bị xoá khi tách package.)
 
 ### Giới hạn vị trí servo
 
@@ -192,7 +192,7 @@ Lưu ý: một bbox lớn (ví dụ một người lấp đầy frame) **không*
 
 ### Tự động dừng khi mất kết nối gateway/network
 
-Object tracking được điều khiển bởi các cập nhật vision từ xa từ agent/cloud. Khi gateway WebSocket disconnect (mất cloud hoặc internet), thiết bị tự động dừng mọi servo tracking đang chạy — `os/services/internal/agent/runtimes/openclaw/service_ws.go` gọi `hal.StopServoTracking()` → HAL `POST /servo/track/stop` (best-effort, được guard bởi `SetUpCompleted`). Nếu không có cập nhật từ xa mới, tracking tiếp tục sẽ cứ nhắm thân về một target cũ mà nó không còn sửa được, nên nó bị dừng như một phản xạ an toàn. Idle animation local vẫn tiếp tục (thiết bị vẫn "sống", không đóng băng) và phục hồi (`/servo/track/stop`, stop/release) vẫn khả dụng. Xem `devices/lamp/SAFETY.md` → `## fail-safe states` (dòng Network/gateway loss, enforced).
+Object tracking được điều khiển bởi các cập nhật vision từ xa từ agent/cloud. Khi gateway WebSocket disconnect (mất cloud hoặc internet), thiết bị tự động dừng mọi servo tracking đang chạy — `runtimes/openclaw/service_ws.go` gọi `hal.StopServoTracking()` → HAL `POST /servo/track/stop` (best-effort, được guard bởi `SetUpCompleted`). Nếu không có cập nhật từ xa mới, tracking tiếp tục sẽ cứ nhắm thân về một target cũ mà nó không còn sửa được, nên nó bị dừng như một phản xạ an toàn. Idle animation local vẫn tiếp tục (thiết bị vẫn "sống", không đóng băng) và phục hồi (`/servo/track/stop`, stop/release) vẫn khả dụng. Xem `devices/lamp/SAFETY.md` → `## fail-safe states` (dòng Network/gateway loss, enforced).
 
 ## API Endpoints
 
@@ -301,7 +301,7 @@ Camera section hiển thị:
 
 - `opencv-python>=4.8.0` (đã có trong `pyproject.toml`)
 - `ultralytics` — inference local YOLOv8n
-- `vittrack.onnx`, `yolov8n.pt`, `face_detection_yunet_2023mar.onnx` — đã check vào `os/hal/drivers/tracking/models/`
+- `vittrack.onnx`, `yolov8n.pt`, `face_detection_yunet_2023mar.onnx` — đã check vào `hal/drivers/tracking/models/`
 - `requests` (đã có trong project)
 - **YOLOWorld API** — DL backend tại `{DL_BACKEND_URL}/detect/yoloworld` (chỉ open-vocab fallback)
 
