@@ -114,7 +114,7 @@ scripts/  imager/ build, OTA, and SBC image tooling
 # Off-device & integrations
 integrations/
   companions/     desktop companion apps (autonomous-buddy, claude-desktop-buddy)
-  chat-hooks/     on-device chat bridges (Twitch, web chat)
+  chat-bridges/     on-device chat bridges (Twitch, web chat)
   perception-service/  off-device cloud perception inference (was dlbackend)
 ```
 
