@@ -24,7 +24,7 @@ class AudioEmbedder(PredictorBase[Audio, RawAudioEmbedding]):
 
     Computes 80-dim fbank features, splits them into chunks (see
     _sliding_windows), runs ONNX inference per chunk, and mean-aggregates with
-    L2 normalization. Speech at or below chunk_threshold_frames (default 20 s) is
+    L2 normalization. Speech at or below chunk_threshold_frames (default 10 s) is
     embedded as a single whole-utterance chunk; longer speech is split into
     window_frames chunks (default 6 s) with hop_frames stride (default 4 s).
     """
@@ -64,6 +64,11 @@ class AudioEmbedder(PredictorBase[Audio, RawAudioEmbedding]):
         self._chunk_threshold_frames: int = get_or_default(
             chunk_threshold_frames, self.DEFAULT_CHUNK_THRESHOLD_FRAMES
         )
+        if self._window_frames > self._chunk_threshold_frames:
+            raise ValueError(
+                f"window_frames ({self._window_frames}) must be <= "
+                f"chunk_threshold_frames ({self._chunk_threshold_frames})"
+            )
         self._sample_rate: int = get_or_default(sample_rate, self.DEFAULT_SAMPLE_RATE)
         self._num_mel_bins: int = get_or_default(num_mel_bins, self.DEFAULT_NUM_MEL_BINS)
 
@@ -182,7 +187,8 @@ class AudioEmbedder(PredictorBase[Audio, RawAudioEmbedding]):
             windows.append(feat[start : start + self._window_frames])
             start += self._hop_frames
 
-        if start < T:
+        last_end = start - self._hop_frames + self._window_frames
+        if last_end < T:
             windows.append(feat[T - self._window_frames : T])
 
         return np.stack(windows)  # (N, W, M)
