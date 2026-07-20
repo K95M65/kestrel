@@ -44,7 +44,7 @@ os/services/
 os/hal/
 ├── server.py                     — FastAPI server (38 endpoints)
 ├── config.py                     — Hằng số runtime (ngưỡng sensing, timeout, URL)
-├── devices/                      — Camera device abstraction (LocalVideoCaptureDevice)
+├── drivers/camera/               — Camera device (LocalVideoCaptureDevice, V4L2)
 ├── service/
 │   ├── voice/voice_service.py    — Local VAD + Deepgram STT, speaker ID, SER submit
 │   ├── voice/speech_emotion/     — Queue SER → perception-service → OS server speech_emotion.detected

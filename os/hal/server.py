@@ -164,8 +164,8 @@ if "camera" in _declared:
         logger.warning(f"Camera drivers (opencv) not available: {e}")
 
     try:
-        from hal.devices.models import VideoCaptureDeviceInfo
-        from hal.devices.video_capture_device import LocalVideoCaptureDevice
+        from hal.drivers.camera.models import VideoCaptureDeviceInfo
+        from hal.drivers.camera.video_capture_device import LocalVideoCaptureDevice
     except ImportError as e:
         logger.warning(f"Video capture device not available: {e}")
 else:

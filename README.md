@@ -75,9 +75,9 @@ in-process here too — runtime-layer code hosted in the HAL, marked purple in t
 ### Linux Kernel
 
 The vendor kernel (Raspberry Pi OS / OrangePi, or the robot's onboard compute) we run on — we
-don't ship one. Our **Drivers** (`motors`, `rgb`, `display`, `voice` (STT/TTS/VAD),
-`gpio`/`touch`, `bluetooth` in `os/hal/drivers`; the `camera` device in `os/hal/devices`;
-per-board wiring in `os/hal/board`) are userspace programs talking to it through GPIO/SPI/ALSA/V4L2;
+don't ship one. Our **Drivers** (`motors`, `rgb`, `display`, `camera`, `voice` (STT/TTS/VAD),
+`gpio`/`touch`, `bluetooth` in `os/hal/drivers`, with per-board wiring in `os/hal/board`) are
+userspace programs talking to it through GPIO/SPI/ALSA/V4L2;
 **Power Management** is the foundation.
 *(see [kernel](docs/architecture/kernel.md))*
 

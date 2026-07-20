@@ -924,7 +924,7 @@ class RealtimeOrchestrator:
             import cv2
 
             import hal.app_state as state
-            from hal.devices.video_capture_device import capture_still
+            from hal.drivers.camera.video_capture_device import capture_still
         except Exception:
             return None
         cap = getattr(state, "camera_capture", None)

@@ -44,7 +44,7 @@ os/services/
 os/hal/
 ├── server.py                     — FastAPI server (38 endpoints)
 ├── config.py                     — Runtime constants (sensing thresholds, timeouts, URLs)
-├── devices/                      — Camera device abstraction (LocalVideoCaptureDevice)
+├── drivers/camera/               — Camera device (LocalVideoCaptureDevice, V4L2)
 ├── service/
 │   ├── voice/voice_service.py    — Local VAD + Deepgram STT
 │   ├── voice/stt/                — Pluggable STT (Deepgram / autonomous)

@@ -39,10 +39,9 @@ too — runtime-layer code hosted in the HAL, marked purple in the diagram.
 *(`contract/` + `os/hal` — see [hal.md](hal.md))*
 
 **Linux Kernel** — the vendor kernel (Raspberry Pi OS / OrangePi, or a robot's onboard compute)
-we run on; we don't ship one. Our **Drivers** (`motors`, `rgb`, `display`, `voice`
-(STT/TTS/VAD), `gpio`/`touch`, `bluetooth` — `os/hal/drivers`; the `camera` device —
-`os/hal/devices`; with per-board wiring in `os/hal/board`) are userspace programs talking to it through
-GPIO/SPI/ALSA/V4L2; **Power Management** is the foundation. *(see [kernel.md](kernel.md))*
+we run on; we don't ship one. Our **Drivers** (`motors`, `rgb`, `display`, `camera`, `voice`
+(STT/TTS/VAD), `gpio`/`touch`, `bluetooth` — `os/hal/drivers`, with per-board wiring in
+`os/hal/board`) are userspace programs talking to it through GPIO/SPI/ALSA/V4L2; **Power Management** is the foundation. *(see [kernel.md](kernel.md))*
 
 ## See also
 
