@@ -117,7 +117,7 @@ Lamp Server modules (in `lamp/` subdirectory):
 - `runtimes/openclaw/` — OpenClaw config generation and WebSocket
 - `system/beclient/` — Backend status reporter
 - `system/device/` — Setup, MQTT command handling, status reporting
-- `system/ambient/` — Idle "living creature" behaviors (breathing LED, color drift, micro-movements, TTS mumbles). Runs when no interaction is happening; auto-pauses on real input, resumes after 10s silence. Calls HAL HTTP API.
+- `system/ambient/` — Idle "living creature" behaviors (breathing LED, servo micro-movements, TTS mumbles). Runs when no interaction is happening; auto-pauses on real input, resumes after 60s of quiet. Calls HAL HTTP API. See `sensing-behavior.md` → "Ambient Idle Behaviors".
 - `lib/mqtt/` — MQTT client with auto-reconnect
 - `bootstrap/` — OTA version check and install
 - `domain/` — Shared structs (device, network, OTA, OpenClaw)
