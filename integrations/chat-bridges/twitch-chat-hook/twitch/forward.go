@@ -1,5 +1,5 @@
-// Forwards Twitch chat lines into Lamp's sensing pipeline as a sensing
-// event, mirroring how HAL's voice service posts voice_command
+// Forwards Twitch chat lines into the device's sensing pipeline as a sensing
+// event, mirroring how HAL's voice service posts voice
 // transcripts (see os/hal/drivers/voice/voice_service.py: same URL, same
 // body shape). The "[source: twitch]" prefix lets SOUL.md distinguish this
 // from real microphone input.
@@ -18,8 +18,8 @@ import (
 )
 
 const (
-	defaultLampSensingURL = "http://127.0.0.1:5000/api/sensing/event"
-	defaultEventType      = "voice"
+	defaultDeviceSensingURL = "http://127.0.0.1:5000/api/sensing/event"
+	defaultEventType        = "voice"
 )
 
 var forwardClient = &http.Client{Timeout: 2 * time.Second}
@@ -29,23 +29,27 @@ type sensingEvent struct {
 	Message string `json:"message"`
 }
 
-// ForwardChatMessage POSTs a chat line to the Lamp sensing endpoint.
+// ForwardChatMessage POSTs a chat line to the device's sensing endpoint.
 //
 // Env overrides:
 //
-//	LAMP_SENSING_URL     default http://127.0.0.1:5000/api/sensing/event
-//	TWITCH_SENSING_TYPE  default voice_command
+//	DEVICE_SENSING_URL   default http://127.0.0.1:5000/api/sensing/event
+//	                     (LAMP_SENSING_URL is honored as a legacy fallback)
+//	TWITCH_SENSING_TYPE  default voice
 //
 // Fire-and-forget. The send runs in a background goroutine so the caller's
-// read loop is never blocked by a slow Lamp; errors are logged.
+// read loop is never blocked by a slow device; errors are logged.
 func ForwardChatMessage(ctx context.Context, nick, text string) {
 	go forward(ctx, nick, text)
 }
 
 func forward(ctx context.Context, nick, text string) {
-	url := os.Getenv("LAMP_SENSING_URL")
+	url := os.Getenv("DEVICE_SENSING_URL")
 	if url == "" {
-		url = defaultLampSensingURL
+		url = os.Getenv("LAMP_SENSING_URL") // legacy name, pre-rename fleets
+	}
+	if url == "" {
+		url = defaultDeviceSensingURL
 	}
 	evtType := os.Getenv("TWITCH_SENSING_TYPE")
 	if evtType == "" {

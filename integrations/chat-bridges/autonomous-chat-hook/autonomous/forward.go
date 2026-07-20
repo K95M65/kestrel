@@ -1,5 +1,5 @@
-// Forwards autonomous-web chat messages into Lamp's sensing pipeline, the
-// same way twitch-chat-hook/twitch/forward.go forwards Twitch chat. The
+// Forwards autonomous-web chat messages into the device's sensing pipeline,
+// the same way twitch-chat-hook/twitch/forward.go forwards Twitch chat. The
 // "[source: autonomous_web]" prefix lets SOUL.md tell BE-driven messages
 // apart from real microphone input.
 
@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	defaultLampSensingURL = "http://127.0.0.1:5000/api/sensing/event"
-	defaultEventType      = "voice"
+	defaultDeviceSensingURL = "http://127.0.0.1:5000/api/sensing/event"
+	defaultEventType        = "voice"
 )
 
 var forwardClient = &http.Client{Timeout: 2 * time.Second}
@@ -28,23 +28,27 @@ type sensingEvent struct {
 	Message string `json:"message"`
 }
 
-// ForwardChatMessage POSTs a chat line to the Lamp sensing endpoint.
+// ForwardChatMessage POSTs a chat line to the device's sensing endpoint.
 //
 // Env overrides:
 //
-//	LAMP_SENSING_URL         default http://127.0.0.1:5000/api/sensing/event
+//	DEVICE_SENSING_URL       default http://127.0.0.1:5000/api/sensing/event
+//	                         (LAMP_SENSING_URL is honored as a legacy fallback)
 //	AUTONOMOUS_SENSING_TYPE  default voice
 //
 // Fire-and-forget. The send runs in a background goroutine so the MQTT
-// receive loop is never blocked by a slow Lamp; errors are logged.
+// receive loop is never blocked by a slow device; errors are logged.
 func ForwardChatMessage(ctx context.Context, user, text string) {
 	go forward(ctx, user, text)
 }
 
 func forward(ctx context.Context, user, text string) {
-	url := os.Getenv("LAMP_SENSING_URL")
+	url := os.Getenv("DEVICE_SENSING_URL")
 	if url == "" {
-		url = defaultLampSensingURL
+		url = os.Getenv("LAMP_SENSING_URL") // legacy name, pre-rename fleets
+	}
+	if url == "" {
+		url = defaultDeviceSensingURL
 	}
 	evtType := os.Getenv("AUTONOMOUS_SENSING_TYPE")
 	if evtType == "" {

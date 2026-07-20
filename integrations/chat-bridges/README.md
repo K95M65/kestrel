@@ -55,7 +55,7 @@ web user ──HTTP──▶ Autonomous BE ──MQTT publish──▶ broker �
 - `cmd/irc/` — anonymous IRC fallback (`-channel foo,bar`). No app, no token, no HMAC/dedup
   metadata; read-only; can run on the device itself. This is the binary the OTA target ships.
 - `twitch/` — EventSub types, HMAC verification, minimal Helix client, and `forward.go`
-  (`LAMP_SENSING_URL`, `TWITCH_SENSING_TYPE` env overrides).
+  (`DEVICE_SENSING_URL` — legacy `LAMP_SENSING_URL` still honored — and `TWITCH_SENSING_TYPE` env overrides).
 
 See `twitch-chat-hook/README.md` and `HANDOFF.md` for full setup, token refresh, and limits.
 
@@ -66,7 +66,7 @@ See `twitch-chat-hook/README.md` and `HANDOFF.md` for full setup, token refresh,
   `text` is dropped.
 - `autonomous/forward.go` — HTTP POST to the sensing endpoint, same shape as the Twitch one.
 - Env: `AUTONOMOUS_MQTT_URL` + `AUTONOMOUS_MQTT_TOPIC` (required),
-  `AUTONOMOUS_MQTT_USERNAME`/`PASSWORD`, `AUTONOMOUS_MQTT_CLIENT_ID`, `LAMP_SENSING_URL`,
+  `AUTONOMOUS_MQTT_USERNAME`/`PASSWORD`, `AUTONOMOUS_MQTT_CLIENT_ID`, `DEVICE_SENSING_URL` (legacy `LAMP_SENSING_URL` honored),
   `AUTONOMOUS_SENSING_TYPE`.
 - Runs **on the device** (defaults target loopback :5000), e.g. under systemd with
   `EnvironmentFile=/opt/autonomous-chat-hook/.env` — see its README for a unit example.
@@ -93,7 +93,7 @@ prefix come from `scripts/release/ota-config.sh`.
 1. New self-contained Go module under `integrations/chat-bridges/<name>/` with `cmd/`,
    a forward package, `.env.example`, and a `VERSION_<NAME>` file.
 2. Deliver every message as `{"type": ..., "message": ...}` to `/api/sensing/event`
-   (`LAMP_SENSING_URL`-style env override, default loopback :5000).
+   (`DEVICE_SENSING_URL`-style env override, default loopback :5000).
 3. Prefix the message with a `[source: <platform>, ...user...]` tag so SOUL.md can route it.
 4. Forward fire-and-forget from a goroutine with a short timeout — never block the
    platform receive loop on the device.

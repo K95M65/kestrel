@@ -44,7 +44,7 @@ go run ./cmd/mqtt
 | `AUTONOMOUS_MQTT_USERNAME`  | no  | — | Broker auth |
 | `AUTONOMOUS_MQTT_PASSWORD`  | no  | — | Broker auth |
 | `AUTONOMOUS_MQTT_CLIENT_ID` | no  | `autonomous-chat-<hex>` | |
-| `LAMP_SENSING_URL`          | no  | `http://127.0.0.1:5000/api/sensing/event` | |
+| `DEVICE_SENSING_URL`        | no  | `http://127.0.0.1:5000/api/sensing/event` | legacy `LAMP_SENSING_URL` still honored |
 | `AUTONOMOUS_SENSING_TYPE`   | no  | `voice` | Sensing event type |
 
 ## Layout

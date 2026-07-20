@@ -11,7 +11,7 @@ cloud GPU perception.
 | Project | What it is | Language / platform | How it talks to the device |
 |---------|-----------|---------------------|----------------------------|
 | [`companions/autonomous-buddy/`](companions/autonomous-buddy/) | Menu-bar app the device's voice agent will use to control your computer | Swift (macOS 13+, SPM) | Device → Mac over WebSocket with 6-digit pairing (Phase 1A scaffold; networking not built yet) |
-| [`companions/claude-desktop-buddy/`](companions/claude-desktop-buddy/) | Device-side daemon that mirrors Claude Desktop / Claude Code activity onto the lamp (LED, display, TTS) and relays voice approvals | Go (runs **on** the device) | Mac → device over BLE (Nordic UART) from Claude Desktop; HTTP `:5002` push from the bundled `claude-code-buddy` plugin |
+| [`companions/claude-desktop-buddy/`](companions/claude-desktop-buddy/) | Device-side daemon that mirrors Claude Desktop / Claude Code activity onto the device (LED, display, TTS) and relays voice approvals | Go (runs **on** the device) | Mac → device over BLE (Nordic UART) from Claude Desktop; HTTP `:5002` push from the bundled `claude-code-buddy` plugin |
 | [`chat-bridges/twitch-chat-hook/`](chat-bridges/twitch-chat-hook/) | Twitch live chat → device sensing events | Go (stdlib only) | Twitch EventSub webhook (HTTPS) or anonymous IRC fallback in; `POST /api/sensing/event` out |
 | [`chat-bridges/autonomous-chat-hook/`](chat-bridges/autonomous-chat-hook/) | Autonomous web chat → device sensing events | Go | MQTT subscribe in; `POST /api/sensing/event` out |
 | [`perception-service/`](perception-service/) | Cloud GPU inference for models the HAL can't run locally (action, facial/speech emotion, pose + ergonomics, object detection, speaker embedding) | Python (FastAPI, CUDA, Docker) | Device HAL → service over WS + HTTP at `/hal/api/dl/*`, auth via `X-API-Key` |
@@ -35,7 +35,7 @@ a Go `mock-device` for end-to-end testing. See [its README](companions/autonomou
 
 **`companions/claude-desktop-buddy/`** — a small Go daemon on the device that receives Claude
 Desktop's live activity over Bluetooth LE, derives a state (`idle` / `busy` / `attention`), and
-reflects it on the lamp. Exposes HTTP `:5002` for status and voice tool-call approvals; the
+reflects it on the device. Exposes HTTP `:5002` for status and voice tool-call approvals; the
 sibling `claude-code-buddy/` Claude Code plugin pushes over that same port instead of BLE.
 See [its README](companions/claude-desktop-buddy/README.md).
 
