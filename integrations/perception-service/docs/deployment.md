@@ -209,14 +209,14 @@ The `Dockerfile` (CUDA 12.4 + PyTorch + nginx) builds a single image that runs
 as either **master** or **slave** via the `ROLE` env var.
 
 ```bash
-docker build -t dlbackend .
+docker build -t perception-service .
 ```
 
 ### Single node (master only)
 
 ```bash
 docker compose up                # or:
-docker run --gpus all -e DL_API_KEY=<secret> -p 8899:8899 dlbackend
+docker run --gpus all -e DL_API_KEY=<secret> -p 8899:8899 perception-service
 ```
 
 Runs nginx :8899 → lbserver :7999 → dlserver :8001.
@@ -231,7 +231,7 @@ docker run --gpus all \
   -e ROLE=slave \
   -v model-cache:/workspace/models \
   -p 8899:8899 \
-  dlbackend
+  perception-service
 ```
 
 Or with compose: `DL_API_KEY=<secret> docker compose -f docker-compose.slave.yml up -d`
@@ -247,7 +247,7 @@ docker run --gpus all \
   -e LB__BACKENDS="http://127.0.0.1:8001,https://<slave1>:8899,https://<slave2>:8899" \
   -v model-cache:/workspace/models \
   -p 8899:8899 \
-  dlbackend
+  perception-service
 ```
 
 Or with compose: set `LB__BACKENDS` in `.env` and run `docker compose up -d`.
@@ -268,7 +268,7 @@ so they persist across container restarts. First start downloads from CDN.
   `https://<POD_ID>-8899.proxy.runpod.net/`. Device traffic uses the `/lelamp/`
   prefix (e.g. `…/lelamp/api/dl/action-analysis/ws`).
 - First model use downloads weights from the public bucket into
-  `~/.cache/dlbackend/models` (slower first call). See
+  `~/.cache/perception-service/models` (slower first call). See
   [configuration.md#model-downloading](configuration.md#model-downloading), and
   note the four weights currently missing from the bucket.
 - Put models on a persistent RunPod volume (point `MODEL_CACHE_DIR` at it) to avoid

@@ -167,7 +167,7 @@ the caller).
 ## Model weights reference
 
 All ONNX/PyTorch weights are auto-downloaded from
-`https://storage.googleapis.com/autonomous-models/` into `~/.cache/dlbackend/models/`
+`https://storage.googleapis.com/autonomous-models/` into `~/.cache/perception-service/models/`
 on first use. Override with `<NAME>__CKPT_PATH` (local) or `<NAME>__REMOTE_URL` (alternate CDN/HF).
 
 | Model | Weights file | Format | CDN path |

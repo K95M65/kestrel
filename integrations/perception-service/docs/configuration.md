@@ -9,8 +9,8 @@ environment / `.env`. Nested settings use a `__` delimiter
 | Env var | Default | Meaning |
 |---------|---------|---------|
 | `DL_API_KEY` | _(required)_ | Shared API key; `dlserver` raises at startup if unset |
-| `CACHE_DIR` | `~/.cache/dlbackend` | Root cache dir |
-| `MODEL_CACHE_DIR` | `~/.cache/dlbackend/models` | Downloaded model weights |
+| `CACHE_DIR` | `~/.cache/perception-service` | Root cache dir |
+| `MODEL_CACHE_DIR` | `~/.cache/perception-service/models` | Downloaded model weights |
 | `CDN_BASE` | `https://storage.googleapis.com/autonomous-models` | Public bucket weights are fetched from (see [Model downloading](#model-downloading)) |
 
 ## Model downloading
@@ -22,7 +22,7 @@ checkout pulls only the models it actually uses.
 How it works (`src/core/utils/files.py`, `ensure_downloaded`):
 
 1. The predictor resolves a local path under `MODEL_CACHE_DIR`
-   (default `~/.cache/dlbackend/models/<filename>`).
+   (default `~/.cache/perception-service/models/<filename>`).
 2. If the file already exists → use it, no network.
 3. If missing → download from the resolved `remote`:
    - an `http(s)` URL → direct download (atomic: `.part` temp → `replace`);
@@ -186,7 +186,7 @@ where `<NAME>` ∈ `YOLO_WORLD`, `OWLV2`. All default to
 
 When `USE_ONNX=true` (the default), ONNX predictors resolve their model path and
 remote URL from `ModelEnum` entries and auto-download via `ensure_downloaded` on
-first use. Models are cached in `MODEL_CACHE_DIR` (`~/.cache/dlbackend/models/` by
+first use. Models are cached in `MODEL_CACHE_DIR` (`~/.cache/perception-service/models/` by
 default). No manual download step is needed.
 
 ### Audio processor (SER / embedder front-end)
