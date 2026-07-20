@@ -188,7 +188,7 @@ Uses Google Wire for compile-time DI. After changing provider signatures, run
 - `routes/` - FastAPI route modules (servo, led, camera, audio, emotion, ...).
 
 **OS-level dirs (repo root):** `contract/` (device specs), `skills/` (agent
-skills), `devices/` (per-device declarations + docs), `cts/` (compliance
+skills), `devices/` (per-device declarations + docs), `contract/cts/` (compliance
 tests), `imager/` (OrangePi image build), `scripts/` (setup + OTA upload),
 `integrations/perception-service/`, `integrations/companions/`.
 

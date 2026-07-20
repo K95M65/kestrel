@@ -46,7 +46,7 @@ os/
     runtime/           the capability host — mounts what DEVICE.md declares
   web/                 on-device setup + monitor UI
 devices/               declarative overlays: _base/, lamp/, intern/, examples/
-cts/                   conformance test suite — "is this an Autonomous device?"
+contract/cts/          conformance test suite — "is this an Autonomous device?"
 tools/                 imager, scripts (build + SBC images)
 integrations/companions/            off-device apps (autonomous-buddy, claude-desktop-buddy)
 backend/               off-device cloud inference (perception-service)
@@ -83,8 +83,8 @@ very different robots.
 
 - **`contract/COMPATIBILITY.md`** is the spec (the CDD): what a device MUST, SHOULD, and MAY do
   to call itself Autonomous-compatible.
-- **`cts/`** is the test (the CTS): it validates a `DEVICE.md` against the spec, checks the
-  capability contract, and verifies safety invariants. Passing `cts` is what lets a third party
+- **`contract/cts/`** is the test (the CTS): it validates a `DEVICE.md` against the spec, checks the
+  capability contract, and verifies safety invariants. Passing the CTS is what lets a third party
   ship an "Autonomous-compatible" device. A test is the only thing that stops a hundreds-of-OEM
   ecosystem from fragmenting.
 
@@ -103,14 +103,14 @@ committees, no heavy process. Docs live in-tree beside the code they describe.
 
 The restructure landed in CI-gated stages:
 
-1. ✅ **Conformance + base**: `contract/COMPATIBILITY.md`, `cts/`, `devices/_base`.
+1. ✅ **Conformance + base**: `contract/COMPATIBILITY.md`, `contract/cts/`, `devices/_base`.
 2. ✅ **Go layer**: `os/core` → `os/services` (runtime bridge stays `os/services/internal/agent/runtimes/openclaw`).
 3. ✅ **HAL package**: `lelamp` → `hal`, surfaced as `os/hal/drivers` (by subsystem) +
    `os/hal/board` (by board). Deploy identifiers renamed consistently (`/opt/hal`,
    `os/ota/hal`, `python -m hal.server`). On-device `LELAMP_*` env vars remain as **legacy
    aliases** until a field OTA cycle migrates them.
 4. ✅ **Lamp + Intern**: unchanged — they are `DEVICE.md` overlays over the shared core, so the
-   restructure didn't touch them; `cts` confirms both stay compliant (one image, two manifests).
+   restructure didn't touch them; the CTS confirms both stay compliant (one image, two manifests).
 
 Remaining (non-blocking): the inherited legacy lamp docs under `docs/*.md` still say "lelamp";
 they describe the old system and get a separate docs pass. The on-device deploy path

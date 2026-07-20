@@ -63,8 +63,7 @@ os/hal/
 devices/                          — Per-device configs and overlays
 skills/                           — SKILL.md files cho agent runtime
 integrations/                     — Off-device: companions/, chat-hooks/, perception-service/
-contract/                         — Shared API contracts
-cts/                              — Compatibility test suite
+contract/                         — Shared API contracts (+ cts/ compliance suite)
 ```
 
 ## Nguyên Tắc

@@ -136,7 +136,7 @@ Uses **Google Wire** for compile-time DI. After changing provider signatures, ru
 - **`board/`** — Per-board profiles (pin maps, debounce).
 - **`routes/`** — FastAPI route modules (servo, led, camera, audio, emotion, …).
 
-**OS-level dirs (repo root):** `contract/` (device specs), `skills/` (agent skills), `devices/` (per-device declarations + docs), `cts/` (compliance tests), `imager/` (OrangePi image build), `scripts/` (setup + OTA upload), `integrations/perception-service/`, `integrations/companions/`.
+**OS-level dirs (repo root):** `contract/` (device specs), `skills/` (agent skills), `devices/` (per-device declarations + docs), `contract/cts/` (compliance tests), `imager/` (OrangePi image build), `scripts/` (setup + OTA upload), `integrations/perception-service/`, `integrations/companions/`.
 
 ### API Response Format
 

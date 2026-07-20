@@ -66,7 +66,7 @@ jobs:
         working-directory: os
         run: python -m unittest hal.test.test_board hal.test.test_device hal.test.test_safety -v
       - name: conformance suite (CTS — devices vs COMPATIBILITY.md)
-        run: python -m unittest discover -s cts -v
+        run: python -m unittest discover -s contract/cts -v
       - name: syntax check board + drivers
         working-directory: os
         run: |

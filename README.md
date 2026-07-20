@@ -97,6 +97,7 @@ The tree maps onto the architecture layers (top of the stack first):
 ```
 # The OS
 contract/         HAL capability ABI — frozen, versioned (what skills build against)
+  cts/            compliance test suite — validates devices against the contract
 skills/           Skills — the apps (SKILL.md)
 os/
   services/       Agentic-runtime bridge + System Services (Go): intent, network, OTA, sensing

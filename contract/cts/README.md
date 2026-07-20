@@ -1,14 +1,14 @@
 # CTS — Compatibility Test Suite
 
-`cts/` is the automated enforcer of [`contract/COMPATIBILITY.md`](../contract/COMPATIBILITY.md).
+`contract/cts/` is the automated enforcer of [`contract/COMPATIBILITY.md`](../COMPATIBILITY.md).
 The spec *defines* what an Autonomous-compatible device must do; this suite *verifies* it.
-Passing `cts` is what lets a device use the Autonomous-compatible mark and run the skill
+Passing the CTS is what lets a device use the Autonomous-compatible mark and run the skill
 catalog — the mechanism that keeps a hundreds-of-device ecosystem coherent (Android's CTS).
 
 ## Run
 
 ```bash
-python3 -m unittest discover -s cts -v
+python3 -m unittest discover -s contract/cts -v
 ```
 
 It validates every real device under `devices/` against the MUST rules: schema, the `system`
