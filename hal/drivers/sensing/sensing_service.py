@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING, Any, Callable
 import requests
 
 import hal.config as config
-from devices.video_capture_device import VideoCaptureDeviceBase
+from hal.drivers.camera.video_capture_device import VideoCaptureDeviceBase
 from hal.drivers.motors.animation_service import AnimationService
 from hal.drivers.rgb.rgb_service import RGBService
 from hal.drivers.sensing.perceptions.models import PerceptionConfig
