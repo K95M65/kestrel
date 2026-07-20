@@ -202,7 +202,7 @@ func (h *AgentHandler) fireHWCall(c hwCall, flowRunID string, client *http.Clien
 			"component", "openclaw", "path", c.path, "capability", cap)
 		return true
 	}
-	// Lamp-bound HW markers (log writes that live on Lamp, not HAL):
+	// os-server-bound HW markers (log writes that live in os-server, not HAL):
 	//   /wellbeing/log         → POST :5000/api/wellbeing/log
 	//   /mood/log              → POST :5000/api/mood/log (signal + decision share endpoint, kind in body)
 	//   /music-suggestion/log  → POST :5000/api/music-suggestion/log

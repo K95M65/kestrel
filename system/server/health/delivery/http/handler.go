@@ -24,7 +24,7 @@ import (
 	"go.autonomous.ai/os/system/server/serializers"
 )
 
-// serverStartTime records when the Lamp process started.
+// serverStartTime records when the os-server process started.
 var serverStartTime = time.Now()
 
 // HealthHandler represents the HTTP handler for health and system info.
