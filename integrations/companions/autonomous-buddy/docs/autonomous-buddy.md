@@ -326,7 +326,7 @@ Reserved for later (defined but not implemented MVP):
 | Pref storage | **UserDefaults / plist** | Standard macOS for non-secrets |
 | Logging | **OSLog (unified)** | Native, viewable in Console.app |
 | Test framework | **XCTest** | Standard |
-| Go side | **Existing patterns** (Gin, Wire, internal/) | Follow `agent-runtimes/openclaw/`, `server/<domain>/delivery/http/` |
+| Go side | **Existing patterns** (Gin, Wire, internal/) | Follow `runtimes/openclaw/`, `server/<domain>/delivery/http/` |
 | Autonomous-buddy folder location | **Repo root** alongside `lamp/`, `lelamp/` | Self-contained, can be built independently |
 
 ---

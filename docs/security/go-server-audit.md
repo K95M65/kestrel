@@ -1568,7 +1568,7 @@ Expected: `401`/`403` without auth; redacted with auth.
 
 ### OpenClaw config exposure
 
-- `agent-runtimes/openclaw/service_chat.go`
+- `runtimes/openclaw/service_chat.go`
   - Avoid returning raw `openclaw.json` to remote handlers.
   - Add redacted config summary method.
 

@@ -28,8 +28,8 @@ rules apply to all code changes:
    | Speech emotion recognition (SER) | `docs/speech-emotion.md` | `docs/vi/speech-emotion_vi.md` |
    | Realtime voice agent (HAL `drivers/realtime`, Gemini Live / OpenAI Realtime, delegate) | `docs/realtime-voice.md` | `docs/vi/realtime-voice_vi.md` |
    | Perception service (cloud DL inference), load balancer, encryption, models | `docs/perception-service.md` | `docs/vi/perception-service_vi.md` |
-   | Hermes agent backend (`agent_runtime`, agent-runtimes/hermes) | `docs/agentic/hermes.md` | `docs/vi/agentic/hermes_vi.md` |
-   | PicoClaw agent backend (`agent_runtime`, agent-runtimes/picoclaw, WebSocket) | `docs/agentic/picoclaw.md` | `docs/vi/agentic/picoclaw_vi.md` |
+   | Hermes agent backend (`agent_runtime`, runtimes/hermes) | `docs/agentic/hermes.md` | `docs/vi/agentic/hermes_vi.md` |
+   | PicoClaw agent backend (`agent_runtime`, runtimes/picoclaw, WebSocket) | `docs/agentic/picoclaw.md` | `docs/vi/agentic/picoclaw_vi.md` |
    | Adding/changing an agentic backend (AgentGateway contract, switch, install/presync, migration, skills, hooks, reset) | `docs/agentic/adding-agent-runtime.md` | `docs/vi/agentic/adding-agent-runtime_vi.md` |
    | Safety engine (SAFETY.md bounds, deterministic enforcement gate) | `docs/safety.md` | `docs/vi/safety_vi.md` |
 
@@ -162,8 +162,8 @@ Uses Google Wire for compile-time DI. After changing provider signatures, run
 
 ### Package Layout
 
-**Agentic runtimes - `agent-runtimes/` (repo root):** swappable backends,
-one folder per brain: `agent-runtimes/{openclaw,hermes,picoclaw,codex,claudecode}`.
+**Agentic runtimes - `runtimes/` (repo root):** swappable backends,
+one folder per brain: `runtimes/{openclaw,hermes,picoclaw,codex,claudecode}`.
 Selected by `system/agent` (AgentGateway factory).
 
 **Go backend - `system/` (single Go module rooted at the repo root):**
@@ -188,10 +188,10 @@ Selected by `system/agent` (AgentGateway factory).
 - `board/` - Per-board profiles (pin maps, debounce).
 - `routes/` - FastAPI route modules (servo, led, camera, audio, emotion, ...).
 
-**OS-level dirs (repo root):** `contract/` (device specs), `skills/` (agent
-skills), `devices/` (per-device declarations + docs), `contract/cts/` (compliance
-tests), `scripts/imager/` (OrangePi image build), `scripts/` (setup + OTA upload),
-`integrations/perception-service/`, `integrations/companions/`.
+**OS-level dirs (repo root):** `skills/` (agent skills), `devices/` (per-device
+declarations + docs; `devices/contract/` device specs, `devices/contract/cts/`
+compliance tests), `scripts/imager/` (OrangePi image build), `scripts/` (setup +
+OTA upload), `integrations/perception-service/`, `integrations/companions/`.
 
 ### API Response Format
 

@@ -19,7 +19,7 @@ open an issue and let's fix it.
 ## A few norms (not rules)
 
 - Keep PRs focused; green CI helps us merge faster.
-- `contract/` is the stable interface everyone builds on — open an issue before changing it.
+- `devices/contract/` is the stable interface everyone builds on — open an issue before changing it.
 - Be kind.
 
 Questions? [Open an issue](https://github.com/autonomous-ai/autonomous-os/issues).

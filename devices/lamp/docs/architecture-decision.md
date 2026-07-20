@@ -114,7 +114,7 @@ Lamp Server modules (in `lamp/` subdirectory):
 - `server/config/` — JSON config with reload
 - `internal/resetbutton/` — GPIO long-press detection
 - `system/network/` — WiFi AP/STA management
-- `agent-runtimes/openclaw/` — OpenClaw config generation and WebSocket
+- `runtimes/openclaw/` — OpenClaw config generation and WebSocket
 - `system/beclient/` — Backend status reporter
 - `system/device/` — Setup, MQTT command handling, status reporting
 - `system/ambient/` — Idle "living creature" behaviors (breathing LED, color drift, micro-movements, TTS mumbles). Runs when no interaction is happening; auto-pauses on real input, resumes after 10s silence. Calls HAL HTTP API.

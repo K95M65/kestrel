@@ -15,7 +15,7 @@ import (
 )
 
 // channelTurnRequest is the payload the Hermes os-server-observer hook POSTs for
-// every gateway turn. See agent-runtimes/hermes/hooks/os-server-observer/handler.py.
+// every gateway turn. See runtimes/hermes/hooks/os-server-observer/handler.py.
 type channelTurnRequest struct {
 	Event   string `json:"event"` // "agent:start" | "agent:end"
 	Context struct {

@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"go.autonomous.ai/os/agent-runtimes/claudecode"
+	"go.autonomous.ai/os/runtimes/claudecode"
 )
 
 func TestCcAgentRuntime(t *testing.T) {

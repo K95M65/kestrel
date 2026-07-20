@@ -3,11 +3,11 @@ package agent
 import (
 	"log/slog"
 
-	"go.autonomous.ai/os/agent-runtimes/claudecode"
-	"go.autonomous.ai/os/agent-runtimes/codex"
-	"go.autonomous.ai/os/agent-runtimes/hermes"
-	"go.autonomous.ai/os/agent-runtimes/openclaw"
-	"go.autonomous.ai/os/agent-runtimes/picoclaw"
+	"go.autonomous.ai/os/runtimes/claudecode"
+	"go.autonomous.ai/os/runtimes/codex"
+	"go.autonomous.ai/os/runtimes/hermes"
+	"go.autonomous.ai/os/runtimes/openclaw"
+	"go.autonomous.ai/os/runtimes/picoclaw"
 	"go.autonomous.ai/os/system/device"
 	"go.autonomous.ai/os/system/domain"
 	"go.autonomous.ai/os/system/monitor"
@@ -20,10 +20,10 @@ import (
 // declared gateway.default (devices/<type>/DEVICE.md), then OpenClaw.
 //
 // "openclaw" (default): persistent WebSocket to the OpenClaw daemon at
-// 127.0.0.1:18789. See agent-runtimes/openclaw and docs/os-server.md.
+// 127.0.0.1:18789. See runtimes/openclaw and docs/os-server.md.
 //
 // "hermes": HTTP+SSE client against the Hermes API server (default
-// 127.0.0.1:8642). See agent-runtimes/hermes and docs/agentic/hermes.md.
+// 127.0.0.1:8642). See runtimes/hermes and docs/agentic/hermes.md.
 // gatewayTransport is the wire transport each runtime uses. The transport is a
 // property of the runtime, not an independent knob, so DEVICE.md
 // `gateway.protocol` is only validated against this (a consistency guard).

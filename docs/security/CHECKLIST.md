@@ -22,7 +22,7 @@ Work credit: PRs by `31803smith` — #69 (aa98a207), #77 (e9d8a1f1), #79 (039b25
 | F6 | nginx `/gw/` deny LAN | ✅ | 2026-05-19: `allow 127.0.0.1; allow ::1; deny all;` on `location = /gw` + `location /gw/` in `scripts/provision/setup.sh` + `scripts/imager/build.sh` + `scripts/maintenance/patch-security.sh` (section 3b for existing devices) |
 | F7a | DL backend `DL_API_KEY` mandatory | ✅ | PR #69 — `field_validator` raises when empty. Still applies as a code-level check, deployment-agnostic |
 | F7b | DL backend bind default 127.0.0.1 | ➖ | **Out of scope for this device.** perception-service deploys on a separate server (GPU box); Lamp/HAL reach it through a proxy/LB using `llm_api_key`. The bind default in `integrations/perception-service/Makefile` only affects local dev runs and is unrelated to the device threat model |
-| F8 | OpenClaw `controlUi` tighten | ✅ | 2026-05-19: `setup.sh:586-589` sets `["http://127.0.0.1", "http://localhost"]` + `allowInsecureAuth=false`. `agent-runtimes/openclaw/onboarding.go::ensureControlUIConfig()` tightens defaults and migrates existing devices with loose defaults (`["*"]` + `true`) to strict on every boot |
+| F8 | OpenClaw `controlUi` tighten | ✅ | 2026-05-19: `setup.sh:586-589` sets `["http://127.0.0.1", "http://localhost"]` + `allowInsecureAuth=false`. `runtimes/openclaw/onboarding.go::ensureControlUIConfig()` tightens defaults and migrates existing devices with loose defaults (`["*"]` + `true`) to strict on every boot |
 | F9 | Docs `/hw/*` external | ✅ | PR #69 update devices/lamp/docs/architecture-decision.md + bootstrap-ota.md (+vi). Bonus: `253a1e44` made /hw/docs iframe-only |
 
 ---

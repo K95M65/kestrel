@@ -28,7 +28,7 @@ HAL emits `motion.activity` (`hal/.../motion.py:488`), never bare `"motion"`. Th
 
 ### 2. `guardTag` lost on queue drain
 
-`agent-runtimes/openclaw/service_events.go:202` calls `sensingmsg.Build(..., "")` — guard tag is always empty when a queued event is drained later. Comment at `handler.go:301-307` acknowledges this.
+`runtimes/openclaw/service_events.go:202` calls `sensingmsg.Build(..., "")` — guard tag is always empty when a queued event is drained later. Comment at `handler.go:301-307` acknowledges this.
 
 **Effect**: If a stranger walks in while the agent is busy, the event is queued. When drained (up to 5 min later via `busyTTL`), it arrives without `[guard-active]` and without `MarkGuardRun`. No Telegram broadcast, no snapshot delivery. Combined with the busy-stuck wedge (`docs/debug/busy-stuck.md`), guard goes silent for the full 5 min window.
 
@@ -255,7 +255,7 @@ Disk cost for Option B is negligible (under 5 MB per user for everything). Risk 
 - `system/server/sensing/delivery/http/handler.go` — guard tag, wellbeing/mood/posture/music-suggestion log endpoints
 - `system/server/openclaw/delivery/sse/handler_hw.go` — HW marker dispatcher, regex
 - `system/server/openclaw/delivery/sse/handler_events.go` — `/broadcast`, `/speak`, `/dm` lifecycle handling
-- `agent-runtimes/openclaw/service_events.go` — `busyTTL`, queue drain, `guardTag` loss
+- `runtimes/openclaw/service_events.go` — `busyTTL`, queue drain, `guardTag` loss
 - `system/lib/flow/flow.go` — `retentionDays`
 - `system/lib/skillcontext/{wellbeing,posture,emotion}.go` — pre-fetched context blocks
 - `system/lib/sensingmsg/sensingmsg.go` — context injection

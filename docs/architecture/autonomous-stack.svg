@@ -42,7 +42,7 @@
   <!-- Agentic Runtime -->
   <rect x="74" y="328" width="912" height="148" rx="16" fill="#4f46e5"/>
   <text x="94" y="358" text-anchor="start" font-size="19" font-weight="600" fill="#ffffff">Agentic Runtime</text>
-  <text x="966" y="358" text-anchor="end" font-size="11" fill="#ffffff" fill-opacity="0.85">agent-runtimes/ · factory: system/agent</text>
+  <text x="966" y="358" text-anchor="end" font-size="11" fill="#ffffff" fill-opacity="0.85">runtimes/ · factory: system/agent</text>
   <g fill="#ffffff" fill-opacity="0.2">
     <rect x="94" y="372" width="280" height="38" rx="10"/><rect x="390" y="372" width="280" height="38" rx="10"/><rect x="686" y="372" width="280" height="38" rx="10"/>
     <rect x="94" y="418" width="280" height="38" rx="10"/><rect x="390" y="418" width="280" height="38" rx="10"/>
@@ -57,7 +57,7 @@
   <!-- HAL -->
   <rect x="74" y="488" width="912" height="210" rx="16" fill="#06b6d4"/>
   <text x="94" y="518" text-anchor="start" font-size="19" font-weight="600" fill="#ffffff">Hardware Abstraction Layer (HAL)</text>
-  <text x="966" y="518" text-anchor="end" font-size="11" fill="#ffffff" fill-opacity="0.85">contract/ (ABI) · hal (host)</text>
+  <text x="966" y="518" text-anchor="end" font-size="11" fill="#ffffff" fill-opacity="0.85">devices/contract/ (ABI) · hal (host)</text>
   <g fill="#ffffff" fill-opacity="0.2">
     <rect x="94" y="532" width="136" height="34" rx="10"/><rect x="241" y="532" width="136" height="34" rx="10"/><rect x="388" y="532" width="136" height="34" rx="10"/><rect x="535" y="532" width="136" height="34" rx="10"/><rect x="682" y="532" width="136" height="34" rx="10"/><rect x="829" y="532" width="137" height="34" rx="10"/>
     <rect x="94" y="574" width="136" height="34" rx="10"/><rect x="241" y="574" width="136" height="34" rx="10"/><rect x="388" y="574" width="136" height="34" rx="10"/><rect x="535" y="574" width="136" height="34" rx="10"/><rect x="682" y="574" width="136" height="34" rx="10"/><rect x="829" y="574" width="137" height="34" rx="10"/>

@@ -9,8 +9,8 @@ import (
 
 	"github.com/joho/godotenv"
 
-	ccgatewayd "go.autonomous.ai/os/agent-runtimes/claudecode/gatewayd"
-	"go.autonomous.ai/os/agent-runtimes/codex/gatewayd"
+	ccgatewayd "go.autonomous.ai/os/runtimes/claudecode/gatewayd"
+	"go.autonomous.ai/os/runtimes/codex/gatewayd"
 	"go.autonomous.ai/os/system/lib/logger"
 	"go.autonomous.ai/os/system/server"
 	"go.autonomous.ai/os/system/server/config"

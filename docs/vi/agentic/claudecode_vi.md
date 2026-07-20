@@ -16,12 +16,12 @@ protocol, layout và các quirk đặc thù claudecode.
 > và flow **claude.ai OAuth login** (§7b) thay thế cho API key trong
 > config.json. Các caveat đã biết được đánh dấu ⚠️ ở §11.
 
-Code: `agent-runtimes/claudecode/`.
+Code: `runtimes/claudecode/`.
 
 | Thành phần | Vị trí trên thiết bị |
 |------|-----------------|
 | Claude Code CLI | `/usr/local/bin/claude` (symlink → `/root/.local/bin/claude`) |
-| Bridge (systemd `claudecode.service`) | subcommand `os-server claudecode-gatewayd` (biên dịch sẵn trong `/usr/local/bin/os-server`; code `agent-runtimes/claudecode/gatewayd/`) |
+| Bridge (systemd `claudecode.service`) | subcommand `os-server claudecode-gatewayd` (biên dịch sẵn trong `/usr/local/bin/os-server`; code `runtimes/claudecode/gatewayd/`) |
 | Env khởi chạy (`ANTHROPIC_*`, cờ channel) | `/root/.claudecode/.env` (presync sở hữu) |
 | Workspace (cwd của Claude) | `/root/.claudecode/workspace/` |
 | Persona / memory | `workspace/{CLAUDE,SOUL,IDENTITY,USER,MEMORY,KNOWLEDGE}.md`, `workspace/memory/*.md` |
@@ -107,7 +107,7 @@ không cần switch):
 ## 3. Bridge (`os-server claudecode-gatewayd`)
 
 Claude Code không có server mode, nên systemd unit chạy một gatewayd Go nhỏ
-(`agent-runtimes/claudecode/gatewayd/`, cấu trúc mirror gatewayd của codex — không
+(`runtimes/claudecode/gatewayd/`, cấu trúc mirror gatewayd của codex — không
 còn phụ thuộc python3/websockets), gatewayd này:
 
 - giữ **một process Claude headless bền**:
@@ -156,7 +156,7 @@ Go** (`emotion_ack.go`, mirror codex/hermes/picoclaw): mỗi turn user-visible
 bắn `{emotion:"thinking"}` sang HAL — cùng prefix skip, cùng intensity, cùng
 capability gate (`skills.SupportedHooks`) như handler TS. Hook `turn-gate` đi
 kèm cố ý không mirror (sendChat đã đánh dấu turn busy rồi). ⚠️ Giữ lockstep với
-`agent-runtimes/openclaw/hooks/emotion-acknowledge/handler.ts`.
+`runtimes/openclaw/hooks/emotion-acknowledge/handler.ts`.
 
 ## 5. Event inbound → `domain.WSEvent` (`translator.go`)
 
@@ -207,7 +207,7 @@ có compact RPC ngoài).
 ## 7. Kênh — tất cả do device sở hữu (telegram, discord, slack)
 
 `SupportedChannels() = [telegram, slack, discord]`. Cả ba receive loop đều
-chạy trong os-server, mirror `agent-runtimes/codex` 1:1. Channel plugin native
+chạy trong os-server, mirror `runtimes/codex` 1:1. Channel plugin native
 telegram/discord của Claude Code **cố ý không dùng**: thực địa cho thấy không
 debug được (bun child không log ra journal, allowlist drop im lặng, chết im
 lặng khi race restart bridge), và chúng sẽ giành bot với các loop device sở
@@ -241,7 +241,7 @@ nào.
   session đang mở thì có hiệu lực ở chu kỳ session kế. whatsapp →
   `domain.ErrChannelNotSupported`.
 - **Slack do DEVICE SỞ HỮU** (`slack.go` + `slack_sender.go`, mirror của
-  `agent-runtimes/codex/slack.go`): Claude Code không có slack channel plugin
+  `runtimes/codex/slack.go`): Claude Code không có slack channel plugin
   ("Claude in Slack" là một tính năng cloud riêng, spawn web session từ mention
   `@Claude`, không phải một kênh của thiết bị). Thay vào đó proxy public
   bff-campaign-service nhận delivery từ Slack Events API và fan-out qua MQTT
@@ -270,7 +270,7 @@ nào.
 ## 7b. Auth — claude.ai OAuth login (thay thế cho API key)
 
 Thiết bị có thể xác thực bằng **Claude subscription của chính user** thay vì
-`llm_api_key`. Flow này (`agent-runtimes/claudecode/login.go`, interface tùy chọn
+`llm_api_key`. Flow này (`runtimes/claudecode/login.go`, interface tùy chọn
 `domain.ClaudeLoginPairer`) mô phỏng flow pairing WhatsApp — stream các
 `PairingEvent` — với thêm một chặng: OAuth code đi ngược trở lại flow.
 

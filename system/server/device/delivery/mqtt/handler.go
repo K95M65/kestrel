@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"go.autonomous.ai/os/agent-runtimes/openclaw"
+	"go.autonomous.ai/os/runtimes/openclaw"
 	"go.autonomous.ai/os/system/device"
 	"go.autonomous.ai/os/system/domain"
 	"go.autonomous.ai/os/system/lib/mqtt"

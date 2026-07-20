@@ -185,7 +185,7 @@ Every unknown voice is locally clustered so the server can say "this is the same
 | Speaker recognizer | `hal/drivers/voice/speaker_recognizer/speaker_recognizer.py` | `SpeakerRecognizer` |
 | Nudge injection + cooldown | `system/domain/voice.go` | `AppendEnrollNudge()` |
 | Direct event path | `system/server/sensing/delivery/http/handler.go` | `PostEvent()` |
-| Drain/replay path | `agent-runtimes/openclaw/service.go` | `drainPendingEvents()` |
+| Drain/replay path | `runtimes/openclaw/service.go` | `drainPendingEvents()` |
 | Agent skill | `lamp/resources/openclaw-skills/speaker-recognizer/SKILL.md` | — |
 | Embedding model | `integrations/perception-service/src/core/audio_recognition/audio_recognizer.py` | `ResNet34Recognizer` (default), `EcapaTdnn1024Recognizer`, `CamPPlusRecognizer` — chọn qua env `AUDIO_RECOGNIZER_ENGINE` |
 | Embedding endpoint | `integrations/perception-service/src/protocols/htpp/audio_recognizer.py` | `embed_audio()` |

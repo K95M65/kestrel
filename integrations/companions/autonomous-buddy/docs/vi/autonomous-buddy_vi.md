@@ -326,7 +326,7 @@ Page mới `Paired Computers`:
 | Lưu pref | **UserDefaults / plist** | Chuẩn macOS cho non-secret |
 | Logging | **OSLog (unified)** | Native, xem được trong Console.app |
 | Test framework | **XCTest** | Chuẩn |
-| Go side | **Pattern hiện có** (Gin, Wire, internal/) | Theo `agent-runtimes/openclaw/`, `server/<domain>/delivery/http/` |
+| Go side | **Pattern hiện có** (Gin, Wire, internal/) | Theo `runtimes/openclaw/`, `server/<domain>/delivery/http/` |
 | Vị trí folder autonomous-buddy | **Root repo** cạnh `lamp/`, `lelamp/` | Self-contained, build độc lập |
 
 ---

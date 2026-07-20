@@ -14,7 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"go.autonomous.ai/os/agent-runtimes/claudecode"
+	"go.autonomous.ai/os/runtimes/claudecode"
 	"go.autonomous.ai/os/system/agent"
 	"go.autonomous.ai/os/system/ambient"
 	"go.autonomous.ai/os/system/device"

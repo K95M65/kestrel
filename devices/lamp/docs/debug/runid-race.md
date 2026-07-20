@@ -33,7 +33,7 @@ Downstream effects:
 
 Lamp's SSE handler maps an OpenClaw lifecycle UUID back to its device runId by consuming a "pending chat trace" that was stashed at `chat.send` time. Before the fix, the stash was a **single slot**:
 
-`agent-runtimes/openclaw/service.go` (pre-fix):
+`runtimes/openclaw/service.go` (pre-fix):
 
 ```go
 pendingChatMu      sync.Mutex
@@ -166,7 +166,7 @@ Recurring `lane=session:agent:main:main waitedMs=…` lines indicate the queue i
 
 ## 5. Fix — landed
 
-`agent-runtimes/openclaw/service.go`: replace the single-slot `pendingChatTrace` with a FIFO `pendingChatQueue []pendingTrace`. `SetPendingChatTrace` appends, `ConsumePendingChatTrace` pops the head, stale entries (older than `pendingChatTTL = 2 * time.Minute`) are dropped from the head before popping. Public API unchanged so the SSE handler needs no edit.
+`runtimes/openclaw/service.go`: replace the single-slot `pendingChatTrace` with a FIFO `pendingChatQueue []pendingTrace`. `SetPendingChatTrace` appends, `ConsumePendingChatTrace` pops the head, stale entries (older than `pendingChatTTL = 2 * time.Minute`) are dropped from the head before popping. Public API unchanged so the SSE handler needs no edit.
 
 ### Flow after the fix (end-to-end)
 
@@ -247,7 +247,7 @@ Two ways to close this:
 
 - **Detected**: 2026-04-21 — `lamp-chat-26`, `lamp-chat-201`, `lamp-chat-203`, `lamp-chat-337/339` (session `agent:main:main`).
 - **Root cause**: Lamp `pendingChatTrace` single-slot overwrite, introduced by commit `64571f7b` on 2026-04-14. Precondition (low sensing burst rate) broke between 14/4 and 21/4 as sensing pipeline gained ambient voice, sound events, tool-calling emotion/motion skills.
-- **Fix landed**: FIFO queue + TTL head-drop in `agent-runtimes/openclaw/service.go` + interface doc refresh in `system/domain/agent.go`. Public API unchanged. `GOOS=linux GOARCH=arm64 go build ./...` clean.
+- **Fix landed**: FIFO queue + TTL head-drop in `runtimes/openclaw/service.go` + interface doc refresh in `system/domain/agent.go`. Public API unchanged. `GOOS=linux GOARCH=arm64 go build ./...` clean.
 - **Deploy**: not yet. `make os-build` → scp `os-server` to Pi → `sudo systemctl restart os-server`.
 - **Post-deploy verification**: re-run §4.1 / §4.2 on a fresh burst window; expect `tts_send.text` to align with `chat_send.message` under the same `trace_id`.
 - **Follow-up**: Telegram-interleave variant still open — see §5. Consider upstream openclaw change to echo UUID in `chat.send` response.

@@ -1,10 +1,10 @@
 // Package runtimereg is a tiny neutral registry of binary-embedded agentic-
-// backend installers, keyed by runtime name. Backend packages (agent-runtimes/hermes,
+// backend installers, keyed by runtime name. Backend packages (runtimes/hermes,
 // …) register their embedded install.sh from an init(); system/device reads
 // it back to materialize the installer on disk for switch-runtime.
 //
 // It exists only to break the import cycle that a direct system/device →
-// agent-runtimes/hermes import would create (hermes → statusled → device). Having no
+// runtimes/hermes import would create (hermes → statusled → device). Having no
 // dependencies of its own, runtimereg can be imported from either side.
 package runtimereg
 

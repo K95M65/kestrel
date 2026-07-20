@@ -69,7 +69,7 @@ The runtime's chat stream **never broadcasts `role:"user"` events** — it only 
 Implementation details:
 
 - **Async goroutine**: The fetch runs in a separate goroutine because calling it synchronously inside the WS read loop handler would deadlock (the read loop blocks waiting for the handler to return, but the RPC response can only arrive after the handler returns).
-- **Pending RPC tracking**: `pendingRPC map[string]chan json.RawMessage` in `agent-runtimes/openclaw/service.go` matches `type:"res"` frames to waiting callers by request ID. `dispatchRPCResponse()` hooks into the read loop before event handling.
+- **Pending RPC tracking**: `pendingRPC map[string]chan json.RawMessage` in `runtimes/openclaw/service.go` matches `type:"res"` frames to waiting callers by request ID. `dispatchRPCResponse()` hooks into the read loop before event handling.
 - **Two-phase emit**: First `chat_input` fires immediately with a neutral `[chat]` placeholder (no message yet). After the goroutine gets the history, a second `chat_input` fires with the actual message text and a label chosen by `senderLabel` / message-prefix inspection — the UI picks up the one with content.
 - **Label routing (second emit)**: (1) `senderLabel` non-empty → `[telegram:Gray]` (real channel user). (2) `senderLabel` empty + message matches a device-internal prefix → `[voice]` / `[emotion]` / `[activity]` / `[wellbeing]` / `[music]` / `[sensing]` / `[system]` (sensing or voice event the device posted via chat.send that OpenClaw merged into this UUID host turn via steer mode). (3) Otherwise → generic `[chat]`. Previously every UUID channel-turn was unconditionally labelled with the configured channel (`[telegram]`), mis-attributing steer-merged self-fire turns to Telegram.
 - **Best-effort**: 3-second timeout. If the fetch fails, the turn stays at the generic `[chat]` placeholder — better than mis-attributing to a specific channel.
@@ -408,7 +408,7 @@ Turns now show every turn derivable from the fetched events. Comparing server to
 | `system/lib/flow/flow.go` | Flow event emission, JSONL persistence, per-event runID API |
 | `system/server/sensing/delivery/http/handler.go` | Sensing input → flow.Start/End with runID |
 | `system/server/openclaw/delivery/sse/handler.go` | Agent events → flow.Log with payload.RunID, turn detection |
-| `agent-runtimes/openclaw/service.go` | sendChat returns idempotencyKey as runID |
+| `runtimes/openclaw/service.go` | sendChat returns idempotencyKey as runID |
 | `system/web/src/pages/Monitor.tsx` | `groupIntoTurns`, `turnIO`, `extractNodeInfo`, `FlowDiagram` |
 
 Vietnamese summary: `docs/vi/flow-monitor_vi.md`.

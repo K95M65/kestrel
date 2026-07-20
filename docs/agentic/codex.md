@@ -7,12 +7,12 @@ whatever backend `config.agent_runtime` selects through the single
 hardware markers, Flow Monitor SSE, sensing drain, Telegram fan-out) never knows
 which brain is active.
 
-- **`openclaw`** (default): persistent WebSocket to the OpenClaw daemon. See `docs/os-server.md` + `agent-runtimes/openclaw`.
-- **`hermes`**: HTTP + SSE client against a local Hermes API server. See `docs/agentic/hermes.md` + `agent-runtimes/hermes`.
-- **`picoclaw`**: persistent WebSocket client against a local PicoClaw runtime. See `docs/agentic/picoclaw.md` + `agent-runtimes/picoclaw`.
-- **`codex`**: the **OpenAI Codex CLI** as the device agent brain, behind a local WS bridge. This doc. Code: `agent-runtimes/codex/`.
+- **`openclaw`** (default): persistent WebSocket to the OpenClaw daemon. See `docs/os-server.md` + `runtimes/openclaw`.
+- **`hermes`**: HTTP + SSE client against a local Hermes API server. See `docs/agentic/hermes.md` + `runtimes/hermes`.
+- **`picoclaw`**: persistent WebSocket client against a local PicoClaw runtime. See `docs/agentic/picoclaw.md` + `runtimes/picoclaw`.
+- **`codex`**: the **OpenAI Codex CLI** as the device agent brain, behind a local WS bridge. This doc. Code: `runtimes/codex/`.
 
-> Source of truth is the code. This documents `agent-runtimes/codex/` as implemented;
+> Source of truth is the code. This documents `runtimes/codex/` as implemented;
 > keep it in sync on change (EN: this file, VI: `docs/vi/agentic/codex_vi.md`).
 
 > **Agentic-backend docs:** [`adding-agent-runtime.md`](adding-agent-runtime.md)
@@ -31,7 +31,7 @@ which brain is active.
 The Codex CLI has no server mode of its own, so the device runs a thin local
 **WS bridge**: the `codex.service` systemd unit runs **`os-server
 codex-gatewayd`** — the bridge is **compiled into the os-server binary**
-(`agent-runtimes/codex/gatewayd`, a Go port of the reference `bridge.py`; **no Python
+(`runtimes/codex/gatewayd`, a Go port of the reference `bridge.py`; **no Python
 on the device**). The bridge exposes `ws://127.0.0.1:18792/codex/ws/` (bearer
 token `autonomous_codex_token`) and spawns **one subprocess per turn**:
 
@@ -50,7 +50,7 @@ block on an approval prompt (paired with `approval_policy = "never"` +
 `codex.ProvideService`, anything unknown falls back to OpenClaw. On startup a
 `AGENT BACKEND ACTIVE → CODEX` banner prints `ws_url` + `conversation`.
 
-Wire constants (`agent-runtimes/codex/constants.go`, no per-unit config):
+Wire constants (`runtimes/codex/constants.go`, no per-unit config):
 
 | Const | Default | Meaning |
 |---|---|---|
@@ -263,7 +263,7 @@ Telegram is **device-owned** under Codex. The Codex CLI has no channel layer
 of its own (unlike PicoClaw, whose runtime binary polls the Telegram Bot API
 itself — its presync enables `channel_list.telegram` in PicoClaw's own
 config), so os-server runs the inbound receive loop:
-`agent-runtimes/codex/telegram_poll.go`, one goroutine started from `StartWS`
+`runtimes/codex/telegram_poll.go`, one goroutine started from `StartWS`
 (outside its reconnect loop, so it survives WS drops). Because it lives inside
 the codex service's lifecycle it runs **only while codex is the active
 runtime** — it can never compete with the openclaw/hermes gateway pollers for
@@ -308,13 +308,13 @@ a wedged turn cannot leave the chat "typing…" forever. Sends are best-effort
 ### Slack (HTTP-mode proxy path)
 
 Slack is also **device-owned**, via the HTTP-mode proxy path (modeled on the
-hermes bridge, `agent-runtimes/hermes/slack.go`): the public bff-campaign-service
+hermes bridge, `runtimes/hermes/slack.go`): the public bff-campaign-service
 proxy receives Slack Events API deliveries and fans them out over MQTT to the
 device's `slack_event` handler
 (`server/device/delivery/mqtt/slack_event_handler.go`), which dedups by
 `event_id` (in-memory LRU, 5 min TTL) and type-asserts the active gateway to
 `domain.SlackBridge`. `CodexService` implements that bridge
-(`agent-runtimes/codex/slack.go`), so events route here **only while codex is the
+(`runtimes/codex/slack.go`), so events route here **only while codex is the
 active runtime** — no server-side dispatch code changes, same wiring as
 hermes. Socket Mode is not involved; the device never opens a Slack WebSocket.
 
@@ -357,7 +357,7 @@ codex, like the hermes bridge, trusts the authenticated MQTT path.
 Discord is also **device-owned**: it requires a Gateway WebSocket bot session
 (there is no long-poll receive API), so os-server runs one via
 [discordgo](https://github.com/bwmarrin/discordgo)
-(`agent-runtimes/codex/discord.go`). Like the telegram loop, the session is started
+(`runtimes/codex/discord.go`). Like the telegram loop, the session is started
 from `StartWS` (`go s.startDiscordBot(ctx)`) and lives inside the codex
 service's lifecycle — it runs **only while codex is the active runtime**, so
 it can never fight another runtime's bot session for the same token. The loop
@@ -409,7 +409,7 @@ also [`adding-agent-runtime.md`](adding-agent-runtime.md).
 
 ### Telegram remote coding-sessions (`telegram_coding.go`, `coding_sessions.go`)
 
-Mirrors `agent-runtimes/claudecode/telegram_coding.go` 1:1 — a Telegram chat can
+Mirrors `runtimes/claudecode/telegram_coding.go` 1:1 — a Telegram chat can
 **attach to a folder's interactive `codex` thread and continue coding it from
 the phone**, across multiple folders each with its own thread. Separate from the
 device-main persona turn.
@@ -455,12 +455,12 @@ device-main persona turn.
 ## 6. Hooks
 
 Codex ships no hooks loader, so OpenClaw's `emotion-acknowledge` hook is
-reproduced **natively in Go** (`agent-runtimes/codex/emotion_ack.go`, mirroring
+reproduced **natively in Go** (`runtimes/codex/emotion_ack.go`, mirroring
 hermes' `emotion_ack.go`): on each user-visible turn, sendChat fires
 `{emotion:"thinking"}` to HAL — same skip prefixes, same intensity, same
 capability gate (`skills.SupportedHooks`) as the TS handler. The companion
 `turn-gate` hook is intentionally not mirrored (sendChat already marks the turn
-busy). ⚠️ Keep it in lockstep with `agent-runtimes/openclaw/hooks/emotion-acknowledge/handler.ts`.
+busy). ⚠️ Keep it in lockstep with `runtimes/openclaw/hooks/emotion-acknowledge/handler.ts`.
 
 ## 7. MCP connectors (`mcp.go`)
 

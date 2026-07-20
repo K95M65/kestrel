@@ -33,7 +33,7 @@ var allowedLogs = map[string]string{
 }
 
 // hermesAgentLog is Hermes's own rich per-turn agent log under $HERMES_DIR/logs
-// (HERMES_DIR=/root/.hermes, see agent-runtimes/hermes/install.sh) — the analogue of
+// (HERMES_DIR=/root/.hermes, see runtimes/hermes/install.sh) — the analogue of
 // openclaw's agent.log file.
 const hermesAgentLog = "/root/.hermes/logs/agent.log"
 

@@ -9,7 +9,7 @@ import (
 
 	"github.com/goccy/go-yaml"
 
-	"go.autonomous.ai/os/agent-runtimes/claudecode"
+	"go.autonomous.ai/os/runtimes/claudecode"
 	"go.autonomous.ai/os/system/domain"
 	"go.autonomous.ai/os/system/server/config"
 )

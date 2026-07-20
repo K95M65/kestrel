@@ -57,7 +57,7 @@ with or without the runtime. OTA runs as its own worker (`bootstrap/`).
 runtime. Runs the skills, embodies the device's `SOUL.md`, and decides what to act on.
 Swappable at runtime (web Settings or MQTT) — and where Autonomous OS's differentiated value
 (the default brain, memory, character) lives.
-*(`agent-runtimes/{openclaw,hermes,picoclaw,codex,claudecode}`; adding
+*(`runtimes/{openclaw,hermes,picoclaw,codex,claudecode}`; adding
 your own: `docs/agentic/adding-agent-runtime.md`)*
 
 ### Hardware Abstraction Layer (HAL)
@@ -70,7 +70,7 @@ mounts only those. The HAL also hosts the **safety gate** (`hal/safety`): `SAFET
 bounds — e-stop, motion limits, brightness, quiet hours — **enforced deterministically below
 the brain, never by the LLM**. The realtime voice agent (`hal/drivers/realtime`) runs
 in-process here too — runtime-layer code hosted in the HAL, marked purple in the diagram.
-*(`contract/` + `hal` — see [HAL](docs/architecture/hal.md))*
+*(`devices/contract/` + `hal` — see [HAL](docs/architecture/hal.md))*
 
 ### Linux Kernel
 
@@ -94,8 +94,8 @@ Every device is self-describing to both humans and the runtime, in four files:
 | `SOUL.md` | the **self** — who it is | the runtime |
 | `SAFETY.md` | the **bounds** — what it must never do | the OS (deterministic) |
 
-The contract that governs them lives under [`contract/`](contract/) — see
-[`DEVICE-SPEC.md`](contract/DEVICE-SPEC.md) and [`capabilities.md`](contract/capabilities.md).
+The contract that governs them lives under [`devices/contract/`](devices/contract/) — see
+[`DEVICE-SPEC.md`](devices/contract/DEVICE-SPEC.md) and [`capabilities.md`](devices/contract/capabilities.md).
 
 ## Repository layout
 
@@ -103,16 +103,16 @@ The tree maps onto the architecture layers (top of the stack first):
 
 ```
 # The OS
-contract/         HAL capability ABI — frozen, versioned (what skills build against)
-  cts/            compliance test suite — validates devices against the contract
 skills/           Skills — the apps (SKILL.md)
 system/           System Managers (Go): one folder per manager — intent, network, monitor, OTA…
   web/            on-device setup + monitor UI (React)
-agent-runtimes/   Agentic Runtime — one folder per swappable brain (openclaw, hermes, picoclaw, codex, claudecode)
+runtimes/         Agentic Runtime — one folder per swappable brain (openclaw, hermes, picoclaw, codex, claudecode)
 hal/              HAL (Python) — the package; capability host + routes
   drivers/        Drivers — by subsystem (motion, audio, vision, light, display, sensing)
   board/          Board Support — per-board profiles + declaration-driven mounting
 devices/          reference devices: lamp/, intern-v2/ (DEVICE · SOUL · SAFETY · README · hardware/)
+  contract/       HAL capability ABI — frozen, versioned (what skills build against)
+    cts/          compliance test suite — validates devices against the contract
 
 # Supporting
 docs/             documentation, incl. docs/architecture/

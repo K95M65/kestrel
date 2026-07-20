@@ -20,7 +20,7 @@ All states use the `breathing` effect at speed 3.0 unless noted. RGB values come
 | `StateOTA` | Green | `(0, 255, 0)` | **Updating** — OTA firmware update in progress (reserved enum; bootstrap drives OTA LED directly via `lib/hal` — see "Bootstrap (OTA)" below) | Bootstrap reconcile detects update | Reboots after update completes |
 | `StateBooting` | Blue | `(0, 80, 255)` | **Booting** — Lamp is starting up | `server.go` on startup | Yes — when OpenClaw agent connects and is ready |
 | `StateLeLampDown` | Purple | `(180, 0, 255)` | **HAL Down** — Hardware server unreachable. While HAL is down the LED is **dark** because the LED driver itself is down; the purple breathing only shows for ~3s on recovery | `healthwatch` poll fails to reach HAL `/health` | Auto-clears 3s after recovery |
-| `StateAgentDown` | Cyan | `(0, 200, 200)` | **Agent Down** — AI brain disconnected | OpenClaw WebSocket drops (`agent-runtimes/openclaw/service_ws.go`) | Yes — when WebSocket reconnects |
+| `StateAgentDown` | Cyan | `(0, 200, 200)` | **Agent Down** — AI brain disconnected | OpenClaw WebSocket drops (`runtimes/openclaw/service_ws.go`) | Yes — when WebSocket reconnects |
 | `StateHardware` | Yellow | `(255, 255, 0)` | **Hardware Failure** — servo/LED/audio/voice component reports unhealthy via HAL `/health` | `healthwatch` poll (every 5s); camera and sensing excluded | Yes — when all monitored components report healthy |
 
 ### Ready flash
@@ -115,7 +115,7 @@ Concrete callers (verified against code):
 
 ```
 server.go                    → Set/Clear StateBooting + StateConnectivity + FlashReady
-agent-runtimes/openclaw/service_ws → Set/Clear StateAgentDown
+runtimes/openclaw/service_ws → Set/Clear StateAgentDown
 system/healthwatch/service → Set/Clear StateLeLampDown + StateHardware
 ```
 

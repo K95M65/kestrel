@@ -103,7 +103,7 @@ type Config struct {
 	LLMBaseURL string `json:"llm_base_url" yaml:"llmBaseURL" validate:"required"`
 
 	// ClaudeCodeOAuthToken is the long-lived claude.ai OAuth token produced by
-	// the claudecode login flow (`claude setup-token`, agent-runtimes/claudecode/login.go).
+	// the claudecode login flow (`claude setup-token`, runtimes/claudecode/login.go).
 	// When set (or when ~/.claude/.credentials.json exists), the claudecode
 	// presync switches the runtime to subscription auth: it injects
 	// CLAUDE_CODE_OAUTH_TOKEN and OMITS the ANTHROPIC_* API-key vars — those

@@ -34,7 +34,7 @@ system/
 ├── bootstrap/                    — OTA worker
 └── web/                          — React 19 + Vite + Tailwind CSS 4 SPA
 
-agent-runtimes/                   — Swappable brains: openclaw/ hermes/ picoclaw/ codex/ claudecode/
+runtimes/                   — Swappable brains: openclaw/ hermes/ picoclaw/ codex/ claudecode/
 
 hal/
 ├── server.py                     — FastAPI server (38 endpoints)
@@ -55,9 +55,9 @@ hal/
 └── pyproject.toml                — Python dependencies (opencv-python, insightface)
 
 devices/                          — Per-device configs and overlays
+  contract/                       — Shared API contracts (+ cts/ compliance suite)
 skills/                           — SKILL.md files for agent runtime
 integrations/                     — Off-device: companions/, chat-bridges/, perception-service/
-contract/                         — Shared API contracts (+ cts/ compliance suite)
 ```
 
 ## Principles

@@ -7,10 +7,10 @@ kỳ backend nào `config.agent_runtime` chọn, qua đúng một interface
 `[HW:/…]`, Flow Monitor SSE, sensing drain, Telegram fan-out) không cần biết não
 nào đang chạy.
 
-- **`openclaw`** (mặc định): WebSocket bền tới daemon OpenClaw. Xem `docs/os-server.md` + `agent-runtimes/openclaw`.
-- **`hermes`**: client HTTP + SSE tới một Hermes API server cục bộ (kiểu OpenAI *Responses API*). Tài liệu này. Code: `agent-runtimes/hermes/`.
+- **`openclaw`** (mặc định): WebSocket bền tới daemon OpenClaw. Xem `docs/os-server.md` + `runtimes/openclaw`.
+- **`hermes`**: client HTTP + SSE tới một Hermes API server cục bộ (kiểu OpenAI *Responses API*). Tài liệu này. Code: `runtimes/hermes/`.
 
-> Nguồn sự thật là code. Tài liệu này mô tả `agent-runtimes/hermes/` đúng như đã hiện
+> Nguồn sự thật là code. Tài liệu này mô tả `runtimes/hermes/` đúng như đã hiện
 > thực; phải đồng bộ khi code đổi (EN: `docs/agentic/hermes.md`, VI: file này).
 
 > **Nhóm docs agentic-backend:** [`adding-agent-runtime_vi.md`](adding-agent-runtime_vi.md)
@@ -28,7 +28,7 @@ nào đang chạy.
 | không set | fallback về `gateway.default` trong `devices/<type>/DEVICE.md`, rồi OpenClaw nếu cái đó cũng trống |
 | `"openclaw"` | OpenClaw (mặc định) |
 | `"hermes"` | Hermes (`hermes.ProvideService`) |
-| `"picoclaw"` | PicoClaw (`picoclaw.ProvideService`) — client WebSocket bền; giả định service PicoClaw đã chạy sẵn. Xem `docs/agentic/picoclaw.md` + `agent-runtimes/picoclaw`. |
+| `"picoclaw"` | PicoClaw (`picoclaw.ProvideService`) — client WebSocket bền; giả định service PicoClaw đã chạy sẵn. Xem `docs/agentic/picoclaw.md` + `runtimes/picoclaw`. |
 | giá trị khác | OpenClaw (log là `FALLBACK — unknown runtime=…`) |
 
 Khi `agent_runtime` không được set trong `config.json`, backend lấy từ
@@ -38,7 +38,7 @@ giá trị đó cũng trống. Banner log thêm `source` để biết nguồn n�
 Lúc khởi động, `ProvideGateway` in banner `AGENT BACKEND ACTIVE → HERMES` kèm
 `base_url`, `conversation`, `model`, `api_key_set`. **Chưa có config theo từng
 máy** cho các giá trị này — chúng là hằng số compile-time trong
-`agent-runtimes/hermes/constants.go`:
+`runtimes/hermes/constants.go`:
 
 | Hằng số | Mặc định | Ý nghĩa |
 |---|---|---|
@@ -165,7 +165,7 @@ các dòng nối dưới `mergedSensingHeader`), nên prompt floor mỗi lượt
 lần thay vì mỗi event một lần. Cách này lấy lại phần lớn lợi ích cost của steer
 nhưng không lấy được tính tức thì: batch chỉ bắn sau khi lượt hiện tại kết thúc,
 không bao giờ giữa lượt. Bật/tắt bằng const `mergeDrainEnabled` (đặt `false` để
-quay về replay mỗi event một lượt). Xem `agent-runtimes/hermes/events.go`.
+quay về replay mỗi event một lượt). Xem `runtimes/hermes/events.go`.
 
 ## 8. Channel (Telegram/Slack/Discord) — hiển thị inbound + fan-out
 
@@ -179,7 +179,7 @@ Flow Monitor. Gateway cũng không có broadcast turn cross-platform để subsc
 seam duy nhất là hệ thống **hook** của nó.
 
 Vì vậy os-server cài một hook cho gateway, `os-server-observer`
-(`agent-runtimes/hermes/hooks/os-server-observer/{HOOK.yaml,handler.py}`, được
+(`runtimes/hermes/hooks/os-server-observer/{HOOK.yaml,handler.py}`, được
 `ensureObserverHook` materialize vào `~/.hermes/hooks/` mỗi lần boot — xem §10).
 Hook fire ở `agent:start` / `agent:end` cho **mọi** platform và POST lượt đó tới
 endpoint loopback `POST /api/agent/channel-turn` (`handler_channel_turn.go`),
@@ -239,7 +239,7 @@ type-assert gateway đang hoạt động sang `domain.SlackBridge`. Khi khớp (
 gọi `HandleInboundSlack`; khi không khớp (openclaw, picoclaw) nó giữ nguyên path
 POST webhook local hiện có.
 
-`agent-runtimes/hermes/slack.go` `HandleInboundSlack` / `parseSlackInbound` decode JSON
+`runtimes/hermes/slack.go` `HandleInboundSlack` / `parseSlackInbound` decode JSON
 Slack Events (challenge `url_verification` — phòng thủ, proxy public mới là nơi
 thực sự sở hữu kiểm tra Request URL của Slack; `event_callback` với `event.type`
 `message`/`app_mention`). Nó bỏ qua tin nhắn bot (`bot_id`), event `subtype`
@@ -275,13 +275,13 @@ theo thứ tự, nên vòng lặp delta SSE không bao giờ block vào một ca
 buộc với channel, lấy từ `team_id` của event).
 
 **Finalize phản hồi** — `handler_event_agent.go` gọi `DeliverSlackReply(runID,
-text)` (`agent-runtimes/hermes/slack.go`) cho runID đã hoàn tất. Hàm này tiêu thụ origin,
+text)` (`runtimes/hermes/slack.go`) cho runID đã hoàn tất. Hàm này tiêu thụ origin,
 **xóa trạng thái assistant** (`setSlackAssistantStatus` với `""`), gỡ reaction 👀,
 rồi `finishSlackStream` làm một **flush cuối + `chat.stopStream`** (việc này cũng
 xóa chỉ báo typing và đánh dấu tin nhắn hoàn tất). Khi stream chưa từng mở (không
 có nội dung tới nó, hoặc `startStream` cứ thất bại), nó fallback về một
 `chat.postMessage` đơn (`PostSlackReply`). Các call Web API đều đi qua helper
-generic `slackAPI` trong `agent-runtimes/hermes/slack_sender.go`.
+generic `slackAPI` trong `runtimes/hermes/slack_sender.go`.
 
 **Chặn TTS (cả hai nửa của lượt).** Một lượt xuất phát từ Slack không bao giờ tới
 loa thiết bị; việc chặn được áp tại **hai** điểm qua peek **không tiêu thụ**
@@ -299,7 +299,7 @@ typing), `reactions.add` / `reactions.remove` (ack 👀), `chat.postMessage`
 **Outbound / proactive** — một `SlackSender` (`domain.ChannelSender`, trong
 `slack_sender.go`) post tin nhắn sensing/broadcast tới `config.SlackUserID` qua
 `chat.postMessage`; nó được nối vào danh sách `channels` của hermes trong
-`agent-runtimes/hermes/service.go` cùng với `TelegramSender`.
+`runtimes/hermes/service.go` cùng với `TelegramSender`.
 
 **`.env`** — `SLACK_BOT_TOKEN` (đồng bộ từ `config.json` bởi hook presync) là cái
 bridge dùng cho mọi call Bot API. `SLACK_APP_TOKEN` không liên quan tới bridge HTTP
@@ -318,7 +318,7 @@ bất kể backend.
 
 ## 10. Vận hành
 
-Hermes được cài bởi `agent-runtimes/hermes/install.sh` (đặt cạnh phần hiện
+Hermes được cài bởi `runtimes/hermes/install.sh` (đặt cạnh phần hiện
 thực của nó). Script này được **embed trong os-server** (`go:embed`, đăng ký qua
 `lib/runtimereg`), nên đi kèm + OTA chung với binary; os-server ghi nó ra
 `/usr/local/lib/os-runtimes/hermes/install.sh` và switch-runtime chạy bản local
@@ -371,7 +371,7 @@ associate thành công. Hai lớp khắc phục:
   (OpenClaw là runtime active mặc định; enable cả hai sẽ chạy 2 agent). Best-effort
   — chroot lúc build không có systemd đang chạy, nên nếu CLI không tạo được unit ở
   đó thì lớp B cài lúc runtime.
-- **B — backstop runtime** (`ensureGatewayUnit`, `agent-runtimes/hermes/gateway.go`, gọi
+- **B — backstop runtime** (`ensureGatewayUnit`, `runtimes/hermes/gateway.go`, gọi
   từ `EnsureOnboarding`): khi unit vắng (`systemctl cat hermes-gateway` fail), nó
   chạy `hermes gateway install --system` theo nhu cầu và khai lại file
   `service`/`verify` cho switch-runtime. Nhanh — binary + venv đã pre-bake, nên chỉ
@@ -384,7 +384,7 @@ associate thành công. Hai lớp khắc phục:
 ### Hook presync làm chủ `config.yaml` + skills
 
 Model config trong `config.yaml` và skills openclaw-imported do **hook presync**
-(`agent-runtimes/hermes/presync.sh`) làm chủ, **không** phải `install.sh`. **os-server
+(`runtimes/hermes/presync.sh`) làm chủ, **không** phải `install.sh`. **os-server
 materialize hook ra `/usr/local/bin/runtime-hermes-presync` mỗi switch**
 (`materializePresync`, đăng ký qua `runtimereg.RegisterPresync`), nên OTA os-server
 thường cũng refresh nó trên disk — khác với bản `install.sh` ghi một lần mà
@@ -392,7 +392,7 @@ thường cũng refresh nó trên disk — khác với bản `install.sh` ghi m�
 `docs/vi/agentic/adding-agent-runtime_vi.md` §3).
 
 **Hook cũng chạy mỗi lần os-server boot VÀ lúc setup ban đầu**, không chỉ khi switch
-— đều qua `EnsureOnboarding` (`agent-runtimes/hermes/onboarding.go`), chạy `PresyncScript`
+— đều qua `EnsureOnboarding` (`runtimes/hermes/onboarding.go`), chạy `PresyncScript`
 embed và restart `hermes-gateway` **chỉ khi** config thật sự đổi (guard content-hash
 — không restart loop). Hash phát hiện thay đổi bao trùm **cả** `config.yaml` **và**
 `.env` (`hermesEnvFile` = `/root/.hermes/.env`), nên một thay đổi chỉ-token-kênh (chỉ
@@ -473,7 +473,7 @@ làm 3 việc theo thứ tự:
 không mọi lượt sẽ 401. Hermes phải listen tại `127.0.0.1:8642` để khớp `BaseURL`.
 
 Để trỏ tới Hermes endpoint / key / model khác ở hiện tại, sửa
-`agent-runtimes/hermes/constants.go` rồi build lại (việc cho phép cấu hình theo từng máy
+`runtimes/hermes/constants.go` rồi build lại (việc cho phép cấu hình theo từng máy
 là phần làm sau).
 
 ### Block ưu-tiên-skill trong SOUL.md (skill của máy thắng skill bundled của Hermes)
@@ -488,7 +488,7 @@ quản lý, nhưng Hermes không load AGENTS.md — **SOUL.md là file prompt du
 nó đọc mỗi session** — nên quy tắc đi theo đó:
 
 - `EnsureOnboarding` gọi `ensureSoulSkillPriorityBlock()`
-  (`agent-runtimes/hermes/onboarding.go`) ngay **sau** presync (§0 của presync có thể
+  (`runtimes/hermes/onboarding.go`) ngay **sau** presync (§0 của presync có thể
   chạy `claw migrate` ghi đè soul). Nó strip block
   `<!-- OS DO NOT REMOVE -->`…`---` cũ (nếu có) rồi append lại
   `soulSkillPriorityBlock` nhúng sẵn vào cuối `~/.hermes/SOUL.md` — nên một OTA
@@ -507,7 +507,7 @@ nó đọc mỗi session** — nên quy tắc đi theo đó:
 ### Capability kênh & add/refresh live
 
 Hermes là một **channel runtime hạng nhất** trong luồng capability generic
-(`agent-runtimes/hermes/channels.go`). Hermes Agent giao **telegram / slack / discord**
+(`runtimes/hermes/channels.go`). Hermes Agent giao **telegram / slack / discord**
 natively ngay trong server của nó — một kênh được bật khi token của nó có mặt trong
 `~/.hermes/.env` (Slack dùng Socket Mode → `SLACK_APP_TOKEN`), mà bảng map `.env` ở
 §10 phía trên đã đổ từ `config.json`. os-server **không chạy receive loop kênh** của
@@ -540,9 +540,9 @@ riêng mình; việc duy nhất của nó là đặt creds vào `.env` rồi bou
 
 Các remote-MCP connector (Notion, Linear, Asana, GitHub, Ahrefs, …) được nối bởi
 luồng MQTT `connector.set` của backend là công dân hạng nhất trên Hermes:
-`WriteMCPEntry`/`RemoveMCPEntry` (`agent-runtimes/hermes/mcp.go`) upsert/xoá
+`WriteMCPEntry`/`RemoveMCPEntry` (`runtimes/hermes/mcp.go`) upsert/xoá
 `mcp_servers.<name>` trong `~/.hermes/config.yaml` và restart `hermes-gateway`,
-mirror `agent-runtimes/openclaw/mcp.go` (cái này sửa `mcp.servers` trong `openclaw.json`).
+mirror `runtimes/openclaw/mcp.go` (cái này sửa `mcp.servers` trong `openclaw.json`).
 
 Connector writer giao cho gateway một entry chuẩn, shape kiểu OpenClaw —
 `{type:"http", url, headers}` cho hosted MCP, hoặc `{command, args, env}` cho stdio.
@@ -598,7 +598,7 @@ Switch openclaw→hermes chạy một migration persona Go
 - **SOUL.md** (rebrand) — và vì Hermes không có slot IDENTITY.md riêng, inline các
   field IDENTITY đã điền của owner thành block `## Your identity card` để tên tùy
   chỉnh (vd "Ngân") sống sót. `UpdateIdentityName` (đổi tên thiết bị) sửa block đó;
-  `WatchIdentity` (`agent-runtimes/hermes/identity.go`) poll SOUL.md và khi tên đổi thì
+  `WatchIdentity` (`runtimes/hermes/identity.go`) poll SOUL.md và khi tên đổi thì
   đẩy wake words mới sang HAL + `i18n.SetDeviceName` — mirror `WatchIdentity` của
   OpenClaw, chỉ khác là watch SOUL.md thay vì IDENTITY.md. Việc migration ghi đè
   cũng làm mất **block ưu-tiên-skill** do OS quản lý, nhưng `EnsureOnboarding`
@@ -614,7 +614,7 @@ trước). Chiều ngược hermes→openclaw **strip identity card khỏi SOUL 
 field của nó về `IDENTITY.md` của OpenClaw** (`restoreIdentityCard`, nghịch đảo của
 inline) — nên tên đặt dưới Hermes sống sót cả chiều về, không chỉ chiều đi.
 **Skills** được giữ tươi dưới Hermes nhờ
-`agent-runtimes/hermes/skill_watcher.go` — auto-update từ CDN vào `skills/openclaw-imports`,
+`runtimes/hermes/skill_watcher.go` — auto-update từ CDN vào `skills/openclaw-imports`,
 gate theo capability, mirror watcher OpenClaw (engine chung ở
 `system/skills/skillzip.go`).
 

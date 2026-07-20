@@ -11,7 +11,7 @@ import (
 // SOUL.md, the owner's name in its own IDENTITY.md, dedicated KNOWLEDGE.md +
 // daily memory/*.md slots, long-term MEMORY.md at the workspace root — because
 // the OS-managed CLAUDE.md block @imports each file into Claude's context
-// (agent-runtimes/claudecode/onboarding.go), so every slot maps 1:1 and a round-trip
+// (runtimes/claudecode/onboarding.go), so every slot maps 1:1 and a round-trip
 // with any slot-bearing runtime is structurally lossless. CLAUDE.md itself is
 // NOT carried: it is the runtime's own loader file (OS-managed block + owner
 // notes), the claudecode analog of AGENTS.md — runtime-specific, per

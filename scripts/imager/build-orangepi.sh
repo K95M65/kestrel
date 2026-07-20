@@ -385,8 +385,8 @@ fi
 # ── Codex + Claude Code + PicoClaw CLI binary pre-bake (lamp + intern-v2) ───
 # Same fast-path trick as the Hermes binary pre-bake above: bake ONLY the raw
 # CLI binaries here — no systemd unit, no presync/onboard, no enable/start.
-# Those stay owned entirely by each backend's own install.sh (agent-runtimes/codex,
-# agent-runtimes/claudecode, agent-runtimes/picoclaw — embedded in os-server, fetched by
+# Those stay owned entirely by each backend's own install.sh (runtimes/codex,
+# runtimes/claudecode, runtimes/picoclaw — embedded in os-server, fetched by
 # switch-runtime on the first real switch to that runtime); each detects the
 # binary already present and skips its own download, same as hermes above.
 # Versions are pinned here just like CODEX_VERSION/PICO_VERSION in their
@@ -402,10 +402,10 @@ fi
 #   [x] Claude Code — baked here, lamp + intern-v2
 #   [x] Codex       — baked here, lamp + intern-v2
 #   [x] PicoClaw    — baked here, lamp + intern-v2 (backend exists —
-#                      agent-runtimes/picoclaw + AgentGateway registered — UI badge
+#                      runtimes/picoclaw + AgentGateway registered — UI badge
 #                      is "coming soon" only pending product flip, not a
 #                      missing backend)
-#   [ ] OpenCode  — NOT baked: no agent-runtimes/opencode package, no AgentGateway
+#   [ ] OpenCode  — NOT baked: no runtimes/opencode package, no AgentGateway
 #                    case, no install.sh, not in adding-agent-runtime.md's
 #                    adapter list. The UI tile is a placeholder for a backend
 #                    that doesn't exist server-side yet — nothing to pull

@@ -56,11 +56,11 @@ func Capabilities(deviceType string) map[string]bool {
 }
 
 // Capability names — the frozen capability vocabulary (capabilities.v1) from
-// contract/capabilities.md. This is the platform-wide feature taxonomy every
+// devices/contract/capabilities.md. This is the platform-wide feature taxonomy every
 // DEVICE.md declares against and every OS-core gate asks about; it is NOT a
 // device-specific value. Defined once here (the package that parses the
 // capabilities block) so the strings have a single source of truth: a typo is a
-// compile error, not a silent fail-open. Keep in sync with contract/
+// compile error, not a silent fail-open. Keep in sync with devices/contract/
 // capabilities.md and the skills.Capability / skills.HookCapability maps.
 const (
 	CapAudio    = "audio"
@@ -73,7 +73,7 @@ const (
 	// CapExpression — the body can show emotion (the /emotion route). An output
 	// capability declared when the device has a screen, LED, or servo to express
 	// through; the route degrades to whatever output is present. Distinct from the
-	// perception capabilities (vision/sensing/presence). See contract/capabilities.md.
+	// perception capabilities (vision/sensing/presence). See devices/contract/capabilities.md.
 	CapExpression   = "expression"
 	CapMedia        = "media"
 	CapConnectivity = "connectivity"

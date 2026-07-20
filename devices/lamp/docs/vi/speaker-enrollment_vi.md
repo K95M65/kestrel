@@ -186,7 +186,7 @@ Mọi giọng lạ được gom cụm local để server biết "đây là cùng
 | Bộ nhận diện giọng nói | `hal/drivers/voice/speaker_recognizer/speaker_recognizer.py` | `SpeakerRecognizer` |
 | Chèn instruction + cooldown | `system/domain/voice.go` | `AppendEnrollNudge()` |
 | Đường trực tiếp | `system/server/sensing/delivery/http/handler.go` | `PostEvent()` |
-| Đường hàng đợi/phát lại | `agent-runtimes/openclaw/service.go` | `drainPendingEvents()` |
+| Đường hàng đợi/phát lại | `runtimes/openclaw/service.go` | `drainPendingEvents()` |
 | Skill agent | `lamp/resources/openclaw-skills/speaker-recognizer/SKILL.md` | — |
 | Model embedding | `integrations/perception-service/src/core/audio_recognition/audio_recognizer.py` | `ResNet34Recognizer` (mặc định), `EcapaTdnn1024Recognizer`, `CamPPlusRecognizer` — chọn qua env `AUDIO_RECOGNIZER_ENGINE` |
 | Endpoint embedding | `integrations/perception-service/src/protocols/htpp/audio_recognizer.py` | `embed_audio()` |

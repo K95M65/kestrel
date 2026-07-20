@@ -386,7 +386,7 @@ nên code không tin cậy không thể thoát khỏi thư mục configs qua pat
 
 **Bảng fallback:** với các connector ra đời trước khi wire mang các khóa này
 (`notion`, `asana`, `linear`, `github`, `ahrefs`), một bảng compile-in cung
-cấp `mcp_url` + kiểu header từ catalog openclaw (`agent-runtimes/openclaw/mcp.go`). Payload
+cấp `mcp_url` + kiểu header từ catalog openclaw (`runtimes/openclaw/mcp.go`). Payload
 **luôn thắng** — `mcp_url` trong payload override bảng fallback — nên bảng chỉ là lưới
 an toàn cho di trú đến khi backend gửi các khóa routing.
 
@@ -469,6 +469,6 @@ Xử lý bởi bootstrap worker, không qua MQTT handler trực tiếp.
 | `system/agent/channel_reconcile.go` | `ChannelReconcile`: áp dụng lại channel sau khi chuyển runtime, ghi `channels_unsupported` |
 | `system/server/device/delivery/mqtt/whatsapp_pair_handler.go` | Handle `whatsapp_pair` re-pair command |
 | `system/server/device/delivery/mqtt/claudecode_login_handler.go` | Handle `claudecode_login` / `claudecode_login_code` (claude.ai OAuth login) |
-| `agent-runtimes/openclaw/pairing.go` | WhatsApp Baileys QR pairing subprocess driver |
+| `runtimes/openclaw/pairing.go` | WhatsApp Baileys QR pairing subprocess driver |
 | `system/domain/device.go` | MQTTMessage, command constants |
 | `system/domain/pairing.go` | PairingEvent + status enum |

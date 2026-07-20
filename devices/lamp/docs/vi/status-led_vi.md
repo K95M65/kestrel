@@ -20,7 +20,7 @@ Tất cả các state dùng effect `breathing` speed 3.0 trừ khi ghi rõ. Giá
 | `StateOTA` | Xanh lá | `(0, 255, 0)` | **Đang update** — OTA firmware đang chạy (enum dự trữ; bootstrap drive LED OTA trực tiếp qua `lib/hal` — xem "Bootstrap (OTA)" bên dưới) | Bootstrap reconcile phát hiện update | Khởi động lại sau khi update xong |
 | `StateBooting` | Xanh dương | `(0, 80, 255)` | **Đang khởi động** — Lamp đang bật | `server.go` lúc startup | Có — khi OpenClaw agent connect và sẵn sàng |
 | `StateLeLampDown` | Tím | `(180, 0, 255)` | **HAL Down** — Server phần cứng không phản hồi. Khi HAL đang down LED **tắt hẳn** vì driver LED cũng chết theo; tím breathing chỉ flash ~3s khi phục hồi | `healthwatch` poll HAL `/health` thất bại | Tự tắt 3s sau khi phục hồi |
-| `StateAgentDown` | Cyan | `(0, 200, 200)` | **Agent Down** — AI brain mất kết nối | OpenClaw WebSocket ngắt (`agent-runtimes/openclaw/service_ws.go`) | Có — khi WebSocket reconnect |
+| `StateAgentDown` | Cyan | `(0, 200, 200)` | **Agent Down** — AI brain mất kết nối | OpenClaw WebSocket ngắt (`runtimes/openclaw/service_ws.go`) | Có — khi WebSocket reconnect |
 | `StateHardware` | Vàng | `(255, 255, 0)` | **Hardware Failure** — servo/LED/audio/voice không healthy qua HAL `/health` | `healthwatch` poll (mỗi 5s); camera và sensing không tính | Có — khi tất cả linh kiện báo OK |
 
 ### Ready flash
@@ -115,7 +115,7 @@ Các caller thực tế (đã verify với code):
 
 ```
 server.go                    → Set/Clear StateBooting + StateConnectivity + FlashReady
-agent-runtimes/openclaw/service_ws → Set/Clear StateAgentDown
+runtimes/openclaw/service_ws → Set/Clear StateAgentDown
 system/healthwatch/service → Set/Clear StateLeLampDown + StateHardware
 ```
 

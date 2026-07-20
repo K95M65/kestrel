@@ -25,7 +25,7 @@ Deterministic — they run with or without the runtime. OTA runs as its own work
 **Agentic Runtime** — **OpenClaw**, **Hermes**, **PicoClaw**, **OpenAI Codex**, **Claude Code**,
 or a custom runtime. Runs the skills, embodies the device's `SOUL.md`, and decides what to act
 on. Swappable — and where Autonomous's differentiated value (the default brain, memory,
-character) lives. *(`agent-runtimes/{openclaw,hermes,picoclaw,codex,claudecode}`)*
+character) lives. *(`runtimes/{openclaw,hermes,picoclaw,codex,claudecode}`)*
 
 **HAL — Capabilities** — the frozen, versioned interface, 12 capabilities: `audio`, `vision`,
 `sensing`, `presence`, `motion`, `light`, `display`, `expression`, `media`, `connectivity`,
@@ -36,7 +36,7 @@ only those. The HAL also hosts the **safety gate** (`hal/safety`): `SAFETY.md` b
 e-stop, motion limits, brightness, quiet hours — enforced deterministically below the brain,
 never by the LLM. The realtime voice agent (`hal/drivers/realtime`) runs in-process here
 too — runtime-layer code hosted in the HAL, marked purple in the diagram.
-*(`contract/` + `hal` — see [hal.md](hal.md))*
+*(`devices/contract/` + `hal` — see [hal.md](hal.md))*
 
 **Linux Kernel** — the vendor kernel (Raspberry Pi OS / OrangePi, or a robot's onboard compute)
 we run on; we don't ship one. Our **Drivers** (`motors`, `rgb`, `display`, `camera`, `voice`
@@ -46,5 +46,5 @@ we run on; we don't ship one. Our **Drivers** (`motors`, `rgb`, `display`, `came
 ## See also
 
 [hal.md](hal.md) · [kernel.md](kernel.md) ·
-[`DEVICE-SPEC.md`](../../contract/DEVICE-SPEC.md) ·
-[`capabilities.md`](../../contract/capabilities.md)
+[`DEVICE-SPEC.md`](../../devices/contract/DEVICE-SPEC.md) ·
+[`capabilities.md`](../../devices/contract/capabilities.md)

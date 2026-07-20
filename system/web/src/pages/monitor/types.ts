@@ -217,7 +217,7 @@ export function hashToSection(hash: string, area: Area): Section | null {
   return h as Section;
 }
 
-// Capability names — the web mirror of Go's device.Cap* / contract/
+// Capability names — the web mirror of Go's device.Cap* / devices/contract/
 // capabilities.md. Single source for the capability strings the web references,
 // so a tab's hardware requirement is a named constant, not a scattered literal.
 // Keep in sync with the capability vocabulary (capabilities.v1).

@@ -7,11 +7,11 @@ whatever backend `config.agent_runtime` selects through the single
 hardware markers, Flow Monitor SSE, sensing drain, Telegram fan-out) never knows
 which brain is active.
 
-- **`openclaw`** (default): persistent WebSocket to the OpenClaw daemon. See `docs/os-server.md` + `agent-runtimes/openclaw`.
-- **`hermes`**: HTTP + SSE client against a local Hermes API server. See `docs/agentic/hermes.md` + `agent-runtimes/hermes`.
-- **`picoclaw`**: persistent WebSocket client against a local PicoClaw runtime. This doc. Code: `agent-runtimes/picoclaw/`.
+- **`openclaw`** (default): persistent WebSocket to the OpenClaw daemon. See `docs/os-server.md` + `runtimes/openclaw`.
+- **`hermes`**: HTTP + SSE client against a local Hermes API server. See `docs/agentic/hermes.md` + `runtimes/hermes`.
+- **`picoclaw`**: persistent WebSocket client against a local PicoClaw runtime. This doc. Code: `runtimes/picoclaw/`.
 
-> Source of truth is the code. This documents `agent-runtimes/picoclaw/` as
+> Source of truth is the code. This documents `runtimes/picoclaw/` as
 > implemented; keep it in sync on change (EN: this file, VI: `docs/vi/agentic/picoclaw_vi.md`).
 
 > **Agentic-backend docs:** [`adding-agent-runtime.md`](adding-agent-runtime.md)
@@ -19,7 +19,7 @@ which brain is active.
 > this file (PicoClaw).
 >
 > **Status: install parity; client-only gateway.** PicoClaw now ships a device-side
-> installer + pre-start hook (`agent-runtimes/picoclaw/install.sh` + `presync.sh`, embedded
+> installer + pre-start hook (`runtimes/picoclaw/install.sh` + `presync.sh`, embedded
 > and registered via `install.go` → `runtimereg`), so a `picoclaw.setup` switch
 > installs, provisions, and starts it like hermes (§1.1). Persona/memory migration is
 > two-way through the Go reconciler — picoclaw has a `migrate_persona` adapter
@@ -153,7 +153,7 @@ has no `allow_from`.
 ## 2. Wire constants
 
 There is **no per-unit config**; the endpoint is a compile-time constant in
-`agent-runtimes/picoclaw/constants.go`:
+`runtimes/picoclaw/constants.go`:
 
 | Const | Default | Meaning |
 |---|---|---|
@@ -261,7 +261,7 @@ instead).
 
 PicoClaw runs **telegram only**. The Telegram receive loop is **device-owned**
 (driven by `config.TelegramBotToken`), and PicoClaw has no slack/discord delivery
-of its own. The three channel methods in `agent-runtimes/picoclaw/channels.go` encode
+of its own. The three channel methods in `runtimes/picoclaw/channels.go` encode
 this honestly:
 
 | Method | telegram | slack / discord / whatsapp |
@@ -295,7 +295,7 @@ shared `ChannelTurn` handler already serves (`handler_channel_turn.go`). No
 consumer/UI change — the inbound user text lights up the IN node, and any
 `[HW:/…]` markers in the reply drive the local hardware, same as Hermes.
 
-Two things differ from Hermes and are owned by `agent-runtimes/picoclaw/hooks.go`:
+Two things differ from Hermes and are owned by `runtimes/picoclaw/hooks.go`:
 
 1. **Transport.** PicoClaw process hooks are a **subprocess speaking NDJSON
    JSON-RPC over stdio** (`resources/hooks/os-server-observer/observer.py`), not an

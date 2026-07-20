@@ -10,11 +10,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"go.autonomous.ai/os/agent-runtimes/claudecode"
-	"go.autonomous.ai/os/agent-runtimes/codex"
-	"go.autonomous.ai/os/agent-runtimes/hermes"
-	"go.autonomous.ai/os/agent-runtimes/openclaw"
-	"go.autonomous.ai/os/agent-runtimes/picoclaw"
+	"go.autonomous.ai/os/runtimes/claudecode"
+	"go.autonomous.ai/os/runtimes/codex"
+	"go.autonomous.ai/os/runtimes/hermes"
+	"go.autonomous.ai/os/runtimes/openclaw"
+	"go.autonomous.ai/os/runtimes/picoclaw"
 	"go.autonomous.ai/os/system/device"
 	"go.autonomous.ai/os/system/domain"
 	"go.autonomous.ai/os/system/lib/hal"
