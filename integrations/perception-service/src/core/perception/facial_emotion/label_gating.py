@@ -23,7 +23,7 @@ DEFAULT_LABEL_THRESHOLDS: dict[str, float] = {
     "happy": 0.5,
     "surprise": 0.6,
     "sad": 0.7,
-    "anger": 0.5,
+    "anger": 0.6,
     "disgust": 0.7,
     "fear": 0.5,
 }
