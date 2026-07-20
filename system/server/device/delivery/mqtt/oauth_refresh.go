@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"go.autonomous.ai/os/domain"
+	"go.autonomous.ai/os/system/domain"
 )
 
 const (

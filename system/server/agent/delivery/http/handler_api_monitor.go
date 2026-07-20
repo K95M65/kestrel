@@ -10,15 +10,15 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"go.autonomous.ai/os/domain"
-	"go.autonomous.ai/os/internal/agent/runtimes/codex"
-	"go.autonomous.ai/os/internal/agent/runtimes/claudecode"
-	"go.autonomous.ai/os/internal/device"
-	"go.autonomous.ai/os/internal/agent/runtimes/hermes"
-	"go.autonomous.ai/os/internal/agent/runtimes/openclaw"
-	"go.autonomous.ai/os/internal/agent/runtimes/picoclaw"
-	"go.autonomous.ai/os/lib/hal"
-	"go.autonomous.ai/os/server/serializers"
+	"go.autonomous.ai/os/agent-runtimes/claudecode"
+	"go.autonomous.ai/os/agent-runtimes/codex"
+	"go.autonomous.ai/os/agent-runtimes/hermes"
+	"go.autonomous.ai/os/agent-runtimes/openclaw"
+	"go.autonomous.ai/os/agent-runtimes/picoclaw"
+	"go.autonomous.ai/os/system/device"
+	"go.autonomous.ai/os/system/domain"
+	"go.autonomous.ai/os/system/lib/hal"
+	"go.autonomous.ai/os/system/server/serializers"
 )
 
 // GetOpenClawVersion returns the cached OpenClaw binary version (e.g. "2026.5.27").

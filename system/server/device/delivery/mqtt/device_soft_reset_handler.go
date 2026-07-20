@@ -5,7 +5,7 @@ import (
 	"os"
 	"os/exec"
 
-	"go.autonomous.ai/os/domain"
+	"go.autonomous.ai/os/system/domain"
 )
 
 // configPath is the on-disk location of the device's config.json — same relative

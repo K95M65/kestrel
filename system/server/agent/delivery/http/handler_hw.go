@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"go.autonomous.ai/os/domain"
-	"go.autonomous.ai/os/internal/device"
-	"go.autonomous.ai/os/lib/flow"
-	"go.autonomous.ai/os/lib/hal"
-	"go.autonomous.ai/os/lib/i18n"
+	"go.autonomous.ai/os/system/device"
+	"go.autonomous.ai/os/system/domain"
+	"go.autonomous.ai/os/system/lib/flow"
+	"go.autonomous.ai/os/system/lib/hal"
+	"go.autonomous.ai/os/system/lib/i18n"
 )
 
 // trackFailMessage is the apology template spoken when /servo/track fails.

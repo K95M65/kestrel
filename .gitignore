@@ -43,7 +43,7 @@ system/os-server
 system/os-server.~
 system/bootstrap-server
 system/bootstrap-server.~
-system/vendor/
+/vendor/
 system/web/node_modules/
 system/web/dist/
 *.zip

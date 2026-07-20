@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"strings"
 
-	"go.autonomous.ai/os/domain"
-	"go.autonomous.ai/os/lib/i18n"
+	"go.autonomous.ai/os/system/domain"
+	"go.autonomous.ai/os/system/lib/i18n"
 )
 
 // handleDeviceRename rewrites the agent name in workspace/IDENTITY.md. WatchIdentity

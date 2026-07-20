@@ -5,7 +5,7 @@ import { getInitialSearch } from "./useSetupUrlParams";
 
 export type SetupPhase = "connecting" | "connected" | "failed";
 
-// The AP-mode static address (backend internal/device apSetupIP). Used to
+// The AP-mode static address (backend system/device apSetupIP). Used to
 // reject the AP's own IP when seeding lan_ip on a `.local` landing — we must
 // never canonical-"upgrade" onto the soon-to-die AP address.
 const AP_SETUP_IP = "192.168.100.1";
@@ -19,7 +19,7 @@ const AP_LOST_AFTER_MS = 5000;
 // the raw LAN IP resolves on every network, so it's the primary target:
 //   (1) phase poll — runs while setupWorking, hits the AP IP for phase/lan_ip
 //       (the backend captures the STA IP early so the FE can read it during the
-//       brief window the AP is still alive — see internal/device/service.go).
+//       brief window the AP is still alive — see system/device/service.go).
 //   (2) LAN-IP probe — once lan_ip is known, probe http://<lan_ip>/api/health;
 //       when it succeeds (operator rejoined home Wi-Fi, device is up) redirect
 //       to http://<lan_ip>/setup. Also runs as the pre-submit canonical-URL
@@ -219,7 +219,7 @@ export function useSetupStatusPolling({
   // lan_ip pre-submit, so the canonical-URL upgrade above could never move the
   // page onto the raw IP. Fetch it once from the open setup-status endpoint
   // (which falls back to the live wlan0 address when no setup run is in
-  // flight — see internal/device/service.go SetupStatus). `.local` is only the
+  // flight — see system/device/service.go SetupStatus). `.local` is only the
   // discovery bootstrap; the raw IP is the durable home, since mDNS can stop
   // resolving at any time on flaky networks. The AP_SETUP_IP guard prevents a
   // perverse "upgrade" onto the AP address if this ever runs in AP mode.

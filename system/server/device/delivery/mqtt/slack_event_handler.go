@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"go.autonomous.ai/os/domain"
-	"go.autonomous.ai/os/internal/device"
+	"go.autonomous.ai/os/system/device"
+	"go.autonomous.ai/os/system/domain"
 )
 
 const (

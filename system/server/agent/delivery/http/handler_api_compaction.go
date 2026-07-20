@@ -11,7 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"go.autonomous.ai/os/server/serializers"
+	"go.autonomous.ai/os/system/server/serializers"
 )
 
 const (

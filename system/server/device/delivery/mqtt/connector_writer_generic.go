@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	"go.autonomous.ai/os/internal/agent/runtimes/openclaw"
+	"go.autonomous.ai/os/agent-runtimes/openclaw"
 )
 
 // validConnectorCode bounds a connector code to a safe charset before it is used

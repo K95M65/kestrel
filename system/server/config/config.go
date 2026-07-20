@@ -12,8 +12,8 @@ import (
 	"strings"
 	"sync"
 
-	"go.autonomous.ai/os/lib/mqtt"
-	"go.autonomous.ai/os/lib/urlnorm"
+	"go.autonomous.ai/os/system/lib/mqtt"
+	"go.autonomous.ai/os/system/lib/urlnorm"
 )
 
 // bootstrapConfigPath is the OTA worker's config file. The device-wide OTA
@@ -43,7 +43,7 @@ var configPath = "config/config.json"
 // OSVersion is injected at build time via ldflags.
 // Example:
 //
-//	-X go.autonomous.ai/os/server/config.OSVersion=v1.2.3
+//	-X go.autonomous.ai/os/system/server/config.OSVersion=v1.2.3
 var OSVersion = "dev"
 
 type Config struct {
@@ -103,7 +103,7 @@ type Config struct {
 	LLMBaseURL string `json:"llm_base_url" yaml:"llmBaseURL" validate:"required"`
 
 	// ClaudeCodeOAuthToken is the long-lived claude.ai OAuth token produced by
-	// the claudecode login flow (`claude setup-token`, internal/agent/runtimes/claudecode/login.go).
+	// the claudecode login flow (`claude setup-token`, agent-runtimes/claudecode/login.go).
 	// When set (or when ~/.claude/.credentials.json exists), the claudecode
 	// presync switches the runtime to subscription auth: it injects
 	// CLAUDE_CODE_OAUTH_TOKEN and OMITS the ANTHROPIC_* API-key vars — those

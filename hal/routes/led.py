@@ -189,7 +189,7 @@ def start_led_effect(req: LEDEffectRequest):
     # Mic-muted red is a privacy indicator — a transient system overlay
     # (ambient breathing, Buddy Busy pulse, statusled) must NOT paint over
     # it. Ambient's breathingLoop reads the current color and re-fires every
-    # 2s (see internal/ambient/service.go), and without this guard each tick
+    # 2s (see system/ambient/service.go), and without this guard each tick
     # would kill our red thread and start ambient's breathing in some dim
     # frame we happened to sample. User-initiated writes (non-transient) go
     # through unchanged and dismiss mic-muted below via _dismiss_mic_muted_led.

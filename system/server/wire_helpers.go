@@ -1,8 +1,8 @@
 package server
 
 import (
-	"go.autonomous.ai/os/internal/device"
-	"go.autonomous.ai/os/server/config"
+	"go.autonomous.ai/os/system/device"
+	"go.autonomous.ai/os/system/server/config"
 )
 
 // provideStatusLEDHasLight resolves the `light` capability for the running

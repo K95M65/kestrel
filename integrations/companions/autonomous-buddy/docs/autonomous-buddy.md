@@ -124,7 +124,7 @@ Out-of-scope MVP examples (defer to vision phase):
 - Local audit log (file in `~/Library/Application Support/AutonomousBuddy/audit.log`) — also pushed to the device opportunistically
 - OSLog (unified logging) for diagnostics
 
-### 4.2 `lamp` Go server — new package `internal/buddy/`
+### 4.2 `lamp` Go server — new package `system/buddy/`
 
 | File | Responsibility |
 |------|----------------|
@@ -326,7 +326,7 @@ Reserved for later (defined but not implemented MVP):
 | Pref storage | **UserDefaults / plist** | Standard macOS for non-secrets |
 | Logging | **OSLog (unified)** | Native, viewable in Console.app |
 | Test framework | **XCTest** | Standard |
-| Go side | **Existing patterns** (Gin, Wire, internal/) | Follow `internal/agent/runtimes/openclaw/`, `server/<domain>/delivery/http/` |
+| Go side | **Existing patterns** (Gin, Wire, internal/) | Follow `agent-runtimes/openclaw/`, `server/<domain>/delivery/http/` |
 | Autonomous-buddy folder location | **Repo root** alongside `lamp/`, `lelamp/` | Self-contained, can be built independently |
 
 ---
@@ -395,7 +395,7 @@ Mac-only MVP → **Swift native**. Tauri/Rust deferred until Windows/Linux phase
 ### Decision on `lelamp` and `lamp` Go
 
 - `lelamp` (Python) — **no changes**. Hardware-only.
-- `lamp` (Go) — **new package** `internal/buddy/`, new HTTP routes, new WS gateway.
+- `lamp` (Go) — **new package** `system/buddy/`, new HTTP routes, new WS gateway.
 - `OpenClaw` — new skill `computer-use`.
 - `lamp/web` — new "Paired Computers" page.
 - `CLAUDE.md` — new doc row.

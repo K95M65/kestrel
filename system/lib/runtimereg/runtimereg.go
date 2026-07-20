@@ -1,10 +1,10 @@
 // Package runtimereg is a tiny neutral registry of binary-embedded agentic-
-// backend installers, keyed by runtime name. Backend packages (internal/agent/runtimes/hermes,
-// …) register their embedded install.sh from an init(); internal/device reads
+// backend installers, keyed by runtime name. Backend packages (agent-runtimes/hermes,
+// …) register their embedded install.sh from an init(); system/device reads
 // it back to materialize the installer on disk for switch-runtime.
 //
-// It exists only to break the import cycle that a direct internal/device →
-// internal/agent/runtimes/hermes import would create (hermes → statusled → device). Having no
+// It exists only to break the import cycle that a direct system/device →
+// agent-runtimes/hermes import would create (hermes → statusled → device). Having no
 // dependencies of its own, runtimereg can be imported from either side.
 package runtimereg
 
@@ -49,7 +49,7 @@ func GetPresync(name string) ([]byte, bool) {
 // RegisterVersion records a backend's cached-version getter (e.g.
 // openclaw.GetOpenClawVersion). Registered from the backend package's init();
 // the getter itself reads a cache populated at startup, so calling it is cheap.
-// Exists for the same cycle-breaking reason as Register: internal/device wants
+// Exists for the same cycle-breaking reason as Register: system/device wants
 // to report backend versions (backend ping) but cannot import the backend
 // packages directly.
 func RegisterVersion(name string, fn func() string) {

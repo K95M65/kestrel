@@ -98,8 +98,8 @@ const (
 	// 3.5-plus over turbo: turbo (legacy) never fires function calls and
 	// ignores turn context (device-tested), breaking the delegate flow.
 	// Voice: 3.5-plus accepts only Serena/Ethan of the qwen voice set.
-	defaultRealtimeQwenModel       = "qwen3.5-omni-plus-realtime"
-	defaultRealtimeQwenVoice       = "Ethan"
+	defaultRealtimeQwenModel = "qwen3.5-omni-plus-realtime"
+	defaultRealtimeQwenVoice = "Ethan"
 )
 
 // DefaultRealtimeConfig returns the realtime block os-server seeds into

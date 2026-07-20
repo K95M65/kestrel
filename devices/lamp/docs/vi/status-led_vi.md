@@ -11,7 +11,7 @@ Không có tín hiệu này, user không phân biệt được Lamp đang khởi
 
 ## Các Trạng Thái
 
-Tất cả các state dùng effect `breathing` speed 3.0 trừ khi ghi rõ. Giá trị RGB lấy từ `internal/statusled/service.go`.
+Tất cả các state dùng effect `breathing` speed 3.0 trừ khi ghi rõ. Giá trị RGB lấy từ `system/statusled/service.go`.
 
 | Trạng thái (hằng số code) | Màu | RGB | Ý nghĩa | Trigger | Tự tắt |
 |---|---|---|---|---|---|
@@ -20,7 +20,7 @@ Tất cả các state dùng effect `breathing` speed 3.0 trừ khi ghi rõ. Giá
 | `StateOTA` | Xanh lá | `(0, 255, 0)` | **Đang update** — OTA firmware đang chạy (enum dự trữ; bootstrap drive LED OTA trực tiếp qua `lib/hal` — xem "Bootstrap (OTA)" bên dưới) | Bootstrap reconcile phát hiện update | Khởi động lại sau khi update xong |
 | `StateBooting` | Xanh dương | `(0, 80, 255)` | **Đang khởi động** — Lamp đang bật | `server.go` lúc startup | Có — khi OpenClaw agent connect và sẵn sàng |
 | `StateLeLampDown` | Tím | `(180, 0, 255)` | **HAL Down** — Server phần cứng không phản hồi. Khi HAL đang down LED **tắt hẳn** vì driver LED cũng chết theo; tím breathing chỉ flash ~3s khi phục hồi | `healthwatch` poll HAL `/health` thất bại | Tự tắt 3s sau khi phục hồi |
-| `StateAgentDown` | Cyan | `(0, 200, 200)` | **Agent Down** — AI brain mất kết nối | OpenClaw WebSocket ngắt (`internal/agent/runtimes/openclaw/service_ws.go`) | Có — khi WebSocket reconnect |
+| `StateAgentDown` | Cyan | `(0, 200, 200)` | **Agent Down** — AI brain mất kết nối | OpenClaw WebSocket ngắt (`agent-runtimes/openclaw/service_ws.go`) | Có — khi WebSocket reconnect |
 | `StateHardware` | Vàng | `(255, 255, 0)` | **Hardware Failure** — servo/LED/audio/voice không healthy qua HAL `/health` | `healthwatch` poll (mỗi 5s); camera và sensing không tính | Có — khi tất cả linh kiện báo OK |
 
 ### Ready flash
@@ -109,14 +109,14 @@ LED OTA của bootstrap không qua priority queue — nó chạy khi bootstrap s
 
 ### Lamp (os-server)
 
-`internal/statusled/Service` quản lý các state active với priority map. Caller `Set` và `Clear` các named state; service apply LED effect cho state có priority cao nhất.
+`system/statusled/Service` quản lý các state active với priority map. Caller `Set` và `Clear` các named state; service apply LED effect cho state có priority cao nhất.
 
 Các caller thực tế (đã verify với code):
 
 ```
 server.go                    → Set/Clear StateBooting + StateConnectivity + FlashReady
-internal/agent/runtimes/openclaw/service_ws → Set/Clear StateAgentDown
-internal/healthwatch/service → Set/Clear StateLeLampDown + StateHardware
+agent-runtimes/openclaw/service_ws → Set/Clear StateAgentDown
+system/healthwatch/service → Set/Clear StateLeLampDown + StateHardware
 ```
 
 Service gọi HAL `/led/effect` qua `lib/hal` (shared HTTP client).
@@ -134,7 +134,7 @@ thất bại   → lelamp.SetEffect("pulse", 255, 30, 30, 1.5)                  
 
 ## Tích Hợp Với Ambient
 
-Ambient service (`internal/ambient`) tự pause khi có interaction event (`chat_send`, `chat_response`, v.v.). Khi `statusled.Service` clear state cuối cùng, nó gọi `lelamp.RestoreLED()` — strip trở về màu/effect mà user (hoặc agent) đã set qua `/led/solid`, `/led/effect`, hoặc `/scene`. Nếu chưa từng có user state, strip clear về off và ambient sẽ resume breathing sau 60s im lặng.
+Ambient service (`system/ambient`) tự pause khi có interaction event (`chat_send`, `chat_response`, v.v.). Khi `statusled.Service` clear state cuối cùng, nó gọi `lelamp.RestoreLED()` — strip trở về màu/effect mà user (hoặc agent) đã set qua `/led/solid`, `/led/effect`, hoặc `/scene`. Nếu chưa từng có user state, strip clear về off và ambient sẽ resume breathing sau 60s im lặng.
 
 Mọi `statusled.Service` write đều dùng `transient=true` để không ghi đè user LED state — restore-after-animation của emotion sẽ đọc lại đúng màu user, không phải màu status. (Bootstrap gọi `lib/hal` trực tiếp cũng transient.)
 

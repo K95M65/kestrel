@@ -8,9 +8,9 @@ import (
 
 	"github.com/joho/godotenv"
 
-	"go.autonomous.ai/os/bootstrap"
-	"go.autonomous.ai/os/bootstrap/config"
-	"go.autonomous.ai/os/lib/logger"
+	"go.autonomous.ai/os/system/bootstrap"
+	"go.autonomous.ai/os/system/bootstrap/config"
+	"go.autonomous.ai/os/system/lib/logger"
 )
 
 func main() {

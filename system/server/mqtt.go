@@ -4,8 +4,8 @@ import (
 	"context"
 	"log/slog"
 
-	"go.autonomous.ai/os/lib/safego"
-	"go.autonomous.ai/os/server/config"
+	"go.autonomous.ai/os/system/lib/safego"
+	"go.autonomous.ai/os/system/server/config"
 )
 
 // restartMQTT stops the current MQTT client and starts a new one (e.g. when backend pushes new MQTT config).

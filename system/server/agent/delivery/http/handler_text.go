@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"go.autonomous.ai/os/domain"
+	"go.autonomous.ai/os/system/domain"
 )
 
 var emotionRe = regexp.MustCompile(`(?:\\"|")emotion(?:\\"|")\s*:\s*(?:\\"|")([a-zA-Z_]+)(?:\\"|")`)

@@ -10,9 +10,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"go.autonomous.ai/os/server/config"
-	"go.autonomous.ai/os/server/serializers"
-	"go.autonomous.ai/os/server/session"
+	"go.autonomous.ai/os/system/server/config"
+	"go.autonomous.ai/os/system/server/serializers"
+	"go.autonomous.ai/os/system/server/session"
 )
 
 // sameOriginOrLAN blocks the route for callers that are neither on the local

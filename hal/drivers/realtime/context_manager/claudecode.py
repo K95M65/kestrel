@@ -10,7 +10,7 @@ class ClaudeCodeContextManager(OpenClawContextManager):
     identity and memory (SOUL.md / IDENTITY.md / USER.md / memory/*.md), but
     skills are native Claude Code skills in .claude/skills/<name>/ — the
     claude CLI auto-loads that directory, so the os-server skill watcher
-    (internal/agent/runtimes/claudecode/skill_watcher.go) installs them there instead of
+    (agent-runtimes/claudecode/skill_watcher.go) installs them there instead of
     workspace/skills.
     """
 

@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"strings"
 
-	"go.autonomous.ai/os/domain"
-	"go.autonomous.ai/os/lib/flow"
+	"go.autonomous.ai/os/system/domain"
+	"go.autonomous.ai/os/system/lib/flow"
 )
 
 // handleChatEvent handles WS event=="chat": OpenClaw chat-stream events

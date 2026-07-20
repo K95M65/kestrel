@@ -7,12 +7,12 @@ whatever backend `config.agent_runtime` selects through the single
 hardware markers, Flow Monitor SSE, sensing drain, Telegram fan-out) never knows
 which brain is active.
 
-- **`openclaw`** (default): persistent WebSocket to the OpenClaw daemon. See `docs/os-server.md` + `internal/agent/runtimes/openclaw`.
-- **`hermes`**: HTTP + SSE client against a local Hermes API server. See `docs/agentic/hermes.md` + `internal/agent/runtimes/hermes`.
-- **`picoclaw`**: persistent WebSocket client against a local PicoClaw runtime. See `docs/agentic/picoclaw.md` + `internal/agent/runtimes/picoclaw`.
-- **`codex`**: the **OpenAI Codex CLI** as the device agent brain, behind a local WS bridge. This doc. Code: `system/internal/agent/runtimes/codex/`.
+- **`openclaw`** (default): persistent WebSocket to the OpenClaw daemon. See `docs/os-server.md` + `agent-runtimes/openclaw`.
+- **`hermes`**: HTTP + SSE client against a local Hermes API server. See `docs/agentic/hermes.md` + `agent-runtimes/hermes`.
+- **`picoclaw`**: persistent WebSocket client against a local PicoClaw runtime. See `docs/agentic/picoclaw.md` + `agent-runtimes/picoclaw`.
+- **`codex`**: the **OpenAI Codex CLI** as the device agent brain, behind a local WS bridge. This doc. Code: `agent-runtimes/codex/`.
 
-> Source of truth is the code. This documents `internal/agent/runtimes/codex/` as implemented;
+> Source of truth is the code. This documents `agent-runtimes/codex/` as implemented;
 > keep it in sync on change (EN: this file, VI: `docs/vi/agentic/codex_vi.md`).
 
 > **Agentic-backend docs:** [`adding-agent-runtime.md`](adding-agent-runtime.md)
@@ -31,7 +31,7 @@ which brain is active.
 The Codex CLI has no server mode of its own, so the device runs a thin local
 **WS bridge**: the `codex.service` systemd unit runs **`os-server
 codex-gatewayd`** — the bridge is **compiled into the os-server binary**
-(`internal/agent/runtimes/codex/gatewayd`, a Go port of the reference `bridge.py`; **no Python
+(`agent-runtimes/codex/gatewayd`, a Go port of the reference `bridge.py`; **no Python
 on the device**). The bridge exposes `ws://127.0.0.1:18792/codex/ws/` (bearer
 token `autonomous_codex_token`) and spawns **one subprocess per turn**:
 
@@ -46,11 +46,11 @@ block on an approval prompt (paired with `approval_policy = "never"` +
 `sandbox_mode = "danger-full-access"` in config.toml, §1.2).
 
 `agent_runtime` in `config.json` picks the backend; resolution lives in
-`internal/agent/factory.go` `ProvideGateway()` — `"codex"` →
+`system/agent/factory.go` `ProvideGateway()` — `"codex"` →
 `codex.ProvideService`, anything unknown falls back to OpenClaw. On startup a
 `AGENT BACKEND ACTIVE → CODEX` banner prints `ws_url` + `conversation`.
 
-Wire constants (`internal/agent/runtimes/codex/constants.go`, no per-unit config):
+Wire constants (`agent-runtimes/codex/constants.go`, no per-unit config):
 
 | Const | Default | Meaning |
 |---|---|---|
@@ -60,7 +60,7 @@ Wire constants (`internal/agent/runtimes/codex/constants.go`, no per-unit config
 
 ## 1.1 Install (`install.sh`)
 
-A `codex.setup` switch runs the generic `internal/device/switch_runtime.sh`,
+A `codex.setup` switch runs the generic `system/device/switch_runtime.sh`,
 which materializes Codex's embedded scripts. `install.sh` (one-time, self-
 sufficient — a direct `bash install.sh` fully configures AND starts the
 backend):
@@ -263,7 +263,7 @@ Telegram is **device-owned** under Codex. The Codex CLI has no channel layer
 of its own (unlike PicoClaw, whose runtime binary polls the Telegram Bot API
 itself — its presync enables `channel_list.telegram` in PicoClaw's own
 config), so os-server runs the inbound receive loop:
-`internal/agent/runtimes/codex/telegram_poll.go`, one goroutine started from `StartWS`
+`agent-runtimes/codex/telegram_poll.go`, one goroutine started from `StartWS`
 (outside its reconnect loop, so it survives WS drops). Because it lives inside
 the codex service's lifecycle it runs **only while codex is the active
 runtime** — it can never compete with the openclaw/hermes gateway pollers for
@@ -308,13 +308,13 @@ a wedged turn cannot leave the chat "typing…" forever. Sends are best-effort
 ### Slack (HTTP-mode proxy path)
 
 Slack is also **device-owned**, via the HTTP-mode proxy path (modeled on the
-hermes bridge, `internal/agent/runtimes/hermes/slack.go`): the public bff-campaign-service
+hermes bridge, `agent-runtimes/hermes/slack.go`): the public bff-campaign-service
 proxy receives Slack Events API deliveries and fans them out over MQTT to the
 device's `slack_event` handler
 (`server/device/delivery/mqtt/slack_event_handler.go`), which dedups by
 `event_id` (in-memory LRU, 5 min TTL) and type-asserts the active gateway to
 `domain.SlackBridge`. `CodexService` implements that bridge
-(`internal/agent/runtimes/codex/slack.go`), so events route here **only while codex is the
+(`agent-runtimes/codex/slack.go`), so events route here **only while codex is the
 active runtime** — no server-side dispatch code changes, same wiring as
 hermes. Socket Mode is not involved; the device never opens a Slack WebSocket.
 
@@ -357,7 +357,7 @@ codex, like the hermes bridge, trusts the authenticated MQTT path.
 Discord is also **device-owned**: it requires a Gateway WebSocket bot session
 (there is no long-poll receive API), so os-server runs one via
 [discordgo](https://github.com/bwmarrin/discordgo)
-(`internal/agent/runtimes/codex/discord.go`). Like the telegram loop, the session is started
+(`agent-runtimes/codex/discord.go`). Like the telegram loop, the session is started
 from `StartWS` (`go s.startDiscordBot(ctx)`) and lives inside the codex
 service's lifecycle — it runs **only while codex is the active runtime**, so
 it can never fight another runtime's bot session for the same token. The loop
@@ -409,7 +409,7 @@ also [`adding-agent-runtime.md`](adding-agent-runtime.md).
 
 ### Telegram remote coding-sessions (`telegram_coding.go`, `coding_sessions.go`)
 
-Mirrors `internal/agent/runtimes/claudecode/telegram_coding.go` 1:1 — a Telegram chat can
+Mirrors `agent-runtimes/claudecode/telegram_coding.go` 1:1 — a Telegram chat can
 **attach to a folder's interactive `codex` thread and continue coding it from
 the phone**, across multiple folders each with its own thread. Separate from the
 device-main persona turn.
@@ -455,12 +455,12 @@ device-main persona turn.
 ## 6. Hooks
 
 Codex ships no hooks loader, so OpenClaw's `emotion-acknowledge` hook is
-reproduced **natively in Go** (`internal/agent/runtimes/codex/emotion_ack.go`, mirroring
+reproduced **natively in Go** (`agent-runtimes/codex/emotion_ack.go`, mirroring
 hermes' `emotion_ack.go`): on each user-visible turn, sendChat fires
 `{emotion:"thinking"}` to HAL — same skip prefixes, same intensity, same
 capability gate (`skills.SupportedHooks`) as the TS handler. The companion
 `turn-gate` hook is intentionally not mirrored (sendChat already marks the turn
-busy). ⚠️ Keep it in lockstep with `system/internal/agent/runtimes/openclaw/hooks/emotion-acknowledge/handler.ts`.
+busy). ⚠️ Keep it in lockstep with `agent-runtimes/openclaw/hooks/emotion-acknowledge/handler.ts`.
 
 ## 7. MCP connectors (`mcp.go`)
 

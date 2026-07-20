@@ -2,7 +2,7 @@
 
 Date: 2026-05-16  
 Repo: `lamp`  
-Scope: Lamp Go server only (`system/server`, `system/internal`, `system/domain`, nginx `/api/` wiring).  
+Scope: Lamp Go server only (`system/server`, `system/`, `system/domain`, nginx `/api/` wiring).  
 Instruction: report issues and exact remediation guidance only; do **not** patch runtime code in this document.
 
 ## Executive summary
@@ -688,7 +688,7 @@ func maskSecret(v string) string {
 }
 ```
 
-#### File: `system/internal/device/service.go`
+#### File: `system/device/service.go`
 
 Change `GetConfig()` to return sanitized response for remote UI. If a full config is needed internally, expose a separate internal method not bound to HTTP.
 
@@ -1557,7 +1557,7 @@ Expected: `401`/`403` without auth; redacted with auth.
   - Replace `ConfigResponse` for HTTP with redacted/sanitized response.
   - Keep internal config struct separate from API response.
 
-- `system/internal/device/service.go`
+- `system/device/service.go`
   - Update `GetConfig()` to return sanitized data for HTTP.
   - Add validation to `UpdateConfig()` for base URLs and high-risk fields.
   - Debounce/rate-limit service restarts triggered by config updates.
@@ -1568,7 +1568,7 @@ Expected: `401`/`403` without auth; redacted with auth.
 
 ### OpenClaw config exposure
 
-- `system/internal/agent/runtimes/openclaw/service_chat.go`
+- `agent-runtimes/openclaw/service_chat.go`
   - Avoid returning raw `openclaw.json` to remote handlers.
   - Add redacted config summary method.
 

@@ -11,7 +11,7 @@ Without them, users cannot tell whether Lamp is booting, updating, disconnected 
 
 ## States
 
-All states use the `breathing` effect at speed 3.0 unless noted. RGB values come from `internal/statusled/service.go`.
+All states use the `breathing` effect at speed 3.0 unless noted. RGB values come from `system/statusled/service.go`.
 
 | State (code constant) | Color | RGB | Meaning | Triggered by | Auto-clears |
 |---|---|---|---|---|---|
@@ -20,7 +20,7 @@ All states use the `breathing` effect at speed 3.0 unless noted. RGB values come
 | `StateOTA` | Green | `(0, 255, 0)` | **Updating** — OTA firmware update in progress (reserved enum; bootstrap drives OTA LED directly via `lib/hal` — see "Bootstrap (OTA)" below) | Bootstrap reconcile detects update | Reboots after update completes |
 | `StateBooting` | Blue | `(0, 80, 255)` | **Booting** — Lamp is starting up | `server.go` on startup | Yes — when OpenClaw agent connects and is ready |
 | `StateLeLampDown` | Purple | `(180, 0, 255)` | **HAL Down** — Hardware server unreachable. While HAL is down the LED is **dark** because the LED driver itself is down; the purple breathing only shows for ~3s on recovery | `healthwatch` poll fails to reach HAL `/health` | Auto-clears 3s after recovery |
-| `StateAgentDown` | Cyan | `(0, 200, 200)` | **Agent Down** — AI brain disconnected | OpenClaw WebSocket drops (`internal/agent/runtimes/openclaw/service_ws.go`) | Yes — when WebSocket reconnects |
+| `StateAgentDown` | Cyan | `(0, 200, 200)` | **Agent Down** — AI brain disconnected | OpenClaw WebSocket drops (`agent-runtimes/openclaw/service_ws.go`) | Yes — when WebSocket reconnects |
 | `StateHardware` | Yellow | `(255, 255, 0)` | **Hardware Failure** — servo/LED/audio/voice component reports unhealthy via HAL `/health` | `healthwatch` poll (every 5s); camera and sensing excluded | Yes — when all monitored components report healthy |
 
 ### Ready flash
@@ -109,14 +109,14 @@ Bootstrap's OTA LED writes bypass this priority queue — they run while bootstr
 
 ### Lamp (os-server)
 
-`internal/statusled/Service` manages active states with a priority map. Callers `Set` and `Clear` named states; the service applies the LED effect for the highest-priority active state.
+`system/statusled/Service` manages active states with a priority map. Callers `Set` and `Clear` named states; the service applies the LED effect for the highest-priority active state.
 
 Concrete callers (verified against code):
 
 ```
 server.go                    → Set/Clear StateBooting + StateConnectivity + FlashReady
-internal/agent/runtimes/openclaw/service_ws → Set/Clear StateAgentDown
-internal/healthwatch/service → Set/Clear StateLeLampDown + StateHardware
+agent-runtimes/openclaw/service_ws → Set/Clear StateAgentDown
+system/healthwatch/service → Set/Clear StateLeLampDown + StateHardware
 ```
 
 The service calls HAL's `/led/effect` endpoint via `lib/hal` (shared HTTP client).
@@ -134,7 +134,7 @@ failure → lelamp.SetEffect("pulse", 255, 30, 30, 1.5)                        /
 
 ## Integration with Ambient
 
-The ambient service (`internal/ambient`) pauses on interaction events (`chat_send`, `chat_response`, etc.). When `statusled.Service` clears the last active state, it calls `lelamp.RestoreLED()`, which hands the strip back to whatever color/effect the user (or agent) last set via `/led/solid`, `/led/effect`, or `/scene`. If no user state exists, the strip clears to off and ambient resumes its breathing LED after 60s of silence.
+The ambient service (`system/ambient`) pauses on interaction events (`chat_send`, `chat_response`, etc.). When `statusled.Service` clears the last active state, it calls `lelamp.RestoreLED()`, which hands the strip back to whatever color/effect the user (or agent) last set via `/led/solid`, `/led/effect`, or `/scene`. If no user state exists, the strip clears to off and ambient resumes its breathing LED after 60s of silence.
 
 All `statusled.Service` writes use `transient=true` so they do not clobber the user's saved LED state — emotion's restore-after-animation reads back the user's color, not the status color. (Bootstrap's direct `lib/hal` calls are also transient.)
 

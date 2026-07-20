@@ -8,12 +8,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"go.autonomous.ai/os/domain"
-	"go.autonomous.ai/os/internal/device"
-	"go.autonomous.ai/os/internal/network"
-	"go.autonomous.ai/os/internal/agent/runtimes/openclaw"
-	"go.autonomous.ai/os/lib/mqtt"
-	"go.autonomous.ai/os/server/config"
+	"go.autonomous.ai/os/agent-runtimes/openclaw"
+	"go.autonomous.ai/os/system/device"
+	"go.autonomous.ai/os/system/domain"
+	"go.autonomous.ai/os/system/lib/mqtt"
+	"go.autonomous.ai/os/system/network"
+	"go.autonomous.ai/os/system/server/config"
 )
 
 // DeviceMQTTHandler handles incoming MQTT messages and dispatches to command handlers.

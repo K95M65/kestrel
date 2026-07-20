@@ -13,7 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"go.autonomous.ai/os/server/serializers"
+	"go.autonomous.ai/os/system/server/serializers"
 )
 
 func (h *AgentHandler) Analytics(c *gin.Context) {
@@ -248,4 +248,3 @@ func percentile(sorted []float64, p float64) float64 {
 	frac := rank - float64(lower)
 	return sorted[lower]*(1-frac) + sorted[upper]*frac
 }
-

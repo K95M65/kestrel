@@ -27,7 +27,7 @@ install, migration, skills, hooks, reset.
 ## 0. Mô hình tư duy
 
 - `config.agent_runtime` (`/root/config/config.json`) chọn backend đang chạy.
-- `internal/agent/factory.go` `ProvideGateway` resolve lúc boot qua Wire DI:
+- `system/agent/factory.go` `ProvideGateway` resolve lúc boot qua Wire DI:
   `config.agent_runtime` > DEVICE.md `gateway.default` > openclaw.
 - **Seed-khi-rỗng:** lúc boot `device.ProvideService` gọi
   `SeedAgentRuntimeFromGateway` — khi `config.agent_runtime` rỗng/null **và**
@@ -69,11 +69,11 @@ interface `AgentGateway`. Các method chia nhóm:
 | **Lifecycle / onboarding** | `SetupAgent`, `EnsureOnboarding`, `ResetAgent`, `RestartAgent`, `RefreshModelsConfig` | Quyết theo backend; ghi rõ lý do no-op. |
 | **Cận-migration** | `UpdateIdentityName`, `StartSkillWatcher`, `WatchIdentity`, `StartModelSync`, `UpdatePrimaryModel`, `StartPrimaryModelWatch`, `CompactSession`, `NewSession`, `FetchChatHistory`, `WriteMCPEntry`/`RemoveMCPEntry`, `GetConfigJSON` | **Vùng nguy hiểm** — dễ no-op, đắt để phát hiện thiếu. Xem §4–§6. |
 
-**Bài học (Hermes):** ~15 method bị stub no-op trong `internal/agent/runtimes/hermes/stubs.go`.
+**Bài học (Hermes):** ~15 method bị stub no-op trong `agent-runtimes/hermes/stubs.go`.
 Một số đúng là N/A (`PairWhatsapp` — không có plugin). `WriteMCPEntry`/`RemoveMCPEntry`
 ban đầu bị hoãn (`TODO(hermes-mcp)`) nhưng **sau đó được hiện thực** trên
-`mcp_servers` của `config.yaml` (`internal/agent/runtimes/hermes/mcp.go`), kèm clone config→config
-khi switch runtime (`internal/agent/mcp_reconcile.go`). Nhưng `StartSkillWatcher`,
+`mcp_servers` của `config.yaml` (`agent-runtimes/hermes/mcp.go`), kèm clone config→config
+khi switch runtime (`system/agent/mcp_reconcile.go`). Nhưng `StartSkillWatcher`,
 `UpdateIdentityName`, và đường config-sync là **gap chức năng**, không phải N/A —
 ship dạng no-op và chỉ phát hiện khi skills bị cũ / đổi tên vô tác dụng / config
 gãy sau reset. Soát mọi stub: ghi `// no-op because <lý do>` hoặc
@@ -83,7 +83,7 @@ gãy sau reset. Soát mọi stub: ghi `// no-op because <lý do>` hoặc
 `domain.ErrNotSupportedByRuntime`** (domain/agent.go), không bao giờ `nil` —
 `nil` khiến caller tưởng thay đổi đã được áp dụng trong khi không có gì xảy ra.
 Caller phân nhánh bằng `errors.Is`: đường save model/baseURL LLM
-(`internal/device/service.go`) log dạng informational rồi fallback
+(`system/device/service.go`) log dạng informational rồi fallback
 `EnsureOnboarding` (presync đọc lại `llm_*` từ config.json), còn endpoint
 gw-config báo "no device-side config file" thay vì `{}`. Các stub hiện trả
 sentinel: `UpdatePrimaryModel`, `RefreshModelsConfig`, `CompactSession`
@@ -95,7 +95,7 @@ thật). Cùng khuôn với rule `ErrChannelNotSupported` ở §9.
 ## 2. Đăng ký + nối switch
 
 1. `domain/device.go`: thêm const `AgentRuntime<Name>` + entry trong `AgentRuntimes`.
-2. `internal/agent/factory.go`: thêm `case` trong `ProvideGateway`.
+2. `system/agent/factory.go`: thêm `case` trong `ProvideGateway`.
 3. **Installer nhúng**: `internal/<name>/install.sh` + `install.go`
    (`//go:embed install.sh` → `runtimereg.Register(name, InstallScript)`).
 4. `switch_runtime.sh` **generic** — không biết tên backend. **Đừng** sửa nó,
@@ -113,7 +113,7 @@ Hợp đồng installer (`switch_runtime.sh` kỳ vọng):
 chạy switcher dưới `systemd-run --wait` và **block chờ exit code**.
 `config.agent_runtime` **chỉ được ghi sau khi exit 0 sạch** — nên crash/reboot giữa
 chừng resolve về `old` vẫn đang cài, không có gì để revert. `switch-runtime <new>
-<old>` (generic, `internal/device/switch_runtime.sh`, materialize qua `go:embed` ra
+<old>` (generic, `system/device/switch_runtime.sh`, materialize qua `go:embed` ra
 `/usr/local/bin/switch-runtime`):
 
 1. phân giải tên unit của `<new>` (mặc định `<new>.service`, hoặc tên khai trong
@@ -153,11 +153,11 @@ khi `verify` fail. Mọi switch sau đều **bị skip**.
 Mẫu fix (dùng cho mọi thứ có state):
 - Đặt logic vào **presync hook** (`runtime-<name>-presync`).
 - Nhúng: `//go:embed presync.sh` → `runtimereg.RegisterPresync(name, PresyncScript)`.
-- os-server materialize nó mỗi switch (`internal/device/runtime_installers.go`
+- os-server materialize nó mỗi switch (`system/device/runtime_installers.go`
   `materializePresync`, gọi trong switch flow cạnh `materializeInstaller`).
 - `switch_runtime.sh` chạy `runtime-<name>-presync` ngay trước khi backend start.
 
-Presync của Hermes (`internal/agent/runtimes/hermes/presync.sh`) giờ làm chủ **cả** model wiring
+Presync của Hermes (`agent-runtimes/hermes/presync.sh`) giờ làm chủ **cả** model wiring
 trong `config.yaml` (idempotent — coerce `model: ''` bị reset về map, khẳng định
 structure `provider`/`custom_providers`, sync `llm_*`/secrets) **lẫn** restore
 skills (chạy lại `claw migrate` khi `skills/openclaw-imports` rỗng). Giữ `verify`
@@ -171,7 +171,7 @@ nặng trong khi presync tự lành đủ rồi.
 **Hub-and-spoke, không phải per-pair.** Migration đi qua một `PersonaBundle`
 trung lập: mỗi runtime có MỘT adapter **read** (layout đĩa → bundle) và MỘT
 adapter **write** (bundle → layout), trong
-`internal/agent/migrate_persona/runtime_<name>.go`. Migrate = `read[from] →
+`system/agent/migrate_persona/runtime_<name>.go`. Migrate = `read[from] →
 write[to]` (`RunMigration(from, to, opts)`). Nên thêm runtime = **đúng 1 file
 adapter**, tự động chạy với mọi runtime sẵn có, cả 2 chiều — số file **tuyến tính
 (2/runtime)**, không phải N×(N-1) như per-pair. Đăng ký adapter vào map `adapters`
@@ -186,7 +186,7 @@ Lưu ý skills chiều VÀO vẫn do presync `picoclaw migrate --workspace-only`
 — nên khi switch VÀO picoclaw, hai bên trùng phần persona (cùng nguồn, vô hại) còn
 presync là đường duy nhất mang skills.
 
-> **Template copy-là-chạy:** `internal/agent/migrate_persona/runtime_example.go` là
+> **Template copy-là-chạy:** `system/agent/migrate_persona/runtime_example.go` là
 > skeleton build-ignored, comment đầy đủ — copy sang `runtime_<name>.go`, xóa dòng
 > `//go:build ignore`, rồi điền 5 bước wiring + read/write. Nó ghi sẵn quyết định
 > từng field (slot riêng vs inline vs fold) ngay trong comment.
@@ -246,10 +246,10 @@ trong doc backend (vd `docs/agentic/hermes.md`), không phải đảm bảo chun
 - **Restore-sau-reset** thuộc **presync**, guard theo thư mục rỗng (để switch
   thường là no-op — không churn). Xem §3.
 - **Skill watcher** (auto-update từ CDN, gate theo capability): plumbing generic
-  fetch/extract/hash share ở `internal/skills/skillzip.go`
+  fetch/extract/hash share ở `system/skills/skillzip.go`
   (`FetchSkillVersions`/`DownloadToTempFile`/`FolderHash`/`ExtractSkillZip`). Thêm
   `internal/<name>/skill_watcher.go` mỏng song song với
-  `internal/agent/runtimes/openclaw/skill_watcher.go` — chỉ khác **thư mục đích** và **đường
+  `agent-runtimes/openclaw/skill_watcher.go` — chỉ khác **thư mục đích** và **đường
   notify**. Gate bằng `skills.Supported(device.Capabilities(...))`. Notify agent
   bằng `SendSystemChatMessage`.
 
@@ -265,7 +265,7 @@ trên event `message:preprocessed` của OpenClaw — `emotion-acknowledge` (m�
 **Vì sao OpenClaw cần hook còn Hermes thì không.** Trong OpenClaw mọi turn chạy
 bên trong daemon; os-server đẩy tin qua WebSocket rồi mất dấu, nên chỗ duy nhất để
 chen "thinking" đúng thời điểm là hook. Với Hermes, điểm chặn đã nằm phía Go —
-**mọi turn gửi tới Hermes đều đi qua `internal/agent/runtimes/hermes/chat.go:sendChat`** (voice,
+**mọi turn gửi tới Hermes đều đi qua `agent-runtimes/hermes/chat.go:sendChat`** (voice,
 sensing, web, và cả Telegram — receive loop nằm phía Lumi, xem `telegramRunOrigin`).
 Nên ta reimplement hook native bằng Go và fire từ `sendChat`, thay vì materialize
 file hook vào workspace (Hermes không có onboarding Go để làm việc đó, và không có
@@ -273,7 +273,7 @@ loader `~/.hermes/hooks/HOOK.yaml` để chạy — `handler.ts` mà `claw migra
 vào là đồ chết dưới Hermes).
 
 Đã làm:
-- **`emotion-acknowledge` → Go native** trong `internal/agent/runtimes/hermes/emotion_ack.go`
+- **`emotion-acknowledge` → Go native** trong `agent-runtimes/hermes/emotion_ack.go`
   (`fireAckEmotion`, gọi từ `sendChat`). Mirror `handler.ts` 1:1: cùng emotion
   (`thinking`, intensity `0.7`), cùng skip prefix
   (`[sensing:`/`[activity]`/`[emotion]`/`[speech_emotion]` + rỗng), và cap-gate đi
@@ -285,9 +285,9 @@ vào là đồ chết dưới Hermes).
 - **`turn-gate` → không mirror (thừa).** `sendChat` đã set busy
   (`busySince`/`activeTurn`) trước round-trip mạng, nên gate riêng sẽ trùng lặp.
 
-> ⚠️ **Coupling bảo trì — không có liên kết compile-time.** `system/internal/agent/runtimes/openclaw/hooks/emotion-acknowledge/
+> ⚠️ **Coupling bảo trì — không có liên kết compile-time.** `agent-runtimes/openclaw/hooks/emotion-acknowledge/
 > handler.ts` (OpenClaw) và các file `emotion_ack.go` trong
-> `internal/agent/runtimes/{hermes,picoclaw,codex,claudecode}` là các bản cài đặt
+> `agent-runtimes/{hermes,picoclaw,codex,claudecode}` là các bản cài đặt
 > độc lập của cùng một hành vi. **Sửa một cái phải sửa tất cả** — skip rules,
 > tên/intensity emotion, và cap-gate phải y hệt, nếu không các backend lệch
 > nhau trong im lặng. Giữ comment chéo trong mọi file.
@@ -325,7 +325,7 @@ parity. Chỉ làm khi xuất hiện nguồn turn như vậy.
 
 ## 8. Gate theo capability
 
-Dùng metadata nền tảng runtime-agnostic trong `internal/skills`:
+Dùng metadata nền tảng runtime-agnostic trong `system/skills`:
 - `skills.Supported(deviceCaps)` cho skills, `skills.SupportedHooks(deviceCaps)`
   cho hooks, với `deviceCaps = device.Capabilities(config.DeviceTypeOrDefault())`.
 - Đừng hardcode danh sách skill/hook theo backend — gate y như OpenClaw.
@@ -343,10 +343,10 @@ khi runtime đổi.
 
 - **`SupportedChannels() []string`** (method mới của `AgentGateway`,
   `domain/agent.go`) — trả các kênh runtime chạy được. Theo backend:
-  - openclaw → `[telegram, slack, discord, whatsapp]` (`internal/agent/runtimes/openclaw/channels.go`)
-  - hermes → `[telegram, slack, discord]` (`internal/agent/runtimes/hermes/channels.go`)
-  - picoclaw → `[telegram]` (`internal/agent/runtimes/picoclaw/channels.go`)
-  - claudecode → `[telegram, slack, discord]` (`internal/agent/runtimes/claudecode/channels.go`
+  - openclaw → `[telegram, slack, discord, whatsapp]` (`agent-runtimes/openclaw/channels.go`)
+  - hermes → `[telegram, slack, discord]` (`agent-runtimes/hermes/channels.go`)
+  - picoclaw → `[telegram]` (`agent-runtimes/picoclaw/channels.go`)
+  - claudecode → `[telegram, slack, discord]` (`agent-runtimes/claudecode/channels.go`
     — tất cả do device sở hữu, mirror codex: loop getUpdates
     `telegram_poll.go`, session discordgo `discord.go`, bridge MQTT `slack.go`;
     channel plugin native của Claude Code cố ý không dùng)
@@ -366,7 +366,7 @@ khi runtime đổi.
 ### `AddChannel` / `RefreshChannelConfig` nhận biết capability
 
 Kênh **được hỗ trợ** thì áp dụng; kênh **không hỗ trợ** thì gateway trả
-`domain.ErrChannelNotSupported`. Lớp device (`internal/device/service.go`
+`domain.ErrChannelNotSupported`. Lớp device (`system/device/service.go`
 `AddChannel`) giờ gate theo `SupportedChannels()` **TRƯỚC** khi persist
 credentials, nên một kênh không hỗ trợ không bao giờ để lại token chết trong
 `config.json`. Thứ tự là:
@@ -383,7 +383,7 @@ lúc boot / `ChannelReconcile` re-apply lại).
 
 ### Tự lành khi switch: `ChannelReconcile`
 
-`ChannelReconcile` (`internal/agent/channel_reconcile.go`) là anh em của
+`ChannelReconcile` (`system/agent/channel_reconcile.go`) là anh em của
 `PersonaMigration`. Nó chạy trong startup sequence **ngay sau**
 `personaMigration.Reconcile()` (`server/config_watch.go`). Nó **không chặn**.
 
@@ -442,7 +442,7 @@ là no-op idempotent.
       gốc (identity → file riêng, hoặc inline nếu không có slot) và fold slot mà
       backend thiếu. `Overwrite=true` cho SOUL. Không cần `Direction` enum mới.
 - [ ] Skills: copy-import + **restore-trong-presync** (guard) + `skill_watcher.go`
-      (song song openclaw, share `internal/skills/skillzip.go`).
+      (song song openclaw, share `system/skills/skillzip.go`).
 - [ ] Hooks: native-backend hoặc OS-side — đã quyết & ghi (không thiếu âm thầm).
       Nếu reimplement OS-side bằng Go (không liên kết compile-time với hook TS),
       thêm comment chéo trong cả hai file để sửa cái này cảnh báo cái kia.

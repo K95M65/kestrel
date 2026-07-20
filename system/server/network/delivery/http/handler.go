@@ -5,10 +5,10 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"go.autonomous.ai/os/internal/device"
-	"go.autonomous.ai/os/internal/network"
-	"go.autonomous.ai/os/server/config"
-	"go.autonomous.ai/os/server/serializers"
+	"go.autonomous.ai/os/system/device"
+	"go.autonomous.ai/os/system/network"
+	"go.autonomous.ai/os/system/server/config"
+	"go.autonomous.ai/os/system/server/serializers"
 )
 
 // NetworkHandler represents the HTTP handler for network

@@ -17,12 +17,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"go.autonomous.ai/os/bootstrap/config"
-	"go.autonomous.ai/os/bootstrap/state"
-	"go.autonomous.ai/os/domain"
-	"go.autonomous.ai/os/internal/device"
-	"go.autonomous.ai/os/lib/core/system"
-	"go.autonomous.ai/os/lib/hal"
+	"go.autonomous.ai/os/system/bootstrap/config"
+	"go.autonomous.ai/os/system/bootstrap/state"
+	"go.autonomous.ai/os/system/device"
+	"go.autonomous.ai/os/system/domain"
+	"go.autonomous.ai/os/system/lib/core/system"
+	"go.autonomous.ai/os/system/lib/hal"
 )
 
 // semverRe captures the first semver-like token (e.g. 2026.3.8 or v1.2.3-beta).

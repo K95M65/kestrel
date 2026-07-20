@@ -49,7 +49,7 @@ device's own abilities (through the HAL); tools are external capabilities the ru
 The always-on Go daemon: `intent` (fast local commands), `network`, `sensing` routing,
 `monitor` (flow event bus), `healthwatch`, `ambient`, and `device`. Deterministic — they run
 with or without the runtime. OTA runs as its own worker (`bootstrap/`).
-*(`system/internal`)*
+*(`system/`)*
 
 ### Agentic Runtime
 
@@ -57,7 +57,7 @@ with or without the runtime. OTA runs as its own worker (`bootstrap/`).
 runtime. Runs the skills, embodies the device's `SOUL.md`, and decides what to act on.
 Swappable at runtime (web Settings or MQTT) — and where Autonomous OS's differentiated value
 (the default brain, memory, character) lives.
-*(`system/internal/agent/runtimes/{openclaw,hermes,picoclaw,codex,claudecode}`; adding
+*(`agent-runtimes/{openclaw,hermes,picoclaw,codex,claudecode}`; adding
 your own: `docs/agentic/adding-agent-runtime.md`)*
 
 ### Hardware Abstraction Layer (HAL)
@@ -106,8 +106,9 @@ The tree maps onto the architecture layers (top of the stack first):
 contract/         HAL capability ABI — frozen, versioned (what skills build against)
   cts/            compliance test suite — validates devices against the contract
 skills/           Skills — the apps (SKILL.md)
-system/           System Managers + agentic-runtime bridge (Go): intent, network, OTA, sensing
+system/           System Managers (Go): one folder per manager — intent, network, monitor, OTA…
   web/            on-device setup + monitor UI (React)
+agent-runtimes/   Agentic Runtime — one folder per swappable brain (openclaw, hermes, picoclaw, codex, claudecode)
 hal/              HAL (Python) — the package; capability host + routes
   drivers/        Drivers — by subsystem (motion, audio, vision, light, display, sensing)
   board/          Board Support — per-board profiles + declaration-driven mounting

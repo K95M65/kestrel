@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"log/slog"
 
-	"go.autonomous.ai/os/domain"
-	"go.autonomous.ai/os/internal/device"
+	"go.autonomous.ai/os/system/device"
+	"go.autonomous.ai/os/system/domain"
 )
 
 // handleTimezoneSet applies a `timezone.set` downlink — set the device's IANA

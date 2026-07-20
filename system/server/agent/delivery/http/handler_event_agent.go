@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"go.autonomous.ai/os/domain"
-	"go.autonomous.ai/os/lib/flow"
-	sensinghttp "go.autonomous.ai/os/server/sensing/delivery/http"
+	"go.autonomous.ai/os/system/domain"
+	"go.autonomous.ai/os/system/lib/flow"
+	sensinghttp "go.autonomous.ai/os/system/server/sensing/delivery/http"
 )
 
 // handleAgentStreamEvent handles WS event=="agent": the OpenClaw agent stream

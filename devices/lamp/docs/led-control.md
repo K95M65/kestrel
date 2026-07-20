@@ -132,9 +132,9 @@ LED feedback for system states (all `breathing` at speed 3.0 unless noted):
 | OTA success (bootstrap) | Green flash | `(0, 255, 80)` |
 | OTA failure (bootstrap) | Red pulse | `(255, 30, 30)` |
 
-Managed by `internal/statusled/Service` (lamp) and `lib/hal` directly (bootstrap).
+Managed by `system/statusled/Service` (lamp) and `lib/hal` directly (bootstrap).
 
-None of these colors are hardcoded in Go anymore — `internal/statusled` states, the
+None of these colors are hardcoded in Go anymore — `system/statusled` states, the
 bootstrap OTA-progress colors, and the setup-needed white all flow through HAL. The OS
 owns the state machine (WHEN a state shows) and sends the state *name* to HAL
 (`POST /led/status`: booting/error/ota/connectivity/hal_down/agent_down/hardware/

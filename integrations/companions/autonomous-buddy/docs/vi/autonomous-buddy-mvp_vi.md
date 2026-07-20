@@ -19,7 +19,7 @@
 - Pairing 6-digit (web UI lamp hiện code)
 - WS connection persistent (`buddy → lamp`)
 - Command executor: `open_app`, `close_app`, `open_url`, `type_text`, `key_combo`, `notification`, `ping`
-- Lamp Go: package `internal/buddy/` + 7 HTTP route + WS gateway
+- Lamp Go: package `system/buddy/` + 7 HTTP route + WS gateway
 - OpenClaw skill `computer-use` (intent → command cơ bản)
 - Web UI: page "Paired Computers" ở `lamp/web/`
 - Audit log (backend file only — chưa có UI ở MVP)
@@ -80,13 +80,13 @@ Mỗi phase ship & review độc lập được.
 - `autonomous-buddy/macos/Sources/AutonomousBuddy/Pairing/PairingWindow.swift` (UI nhập code)
 
 **File Lamp Go:**
-- `system/internal/buddy/types.go`
-- `system/internal/buddy/store.go`
-- `system/internal/buddy/pairing.go`
-- `system/internal/buddy/service.go`
+- `system/buddy/types.go`
+- `system/buddy/store.go`
+- `system/buddy/pairing.go`
+- `system/buddy/service.go`
 - `system/server/buddy/delivery/http/handler.go`
 - `system/server/buddy/delivery/http/handler_pair.go`
-- `system/internal/buddy/wire.go`
+- `system/buddy/wire.go`
 - Sửa: `system/server/server.go` (đăng ký route)
 - Sửa: `system/server/wire.go` (provider)
 - Chạy: `make generate`
@@ -119,8 +119,8 @@ Mỗi phase ship & review độc lập được.
 - `autonomous-buddy/macos/Sources/AutonomousBuddy/Connection/Reconnect.swift`
 
 **File Lamp Go:**
-- `system/internal/buddy/registry.go`
-- `system/internal/buddy/ws.go`
+- `system/buddy/registry.go`
+- `system/buddy/ws.go`
 - `system/server/buddy/delivery/http/handler_ws.go`
 - Update: `system/server/server.go` (đăng ký route WS)
 
@@ -161,7 +161,7 @@ Mỗi phase ship & review độc lập được.
 **Status:** ✓ Done — sync `/api/buddy/command` (localOnly) + marker-friendly `/api/buddy/exec/:action`. Cross-compile `GOOS=linux GOARCH=arm64 go build ./...` sạch. Có debug log instrumentation suốt chain (handler_hw → exec/command handler → dispatcher → ws read loop) để truy từng stage khi turn fail.
 
 **Files:**
-- `system/internal/buddy/dispatcher.go`
+- `system/buddy/dispatcher.go`
 - `system/server/buddy/delivery/http/handler_command.go`
 - Update: wire provider, chạy `make generate`
 
@@ -273,7 +273,7 @@ Subfolder `autonomous-buddy/windows/` và `autonomous-buddy/linux/` sẽ host po
 
 ### Go (`lamp/`)
 ```
-system/internal/buddy/
+system/buddy/
 ├── types.go
 ├── store.go
 ├── pairing.go

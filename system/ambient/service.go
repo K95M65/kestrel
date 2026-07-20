@@ -1,0 +1,309 @@
+// Package ambient provides idle "living creature" behaviors for Lamp.
+// When no interaction is happening, it drives breathing LED, color drift,
+// micro-movements, eye expression changes, and occasional self-talk via TTS.
+// All hardware control goes through HAL HTTP API (port 5001).
+package ambient
+
+import (
+	"context"
+	"log/slog"
+	"math/rand"
+	"strings"
+	"sync"
+	"time"
+
+	"go.autonomous.ai/os/system/device"
+	"go.autonomous.ai/os/system/domain"
+	"go.autonomous.ai/os/system/lib/flow"
+	"go.autonomous.ai/os/system/lib/hal"
+	"go.autonomous.ai/os/system/lib/i18n"
+	"go.autonomous.ai/os/system/monitor"
+	"go.autonomous.ai/os/system/server/config"
+)
+
+// resumeDelay is how long after the last interaction before ambient resumes.
+const resumeDelay = 60 * time.Second
+
+// Service orchestrates ambient idle behaviors.
+type Service struct {
+	bus *monitor.Bus
+	cfg *config.Config
+
+	mu     sync.Mutex
+	paused bool
+	// lastInteraction tracks when the last real interaction happened.
+	lastInteraction time.Time
+	// ledLocked is true when a user or agent explicitly set an LED color/scene.
+	// While locked, the breathing loop will not override the LED state.
+	// Cleared when user explicitly turns off the LED.
+	ledLocked bool
+	// sleeping is true when sleepy emotion is active — suppresses all ambient
+	// behaviors until a real interaction (chat, sensing, wake word) occurs.
+	sleeping bool
+}
+
+// ProvideService constructs an AmbientLifeService.
+func ProvideService(bus *monitor.Bus, cfg *config.Config) *Service {
+	return &Service{
+		bus:    bus,
+		cfg:    cfg,
+		paused: true, // start paused until explicitly started
+	}
+}
+
+// Start begins the ambient behavior loop. Blocks until ctx is cancelled.
+func (s *Service) Start(ctx context.Context) {
+	slog.Info("starting ambient life service", "component", "ambient")
+
+	// Subscribe to monitor bus to detect real interactions
+	eventCh, unsub := s.bus.Subscribe()
+	defer unsub()
+
+	// Watch for interactions in a separate goroutine
+	go s.watchInteractions(ctx, eventCh)
+
+	// Initial resume after startup delay
+	time.Sleep(5 * time.Second)
+	s.resume()
+
+	// Run behavior loops concurrently — but only the ones this device's body
+	// can actually perform. Each loop drives one peripheral, so gate it by the
+	// matching capability: breathing→light, micro-movement→motion (servo),
+	// mumble→audio. A device that lacks a peripheral (e.g. intern-v2 has no
+	// servo) must not run its loop, else it spams HAL with calls it can't serve.
+	// Fail-open (nil caps → all loops run, matching legacy Lamp behavior).
+	devType := s.cfg.DeviceTypeOrDefault()
+	var wg sync.WaitGroup
+	start := func(loop func(context.Context)) {
+		wg.Add(1)
+		go func() { defer wg.Done(); loop(ctx) }()
+	}
+	if device.Has(devType, device.CapLight) {
+		start(s.breathingLoop)
+	}
+	if device.Has(devType, device.CapMotion) {
+		start(s.microMovementLoop)
+	}
+	if device.Has(devType, device.CapAudio) {
+		start(s.mumbleLoop)
+	}
+
+	<-ctx.Done()
+	wg.Wait()
+	slog.Info("stopped", "component", "ambient")
+}
+
+// Pause stops ambient behaviors (called when real interaction begins).
+func (s *Service) Pause() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.paused {
+		s.paused = true
+		flow.Log("ambient_pause", nil)
+	}
+	s.lastInteraction = time.Now()
+}
+
+func (s *Service) resume() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.paused {
+		s.paused = false
+		flow.Log("ambient_resume", nil)
+	}
+}
+
+func (s *Service) isPaused() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.paused || s.sleeping
+}
+
+// LockLED marks the LED as explicitly set by the user/agent so the ambient
+// breathing loop won't override it. Same effect as the "led_set" monitor
+// event — exposed for the /api/hardware proxy, where web-UI LED writes reach
+// HAL directly and never pass through the intent/agent paths that emit the
+// event (without this, ambient resumes ~60s after the last interaction and
+// tramples a web-set color/effect).
+func (s *Service) LockLED() {
+	s.mu.Lock()
+	s.ledLocked = true
+	s.mu.Unlock()
+	slog.Debug("LED locked by hardware proxy", "component", "ambient")
+}
+
+// UnlockLED clears the lock (web-UI /led/off or /scene/off) so breathing can
+// resume on idle. Counterpart of the "led_off" monitor event.
+func (s *Service) UnlockLED() {
+	s.mu.Lock()
+	s.ledLocked = false
+	s.mu.Unlock()
+	slog.Debug("LED unlocked by hardware proxy", "component", "ambient")
+}
+
+// watchInteractions monitors the event bus and pauses/resumes accordingly.
+func (s *Service) watchInteractions(ctx context.Context, eventCh <-chan domain.MonitorEvent) {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case evt := <-eventCh:
+			switch evt.Type {
+			// Interaction types that should pause ambient and wake from sleep
+			case "sensing_input", "chat_response", "intent_match", "tts", "chat_send":
+				s.mu.Lock()
+				s.sleeping = false
+				s.mu.Unlock()
+				s.Pause()
+			// Emotion fired — check if sleepy to suppress ambient
+			case "hw_emotion":
+				s.Pause()
+				if strings.Contains(evt.Summary, `"sleepy"`) {
+					s.mu.Lock()
+					s.sleeping = true
+					s.mu.Unlock()
+					slog.Info("sleep mode activated — ambient suppressed", "component", "ambient")
+				}
+			// LED explicitly set by user/agent — don't override with breathing
+			case "led_set":
+				s.mu.Lock()
+				s.ledLocked = true
+				s.mu.Unlock()
+				slog.Debug("LED locked by user/agent", "component", "ambient")
+			// LED turned off — unlock so breathing can resume on idle
+			case "led_off":
+				s.mu.Lock()
+				s.ledLocked = false
+				s.mu.Unlock()
+				slog.Debug("LED unlocked (off)", "component", "ambient")
+			}
+		case <-ticker.C:
+			// Check if enough quiet time has passed to resume
+			s.mu.Lock()
+			shouldResume := s.paused && !s.sleeping && !s.lastInteraction.IsZero() &&
+				time.Since(s.lastInteraction) > resumeDelay
+			s.mu.Unlock()
+			if shouldResume {
+				s.resume()
+			}
+		}
+	}
+}
+
+// --- Behavior Loops ---
+
+// breathingLoop delegates the breathing LED effect to HAL's built-in
+// /led/effect endpoint instead of overriding /led/solid at 5 FPS.
+// This way the agent's emotion/scene colors are never trampled by ambient.
+func (s *Service) breathingLoop(ctx context.Context) {
+	// Track whether we already started the HAL breathing effect
+	running := false
+
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			if running {
+				hal.StopEffect()
+			}
+			return
+		case <-ticker.C:
+			if s.isPaused() {
+				if running {
+					hal.StopEffect()
+					running = false
+				}
+				continue
+			}
+			// Respect user/agent LED: don't override with breathing
+			s.mu.Lock()
+			locked := s.ledLocked
+			s.mu.Unlock()
+			if locked {
+				if running {
+					hal.StopEffect()
+					running = false
+				}
+				continue
+			}
+			if !running {
+				// Read the current LED color from HAL and start breathing with it.
+				// Fall back to a soft warm white if HAL returns black (just started,
+				// no color set) — a lamp at rest should read as a cozy lamp turned on,
+				// not a cold "device booting" blue, and warm white stays clear of every
+				// status color (orange = no-internet, blue = booting, etc.).
+				color := [3]int{255, 200, 140} // fallback: warm white (~2700K)
+				if c, err := hal.GetColor(); err == nil && (c[0]+c[1]+c[2]) > 0 {
+					color = c
+				}
+				hal.SetEffect("breathing", color[0], color[1], color[2], 0.3)
+				running = true
+			}
+		}
+	}
+}
+
+// microMovementLoop plays safe, small servo recordings periodically.
+// Only triggers servo — does NOT change LED color.
+func (s *Service) microMovementLoop(ctx context.Context) {
+	safeRecordings := []string{"idle", "curious", "nod"}
+
+	for {
+		delay := 45 + rand.Intn(75) // 45-120 seconds
+		if !sleepCtx(ctx, time.Duration(delay)*time.Second) {
+			return
+		}
+		if s.isPaused() {
+			continue
+		}
+
+		recording := safeRecordings[rand.Intn(len(safeRecordings))]
+		if err := hal.PlayServo(recording); err != nil {
+			slog.Debug("micro-movement servo failed", "component", "ambient", "error", err)
+		}
+		slog.Debug("micro-movement", "component", "ambient", "recording", recording)
+	}
+}
+
+// mumbleLoop occasionally makes Lamp "talk to itself" via TTS.
+// Phrase pool lives in lib/i18n (PhraseMumble) so all hardcoded TTS
+// templates stay in one place.
+func (s *Service) mumbleLoop(ctx context.Context) {
+	for {
+		delay := 5*60 + rand.Intn(10*60) // 5-15 minutes
+		if !sleepCtx(ctx, time.Duration(delay)*time.Second) {
+			return
+		}
+		if s.isPaused() {
+			continue
+		}
+
+		// SpeakCached: fixed pool, self-caches into hal's WAV cache on first
+		// render so replays skip the TTS provider.
+		mumble := i18n.Pick(i18n.PhraseMumble)
+		if err := hal.SpeakCached(mumble); err != nil {
+			slog.Debug("mumble TTS failed", "component", "ambient", "error", err)
+		}
+		slog.Debug("mumble", "component", "ambient", "text", mumble)
+	}
+}
+
+// --- Helpers ---
+
+// sleepCtx sleeps for the given duration but returns early if ctx is cancelled.
+// Returns false if ctx was cancelled.
+func sleepCtx(ctx context.Context, d time.Duration) bool {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-t.C:
+		return true
+	}
+}

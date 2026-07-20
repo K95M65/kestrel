@@ -3,7 +3,7 @@ package urlnorm_test
 import (
 	"testing"
 
-	"go.autonomous.ai/os/lib/urlnorm"
+	"go.autonomous.ai/os/system/lib/urlnorm"
 )
 
 func TestNormalizeBaseURL(t *testing.T) {

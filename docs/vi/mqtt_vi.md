@@ -75,8 +75,8 @@ chuyển runtime — vd chuyển `openclaw` → `picoclaw` (chỉ telegram) khi�
 `config.channels_unsupported`, được `ChannelReconcile` ghi lại mỗi lần chuyển runtime.
 
 **HTTP backend ping mirror các field này.** Cú ping do device chủ động gửi
-(`POST {llm_base}/ping`, build bởi `internal/device.buildPingPayload`, gửi qua
-`internal/beclient`) mang cùng bộ field trạng thái thiết bị như uplink `info`
+(`POST {llm_base}/ping`, build bởi `system/device.buildPingPayload`, gửi qua
+`system/beclient`) mang cùng bộ field trạng thái thiết bị như uplink `info`
 này — `local_ip`, `device`, `device_id`, `timezone`, `tts_provider`,
 `tts_voice`, `stt_language`, `hal_version`, `unsupported_channels` — cộng thêm
 `agent_runtime` và `agent_runtime_version`. Khác với `info` (báo version của
@@ -386,7 +386,7 @@ nên code không tin cậy không thể thoát khỏi thư mục configs qua pat
 
 **Bảng fallback:** với các connector ra đời trước khi wire mang các khóa này
 (`notion`, `asana`, `linear`, `github`, `ahrefs`), một bảng compile-in cung
-cấp `mcp_url` + kiểu header từ catalog openclaw (`internal/agent/runtimes/openclaw/mcp.go`). Payload
+cấp `mcp_url` + kiểu header từ catalog openclaw (`agent-runtimes/openclaw/mcp.go`). Payload
 **luôn thắng** — `mcp_url` trong payload override bảng fallback — nên bảng chỉ là lưới
 an toàn cho di trú đến khi backend gửi các khóa routing.
 
@@ -464,11 +464,11 @@ Xử lý bởi bootstrap worker, không qua MQTT handler trực tiếp.
 | `system/server/device/delivery/mqtt/system_info_handler.go` | Handle `data` kinds `system.info`/`system.version`/`system.network` |
 | `system/server/device/delivery/mqtt/channel_refresh_handler.go` | Handle `data` kind `channel.refresh_config` (re-apply block config của channel, bất đồng bộ) |
 | `system/server/device/delivery/mqtt/timezone_set_handler.go` | Handle `data` kind `timezone.set` (áp dụng múi giờ IANA của device, bất đồng bộ) |
-| `system/internal/device/timezone.go` | `SetTimezone`/`CurrentTimezone`: validate zone, ghi lại `/etc/localtime` + `/etc/timezone`, `timedatectl` best-effort, lưu config |
-| `system/internal/device/service.go` | `RefreshChannelConfig` (dựng request per-channel + capability gate) |
-| `system/internal/agent/channel_reconcile.go` | `ChannelReconcile`: áp dụng lại channel sau khi chuyển runtime, ghi `channels_unsupported` |
+| `system/device/timezone.go` | `SetTimezone`/`CurrentTimezone`: validate zone, ghi lại `/etc/localtime` + `/etc/timezone`, `timedatectl` best-effort, lưu config |
+| `system/device/service.go` | `RefreshChannelConfig` (dựng request per-channel + capability gate) |
+| `system/agent/channel_reconcile.go` | `ChannelReconcile`: áp dụng lại channel sau khi chuyển runtime, ghi `channels_unsupported` |
 | `system/server/device/delivery/mqtt/whatsapp_pair_handler.go` | Handle `whatsapp_pair` re-pair command |
 | `system/server/device/delivery/mqtt/claudecode_login_handler.go` | Handle `claudecode_login` / `claudecode_login_code` (claude.ai OAuth login) |
-| `system/internal/agent/runtimes/openclaw/pairing.go` | WhatsApp Baileys QR pairing subprocess driver |
+| `agent-runtimes/openclaw/pairing.go` | WhatsApp Baileys QR pairing subprocess driver |
 | `system/domain/device.go` | MQTTMessage, command constants |
 | `system/domain/pairing.go` | PairingEvent + status enum |

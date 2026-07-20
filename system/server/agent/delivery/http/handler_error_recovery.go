@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"go.autonomous.ai/os/domain"
-	"go.autonomous.ai/os/lib/flow"
+	"go.autonomous.ai/os/system/domain"
+	"go.autonomous.ai/os/system/lib/flow"
 )
 
 // Incomplete-turn error recovery.

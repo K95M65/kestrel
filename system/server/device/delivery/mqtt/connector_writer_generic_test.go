@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"go.autonomous.ai/os/internal/agent/runtimes/openclaw"
+	"go.autonomous.ai/os/agent-runtimes/openclaw"
 )
 
 // fakeMCPGateway records WriteMCPEntry/RemoveMCPEntry calls so routing decisions

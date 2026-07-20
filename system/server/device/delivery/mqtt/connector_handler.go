@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"time"
 
-	"go.autonomous.ai/os/domain"
+	"go.autonomous.ai/os/system/domain"
 )
 
 // connectorHandlerTimeout caps how long the per-write goroutine waits for the

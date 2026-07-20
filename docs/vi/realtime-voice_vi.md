@@ -153,7 +153,7 @@ delegate sau không nhặt phải ảnh cũ) và, khi còn tươi
 (`HAL_GEMINI_VISION_HANDOFF_MAX_AGE_S`, mặc định 20s), chèn dòng hint
 `[vision-image] <path>` vào message VÀ gửi frame dạng base64 trong field
 `image` của sensing POST.
-os-server xử lý ảnh theo **gate describe-first** trong `internal/vision` (xem
+os-server xử lý ảnh theo **gate describe-first** trong `system/vision` (xem
 `server/sensing/delivery/http/handler.go`): khi main model đang active KHÔNG
 khai image input trong catalog model (trường hợp Auto-AI — attachment thô sẽ
 404 tại smart-agent-router: "No endpoints found that support image input"),
@@ -394,7 +394,7 @@ os-server **seed** block này vào `config.json` lúc start lần đầu — và
 nếu thiếu — nên file luôn có realtime config sửa được. HAL **tự đọc** trực tiếp
 (giống `llm_api_key` / `stt_language`), không push xuống. Vì HAL đọc `config.json`
 lúc import, đổi config phải **restart HAL** mới ăn. Sửa lúc đang chạy thì restart
-liền (`RePushRealtimeConfig` / `RePushVoiceConfig` trong `internal/device/service.go`).
+liền (`RePushRealtimeConfig` / `RePushVoiceConfig` trong `system/device/service.go`).
 
 **Chỉ restart khi config thực sự đổi.** os-server *không* restart HAL mỗi lần
 os-server restart — làm vậy sẽ rớt voice pipeline vô ích. Thay vào đó nó hash

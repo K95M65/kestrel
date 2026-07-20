@@ -16,7 +16,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"go.autonomous.ai/os/server/config"
+	"go.autonomous.ai/os/system/server/config"
 )
 
 // CookieName is the browser cookie that carries the HMAC-signed session token

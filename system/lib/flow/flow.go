@@ -25,8 +25,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go.autonomous.ai/os/domain"
-	"go.autonomous.ai/os/internal/monitor"
+	"go.autonomous.ai/os/system/domain"
+	"go.autonomous.ai/os/system/monitor"
 )
 
 // Kind mirrors doggi's flow_events.py vocabulary.
@@ -42,7 +42,7 @@ const (
 type Event struct {
 	Kind       Kind           `json:"kind"`
 	Node       string         `json:"node"`
-	TS         float64        `json:"ts"`                    // Unix seconds
+	TS         float64        `json:"ts"` // Unix seconds
 	Seq        int64          `json:"seq"`
 	TraceID    string         `json:"trace_id,omitempty"`
 	DurationMs int64          `json:"duration_ms,omitempty"` // exit only
@@ -51,21 +51,21 @@ type Event struct {
 }
 
 const (
-	ringSize     = 200
-	logsDir      = "local"
+	ringSize      = 200
+	logsDir       = "local"
 	retentionDays = 7
 )
 
 type emitter struct {
-	mu      sync.Mutex
-	seqN    atomic.Int64
-	ring    []Event
-	file    *os.File
-	day     string // YYYY-MM-DD of current log file
-	traceID string // active turn trace ID (serialized per turn)
-	traceActiveCount int // reference count for active trace (for safe GetTrace()=="" heuristic)
-	bus     *monitor.Bus
-	version string // injected at Init, stamped on every event
+	mu               sync.Mutex
+	seqN             atomic.Int64
+	ring             []Event
+	file             *os.File
+	day              string // YYYY-MM-DD of current log file
+	traceID          string // active turn trace ID (serialized per turn)
+	traceActiveCount int    // reference count for active trace (for safe GetTrace()=="" heuristic)
+	bus              *monitor.Bus
+	version          string // injected at Init, stamped on every event
 }
 
 var global = &emitter{}

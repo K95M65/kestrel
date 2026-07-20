@@ -6,8 +6,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"go.autonomous.ai/os/server/serializers"
-	"go.autonomous.ai/os/server/session"
+	"go.autonomous.ai/os/system/server/serializers"
+	"go.autonomous.ai/os/system/server/session"
 )
 
 // loginHandler validates the admin password and issues a session cookie.

@@ -76,8 +76,8 @@ any configured `slack`/`discord` as unsupported. The list is sourced from
 `config.channels_unsupported`, which `ChannelReconcile` rewrites on each switch.
 
 **HTTP backend ping mirrors these fields.** The device-initiated ping
-(`POST {llm_base}/ping`, built by `internal/device.buildPingPayload`, sent via
-`internal/beclient`) carries the same device-state fields as this `info` uplink —
+(`POST {llm_base}/ping`, built by `system/device.buildPingPayload`, sent via
+`system/beclient`) carries the same device-state fields as this `info` uplink —
 `local_ip`, `device`, `device_id`, `timezone`, `tts_provider`, `tts_voice`,
 `stt_language`, `hal_version`, `unsupported_channels` — plus `agent_runtime` and
 `agent_runtime_version`. Unlike `info` (which reports every installed backend's
@@ -394,7 +394,7 @@ payload's `credentials` map:
 **Fallback table:** for connectors that shipped before the wire carried these keys
 (`notion`, `asana`, `linear`, `github`, `ahrefs`), a compiled-in table
 supplies the `mcp_url` + header style from the openclaw catalog
-(`internal/agent/runtimes/openclaw/mcp.go`). The payload **always wins** — `mcp_url` in the payload
+(`agent-runtimes/openclaw/mcp.go`). The payload **always wins** — `mcp_url` in the payload
 overrides the fallback — so the table is only a migration safety net until the
 backend pushes the routing keys.
 
@@ -475,11 +475,11 @@ Handled by bootstrap worker, not through MQTT handler directly.
 | `system/server/device/delivery/mqtt/system_info_handler.go` | Handle `data` kinds `system.info`/`system.version`/`system.network` |
 | `system/server/device/delivery/mqtt/channel_refresh_handler.go` | Handle `data` kind `channel.refresh_config` (async re-apply of a channel's config block) |
 | `system/server/device/delivery/mqtt/timezone_set_handler.go` | Handle `data` kind `timezone.set` (async apply of the device IANA timezone) |
-| `system/internal/device/timezone.go` | `SetTimezone`/`CurrentTimezone`: validate zone, rewrite `/etc/localtime` + `/etc/timezone`, best-effort `timedatectl`, persist config |
-| `system/internal/device/service.go` | `RefreshChannelConfig` (generic per-channel request build + capability gate) |
-| `system/internal/agent/channel_reconcile.go` | `ChannelReconcile`: re-applies channels after a runtime switch, records `channels_unsupported` |
+| `system/device/timezone.go` | `SetTimezone`/`CurrentTimezone`: validate zone, rewrite `/etc/localtime` + `/etc/timezone`, best-effort `timedatectl`, persist config |
+| `system/device/service.go` | `RefreshChannelConfig` (generic per-channel request build + capability gate) |
+| `system/agent/channel_reconcile.go` | `ChannelReconcile`: re-applies channels after a runtime switch, records `channels_unsupported` |
 | `system/server/device/delivery/mqtt/whatsapp_pair_handler.go` | Handle `whatsapp_pair` re-pair command |
 | `system/server/device/delivery/mqtt/claudecode_login_handler.go` | Handle `claudecode_login` / `claudecode_login_code` (claude.ai OAuth login) |
-| `system/internal/agent/runtimes/openclaw/pairing.go` | WhatsApp Baileys QR pairing subprocess driver |
+| `agent-runtimes/openclaw/pairing.go` | WhatsApp Baileys QR pairing subprocess driver |
 | `system/domain/device.go` | MQTTMessage, command constants |
 | `system/domain/pairing.go` | PairingEvent + status enum |

@@ -5,10 +5,10 @@ import (
 	"log/slog"
 	"time"
 
-	"go.autonomous.ai/os/domain"
-	"go.autonomous.ai/os/lib/flow"
-	"go.autonomous.ai/os/lib/hal"
-	"go.autonomous.ai/os/lib/i18n"
+	"go.autonomous.ai/os/system/domain"
+	"go.autonomous.ai/os/system/lib/flow"
+	"go.autonomous.ai/os/system/lib/hal"
+	"go.autonomous.ai/os/system/lib/i18n"
 )
 
 // autoCompactCooldown is the minimum time between two compact triggers.

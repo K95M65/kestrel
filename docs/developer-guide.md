@@ -520,12 +520,12 @@ copy patterns from):
 
 | Caller | File | What it does |
 |---|---|---|
-| Status-cue overlay service | `system/internal/statusled/service.go:71` — `func (s *Service) Set(state State)` | Priority-stacked overlay: booting / ota / error / connectivity / hal_down / agent_down / hardware / wifi_connecting. Highest priority wins; on `Clear` the strip is restored. |
-| State constants (booting, wifi_connecting, agent_down, …) | `system/internal/statusled/service.go:19-26` | The exact set of states you can pass to `/led/status`. |
-| Wi-Fi connecting blue-blink | `system/internal/device/service.go:183` — `s.statusLED.Set(statusled.StateWifiConnecting)` | Fires the blue blink while the STA join is happening during setup. |
-| HAL health watchdog | `system/internal/healthwatch/service.go:94,107,136` | Sets `StateHALDown` / `StateHardware` when HAL or a driver stops responding. |
-| Agent-runtime health | `system/internal/agent/runtimes/openclaw/service_ws.go:43`, `internal/agent/runtimes/claudecode/client.go:57`, `internal/agent/runtimes/codex/client.go:60`, `internal/agent/runtimes/picoclaw/client.go:50`, `internal/agent/runtimes/hermes/health.go:126` | Every agent runtime sets `StateAgentDown` when its socket drops so the user sees the LED go red without having to check logs. |
-| Ambient "breathing" idle behaviour | `system/internal/ambient/service.go` | Drives soft colour drift + breathing while there's no interaction. Uses `/led/effect` with `transient=true` so it doesn't clobber the user's saved state. |
+| Status-cue overlay service | `system/statusled/service.go:71` — `func (s *Service) Set(state State)` | Priority-stacked overlay: booting / ota / error / connectivity / hal_down / agent_down / hardware / wifi_connecting. Highest priority wins; on `Clear` the strip is restored. |
+| State constants (booting, wifi_connecting, agent_down, …) | `system/statusled/service.go:19-26` | The exact set of states you can pass to `/led/status`. |
+| Wi-Fi connecting blue-blink | `system/device/service.go:183` — `s.statusLED.Set(statusled.StateWifiConnecting)` | Fires the blue blink while the STA join is happening during setup. |
+| HAL health watchdog | `system/healthwatch/service.go:94,107,136` | Sets `StateHALDown` / `StateHardware` when HAL or a driver stops responding. |
+| Agent-runtime health | `agent-runtimes/openclaw/service_ws.go:43`, `agent-runtimes/claudecode/client.go:57`, `agent-runtimes/codex/client.go:60`, `agent-runtimes/picoclaw/client.go:50`, `agent-runtimes/hermes/health.go:126` | Every agent runtime sets `StateAgentDown` when its socket drops so the user sees the LED go red without having to check logs. |
+| Ambient "breathing" idle behaviour | `system/ambient/service.go` | Drives soft colour drift + breathing while there's no interaction. Uses `/led/effect` with `transient=true` so it doesn't clobber the user's saved state. |
 | LLM skill / tool-call bridge (`[HW:/led/…:{...}]`) | `system/server/agent/delivery/http/handler_hw.go` | When an OpenClaw / Hermes / Claude Code skill emits e.g. `[HW:/led/solid:{"color":[255,0,0]}]`, this handler forwards it to HAL. This is how any skill turns the LED red without wiring plumbing itself. |
 | Go HAL client (helpers you'd call from an os-server service) | `system/lib/hal/client.go:76-131` — `StartEffect`, `StopEffect`, `SetLEDStatus`, `RestoreLED`, `GetColor` | Fire-and-forget wrappers around the endpoints above. New Go services should use these instead of hand-rolling HTTP. |
 
@@ -622,7 +622,7 @@ module load and stripped from the URL for privacy (see `hooks/setup/useSetupUrlP
 | `system/cmd/os-server/main.go` | OS Server entry point |
 | `system/cmd/bootstrap/main.go` | OTA worker entry point |
 | `system/server/` | HTTP handlers (Gin), organised by domain |
-| `system/internal/` | Business services — agent, device, network, openclaw, hermes, mqtt, statusled, healthwatch, … |
+| `system/` | Business services — agent, device, network, openclaw, hermes, mqtt, statusled, healthwatch, … |
 | `system/domain/` | Shared Go types |
 | `hal/` | Python HAL — drivers, routes, board profiles |
 | `hal/drivers/` | Hardware drivers (rgb, motors, voice, sensing, gpio_button, mic_button, …) |

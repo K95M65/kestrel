@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"go.autonomous.ai/os/internal/intent"
-	"go.autonomous.ai/os/lib/i18n"
-	"go.autonomous.ai/os/lib/hal"
+	"go.autonomous.ai/os/system/intent"
+	"go.autonomous.ai/os/system/lib/hal"
+	"go.autonomous.ai/os/system/lib/i18n"
 )
 
 // Dead air filler — short TTS cues spoken by HAL while OpenClaw is busy,
@@ -210,8 +210,8 @@ func pickFrom(pool []string, lastSpoken string) string {
 func PrewarmFillers() {
 	lang := i18n.Lang()
 	const (
-		readyMaxWait  = 120 * time.Second
-		readyInterval = 2 * time.Second
+		readyMaxWait   = 120 * time.Second
+		readyInterval  = 2 * time.Second
 		perPhraseRetry = 3
 	)
 	deadline := time.Now().Add(readyMaxWait)
@@ -311,22 +311,22 @@ func PlayOpeningFillerNow() {
 // FillerManager schedules and cancels dead-air fillers driven by OpenClaw
 // agent events. Wiring (per turn lifecycle):
 //
-//   1. Sensing handler calls MarkVoiceRun(runID) before forwarding a
-//      voice/voice_command turn — only marked runs are eligible.
-//   2. SSE handler calls OnTurnStart(runID) on lifecycle.start — arms the
-//      first FillerDelay timer.
-//   3. SSE handler calls OnToolStart(runID, toolArgs) on tool.start —
-//      hardware tools (/emotion, /audio/play, /scene, /servo) soft-cancel
-//      the pending filler since the agent already reacted; non-hardware
-//      tools (Bash, Read, etc.) leave the timer alone.
-//   4. SSE handler calls OnToolEnd(runID) on tool.end — re-arms a filler
-//      timer if the turn is still active and the cap/cooldown allow it.
-//      This covers long multi-tool turns where each tool boundary is a
-//      potential dead-air pocket.
-//   5. SSE handler calls Cancel(runID) on the first assistant delta and
-//      again on lifecycle.end — hard cancel: stops any pending timer,
-//      interrupts a filler mid-speech via hal.StopTTS(), and clears
-//      run state so further events are no-ops.
+//  1. Sensing handler calls MarkVoiceRun(runID) before forwarding a
+//     voice/voice_command turn — only marked runs are eligible.
+//  2. SSE handler calls OnTurnStart(runID) on lifecycle.start — arms the
+//     first FillerDelay timer.
+//  3. SSE handler calls OnToolStart(runID, toolArgs) on tool.start —
+//     hardware tools (/emotion, /audio/play, /scene, /servo) soft-cancel
+//     the pending filler since the agent already reacted; non-hardware
+//     tools (Bash, Read, etc.) leave the timer alone.
+//  4. SSE handler calls OnToolEnd(runID) on tool.end — re-arms a filler
+//     timer if the turn is still active and the cap/cooldown allow it.
+//     This covers long multi-tool turns where each tool boundary is a
+//     potential dead-air pocket.
+//  5. SSE handler calls Cancel(runID) on the first assistant delta and
+//     again on lifecycle.end — hard cancel: stops any pending timer,
+//     interrupts a filler mid-speech via hal.StopTTS(), and clears
+//     run state so further events are no-ops.
 //
 // All exported methods are safe for concurrent use and idempotent.
 type FillerManager struct {

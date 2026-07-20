@@ -7,11 +7,11 @@ với backend mà `config.agent_runtime` chọn thông qua một interface duy n
 `[HW:/…]`, Flow Monitor SSE, drain sensing, fan-out Telegram) không cần biết bộ
 não nào đang chạy.
 
-- **`openclaw`** (mặc định): WebSocket bền tới daemon OpenClaw. Xem `docs/os-server.md` + `internal/agent/runtimes/openclaw`.
-- **`hermes`**: client HTTP + SSE tới Hermes API server cục bộ. Xem `docs/agentic/hermes.md` + `internal/agent/runtimes/hermes`.
-- **`picoclaw`**: client WebSocket bền tới runtime PicoClaw cục bộ. Tài liệu này. Code: `system/internal/agent/runtimes/picoclaw/`.
+- **`openclaw`** (mặc định): WebSocket bền tới daemon OpenClaw. Xem `docs/os-server.md` + `agent-runtimes/openclaw`.
+- **`hermes`**: client HTTP + SSE tới Hermes API server cục bộ. Xem `docs/agentic/hermes.md` + `agent-runtimes/hermes`.
+- **`picoclaw`**: client WebSocket bền tới runtime PicoClaw cục bộ. Tài liệu này. Code: `agent-runtimes/picoclaw/`.
 
-> Code là nguồn chân lý. Tài liệu này mô tả `internal/agent/runtimes/picoclaw/` đúng như đã
+> Code là nguồn chân lý. Tài liệu này mô tả `agent-runtimes/picoclaw/` đúng như đã
 > triển khai; giữ đồng bộ khi thay đổi (EN: `docs/agentic/picoclaw.md`, VI: file này).
 
 > **Nhóm docs agentic-backend:** [`adding-agent-runtime_vi.md`](adding-agent-runtime_vi.md)
@@ -19,7 +19,7 @@ não nào đang chạy.
 > file này (PicoClaw).
 >
 > **Trạng thái: đạt parity về install; gateway vẫn chỉ-client.** PicoClaw nay đã có
-> installer + hook pre-start phía thiết bị (`internal/agent/runtimes/picoclaw/install.sh` +
+> installer + hook pre-start phía thiết bị (`agent-runtimes/picoclaw/install.sh` +
 > `presync.sh`, được embed và đăng ký qua `install.go` → `runtimereg`), nên một lần
 > switch `picoclaw.setup` sẽ cài, cấu hình và khởi động nó giống hermes (§1.1).
 > Migrate persona/memory **2 chiều** qua reconciler Go — picoclaw có adapter
@@ -43,7 +43,7 @@ não nào đang chạy.
 ## 1. Khi nào và chọn ra sao
 
 `agent_runtime` trong `config.json` chọn backend; việc phân giải nằm ở
-`internal/agent/factory.go` `ProvideGateway()`:
+`system/agent/factory.go` `ProvideGateway()`:
 
 | `agent_runtime` | Backend |
 |---|---|
@@ -57,7 +57,7 @@ Khi khởi động, `ProvideGateway` in banner `AGENT BACKEND ACTIVE → PICOCLA
 
 ## 1.1 Cài đặt + provisioning (`install.sh` + `presync.sh`)
 
-Một lần switch `picoclaw.setup` chạy `internal/device/switch_runtime.sh` (generic),
+Một lần switch `picoclaw.setup` chạy `system/device/switch_runtime.sh` (generic),
 script này materialize các script nhúng của PicoClaw rồi điều phối chúng. Hai script
 nằm cạnh backend và được embed + đăng ký trong `install.go`:
 
@@ -147,7 +147,7 @@ thường: `pico` là gateway native cục bộ của thiết bị và cố tìn
 ## 2. Hằng số kết nối
 
 **Không có config theo từng máy**; endpoint là hằng số compile-time trong
-`internal/agent/runtimes/picoclaw/constants.go`:
+`agent-runtimes/picoclaw/constants.go`:
 
 | Hằng | Mặc định | Ý nghĩa |
 |---|---|---|
@@ -253,7 +253,7 @@ session qua `NewSession` thay thế).
 
 PicoClaw **chỉ chạy telegram**. Vòng nhận Telegram do **thiết bị sở hữu** (điều
 khiển bởi `config.TelegramBotToken`), và PicoClaw không có delivery slack/discord
-riêng. Ba phương thức kênh trong `internal/agent/runtimes/picoclaw/channels.go` mã hóa điều này
+riêng. Ba phương thức kênh trong `agent-runtimes/picoclaw/channels.go` mã hóa điều này
 một cách trung thực:
 
 | Phương thức | telegram | slack / discord / whatsapp |
@@ -286,7 +286,7 @@ trên pipeline agent dùng chung, subprocess đó forward mỗi lượt về end
 (`handler_channel_turn.go`). Không đổi consumer/UI — text user vào làm sáng node
 IN, và mọi marker `[HW:/…]` trong reply điều khiển phần cứng cục bộ, giống Hermes.
 
-Hai điểm khác Hermes, do `internal/agent/runtimes/picoclaw/hooks.go` sở hữu:
+Hai điểm khác Hermes, do `agent-runtimes/picoclaw/hooks.go` sở hữu:
 
 1. **Transport.** Process hook của PicoClaw là một **subprocess nói NDJSON JSON-RPC
    qua stdio** (`resources/hooks/os-server-observer/observer.py`), không phải hàm

@@ -128,7 +128,7 @@ for l in sys.stdin:
 |---|---|
 | `system/server/openclaw/delivery/sse/handler_api_compaction.go` | HTTP handler: đọc `sessions.json`, scan session `.jsonl` tìm `type:"compaction"` mới nhất. |
 | `system/server/openclaw/delivery/sse/handler_events.go` | RPC trigger phía OS server (auto-compact khi `TotalTokens > 80_000`, TTS notice, cooldown 2 phút). |
-| `system/internal/agent/runtimes/openclaw/service_chat.go` | `CompactSession(sessionKey)` — sender của `sessions.compact` RPC. |
+| `agent-runtimes/openclaw/service_chat.go` | `CompactSession(sessionKey)` — sender của `sessions.compact` RPC. |
 | `system/domain/agent.go` | Interface `AgentGateway.CompactSession`. |
 | `system/web/src/pages/monitor/FlowSection/CompactionModal.tsx` | UI modal — show timestamp, summary chars, session file, toàn văn summary; link về doc này. |
 | `docs/flow-monitor.md` | Doc cha — cross-reference doc này. |
