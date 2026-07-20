@@ -284,7 +284,7 @@ HAL (port 5001) theo dõi số lần mỗi stranger đã xuất hiện:
 
 ### Prompt enroll khi quen mặt (familiar-stranger)
 
-Khi visit count của một stranger lần đầu chạm ngưỡng (`_FAMILIAR_VISIT_THRESHOLD = 2`, xem `hal/drivers/sensing/perceptions/processors/facerecognizer.py`), HAL:
+Khi visit count của một stranger lần đầu chạm ngưỡng (`_FAMILIAR_VISIT_THRESHOLD = 2`, xem `hal/drivers/sensing/perceptions/processors/faceid/perception.py`), HAL:
 
 1. Lưu raw frame hiện tại ra `<STRANGERS_DIR>/snapshots/<stranger_id>_<ts_ms>.jpg`.
 2. Thêm hint vào message `presence.enter` đang gửi:

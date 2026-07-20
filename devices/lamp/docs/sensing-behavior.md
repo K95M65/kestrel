@@ -284,7 +284,7 @@ HAL (port 5001) tracks how many times each stranger has been seen:
 
 ### Familiar-stranger enroll prompt
 
-When a stranger's visit count first reaches the threshold (`_FAMILIAR_VISIT_THRESHOLD = 2`, see `hal/drivers/sensing/perceptions/processors/facerecognizer.py`), HAL:
+When a stranger's visit count first reaches the threshold (`_FAMILIAR_VISIT_THRESHOLD = 2`, see `hal/drivers/sensing/perceptions/processors/faceid/perception.py`), HAL:
 
 1. Saves the current raw frame to `<STRANGERS_DIR>/snapshots/<stranger_id>_<ts_ms>.jpg`.
 2. Appends a hint to the outgoing `presence.enter` message:
