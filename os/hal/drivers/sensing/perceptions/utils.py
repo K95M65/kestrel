@@ -21,7 +21,7 @@ _dl_stall_lock = threading.Lock()
 
 
 def record_dl_stall(task: str, detail: str) -> None:
-    """Append one line to the dlbackend stall log so recurring WS recv timeouts
+    """Append one line to the perception-service stall log so recurring WS recv timeouts
     can be audited over time. Best-effort: never raises into the caller."""
     line = f"{datetime.now(timezone.utc).isoformat()}\t{task}\t{detail}\n"
     try:

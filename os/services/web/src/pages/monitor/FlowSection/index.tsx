@@ -444,9 +444,9 @@ export function FlowSection({
     if (hasActions) visitedStages.add("hw_led");
   }
 
-  // TTS suppressed: mark TTS as visited so it shows red via nodeColor
+  // TTS suppressed/muted: mark TTS as visited so it shows red via nodeColor
   const hasTtsSuppressed = turnEvents.some((ev) =>
-    ev.type === "flow_event" && (ev.detail as Record<string, any>)?.node === "tts_suppressed"
+    ev.type === "flow_event" && ["tts_suppressed", "tts_muted"].includes((ev.detail as Record<string, any>)?.node)
   );
   if (hasTtsSuppressed) visitedStages.add("tts_speak");
 

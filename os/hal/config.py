@@ -14,6 +14,12 @@ SERVO_PORT = os.environ.get("HAL_SERVO_PORT", "/dev/ttyACM0")
 DEVICE_ID = os.environ.get("HAL_DEVICE_ID", "hal")
 SERVO_FPS = int(os.environ.get("HAL_SERVO_FPS", "30"))
 SERVO_HOLD_S = float(os.environ.get("HAL_SERVO_HOLD_S", "3.0"))
+# Ramp before a recording plays: /servo/play interpolates from the current pose
+# to the recording's first frame over this many seconds (applies to every
+# recording switch — emotions, idle, music groove). Was a hardcoded 5.0 —
+# most of the perceived "play is slow" was this pre-roll, not the animation.
+# SAFETY.md motion.max_speed still bounds the per-joint speed independently.
+SERVO_PLAY_RAMP_S = float(os.environ.get("HAL_SERVO_PLAY_RAMP_S", "2.0"))
 HTTP_PORT = int(os.environ.get("HAL_HTTP_PORT", "5001"))
 # production (default): bind 127.0.0.1, local-only middleware enforced.
 # developer: bind 0.0.0.0, no access restrictions — for local dev/testing only.
@@ -109,6 +115,11 @@ YUNET_CONFIDENCE_THRESHOLD = float(
 FACE_COOLDOWN_S = float(os.environ.get("HAL_FACE_COOLDOWN_S", "10.0"))
 FACE_OWNER_FORGET_S = float(os.environ.get("HAL_FACE_OWNER_FORGET_S", "3600.0"))
 FACE_STRANGER_FORGET_S = float(os.environ.get("HAL_FACE_STRANGER_FORGET_S", "1800.0"))
+# Floor between two STRANGER-ONLY presence.enter events. Embedding flicker
+# mints a fresh stranger_N id every few seconds for the same unrecognizable
+# person, and a fresh id is always "new" — without this floor that's an agent
+# turn every FACE_COOLDOWN_S (10s). Friend enters are not affected.
+FACE_STRANGER_ENTER_FLOOR_S = float(os.environ.get("HAL_FACE_STRANGER_ENTER_FLOOR_S", "300.0"))
 FACE_STRANGER_FLUSH_S = float(os.environ.get("HAL_FACE_STRANGER_FLUSH_S", "10.0"))
 FACE_AREA_RATIO_THRESHOLD = float(os.environ.get("HAL_FACE_AREA_RATIO_THRESHOLD", "0.05"))
 
@@ -144,12 +155,12 @@ DEVICE_AUTH_TOKEN = (
     or DL_API_KEY
 )
 DL_HEARTBEAT_INTERVAL_S = float(os.environ.get("HAL_DL_HEARTBEAT_INTERVAL_S", "60.0"))
-# Max time to wait for a dlbackend WS response (pose/motion frame, heartbeat,
+# Max time to wait for a perception-service WS response (pose/motion frame, heartbeat,
 # key exchange). Without this, a non-responding backend blocks the recv() call
 # forever, holding a shared perception-pool worker and starving every other
 # camera perception (face/light). On timeout the session is dropped + retried.
 DL_WS_RECV_TIMEOUT_S = float(os.environ.get("HAL_DL_WS_RECV_TIMEOUT_S", "15.0"))
-# Append-only file that records every dlbackend WS stall (recv timeout) so the
+# Append-only file that records every perception-service WS stall (recv timeout) so the
 # issue can be tracked over time without scraping the journal. One line per
 # stall: <iso_ts>\t<task>\t<detail>.
 DL_STALL_LOG_FILE = os.environ.get("HAL_DL_STALL_LOG", "/root/local/dl_ws_stall.log")
@@ -172,7 +183,7 @@ DL_SPEAKER_BACKEND_URL: str = DL_BACKEND_URL.rstrip("/") + "/" + DL_SPEAKER_ENDP
 DL_SER_ENDPOINT: str = os.environ.get("DL_SER_ENDPOINT", "/hal/api/dl/ser/recognize")
 DL_SER_BACKEND_URL: str = DL_BACKEND_URL.rstrip("/") + "/" + DL_SER_ENDPOINT.strip("/") if DL_BACKEND_URL else ""
 
-# --- Sensing: Motion detection (action recognition via dlbackend) ---
+# --- Sensing: Motion detection (action recognition via perception-service) ---
 MOTION_ENABLED = os.environ.get("HAL_MOTION_ENABLED", "true").lower() == "true"
 MOTION_PER_FACE_ENABLED = os.environ.get("HAL_MOTION_PER_FACE_ENABLED", "false").lower() == "true"
 MOTION_PER_FACE_DEDUP_WINDOW_S = float(os.environ.get("HAL_MOTION_PER_FACE_DEDUP_WINDOW_S", "300.0"))
@@ -182,8 +193,18 @@ MOTION_CONFIDENCE_THRESHOLD = float(
     os.environ.get("HAL_MOTION_CONFIDENCE_THRESHOLD", "0.3")
 )
 MOTION_FLUSH_S = float(os.environ.get("HAL_MOTION_FLUSH_S", "10.0"))
+# Same-activity heartbeat: floor between two motion.activity emissions while
+# the coarse activity class hasn't changed. A class TRANSITION (computer→eat,
+# …) bypasses this floor, so it can sit at habit-tracking resolution instead
+# of reaction latency.
 MOTION_EVENT_COOLDOWN_S = float(
-    os.environ.get("HAL_MOTION_EVENT_COOLDOWN_S", "360.0")
+    os.environ.get("HAL_MOTION_EVENT_COOLDOWN_S", "900.0")
+)
+# Min gap for the class-transition bypass above. Guards against a flickering
+# detection (drink appearing/vanishing every ~10s flush) turning the bypass
+# back into the old every-flush spam.
+MOTION_TRANSITION_MIN_GAP_S = float(
+    os.environ.get("HAL_MOTION_TRANSITION_MIN_GAP_S", "60.0")
 )
 MOTION_PERSON_DETECTION_ENABLED = os.environ.get("HAL_MOTION_PERSON_DETECTION_ENABLED", "true").lower() == "true"
 MOTION_PERSON_MIN_AREA_RATIO = float(
@@ -195,7 +216,7 @@ MOTION_SNAPSHOT_DIR = os.environ.get(
 )
 MOTION_SNAPSHOT_MAX_COUNT = int(os.environ.get("HAL_MOTION_SNAPSHOT_MAX_COUNT", "100"))
 
-# --- Sensing: Emotion detection (face emotion via dlbackend) ---
+# --- Sensing: Emotion detection (face emotion via perception-service) ---
 EMOTION_ENABLED = os.environ.get("HAL_EMOTION_ENABLED", "true").lower() == "true"
 EMOTION_CONFIDENCE_THRESHOLD = float(
     os.environ.get("HAL_EMOTION_CONFIDENCE_THRESHOLD", "0.5")
@@ -208,13 +229,19 @@ EMOTION_SNAPSHOT_DIR = os.environ.get(
 )
 EMOTION_SNAPSHOT_MAX_COUNT = int(os.environ.get("HAL_EMOTION_SNAPSHOT_MAX_COUNT", "100"))
 
-# --- Sensing: Fire hazard detection (object detection via dlbackend) ---
+# --- Sensing: Fire hazard detection (object detection via perception-service) ---
 FIRE_HAZARD_ENABLED = os.environ.get("HAL_FIRE_HAZARD_ENABLED", "true").lower() == "true"
-FIRE_HAZARD_CHECK_INTERVAL_S = float(os.environ.get("HAL_FIRE_HAZARD_CHECK_INTERVAL_S", "0"))
+# Min gap between two detection API calls. The old default 0 disabled the
+# gate entirely — one OWLv2 call per sensing tick (~2s), ~43k calls/day.
+# 5s still confirms a hazard within FIRE_HAZARD_CONFIRM_S+5s worst case.
+FIRE_HAZARD_CHECK_INTERVAL_S = float(os.environ.get("HAL_FIRE_HAZARD_CHECK_INTERVAL_S", "5.0"))
 FIRE_HAZARD_CONFIDENCE_THRESHOLD = float(os.environ.get("HAL_FIRE_HAZARD_CONFIDENCE_THRESHOLD", "0.3"))
 FIRE_HAZARD_OVERLAP_THRESHOLD = float(os.environ.get("HAL_FIRE_HAZARD_OVERLAP_THRESHOLD", "0.2"))
 FIRE_HAZARD_CONFIRM_S = float(os.environ.get("HAL_FIRE_HAZARD_CONFIRM_S", "10.0"))
-FIRE_HAZARD_DEDUP_WINDOW_S = float(os.environ.get("HAL_FIRE_HAZARD_DEDUP_WINDOW_S", "120.0"))
+# Per-TYPE re-alert heartbeat. A NEW hazard type still alerts immediately (no
+# dedup entry); this only paces re-reports of the SAME steady hazard — at 120s
+# a dinner candle cost 30 agent turns/hour, at 1800s it's 2.
+FIRE_HAZARD_DEDUP_WINDOW_S = float(os.environ.get("HAL_FIRE_HAZARD_DEDUP_WINDOW_S", "1800.0"))
 FIRE_HAZARD_FLUSH_S = float(os.environ.get("HAL_FIRE_HAZARD_FLUSH_S", "10.0"))
 FIRE_HAZARD_DETECTOR = os.environ.get("HAL_FIRE_HAZARD_DETECTOR", "owlv2")
 FIRE_HAZARD_ENDPOINT = os.environ.get("DL_FIRE_HAZARD_ENDPOINT", f"/detect/{FIRE_HAZARD_DETECTOR}")
@@ -230,7 +257,7 @@ POSE_MOTION_ANGLE_THRESHOLD = float(
     os.environ.get("HAL_POSE_MOTION_ANGLE_THRESHOLD", "30.0")
 )
 
-# --- Sensing: Pose estimation + ergonomic assessment (via dlbackend) ---
+# --- Sensing: Pose estimation + ergonomic assessment (via perception-service) ---
 POSE_ENABLED = os.environ.get("HAL_POSE_ENABLED", "true").lower() == "true"
 POSE_ERGO_HIGH_RISK_THRESHOLD = int(os.environ.get("HAL_POSE_ERGO_HIGH_RISK_THRESHOLD", "5"))
 # Posture is now sampled silently into a rolling buffer; MotionPerception
@@ -247,11 +274,11 @@ POSE_SAMPLE_INTERVAL_S = float(os.environ.get("HAL_POSE_SAMPLE_INTERVAL_S", "30.
 # — one variable, no test/prod branches in code.
 POSE_WINDOW_DURATION_S = float(os.environ.get("HAL_POSE_WINDOW_DURATION_S", "600.0"))
 # Noise floor — if the window completed but had fewer than this many real
-# samples (dlbackend missed most frames, presence flicker, etc.), skip the
+# samples (perception-service missed most frames, presence flicker, etc.), skip the
 # inject. Statistical confidence is too low to nag the user.
 POSE_WINDOW_MIN_SAMPLES = int(os.environ.get("HAL_POSE_WINDOW_MIN_SAMPLES", "3"))
 # Bad-sample definition: any single region (L or R) at sub-score >= this.
-# Catches "head thrust forward, rest of body OK" cases that dlbackend's
+# Catches "head thrust forward, rest of body OK" cases that perception-service's
 # whole-body risk_level alone misses (RULA total stays at "low" because
 # trunk+arms are fine, but neck sub-score = 4 by itself is worth nagging).
 POSE_REGION_HIGH_SUBSCORE = int(os.environ.get("HAL_POSE_REGION_HIGH_SUBSCORE", "4"))
@@ -283,11 +310,11 @@ POSE_SNAPSHOT_MAX_BYTES = int(
 POSE_WORST_SNAPSHOTS_PER_BUCKET = int(
     os.environ.get("HAL_POSE_WORST_SNAPSHOTS_PER_BUCKET", "3")
 )
-# TEMPORARY WORKAROUND — dlbackend's signed_flexion_angle returns the
+# TEMPORARY WORKAROUND — perception-service's signed_flexion_angle returns the
 # opposite sign of its docstring ("Positive = forward flexion"): user
 # clearly hunched forward produces angle = -72°, not +72°. Flip on
 # receive so the monitor table and JSONL match reality. Revert (set to
-# False) the moment dlbackend's utils.signed_flexion_angle is fixed
+# False) the moment perception-service's utils.signed_flexion_angle is fixed
 # upstream. Only the three signed angles need flipping; lower_arm_angle
 # is unsigned (angle_between_3d) and the RULA scores already use
 # abs(angle) so risk_level / score are unaffected.
@@ -315,7 +342,7 @@ IDLE_TIMEOUT_S = float(os.environ.get("HAL_IDLE_TIMEOUT_S", "300"))
 AWAY_TIMEOUT_S = float(os.environ.get("HAL_AWAY_TIMEOUT_S", "900"))
 IDLE_BRIGHTNESS = float(os.environ.get("HAL_IDLE_BRIGHTNESS", "0.20"))
 
-# --- Sensing: Speaker recognition (voice embedding via dlbackend) ---
+# --- Sensing: Speaker recognition (voice embedding via perception-service) ---
 SPEAKER_RECOGNITION_ENABLED: bool = (
     os.environ.get("HAL_SPEAKER_RECOGNITION_ENABLED", "true").lower() == "true"
 )
@@ -335,7 +362,7 @@ DL_SPEAKER_ENDPOINT = os.environ.get("DL_SPEAKER_ENDPOINT", "/hal/api/dl/audio-r
 SPEAKER_EMBEDDING_API_URL: str = DL_BACKEND_URL.rstrip("/") + "/" + DL_SPEAKER_ENDPOINT.strip("/") if DL_BACKEND_URL else ""
 SPEAKER_EMBEDDING_API_KEY: str = DL_API_KEY
 
-# --- Sensing: Speech emotion recognition (SER via dlbackend) ---
+# --- Sensing: Speech emotion recognition (SER via perception-service) ---
 SPEECH_EMOTION_ENABLED: bool = (
     os.environ.get("HAL_SPEECH_EMOTION_ENABLED", "true").lower() == "true"
 )
@@ -742,6 +769,20 @@ REALTIME_MEMORY_MAX_CHARS: int = int(os.environ.get("HAL_REALTIME_MEMORY_MAX_CHA
 # Cap on the rolling realtime summary.md — part of the per-turn floor, so kept
 # tight (~1.5k tokens). Env-overridable for tuning.
 REALTIME_SUMMARY_MAX_CHARS: int = int(os.environ.get("HAL_REALTIME_SUMMARY_MAX_CHARS", "5000"))
+# Ceiling for the SOUL+IDENTITY+USER.md identity section of the realtime floor.
+# USER.md/IDENTITY.md are agent-writable, so without this the per-turn floor
+# grows unbounded. Default leaves today's ~9.6k chars untouched.
+REALTIME_IDENTITY_MAX_CHARS: int = int(os.environ.get("HAL_REALTIME_IDENTITY_MAX_CHARS", "12000"))
+# Cap on the [REPLY] transcript replayed to the MAIN agent after a
+# realtime-handled turn. The replay exists for memory continuity (the main
+# agent burns a full turn just to record it + answer NO_REPLY), so the gist is
+# enough — an uncapped long spoken reply inflates that already-overhead turn.
+REALTIME_REPLY_SYNC_MAX_CHARS: int = int(os.environ.get("HAL_REALTIME_REPLY_SYNC_MAX_CHARS", "600"))
+# Cap on each [TTS HISTORY] line pushed into the live Gemini session after the
+# device speaks. It accumulates in session context and is re-billed on every
+# later turn until recycle; Gemini only needs the gist to avoid repeating
+# itself.
+REALTIME_TTS_HISTORY_MAX_CHARS: int = int(os.environ.get("HAL_REALTIME_TTS_HISTORY_MAX_CHARS", "300"))
 
 # --- Realtime: Summarizer (Anthropic Messages API) ---
 REALTIME_SUMMARIZER_ENABLED: bool = os.environ.get("HAL_REALTIME_SUMMARIZER_ENABLED", "true").lower() in ("1", "true", "yes")

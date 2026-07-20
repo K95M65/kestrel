@@ -44,10 +44,10 @@ os/services/
 os/hal/
 ├── server.py                     — FastAPI server (38 endpoints)
 ├── config.py                     — Hằng số runtime (ngưỡng sensing, timeout, URL)
-├── devices/                      — Camera device abstraction (LocalVideoCaptureDevice)
+├── drivers/camera/               — Camera device (LocalVideoCaptureDevice, V4L2)
 ├── service/
 │   ├── voice/voice_service.py    — Local VAD + Deepgram STT, speaker ID, SER submit
-│   ├── voice/speech_emotion/     — Queue SER → dlbackend → OS server speech_emotion.detected
+│   ├── voice/speech_emotion/     — Queue SER → perception-service → OS server speech_emotion.detected
 │   ├── voice/stt/                — STT có thể plug in (Deepgram / autonomous)
 │   ├── voice/tts/                — TTS service + backend plug in (OpenAI / ElevenLabs)
 │   ├── sensing/
@@ -62,10 +62,8 @@ os/hal/
 
 devices/                          — Per-device configs and overlays
 skills/                           — SKILL.md files cho agent runtime
-hooks/                            — HOOK.md lifecycle hooks cho agent runtime
-companions/                       — Companion apps (e.g. Autonomous Buddy)
-contract/                         — Shared API contracts
-cts/                              — Compatibility test suite
+integrations/                     — Off-device: companions/, chat-bridges/, perception-service/
+contract/                         — Shared API contracts (+ cts/ compliance suite)
 ```
 
 ## Nguyên Tắc
@@ -84,7 +82,7 @@ Mic (always on) → Local VAD (RMS energy, free)
         → "hey lamp, tắt đèn" → voice_command → local intent → thực thi
         → "anh ơi đi ăn không" → voice (ambient) → OpenClaw
     → Silence 3s → Disconnect Deepgram
-    → _submit_speech_emotion_from_session: WAV → dlbackend SER → OS server event (luôn chạy, độc lập transcript)
+    → _submit_speech_emotion_from_session: WAV → perception-service SER → OS server event (luôn chạy, độc lập transcript)
     → _identify_and_decorate (1 lần) → if transcript: _send_to_lamp voice/voice_command
 ```
 

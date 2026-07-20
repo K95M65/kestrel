@@ -1,0 +1,273 @@
+# Architecture
+
+Claude Desktop Buddy is a single Go binary (`buddy-plugin`) that runs on the
+device and bridges **Claude Desktop on the user's Mac** to the lamp's hardware
+runtime. This document describes its components, how data flows through them, and
+the contracts it speaks on each side.
+
+For the on-the-wire BLE message format see [`ble-protocol.md`](ble-protocol.md).
+For building, deploying, config, and pairing see [`setup.md`](setup.md).
+
+## The two sides
+
+```
+   Mac                                    Device (Pi / OrangePi)
+ ┌───────────────────┐               ┌───────────────────────────────────────┐
+ │  Claude Desktop    │   BLE / NUS   │  buddy-plugin                          │
+ │  "Hardware Buddy"  │ ◄───────────► │                                        │
+ └───────────────────┘  notify / write│  ble.go ─► state.go ─► bridge.go       │
+                                       │     │                      │  │  │     │
+                                       │     ▼                      ▼  ▼  ▼     │
+                                       │  httpapi/ (:5002)     LeLamp / Lamp    │
+                                       │  (OpenClaw)           HTTP (LED, eyes, │
+                                       │                       TTS, monitor)    │
+                                       └───────────────────────────────────────┘
+```
+
+- **North (BLE):** Claude Desktop is the BLE *central*; the device is the
+  *peripheral* advertising a Nordic UART Service. Desktop streams heartbeats,
+  chat events, permission prompts, and folder data; the device replies with
+  acks and permission decisions.
+- **South (HTTP):** the device's behavior is produced by calling two local HTTP
+  servers — **LeLamp** (the hardware runtime, default `:5001`) for LED / display
+  / emotion / TTS, and **Lamp** (the Go API, default `:5000`) for the monitor and
+  sensing buses.
+- **East (HTTP):** Buddy itself serves a small HTTP API on `:5002`. The
+  on-device agent (OpenClaw skill) calls it over loopback to read status and
+  approve/deny prompts; the Claude Code plugin (on the user's Mac) calls it over
+  the LAN to push activity. LAN endpoints require the device admin password as a
+  Bearer token (see **HTTP API security** below).
+
+## Components (by file)
+
+| File | Responsibility |
+|------|----------------|
+| `main.go` | Process entry. Loads config, registers the BlueZ pairing agent, wires the state machine → bridge + narrator, starts the BLE server, the transient-state ticker, and the HTTP server. Owns the BLE message dispatcher `handleBLEMessage`. |
+| `ble.go` | Nordic UART GATT server (via a vendored `tinygo.org/x/bluetooth` fork). Advertising, line framing, salvage, chunked notify writes, advertising-interval tuning. |
+| `protocol.go` | All wire types (`Heartbeat`, `TimeSync`, `Event`, `Command`, `Ack`, `PermissionDecision`), the parser/salvager, and ack/permission builders. |
+| `state.go` | `StateMachine` — derives a `BuddyState` from heartbeats, tracks the pending prompt and lifetime approval/denial counters, and manages transient states. |
+| `bridge.go` | Maps each state change to concrete LeLamp + Lamp HTTP calls (LED, display, emotion, TTS, monitor/sensing events). |
+| `httpapi/` | The `:5002` API delivery package (clean architecture / dependency inversion). `server.go` holds the `Server`, the single `routes()` registry, and JSON response helpers; its `Start()` builds an explicit `http.Server` (ReadHeaderTimeout 10 s, ReadTimeout 15 s, IdleTimeout 60 s, and **WriteTimeout disabled (`0`)** because the approval long-poll holds the response ~55 s). `ports.go` declares the interfaces the handlers depend on (`Authenticator`, `StatusProvider`, `ApprovalService`, `ActivitySink`, `CodeApprovalService`, plus sentinel errors); `status.go` serves `GET /status` + `GET /health`; `claudedesktop.go` serves `POST /claude-desktop/approve` + `/deny` (the Claude Desktop voice-approval round-trip); `claudecode.go` serves `POST /claude-code/notify` + `/usage` (the Claude Code plugin pushes) plus the reverse-approval routes `POST /claude-code/approval-request` (long-poll), `POST /claude-code/approve` + `/deny`, and `GET /claude-code/pending`. Two wrappers enforce access: `s.guard` requires the admin-password Bearer token (LAN endpoints), and `s.loopbackOnly` (via an `isLoopback` helper) restricts on-device endpoints to the local host. A `decodeJSON` helper caps request bodies at 64 KB. |
+| `buddy/auth.go` | `Authenticator` — verifies the admin-password Bearer token on LAN endpoints. Reads `admin_password_hash` (bcrypt of the web-login password) and `llm_api_key` from the OS server's `config.json` (`os_config_path`, default a `config.json` sibling of `buddy.json`), hot-reloading on file change. The correct-password path is a cached constant-time compare so bcrypt runs only on first use / after a rotation. Fails closed: with neither credential set, every gated endpoint returns `401`. |
+| `status_provider.go` / `approval_service.go` / `hal_activity_sink.go` | The concrete implementations of the `httpapi` ports, one per role: `StatusReader` (read-adapter → status snapshot), `ApprovalService` (the voice-approval use case: validate id + send the BLE permission decision + update counters), `HALActivitySink` (the wired `ActivitySink` — logs the Claude Code pushes **and** speaks them via HAL `:5001`). `main.go` is the composition root that wires these into `httpapi.New`. |
+| `codeapproval.go` | `CodeApprovals` — the `httpapi.CodeApprovalService` implementation. An in-memory map of pending Claude Code approvals keyed by id, each with a buffered channel. `Request(ctx, req)` registers a pending approval, calls `bridge.announceCodeApproval`, then blocks on a select over {channel decision, ttl timeout, ctx cancel}, returning `"allow"`/`"deny"`/`"timeout"`; `Approve(id)`/`Deny(id)` send on the channel (non-blocking, first-writer-wins); `Pending()` lists them. ttl from config `code_approval_ttl_sec` (default 55 s). `main.go` builds it via `NewCodeApprovals(bridge, ttl)` and passes it as the 5th arg of `httpapi.New`. |
+| `agent.go` | BlueZ `org.bluez.Agent1` (DisplayOnly) so LE pairing can complete; logs the passkey to the journal. |
+| `transfer.go` | Folder-push receiver — streams files from Desktop to `/opt/claude-desktop-buddy/chars` with path-traversal guards. |
+| `narrator.go` + `i18n.go` | Short, per-turn-deduped TTS announcements of Claude's activity, localized (EN/VI). |
+| `stats.go` | Persists lifetime approved/denied counters to `/var/lib/claude-desktop-buddy/stats.json`. |
+| `config/buddy.json` | Runtime config (see [`setup.md`](setup.md#configuration)). |
+| `skill/SKILL.md` | Pointer only — the agent skill that turns approvals into a voice interaction is now the platform skill [`skills/claude-buddy/SKILL.md`](../../../../skills/claude-buddy/SKILL.md), shipped to devices via the standard skill OTA (`upload-skills.sh`) and registered in `internal/skills/skills.go` (`audio` capability). |
+| `third_party/bluetooth/` | Local fork of `tinygo.org/x/bluetooth` (see below). |
+
+## Data flow
+
+### Inbound (Desktop → device)
+
+1. **BLE write** lands on the RX characteristic. `ble.go:handleRX` appends bytes to
+   a buffer and splits on `\n`; each complete line is pushed to `msgCh`.
+2. A single **processor goroutine** drains `msgCh` and calls `handleBLEMessage`
+   (in `main.go`) one line at a time, so the shared transfer state is race-free.
+3. `ParseOrSalvage` (`protocol.go`) decodes the line into a typed message, or
+   recovers the tail of a corrupted one (BLE write-without-response has no ACK, so
+   BlueZ silently drops packets under load).
+4. Dispatch by type:
+   - **`Heartbeat`** → `StateMachine.HandleHeartbeat` → may transition state → fires
+     `OnStateChange` → `bridge` repaints LED/display + `narrator` announces.
+   - **`Event`** (`evt:"turn"`) → `bridge.OnEvent` publishes to Lamp's monitor bus;
+     assistant turns are inspected block-by-block so `thinking`/`tool_use` blocks
+     become TTS narration.
+   - **`Command`** (`status`, `owner`, `name`, `unpair`, folder-push) → handled and
+     **acked** over the TX characteristic.
+   - **`TimeSync`** → logged (no ack required).
+
+### Outbound (device → Desktop)
+
+`ble.go:Send` writes newline-terminated JSON to the TX characteristic, chunked at
+180 bytes (under the macOS-negotiated MTU). Two things go out this way:
+- **Acks** for every received `Command` (`protocol.go:MakeAck` / `MakeAckN` /
+  `MakeStatusAck`).
+- **Permission decisions** (`MakePermission`) when the agent approves/denies.
+
+### The approval round-trip
+
+```
+Desktop heartbeat carries `prompt`  ─►  state = attention, pending prompt stored
+        │                                         │
+        │                                bridge.postSensingEvent
+        │                                  → Lamp /api/sensing/event
+        │                                    type=buddy_approval  ─► agent hears it,
+        │                                                            asks the user
+        │                                                                  │
+   GET /status (skill polls) ◄────────────────────────────────────────────┘
+        │  pending_prompt {id, tool, hint}
+        ▼
+   user says yes/no  ─►  POST /claude-desktop/approve|/deny {id}
+        │
+        ▼
+   ApprovalService validates id == pending.id
+        │
+        ▼
+   ble.Send(MakePermission(id, "once"|"deny"))  ─►  Desktop applies the decision
+        │
+        ▼
+   StateMachine.Approved()/Denied()  ─►  counters++ , stats persisted
+```
+
+`POST /claude-desktop/approve` sends decision `"once"`; `POST /claude-desktop/deny`
+sends `"deny"`. Both return `409` if there is no pending prompt or the `id` doesn't
+match the current one.
+
+### The Claude Code approval round-trip
+
+This is the *reverse* direction of the Desktop flow: instead of Claude Desktop
+asking over BLE, a Claude Code **`PermissionRequest` hook**
+(`claude-code-buddy/scripts/on-permission-request.py`, registered in
+`hooks.json`) asks Buddy over HTTP and blocks on the answer, so Claude Code can
+approve a tool without showing its own dialog.
+
+```
+Claude Code wants to run a tool
+        │
+        ▼
+hook long-polls  POST /claude-code/approval-request {id, tool, hint, input}
+        │
+        ▼
+CodeApprovals.Request registers the pending approval
+        │                                  │
+        │                          bridge.announceCodeApproval
+        │                            → blink LED + display "Approve <tool>?"
+        │                            → Lamp /api/sensing/event
+        │                              type=claude_code_approval  ─► agent hears it,
+        │                                                            asks the user
+        │                                                                  │
+   GET /claude-code/pending  ◄──────────────────────────────────────────┘
+        │
+        ▼
+   user says yes/no  ─►  POST /claude-code/approve|/deny {id}  (loopback-only)
+        │
+        ▼
+   Approve(id)/Deny(id) sends on the channel; Request unblocks
+        │
+        ▼
+   returns "allow" / "deny"  (or "timeout" after code_approval_ttl_sec)
+        │
+        ▼
+   hook maps the decision to its allow/deny output ─► Claude Code proceeds, no dialog
+```
+
+Opt-in via plugin config `approval_enabled` (default `false`). The
+`/claude-code/approve` + `/deny` handlers are **loopback-only** — the on-device
+OpenClaw agent resolves the prompt by calling them (per the platform skill
+`skills/claude-buddy/SKILL.md`).
+Fail-safe: any error or timeout makes the hook defer to Claude Code's native
+permission dialog — it never auto-allows. Unlike the Desktop flow, the decision
+is returned as the hook's HTTP response (its return value) rather than pushed
+back over BLE.
+
+## HTTP API security
+
+The daemon binds `:5002` on all interfaces (the Mac plugin reaches it over the
+LAN), so each endpoint is access-controlled by who is meant to call it:
+
+| Endpoint | Caller | Gate |
+|----------|--------|------|
+| `GET /health` | discovery (mDNS + `/24` sweep) | **open** — no secret, no sensitive data |
+| `POST /claude-code/notify` `/usage` `/approval-request` | Claude Code plugin (Mac, LAN) | **admin-password Bearer token** (`s.guard`) |
+| `GET /status` | on-device agent (loopback) | **loopback-only** (`s.loopbackOnly`) |
+| `POST /claude-desktop/approve` `/deny` | on-device agent (loopback) | **loopback-only** |
+| `POST /claude-code/approve` `/deny`, `GET /claude-code/pending` | on-device agent (loopback) | **loopback-only** |
+
+The Bearer token is the **device admin password** — the same one used to log
+into the device's web UI. `buddy/auth.go` verifies it against
+`admin_password_hash` in the OS server's `config.json` (bcrypt; `llm_api_key` is
+also accepted so curl/scripts keep working, mirroring the OS server's
+`adminAuthMiddleware`). The plugin stores the password per-device in its `0600`
+config and sends it as `Authorization: Bearer <password>`; a missing/stale
+password yields `401`, which the plugin treats as "ask the user for the current
+admin password". Without a configured credential the daemon fails closed (all
+gated endpoints `401`).
+
+## State machine
+
+States (`state.go`): `sleep`, `idle`, `busy`, `attention`, `heart`, `celebrate`.
+
+| State | When | Lamp expression (`bridge.go`) |
+|-------|------|-------------------------------|
+| `sleep` | BLE disconnected | restore user's LED, sleepy eyes |
+| `idle` | connected, nothing running | restore user's LED, eyes-mode |
+| `busy` | heartbeat `running > 0` | pulse (Claude brand color), info: tokens today + sessions |
+| `attention` | heartbeat carries a `prompt` | blink, info: "Approve `<tool>`?", emits `buddy_approval` sensing event |
+| `heart` | approval granted within 5 s of the prompt | solid color, happy eyes (3 s, transient) |
+| `celebrate` | token milestone crossed (every 50 000) | rainbow, excited eyes (3 s, transient) |
+
+Transient states (`heart`, `celebrate`) hold for 3 s and are not overridden by
+incoming heartbeats; a 500 ms ticker (`CheckTransientExpiry`) re-derives the real
+state when they expire. Connect/disconnect is detected from the first heartbeat
+and the BlueZ connect handler.
+
+## The bridge (south side)
+
+All Buddy LED writes are marked `transient: true`: they paint the strip without
+overwriting the user's saved LED state. On return to `idle`/`sleep`, `ledRestore()`
+asks LeLamp to repaint whatever the user had set, so Buddy never steals the strip
+permanently. The accent color is the Claude app color **`#C15F3C`** (`claudeBrand`).
+
+| Call | Endpoint | Purpose |
+|------|----------|---------|
+| `ledSolid` / `ledEffect` / `ledRestore` / `ledOff` | LeLamp `/led/*` | state LED cues (all transient) |
+| `displayInfo` / `displayEyes` / `displayEyesMode` | LeLamp `/display/*` | round-display text + eyes |
+| `expressEmotion` | LeLamp `/emotion` | coordinated LED+servo (e.g. "happy" when a turn ends) |
+| `speakTTS` (cached) / `prerenderTTS` | LeLamp `/voice/speak` | narration TTS (and cache warmup at startup) |
+| `postBuddyState` | Lamp `/api/monitor/event` (`type=buddy_state`) | surface state on the monitor |
+| `postSensingEvent` | Lamp `/api/sensing/event` (`type=buddy_approval`) | inject approval into the sensing pipeline |
+| `announceCodeApproval` / `restoreAfterCodeApproval` | Lamp `/api/sensing/event` (`type=claude_code_approval`) | transient blink LED (claudeBrand) + display "Approve `<tool>`?" while a Claude Code reverse-approval is pending, then repaint the user's LED + eyes |
+| `OnEvent` | Lamp `/api/monitor/event` (`type=buddy_event`) | surface chat turns for other use cases |
+
+All bridge calls are fire-and-forget with a 5 s timeout; LeLamp's own `409`
+(music busy) / `503` (TTS not ready) responses are ignored here.
+
+## Narration (UC-9)
+
+`narrator.go` emits short status phrases as TTS. Policy:
+- **Per-turn dedupe** — each category fires at most once per turn (a turn starts on
+  a new user message or an idle→busy transition), so multiple `thinking` blocks
+  don't repeat the phrase.
+- **Tool mapping** — `i18n.go:toolToCategory` maps Claude Code tool names to a
+  phrase (`Read`→"reading a file", `Bash`→"running a shell command", `mcp__*`→
+  "calling MCP", unknown→generic "using a tool" with the raw name dropped — tool
+  names don't read well through TTS).
+- **Warmup** — at startup every phrase is sent to LeLamp with `prerender:true` so
+  the first real announcement plays from the on-disk TTS cache instead of waiting
+  on a provider round-trip.
+- **Language** — `narration_lang` in config (`en`/`vi`); unknown values fall back
+  to English.
+
+## Persistence
+
+- **Stats** — lifetime approved/denied counters live at
+  `/var/lib/claude-desktop-buddy/stats.json` (under `/var/lib` so they survive
+  package upgrades that wipe `/opt`, and separate from the config so a config
+  reset doesn't zero them). Restored on boot so `/status` is correct right after a
+  restart.
+- **Pushed folders** — `/opt/claude-desktop-buddy/chars/<name>/...`.
+
+## The tinygo BLE fork
+
+`go.mod` replaces `tinygo.org/x/bluetooth` with the local
+`third_party/bluetooth`. Upstream's Linux GATT layer only maps the six basic
+characteristic flags; the fork adds secure-read / secure-write so the Hardware
+Buddy bonding requirement can be expressed. (Currently the secure-only flags are
+*dropped* at runtime — see the note in `ble.go` — because the Mac client connects
+without auto-triggering SMP; the link is unencrypted for now and `status.sec` is
+reported `false`.)
+
+## Notes / gotchas
+
+- **`buddy.json` `led_mapping` is ignored.** The `Config` struct in `main.go` has
+  no field for it; LED behavior is hardcoded in `bridge.go`. The block is legacy.
+- **`approval_timeout_sec` is parsed but unused.** The 5 s "heart" window is
+  hardcoded in `state.go`; there is no server-side approval timeout today.
+- **Device name** — `device_name` may contain `{MAC}`, expanded at startup from
+  Lamp's `/api/system/network` (last 4 hex of the Pi serial / eth0 MAC), matching
+  the mDNS hostname `lamp-xxxx.local`. Truncated to 4 chars to fit the 31-byte BLE
+  advertisement.

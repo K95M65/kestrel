@@ -3,7 +3,7 @@ set -e
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ota-config.sh"
 
-HOOKS_DIR="${ROOT_DIR}/hooks"
+HOOKS_DIR="${ROOT_DIR}/os/services/internal/agent/runtimes/openclaw/hooks"
 GCS_PREFIX="${GCS_PREFIX:-${BUCKET_PREFIX}/hooks}"
 
 if [[ ! -d "$HOOKS_DIR" ]]; then

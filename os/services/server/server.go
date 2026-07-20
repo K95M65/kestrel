@@ -17,7 +17,7 @@ import (
 	"go.autonomous.ai/os/domain"
 	"go.autonomous.ai/os/internal/agent"
 	"go.autonomous.ai/os/internal/ambient"
-	"go.autonomous.ai/os/internal/claudecode"
+	"go.autonomous.ai/os/internal/agent/runtimes/claudecode"
 	"go.autonomous.ai/os/internal/device"
 	"go.autonomous.ai/os/internal/healthwatch"
 	"go.autonomous.ai/os/internal/network"
@@ -409,7 +409,7 @@ func (s *Server) Serve(closeFn func()) error {
 	// bearer token; Go gates the request then forwards to HAL on loopback.
 	// Replaces direct browser /hw/* access (audit web F5) so nginx /hw/
 	// allow 127.0.0.1; deny all; can stay locked down (audit local F2).
-	api.Any("/hardware/*path", adminAuthMiddleware(s.config), gin.WrapH(hardwareProxy))
+	api.Any("/hardware/*path", adminAuthMiddleware(s.config), s.ambientLEDGate(), gin.WrapH(hardwareProxy))
 
 	// Top-level /openapi.json so the in-iframe HAL Swagger UI (loaded at
 	// /api/hardware/docs) can fetch its spec — FastAPI hardcodes the spec
@@ -442,6 +442,23 @@ func (s *Server) Serve(closeFn func()) error {
 	if !s.config.SetUpCompleted {
 		safego.Go("setup-needed-paint", s.waitAndPaintSetupReady)
 	}
+
+	// Warm the Go-owned spoken notices into hal's persistent WAV cache so
+	// they still play when the TTS provider is rate-limited — the LLM-limit
+	// notice fires exactly when TTS shares the exhausted quota, so it can't
+	// be rendered on demand. Retries cover hal booting slower than os-server
+	// and a quota-exhausted boot (next attempts after the provider recovers).
+	safego.Go("notice-prerender", func() {
+		phrase := i18n.One(i18n.PhraseLLMLimit)
+		for attempt := 0; attempt < 5; attempt++ {
+			time.Sleep(time.Duration(30+attempt*60) * time.Second)
+			if err := hal.PrerenderCached(phrase); err == nil {
+				slog.Info("notice prerender warmed", "component", "server", "text", phrase)
+				return
+			}
+		}
+		slog.Warn("notice prerender never succeeded — notice will self-warm on first successful fire", "component", "server")
+	})
 
 	go func() {
 		if err := srv.ListenAndServe(); err != nil {

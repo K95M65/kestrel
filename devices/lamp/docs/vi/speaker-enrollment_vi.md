@@ -16,7 +16,7 @@ Lamp nhận diện người nói qua **WeSpeaker ResNet34** (vector nhúng 256 c
 │    ├─ STT chuyển giọng nói → văn bản                                │
 │    ├─ _identify_and_decorate(transcript)                            │
 │    │   ├─ audio_buffer → WAV bytes → base64                        │
-│    │   ├─ POST /audio-recognizer/embed → dlbackend (RunPod)        │
+│    │   ├─ POST /audio-recognizer/embed → perception-service (RunPod)        │
 │    │   │   └─ WeSpeaker ResNet34 ONNX → vector 256 chiều           │
 │    │   ├─ Bình chọn theo từng chunk so với embedding đã đăng ký     │
 │    │   ├─ Khớp ≥ 0.7 → "Speaker - Tên: transcript"                 │
@@ -79,7 +79,7 @@ Bốn lớp ngăn agent hỏi "bạn là ai?" liên tục:
 |------------|---------|
 | Model | WeSpeaker ResNet34 (huấn luyện trên VoxCeleb) |
 | Chiều embedding | 256 |
-| Runtime | ONNX Runtime (CPU) trên dlbackend (RunPod) |
+| Runtime | ONNX Runtime (CPU) trên perception-service (RunPod) |
 | Endpoint | `POST {DL_BACKEND_URL}/lelamp/api/dl/audio-recognizer/embed` |
 | Xác thực | Header `X-API-Key` |
 | Timeout | 15 giây |
@@ -95,7 +95,7 @@ Bốn lớp ngăn agent hỏi "bạn là ai?" liên tục:
 
 ### Chất lượng đăng ký
 
-1. Mỗi file WAV → embedding qua dlbackend
+1. Mỗi file WAV → embedding qua perception-service
 2. Lọc theo ngưỡng consistency `0.7` (cosine similarity giữa các mẫu)
 3. Tổng hợp embedding còn lại qua trung bình có trọng số
 4. Lưu vector chuẩn hoá L2 tại `/root/local/users/{tên}/voice/embedding.npy`
@@ -171,7 +171,7 @@ Mọi giọng lạ được gom cụm local để server biết "đây là cùng
 
 | HTTP | Khi nào | Hành vi skill |
 |------|---------|---------------|
-| `400` | Audio bị reject (quá ngắn, im lặng, VAD không tìm thấy speech, dlbackend trả 4xx) | Yêu cầu user thu lại / nói rõ hơn |
+| `400` | Audio bị reject (quá ngắn, im lặng, VAD không tìm thấy speech, perception-service trả 4xx) | Yêu cầu user thu lại / nói rõ hơn |
 | `503` | Embedding service không reachable (network, 5xx, response malformed) | Báo user thử lại sau — disk không bị thay đổi gì |
 
 `/speaker/recognize` **không bao giờ** trả 5xx khi embedding API chết — nó trả `200` với `{name: "unknown", error: "<lý do>"}` để skill tự xử graceful. Chỉ lỗi input (thiếu WAV, base64 sai) mới trả `400`.
@@ -186,10 +186,10 @@ Mọi giọng lạ được gom cụm local để server biết "đây là cùng
 | Bộ nhận diện giọng nói | `os/hal/drivers/voice/speaker_recognizer/speaker_recognizer.py` | `SpeakerRecognizer` |
 | Chèn instruction + cooldown | `os/services/domain/voice.go` | `AppendEnrollNudge()` |
 | Đường trực tiếp | `os/services/server/sensing/delivery/http/handler.go` | `PostEvent()` |
-| Đường hàng đợi/phát lại | `os/services/internal/openclaw/service.go` | `drainPendingEvents()` |
+| Đường hàng đợi/phát lại | `os/services/internal/agent/runtimes/openclaw/service.go` | `drainPendingEvents()` |
 | Skill agent | `lamp/resources/openclaw-skills/speaker-recognizer/SKILL.md` | — |
-| Model embedding | `dlbackend/src/core/audio_recognition/audio_recognizer.py` | `ResNet34Recognizer` (mặc định), `EcapaTdnn1024Recognizer`, `CamPPlusRecognizer` — chọn qua env `AUDIO_RECOGNIZER_ENGINE` |
-| Endpoint embedding | `dlbackend/src/protocols/htpp/audio_recognizer.py` | `embed_audio()` |
+| Model embedding | `integrations/perception-service/src/core/audio_recognition/audio_recognizer.py` | `ResNet34Recognizer` (mặc định), `EcapaTdnn1024Recognizer`, `CamPPlusRecognizer` — chọn qua env `AUDIO_RECOGNIZER_ENGINE` |
+| Endpoint embedding | `integrations/perception-service/src/protocols/htpp/audio_recognizer.py` | `embed_audio()` |
 | Cấu hình | `os/hal/config.py` | Các hằng số `SPEAKER_*` |
 
 ## Ví dụ luồng message

@@ -394,7 +394,7 @@ payload's `credentials` map:
 **Fallback table:** for connectors that shipped before the wire carried these keys
 (`notion`, `asana`, `linear`, `github`, `ahrefs`), a compiled-in table
 supplies the `mcp_url` + header style from the openclaw catalog
-(`internal/openclaw/mcp.go`). The payload **always wins** — `mcp_url` in the payload
+(`internal/agent/runtimes/openclaw/mcp.go`). The payload **always wins** — `mcp_url` in the payload
 overrides the fallback — so the table is only a migration safety net until the
 backend pushes the routing keys.
 
@@ -480,6 +480,6 @@ Handled by bootstrap worker, not through MQTT handler directly.
 | `os/services/internal/agent/channel_reconcile.go` | `ChannelReconcile`: re-applies channels after a runtime switch, records `channels_unsupported` |
 | `os/services/server/device/delivery/mqtt/whatsapp_pair_handler.go` | Handle `whatsapp_pair` re-pair command |
 | `os/services/server/device/delivery/mqtt/claudecode_login_handler.go` | Handle `claudecode_login` / `claudecode_login_code` (claude.ai OAuth login) |
-| `os/services/internal/openclaw/pairing.go` | WhatsApp Baileys QR pairing subprocess driver |
+| `os/services/internal/agent/runtimes/openclaw/pairing.go` | WhatsApp Baileys QR pairing subprocess driver |
 | `os/services/domain/device.go` | MQTTMessage, command constants |
 | `os/services/domain/pairing.go` | PairingEvent + status enum |

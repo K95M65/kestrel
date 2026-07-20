@@ -49,7 +49,8 @@ func tailPreview(s string, n int) string {
 // while the first sentence is still playing.
 //
 // Defers (returns "") when the snapshot has:
-//   - a partial `[HW:` marker (extractHWCalls only matches complete markers)
+//   - a partial `[HW:` or link-form `](HW:` marker (extractHWCalls only
+//     matches complete markers)
 //   - any `<say>` wrapper (extractSayTag at end shifts content)
 //   - `NO_REPLY` / `HEARTBEAT_OK` sentinels (sanitizeAgentText strips
 //     these at end-flush; streamed text can't be unspoken)
@@ -67,7 +68,7 @@ func (h *AgentHandler) tryFirstSentenceFlush(runID string) string {
 		return ""
 	}
 	raw := buf.String()
-	if hasPartialHWMarker(raw) {
+	if hasPartialHWMarker(raw) || hasPartialHWLinkMarker(raw) {
 		return ""
 	}
 	if strings.Contains(raw, "<say>") {
@@ -125,7 +126,8 @@ func (h *AgentHandler) replyLanguageCode() string {
 // defer this round. It mirrors tryFirstSentenceFlush's cleaning but returns the WHOLE
 // text (not just the first sentence) and does not track a streamed offset — the Slack
 // bridge diffs against what it has already appended. Defers (ready=false) on a partial
-// `[HW:` marker, any `<say>` wrapper, or a NO_REPLY / HEARTBEAT_OK sentinel, so junk
+// `[HW:` or link-form `](HW:` marker, any `<say>` wrapper, or a NO_REPLY /
+// HEARTBEAT_OK sentinel, so junk
 // never reaches the channel mid-stream.
 func (h *AgentHandler) cleanedSlackStreamText(runID string) (string, bool) {
 	h.assistantMu.Lock()
@@ -138,7 +140,7 @@ func (h *AgentHandler) cleanedSlackStreamText(runID string) (string, bool) {
 	if raw == "" {
 		return "", false
 	}
-	if hasPartialHWMarker(raw) || strings.Contains(raw, "<say>") {
+	if hasPartialHWMarker(raw) || hasPartialHWLinkMarker(raw) || strings.Contains(raw, "<say>") {
 		return "", false
 	}
 	upper := strings.ToUpper(raw)
@@ -214,6 +216,44 @@ func hasPartialHWMarker(text string) bool {
 			return false
 		}
 		idx = idx + 4 + next
+	}
+	return false
+}
+
+// hasPartialHWLinkMarker is the link-form counterpart of hasPartialHWMarker:
+// it reports whether text contains a markdown-link marker opener `](HW:`
+// (case-insensitive, matching hwLinkRe) with no closing `)` yet, or ends
+// mid-way through the `](HW:` signature itself. Without this guard a link
+// marker still streaming in (e.g. `[Lights off. Hold on](HW:/led/of`) passes
+// the canonical check, tryFirstSentenceFlush finds a sentence boundary INSIDE
+// the label and streams bracket garbage to TTS — and streamedCleanLen ends up
+// measured against text whose cleaned form changes once the link completes.
+//
+// Known blind spot (shared with the canonical guard's `[H`/`[HW` prefixes):
+// an unclosed `[label` with no `](` yet is indistinguishable from ordinary
+// bracketed prose, so it cannot be deferred on.
+func hasPartialHWLinkMarker(text string) bool {
+	lower := strings.ToLower(text)
+	idx := strings.Index(lower, "](hw:")
+	for idx >= 0 {
+		rest := lower[idx:]
+		if !strings.Contains(rest, ")") {
+			return true
+		}
+		next := strings.Index(lower[idx+5:], "](hw:")
+		if next < 0 {
+			break
+		}
+		idx = idx + 5 + next
+	}
+	// Buffer ending inside the signature — one more delta would reveal
+	// `](hw:`. A bare trailing `]` is NOT deferred on: every complete
+	// canonical marker ends with `]` and deferring there would kill the
+	// first-sentence latency win for marker-final replies.
+	for _, suf := range []string{"](", "](h", "](hw"} {
+		if strings.HasSuffix(lower, suf) {
+			return true
+		}
 	}
 	return false
 }

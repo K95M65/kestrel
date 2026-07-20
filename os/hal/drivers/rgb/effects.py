@@ -61,7 +61,14 @@ def run_effect(
     svc,
     base_color: Optional[tuple] = None,
 ):
-    """Dispatch to the appropriate effect loop. Runs in a background thread."""
+    """Dispatch to the appropriate effect loop. Runs in a background thread.
+
+    Effect loops must pace frames with stop_event.wait(delay), never
+    time.sleep(delay): _stop_current_effect() joins this thread, and a
+    plain sleep makes that join block for up to a full frame/segment
+    delay (seconds for slow-speed blink/flash — past the 2s join timeout,
+    which leaks a zombie effect that keeps painting over new colors).
+    """
     deadline = None
     if duration_ms is not None:
         deadline = time.monotonic() + duration_ms / 1000.0
@@ -105,7 +112,7 @@ def breathing(
             brightness = math.sin(math.pi * i / 100.0)
             scaled = tuple(int(c * brightness) for c in color)
             svc.dispatch(RGB_CMD_SOLID, scaled)
-            time.sleep(step_delay)
+            stop_event.wait(step_delay)
 
 
 def candle(
@@ -128,7 +135,7 @@ def candle(
             b = int(min(255, color[2] * flicker * 0.3))
             pixels.append((r, g, b))
         svc.dispatch(RGB_CMD_PAINT, pixels)
-        time.sleep(step_delay)
+        stop_event.wait(step_delay)
 
 
 def rainbow(
@@ -149,7 +156,7 @@ def rainbow(
             pixels.append((r, g, b))
         svc.dispatch(RGB_CMD_PAINT, pixels)
         offset += 0.01
-        time.sleep(step_delay)
+        stop_event.wait(step_delay)
 
 
 def notification_flash(
@@ -165,11 +172,11 @@ def notification_flash(
         if stop_event.is_set():
             return
         svc.dispatch(RGB_CMD_SOLID, color)
-        time.sleep(flash_on)
+        stop_event.wait(flash_on)
         if stop_event.is_set():
             return
         svc.dispatch(RGB_CMD_SOLID, (0, 0, 0))
-        time.sleep(flash_off)
+        stop_event.wait(flash_off)
 
 
 def blink(
@@ -183,11 +190,11 @@ def blink(
     half_period = 1.0 / (speed * 6.0)  # on time = off time
     while not is_done(deadline, stop_event):
         svc.dispatch(RGB_CMD_SOLID, color)
-        time.sleep(half_period)
+        stop_event.wait(half_period)
         if is_done(deadline, stop_event):
             return
         svc.dispatch(RGB_CMD_SOLID, (0, 0, 0))
-        time.sleep(half_period)
+        stop_event.wait(half_period)
 
 
 def pulse(
@@ -226,7 +233,7 @@ def pulse(
                             for c in range(3)
                         )
             svc.dispatch(RGB_CMD_PAINT, pixels)
-            time.sleep(step_delay)
+            stop_event.wait(step_delay)
 
 
 def speaking_wave(
@@ -277,7 +284,7 @@ def speaking_wave(
                     pixels[idx] = seg_color
 
         svc.dispatch(RGB_CMD_PAINT, pixels)
-        time.sleep(step_delay)
+        stop_event.wait(step_delay)
 
 
 def speaking_wave_rainbow(
@@ -323,4 +330,4 @@ def speaking_wave_rainbow(
 
         svc.dispatch(RGB_CMD_PAINT, pixels)
         hue_offset = (hue_offset + 0.005) % 1.0
-        time.sleep(step_delay)
+        stop_event.wait(step_delay)

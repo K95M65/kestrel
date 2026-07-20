@@ -7,12 +7,12 @@ whatever backend `config.agent_runtime` selects through the single
 hardware markers, Flow Monitor SSE, sensing drain, Telegram fan-out) never knows
 which brain is active.
 
-- **`openclaw`** (default): persistent WebSocket to the OpenClaw daemon. See `docs/os-server.md` + `internal/openclaw`.
-- **`hermes`**: HTTP + SSE client against a local Hermes API server. See `docs/agentic/hermes.md` + `internal/hermes`.
-- **`picoclaw`**: persistent WebSocket client against a local PicoClaw runtime. See `docs/agentic/picoclaw.md` + `internal/picoclaw`.
-- **`codex`**: the **OpenAI Codex CLI** as the device agent brain, behind a local WS bridge. This doc. Code: `os/services/internal/codex/`.
+- **`openclaw`** (default): persistent WebSocket to the OpenClaw daemon. See `docs/os-server.md` + `internal/agent/runtimes/openclaw`.
+- **`hermes`**: HTTP + SSE client against a local Hermes API server. See `docs/agentic/hermes.md` + `internal/agent/runtimes/hermes`.
+- **`picoclaw`**: persistent WebSocket client against a local PicoClaw runtime. See `docs/agentic/picoclaw.md` + `internal/agent/runtimes/picoclaw`.
+- **`codex`**: the **OpenAI Codex CLI** as the device agent brain, behind a local WS bridge. This doc. Code: `os/services/internal/agent/runtimes/codex/`.
 
-> Source of truth is the code. This documents `internal/codex/` as implemented;
+> Source of truth is the code. This documents `internal/agent/runtimes/codex/` as implemented;
 > keep it in sync on change (EN: this file, VI: `docs/vi/agentic/codex_vi.md`).
 
 > **Agentic-backend docs:** [`adding-agent-runtime.md`](adding-agent-runtime.md)
@@ -31,7 +31,7 @@ which brain is active.
 The Codex CLI has no server mode of its own, so the device runs a thin local
 **WS bridge**: the `codex.service` systemd unit runs **`os-server
 codex-gatewayd`** — the bridge is **compiled into the os-server binary**
-(`internal/codex/gatewayd`, a Go port of the reference `bridge.py`; **no Python
+(`internal/agent/runtimes/codex/gatewayd`, a Go port of the reference `bridge.py`; **no Python
 on the device**). The bridge exposes `ws://127.0.0.1:18792/codex/ws/` (bearer
 token `autonomous_codex_token`) and spawns **one subprocess per turn**:
 
@@ -50,7 +50,7 @@ block on an approval prompt (paired with `approval_policy = "never"` +
 `codex.ProvideService`, anything unknown falls back to OpenClaw. On startup a
 `AGENT BACKEND ACTIVE → CODEX` banner prints `ws_url` + `conversation`.
 
-Wire constants (`internal/codex/constants.go`, no per-unit config):
+Wire constants (`internal/agent/runtimes/codex/constants.go`, no per-unit config):
 
 | Const | Default | Meaning |
 |---|---|---|
@@ -126,7 +126,8 @@ On top of the presync run, `EnsureOnboarding` (`onboarding.go`) does the same
 workspace reconcile the other backends get: seeds `KNOWLEDGE.md` from the
 embedded template only if absent, injects the OS-managed
 `<!-- OS DO NOT REMOVE -->` blocks into `SOUL.md` / `AGENTS.md` /
-`HEARTBEAT.md` (OpenClaw-derived, stripped of OpenClaw-only bits), and
+`HEARTBEAT.md` (OpenClaw-derived, stripped of OpenClaw-only bits), refreshes
+the **global** user AGENTS.md block (`ensureUserAgentsMDBlock`, see below), and
 capability-gates skills. Markdown-only changes never restart the gateway —
 each `codex exec` re-reads the workspace; only a presync config change or a
 unit self-heal restarts it.
@@ -147,6 +148,44 @@ The block is rebuilt after `ensureSoulMDBlock` on every `EnsureOnboarding`
 and also right after a rename (`UpdateIdentityName`), so the very next turn
 sees the new name; a missing `SOUL.md` removes the block. Written atomically
 (tmp+rename), and only when the bytes actually differ.
+
+### Skills — native `$CODEX_HOME/skills` discovery (`codexSkillsDir`)
+
+Device skills live in **`/root/.codex/skills/<name>/SKILL.md`** — codex-cli's
+**native** discovery root (`$CODEX_HOME/skills` on 0.142.x). Codex auto-discovers
+every `<name>/SKILL.md` with valid YAML frontmatter here, in **every** session
+regardless of cwd, and lists them in the interactive `@` skill picker. This
+mirrors the claudecode fix (skills moved to Claude Code's native
+`~/.claude/skills`). They are **not** placed in `workspace/skills`, which codex
+never scans — a device with skills there gets an empty `@` picker and no native
+skill loading. All producers target `codexSkillsDir`: `presync.sh` §1 (openclaw
+migration → `$CODEX_DIR/skills`), `skill_watcher.go` (CDN download + the
+`notifySkillChanges` message), and `pruneUnsupportedSkills` (capability gate).
+`migrateSkillsToCodexHome` lifts any legacy `workspace/skills` left by an older
+os-server into the native root and drops the workspace copy (idempotent);
+factory reset wipes all of `/root/.codex`, so the set is re-migrated from
+openclaw on the next `EnsureOnboarding`.
+
+**Global user AGENTS.md — device-wide rules for coding sessions.** The workspace
+`AGENTS.md` only reaches the **device-chat** session: the gatewayd runs
+`codex exec --cd /root/.codex/workspace` (`gatewayd/turn.go`), so codex's
+repo-root→cwd AGENTS.md walk finds it. A **Telegram coding session**
+(`telegram_coding.go`, §"Telegram remote coding-sessions") runs
+`codex exec --cd <folder>` in an arbitrary directory (`/root`, `/root/myapp`, …),
+whose walk never reaches the workspace file. Codex additionally loads a **global**
+user-instructions file, `$CODEX_HOME/AGENTS.md` = `/root/.codex/AGENTS.md`, in
+**every** session regardless of cwd (codex-rs `CodexHomeUserInstructionsProvider`,
+merged before the project walk). `ensureUserAgentsMDBlock` (`codexUserAgentsMD`)
+injects an OS block there — same marker discipline as the workspace file — carrying
+the **Connectors (MANDATORY)** rules and the note that device skills live at the
+**absolute** path `/root/.codex/skills/<name>/SKILL.md`. Without it, a coding
+session has no idea the device's connectors exist and tells the owner
+Gmail/Calendar is "not connected". As a read-by-path fallback (independent of
+native discovery), the workspace `AGENTS.md` block and `notifySkillChanges` both
+cite skills by that **absolute** path, never relative `skills/…` — which would
+resolve under the coding session's `<folder>`. No gateway restart is needed
+(per-turn re-read); factory reset wipes all of `/root/.codex`, so the global file
+is rebuilt on the next `EnsureOnboarding`.
 
 ## 2. Transport & sending a turn
 
@@ -224,7 +263,7 @@ Telegram is **device-owned** under Codex. The Codex CLI has no channel layer
 of its own (unlike PicoClaw, whose runtime binary polls the Telegram Bot API
 itself — its presync enables `channel_list.telegram` in PicoClaw's own
 config), so os-server runs the inbound receive loop:
-`internal/codex/telegram_poll.go`, one goroutine started from `StartWS`
+`internal/agent/runtimes/codex/telegram_poll.go`, one goroutine started from `StartWS`
 (outside its reconnect loop, so it survives WS drops). Because it lives inside
 the codex service's lifecycle it runs **only while codex is the active
 runtime** — it can never compete with the openclaw/hermes gateway pollers for
@@ -269,13 +308,13 @@ a wedged turn cannot leave the chat "typing…" forever. Sends are best-effort
 ### Slack (HTTP-mode proxy path)
 
 Slack is also **device-owned**, via the HTTP-mode proxy path (modeled on the
-hermes bridge, `internal/hermes/slack.go`): the public bff-campaign-service
+hermes bridge, `internal/agent/runtimes/hermes/slack.go`): the public bff-campaign-service
 proxy receives Slack Events API deliveries and fans them out over MQTT to the
 device's `slack_event` handler
 (`server/device/delivery/mqtt/slack_event_handler.go`), which dedups by
 `event_id` (in-memory LRU, 5 min TTL) and type-asserts the active gateway to
 `domain.SlackBridge`. `CodexService` implements that bridge
-(`internal/codex/slack.go`), so events route here **only while codex is the
+(`internal/agent/runtimes/codex/slack.go`), so events route here **only while codex is the
 active runtime** — no server-side dispatch code changes, same wiring as
 hermes. Socket Mode is not involved; the device never opens a Slack WebSocket.
 
@@ -318,7 +357,7 @@ codex, like the hermes bridge, trusts the authenticated MQTT path.
 Discord is also **device-owned**: it requires a Gateway WebSocket bot session
 (there is no long-poll receive API), so os-server runs one via
 [discordgo](https://github.com/bwmarrin/discordgo)
-(`internal/codex/discord.go`). Like the telegram loop, the session is started
+(`internal/agent/runtimes/codex/discord.go`). Like the telegram loop, the session is started
 from `StartWS` (`go s.startDiscordBot(ctx)`) and lives inside the codex
 service's lifecycle — it runs **only while codex is the active runtime**, so
 it can never fight another runtime's bot session for the same token. The loop
@@ -370,7 +409,7 @@ also [`adding-agent-runtime.md`](adding-agent-runtime.md).
 
 ### Telegram remote coding-sessions (`telegram_coding.go`, `coding_sessions.go`)
 
-Mirrors `internal/claudecode/telegram_coding.go` 1:1 — a Telegram chat can
+Mirrors `internal/agent/runtimes/claudecode/telegram_coding.go` 1:1 — a Telegram chat can
 **attach to a folder's interactive `codex` thread and continue coding it from
 the phone**, across multiple folders each with its own thread. Separate from the
 device-main persona turn.
@@ -416,12 +455,12 @@ device-main persona turn.
 ## 6. Hooks
 
 Codex ships no hooks loader, so OpenClaw's `emotion-acknowledge` hook is
-reproduced **natively in Go** (`internal/codex/emotion_ack.go`, mirroring
+reproduced **natively in Go** (`internal/agent/runtimes/codex/emotion_ack.go`, mirroring
 hermes' `emotion_ack.go`): on each user-visible turn, sendChat fires
 `{emotion:"thinking"}` to HAL — same skip prefixes, same intensity, same
 capability gate (`skills.SupportedHooks`) as the TS handler. The companion
 `turn-gate` hook is intentionally not mirrored (sendChat already marks the turn
-busy). ⚠️ Keep it in lockstep with `hooks/emotion-acknowledge/handler.ts`.
+busy). ⚠️ Keep it in lockstep with `os/services/internal/agent/runtimes/openclaw/hooks/emotion-acknowledge/handler.ts`.
 
 ## 7. MCP connectors (`mcp.go`)
 

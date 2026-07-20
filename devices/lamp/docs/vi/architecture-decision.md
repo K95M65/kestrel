@@ -133,7 +133,7 @@ server/server.go          — HTTP server (Gin, port 5000)
 server/config/            — Quản lý cấu hình JSON
 internal/resetbutton/     — GPIO 26 nhấn giữ
 internal/network/         — WiFi AP/STA
-internal/openclaw/        — Cấu hình OpenClaw & WebSocket
+internal/agent/runtimes/openclaw/        — Cấu hình OpenClaw & WebSocket
 internal/beclient/        — Backend client, báo cáo trạng thái
 internal/device/          — Setup, xử lý lệnh MQTT, báo cáo trạng thái
 internal/ambient/         — Hành vi idle "sinh vật sống" (breathing LED, color drift, servo micro-movements, TTS mumbles). Gọi HAL HTTP API. Tự pause/resume.

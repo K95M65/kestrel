@@ -29,25 +29,30 @@ INFO lelamp.service.sensing.sensing_service: [sensing] motion: Small movement de
 
 ## Motion Detection (Activity Recognition)
 
-`MotionPerception` runs Kinetics action recognition (via dlbackend) and emits a
+`MotionPerception` runs Kinetics action recognition (via perception-service) and emits a
 `motion.activity` event with the recognized activity labels.
 
 **File:** `os/hal/config.py`
 
 ```python
-MOTION_CONFIDENCE_THRESHOLD = 0.3   # min action-recognition confidence to buffer a label
-MOTION_FLUSH_S = 10.0               # buffer drain cadence — at most one flush per 10s
-MOTION_EVENT_COOLDOWN_S = 360.0     # global floor between motion.activity emissions (6 min)
+MOTION_CONFIDENCE_THRESHOLD = 0.3    # min action-recognition confidence to buffer a label
+MOTION_FLUSH_S = 10.0                # buffer drain cadence — at most one flush per 10s
+MOTION_EVENT_COOLDOWN_S = 900.0      # same-class heartbeat floor between emissions (15 min)
+MOTION_TRANSITION_MIN_GAP_S = 60.0   # min gap for the class-transition cooldown bypass
 ```
 
 **Emission gates (in order, `motion.py`):**
 
 1. **Flush cadence** — buffered detections are drained at most once per `MOTION_FLUSH_S`.
 2. **Presence gate** — no event unless presence == PRESENT.
-3. **Global cooldown** — no `motion.activity` more than once per `MOTION_EVENT_COOLDOWN_S`,
-   regardless of label changes. Bypassed by a posture nudge (already time-gated by the
-   pose window) and by a user change (a new user/session sees a fresh event immediately).
-4. **Per-label dedup** — even within cooldown is cleared, the same `(user, label-set)`
+3. **Global cooldown** — no `motion.activity` more than once per `MOTION_EVENT_COOLDOWN_S`
+   while the **coarse activity class** (the `ACTIVITY_GROUP` set: sedentary/eat/drink/…)
+   stays the same. Same-class raw-label flips (`writing → drawing`) stay floored — that's
+   noise. Bypassed by: a **class transition** (`computer → eat` is real information,
+   emitted as soon as `MOTION_TRANSITION_MIN_GAP_S` has passed, which stops a flickering
+   detection from re-opening every-flush spam), a posture nudge (already time-gated by the
+   pose window), and a user change (a new user/session sees a fresh event immediately).
+4. **Per-label dedup** — even when cooldown is cleared, the same `(user, label-set)`
    within a 5-min window is dropped. Noisy Kinetics labels flip the set often, so the
    global cooldown above is the dominant gate.
 
@@ -56,17 +61,19 @@ MOTION_EVENT_COOLDOWN_S = 360.0     # global floor between motion.activity emiss
 ```
 INFO hal...motion: [motion] raw actions in window: ['writing', 'typing']
 INFO hal...motion: [motion] flushing: Activity detected: writing.
-INFO hal...motion: [motion] cooldown drop: ... (last event 42.1s ago < 360s floor)
+INFO hal...motion: [motion] cooldown drop: ... (last event 42.1s ago < 900s floor, class unchanged)
+INFO hal...motion: [motion] transition bypass: ['sedentary'] → ['eat'] (last event 312.4s ago)
 ```
 
 **Tuning:**
 
 | Symptom | Fix |
 |---------|-----|
-| `motion.activity` fires constantly (every ~10s) | Increase `MOTION_EVENT_COOLDOWN_S` (360 → 600+) — this is the global floor |
+| `motion.activity` fires constantly (every ~10s) | Increase `MOTION_EVENT_COOLDOWN_S` — this is the same-class floor |
+| Repeated events from a blinking detection (drink in/out of frame) | Increase `MOTION_TRANSITION_MIN_GAP_S` (60 → 120+) |
 | Activity not picked up at all | Decrease `MOTION_CONFIDENCE_THRESHOLD` (0.3 → 0.2) |
 | Spurious activity labels | Increase `MOTION_CONFIDENCE_THRESHOLD` (0.3 → 0.4) |
-| Reaction lags a real activity change | Decrease `MOTION_FLUSH_S` (10 → 5) and/or `MOTION_EVENT_COOLDOWN_S` |
+| Reaction lags a real activity change | Decrease `MOTION_FLUSH_S` (10 → 5) and/or `MOTION_TRANSITION_MIN_GAP_S` — class changes already bypass the cooldown |
 
 ---
 
@@ -186,13 +193,14 @@ MOTION_PER_FACE_SESSION_TTL_S = 30.0       # Evict face session after this long 
 MOTION_PER_FACE_MIN_FRAMES = 4             # Min frames before first event fires
 ```
 
-Per-face motion opens a separate WS session per detected face and runs action recognition on an expanded face crop. Each action is deduped independently per face.
+Per-face motion opens a separate WS session per detected face and runs action recognition on an expanded face crop. Each action is deduped independently per face. On top of the per-face dedup, ONE global cooldown floor is shared across all faces — same semantics and same knobs as regular motion (`MOTION_EVENT_COOLDOWN_S` same-class floor, `MOTION_TRANSITION_MIN_GAP_S` min gap on the class-transition bypass, floor cleared on a real user change) — so N faces in frame still produce at most one same-class `motion.activity` per cooldown, not N.
 
 **Tuning:**
 
 | Symptom | Fix |
 |---------|-----|
 | Too many events per person | Increase `MOTION_PER_FACE_DEDUP_WINDOW_S` (300 → 600) |
+| Too many events across people | Increase `MOTION_EVENT_COOLDOWN_S` — the global floor is shared with regular motion |
 | Noisy single-frame classifications | Increase `MOTION_PER_FACE_MIN_FRAMES` (4 → 8) |
 | Sessions accumulate for briefly-seen faces | Decrease `MOTION_PER_FACE_SESSION_TTL_S` (30 → 15) |
 | WS connections pile up in multi-person scenes | Disable with `MOTION_PER_FACE_ENABLED=false` |
@@ -210,7 +218,7 @@ SPEECH_EMOTION_ENABLED = True
 SPEECH_EMOTION_FLUSH_S = 10.0               # Per-user buffer drain cadence
 SPEECH_EMOTION_DEDUP_WINDOW_S = 300.0       # (user, bucket) TTL — 5 min
 SPEECH_EMOTION_MIN_AUDIO_S = 3.0            # Skip utterances shorter than this (hal.config default)
-SPEECH_EMOTION_API_TIMEOUT_S = 15           # dlbackend HTTP timeout
+SPEECH_EMOTION_API_TIMEOUT_S = 15           # perception-service HTTP timeout
 DL_SER_ENDPOINT = "/lelamp/api/dl/ser/recognize"
 ```
 
@@ -252,7 +260,7 @@ The `flushing` line shows the raw label list — that's the mode-over-samples th
 | Single-utterance noisy reads slip through | Raise the offending label's entry in `CONFIDENCE_THRESHOLD_BY_LABEL` (`constants.py`) — e.g. nudge `"sad": 0.6 → 0.7`. Bump `DEFAULT_CONFIDENCE_THRESHOLD` only if the noise is across the board |
 | Short "yeah" / "ok" utterances flagged | Increase `SPEECH_EMOTION_MIN_AUDIO_S` (3.0 → 4.0) |
 | Mood lag — Lamp too slow to react after a real shift | Decrease `SPEECH_EMOTION_FLUSH_S` (10 → 5) |
-| Worker queue full warnings in log | Investigate dlbackend latency; raising queue size is not enough — backlog means something downstream is wedged |
+| Worker queue full warnings in log | Investigate perception-service latency; raising queue size is not enough — backlog means something downstream is wedged |
 | Too many `speech_emotion.detected` for strangers | Expected: unknown speakers use `user="unknown"`; tighten the per-label entry in `CONFIDENCE_THRESHOLD_BY_LABEL` (`constants.py`) or dedup window — do not disable SER solely because Lamp transcript says `Unknown Speaker:` |
 
 ---

@@ -18,6 +18,15 @@ Sends POST                                            - speaks or NO_REPLY
 
 HAL owns per-type tracker logic (sound escalation, motion filtering). Go is the gatekeeper — it drops stale events if the agent is busy, then forwards. The agent decides *how* to react, constrained by `SOUL.md`.
 
+### Global ambient turn floor (cross-type)
+
+All per-type gates above are independent — without a cross-type gate, a burst of *different* event types (emotion + sound + motion within seconds, typical right after a presence change or a HAL restart) still costs several agent turns. The Go `SensingHandler` therefore enforces ONE floor across all **ambient** types: at most one agent turn per `sensing_turn_floor_s` seconds (config key in `config/config.json`, default **120**, `0` disables) for `motion.activity`, `emotion.detected`, `speech_emotion.detected`, `sound`, `presence.away`, `light.level`.
+
+- The floor clock is updated by **every** agent turn the sensing handler creates — voice, web chat, presence, fire included — so ambient events also stay quiet for the floor window after any interaction.
+- **Never floored:** user-initiated types (`voice`, `voice_command`, `voice_agent_handled`, `web_chat`, `touch.head_pat`), safety (`fire_hazard.detected`), and `presence.enter`/`presence.leave` (greeting UX + session bookkeeping).
+- Guard mode bypasses the floor entirely (surveillance wants every event).
+- A floored event is dropped, not queued (`sensing_drop` with reason `ambient_floor` in the Flow Monitor). Every ambient emitter re-offers on its own heartbeat, so a drop only delays awareness — it never loses a user-facing interaction.
+
 ---
 
 ## Sound
@@ -31,12 +40,14 @@ HAL fires a sound event on every audio sample that crosses `SOUND_RMS_THRESHOLD`
 | Stage | What the agent sees | Agent reaction |
 |---|---|---|
 | Occurrence 1 | `... — occurrence 1` | `/emotion shock` (0.8), NO_REPLY |
-| Occurrence 2 | `... — occurrence 2` | `/emotion curious` (0.7), NO_REPLY |
+| Occurrence 2 | **nothing** — counted tracker-side, not forwarded | no agent turn |
 | Occurrence 3+ | `... — persistent (occurrence 3)` | `/emotion curious` (0.9), speaks once |
 | After speaking | dropped by Python (suppressed 3 min) | nothing reaches agent |
 | 2 min silence | window resets | back to occurrence 1 |
 
-The analogy: a dog hears a noise — it looks up (occurrence 1), keeps watching (occurrence 2), then barks once if the noise persists (occurrence 3+). After barking it doesn't keep barking.
+Middle occurrences (2 .. persistent−1) advance the counter but are not forwarded: each forward is a full LLM turn, and "still noisy" between the transition (occurrence 1) and the escalation (persistent) gives the agent nothing to act on — in sustained noise this cuts 3 turns per cycle to 2.
+
+The analogy: a dog hears a noise — it looks up (occurrence 1), keeps watching quietly (occurrence 2, no report), then barks once if the noise persists (occurrence 3+). After barking it doesn't keep barking.
 
 ### Constants (`sound.py`)
 
@@ -62,7 +73,8 @@ _SUPPRESS_DURATION_S  = 180.0  # suppress after speaking (3 min)
 Python pushes `sound_tracker` events directly to the monitor bus via `POST /api/monitor/event`. These appear in the Flow Monitor alongside `sensing_input` turns:
 
 ```json
-{ "action": "silent",    "occurrence": 1 }  // occurrence 1 or 2 — forwarded silently
+{ "action": "silent",    "occurrence": 1 }  // occurrence 1 — forwarded silently
+{ "action": "counted",   "occurrence": 2 }  // middle occurrence — counted, not forwarded
 { "action": "persistent","occurrence": 3 }  // occurrence 3+ — agent will speak
 { "action": "drop" }                        // dedup or suppressed — not forwarded
 ```
@@ -123,13 +135,13 @@ Only large motion is forwarded — small motion is filtered out by HAL and never
 
 ## Posture (RULA — silently sampled, folded into `motion.activity`)
 
-HAL streams every camera frame to dlbackend `/api/dl/pose-estimation/ws` and receives a per-frame RULA breakdown (whole-body score + `risk_level` + per-side `body_scores` and `*_angle` for `neck / trunk / upper_arm / lower_arm / wrist`). `PosePerception` throttles to **one sample per `POSE_SAMPLE_INTERVAL_S` (default 60s)** into a tumbling window + daily JSONL under `/tmp/hal-sensing-snapshots/sensing_pose/samples_YYYY-MM-DD.jsonl`. **No event is emitted directly** — `MotionPerception` checks `is_window_complete()` once per tick and folds the aggregate into the next `motion.activity` when the gate trips.
+HAL streams every camera frame to perception-service `/api/dl/pose-estimation/ws` and receives a per-frame RULA breakdown (whole-body score + `risk_level` + per-side `body_scores` and `*_angle` for `neck / trunk / upper_arm / lower_arm / wrist`). `PosePerception` throttles to **one sample per `POSE_SAMPLE_INTERVAL_S` (default 60s)** into a tumbling window + daily JSONL under `/tmp/hal-sensing-snapshots/sensing_pose/samples_YYYY-MM-DD.jsonl`. **No event is emitted directly** — `MotionPerception` checks `is_window_complete()` once per tick and folds the aggregate into the next `motion.activity` when the gate trips.
 
 ### Tumbling window (when does the summary inject)
 
 A window opens on the **first sedentary motion-activity flush** — `MotionPerception` calls `pose.start_window()` the moment any of the sedentary labels (`using computer`, `writing`, `reading book`, …) show up. Pose samples that arrived before that point (e.g. user was standing or stretching but still present) are cleared so the window's bad_ratio reflects only the sitting period. Once open, the window runs purely on time: it stays open for the full `POSE_WINDOW_DURATION_S` regardless of whether the user later breaks sedentary state — later stretch breaks just leave the bad_ratio honest. Default **600 s = 10 min** for testing; flip to 3600 for production — one variable, no test/prod code paths.
 
-When the window completes, `MotionPerception` performs exactly one decision and **always calls `reset_window()`** — no carry-over of stale samples into the next cycle. If the user is still sedentary on the next flush, `start_window()` opens a fresh cycle immediately; if not, the window stays unanchored until the next sedentary flush. Detection misses (dlbackend returns no `ergo`, occlusion, low confidence) don't extend the window; they simply lower the in-window sample count.
+When the window completes, `MotionPerception` performs exactly one decision and **always calls `reset_window()`** — no carry-over of stale samples into the next cycle. If the user is still sedentary on the next flush, `start_window()` opens a fresh cycle immediately; if not, the window stays unanchored until the next sedentary flush. Detection misses (perception-service returns no `ergo`, occlusion, low confidence) don't extend the window; they simply lower the in-window sample count.
 
 A sample counts as **bad** when **either**:
 
@@ -142,12 +154,12 @@ Injection fires when **all** of the following hold:
 
 - window complete (`time.time() - _window_start_ts >= POSE_WINDOW_DURATION_S`)
 - user is still sedentary on this flush (`has_sedentary` is True — don't nag mid-stretch)
-- in-window samples `>= POSE_WINDOW_MIN_SAMPLES` (default `3`) — noise floor that suppresses windows where dlbackend dropped most frames
+- in-window samples `>= POSE_WINDOW_MIN_SAMPLES` (default `3`) — noise floor that suppresses windows where perception-service dropped most frames
 - `bad_ratio >= POSE_BAD_RATIO` (default **0.6**)
 
 There is no separate "minimum sedentary streak" gate and no separate "nudge cooldown" — the window itself is the rhythm. Window start requires sedentary, so when it completes the user has been at the computer for at least `POSE_WINDOW_DURATION_S`; the unconditional reset after each cycle means the next fire is naturally one window away.
 
-When the inject fires, both the per-label dedup check **and** the global event cooldown (`MOTION_EVENT_COOLDOWN_S`, default 360 s — the floor that bounds ordinary `motion.activity` emissions) are **bypassed** for that single event: a posture nudge is a meaningfully different signal from "user is still using computer", and losing it to dedup or cooldown would mean waiting another full window before the next attempt.
+When the inject fires, both the per-label dedup check **and** the global event cooldown (`MOTION_EVENT_COOLDOWN_S`, default 900 s — the floor that bounds ordinary `motion.activity` emissions) are **bypassed** for that single event: a posture nudge is a meaningfully different signal from "user is still using computer", and losing it to dedup or cooldown would mean waiting another full window before the next attempt.
 
 Window lifecycle:
 1. **Open** — `pose.start_window()` called by motion-side when a sedentary label first appears. Clears any pre-window samples and anchors `_window_start_ts = now`. Idempotent — calls while a window is already open are no-ops.
@@ -198,7 +210,7 @@ When the agent decides to nudge via `/dm`, Lamp's SSE handler calls `ConsumePose
 
 ### Angle sign workaround (temporary)
 
-dlbackend's `signed_flexion_angle` currently returns the opposite sign of its docstring ("Positive = forward flexion") — a user clearly hunched forward registers a **negative** neck angle, not positive. HAL negates `upper_arm_angle`, `neck_angle`, `trunk_angle` on receive (`POSE_FLIP_DLBACKEND_ANGLE_SIGN=True`, default on) so the monitor table and JSONL match reality. `lower_arm_angle` is unsigned and skipped. RULA scores already use `abs(angle)` so risk/score are unaffected by either sign convention. **Revert** by setting the flag to `False` (or removing `_flip_signed_angles`) once dlbackend ships the upstream fix.
+perception-service's `signed_flexion_angle` currently returns the opposite sign of its docstring ("Positive = forward flexion") — a user clearly hunched forward registers a **negative** neck angle, not positive. HAL negates `upper_arm_angle`, `neck_angle`, `trunk_angle` on receive (`POSE_FLIP_DLBACKEND_ANGLE_SIGN=True`, default on) so the monitor table and JSONL match reality. `lower_arm_angle` is unsigned and skipped. RULA scores already use `abs(angle)` so risk/score are unaffected by either sign convention. **Revert** by setting the flag to `False` (or removing `_flip_signed_angles`) once perception-service ships the upstream fix.
 
 ---
 
@@ -563,6 +575,14 @@ t=2:00  leo → {drinking, writing}            → SEND writing only (drinking s
 t=5:01  leo → {drinking}                     → SEND drinking (expired from window)
 ```
 
+The example shows the per-face layer in isolation — the global cooldown floor below applies on top of it.
+
+#### Global cooldown floor (shared across faces)
+
+One cooldown floor is shared across ALL face sessions, with the same semantics and the same knobs as `MotionPerception`: within the same coarse activity class, at most one `motion.activity` per `MOTION_EVENT_COOLDOWN_S` (default 15 min); a coarse-class **transition** bypasses the floor once `MOTION_TRANSITION_MIN_GAP_S` (default 60s) has passed since the last emission; the floor is cleared on a real user change (`reset_dedup`), not on stranger flicker.
+
+Without this floor, the per-face dedup alone would allow one event per person per flush — N people in frame = N events, and every newly detected face would fire immediately. With it, multi-person scenes still produce at most one same-class event per cooldown, no matter how many faces are tracked.
+
 #### Minimum frames gate
 
 A new face session must receive at least `MOTION_PER_FACE_MIN_FRAMES` frames (default 4) before its first event fires. This prevents noisy single-frame classifications from brief face detections.
@@ -603,15 +623,15 @@ Includes the `face_id` in parentheses so the agent knows which person the activi
 
 Lamp detects the **user's** emotional state via three channels:
 
-1. **Facial expression** (primary) — `emotion.detected` event from `os/hal/drivers/sensing/perceptions/emotion.py`. Uses a dedicated emotion classifier running on self-hosted dlbackend via WebSocket. Detects 7 emotions: Angry, Disgust, Fear, Happy, Sad, Surprise, Neutral. Configurable confidence threshold (`EMOTION_CONFIDENCE_THRESHOLD`).
-2. **Speech emotion** (secondary) — `speech_emotion.detected` event from `os/hal/drivers/voice/speech_emotion/`. Runs at the end of every speaker-identified STT session against the same WAV used for speaker recognition. Uses `emotion2vec_plus_large` on dlbackend via HTTP. See [Speech Emotion Recognition](speech-emotion.md) for the full pipeline.
+1. **Facial expression** (primary) — `emotion.detected` event from `os/hal/drivers/sensing/perceptions/emotion.py`. Uses a dedicated emotion classifier running on self-hosted perception-service via WebSocket. Detects 7 emotions: Angry, Disgust, Fear, Happy, Sad, Surprise, Neutral. Configurable confidence threshold (`EMOTION_CONFIDENCE_THRESHOLD`).
+2. **Speech emotion** (secondary) — `speech_emotion.detected` event from `os/hal/drivers/voice/speech_emotion/`. Runs at the end of every speaker-identified STT session against the same WAV used for speaker recognition. Uses `emotion2vec_plus_large` on perception-service via HTTP. See [Speech Emotion Recognition](speech-emotion.md) for the full pipeline.
 3. **Body action** (tertiary) — emotional X3D actions from action recognition are **intentionally dropped** from `motion.activity` (which is purely physical: sedentary/drink/break). A dedicated `motion.emotional` event type is planned for these.
 
 > **Not to be confused with Emotion Expression** (`emotion/SKILL.md`) — which controls Lamp's own emotional output (servo + LED + eyes). Emotion Detection is about sensing what the *user* feels; Emotion Expression is how *Lamp* shows its feelings.
 
 ### `emotion.detected` event
 
-Fired by HAL when the dlbackend emotion classifier detects a facial expression above the confidence threshold. Message format:
+Fired by HAL when the perception-service emotion classifier detects a facial expression above the confidence threshold. Message format:
 
 ```
 Emotion detected: <Label>. (weak camera cue; confidence=<0.00-1.00>; bucket=<positive|negative|other>; treat as uncertain, <bucket-tuned hedge>.)
@@ -626,7 +646,7 @@ Emotion detected: Happy. (weak camera cue; confidence=0.78; bucket=positive; tre
 
 The raw `Emotion detected: <Label>.` prefix is preserved so `user-emotion-detection/SKILL.md`'s parser and the Fear→stressed / Sad→sad mood mapping keep working unchanged. The trailing parenthetical exists to stop the LLM from over-committing on noisy FER reads (the bug it fixed: Fear → "Oh hello there again" greeting). Hedge clauses by bucket: `negative` → "do not assume the user is distressed"; `positive` → "do not over-celebrate"; `other` → "do not over-react".
 
-**Polarity-bucket dedup** (`EMOTION_BUCKETS` in `os/hal/drivers/sensing/perceptions/processors/emotion.py`) collapses fine-grained labels into `positive` / `negative` / `other` and dedups by `(current_user, bucket)` over a 5-min window. Within-bucket noise (Fear↔Sad↔Anger) becomes one event per window; cross-bucket flips (Fear→Happy) still fire as a genuine mood change. Confidence in the message is averaged over instances of the dominant label only — other labels' scores don't dilute it.
+**Polarity-bucket dedup** (`EMOTION_BUCKETS` in `os/hal/drivers/sensing/perceptions/processors/emotion.py`) collapses fine-grained labels into `positive` / `negative` / `other` and dedups by `(current_user, bucket)` over a 5-min window. Within-bucket noise (Fear↔Sad↔Anger) becomes one event per window; cross-bucket flips (Fear→Happy) still fire as a genuine mood change. Confidence in the message is averaged over instances of the dominant label only — other labels' scores don't dilute it. The dedup map is persisted to a boot-scoped sidecar (`/tmp/hal-emotion-state.json`) so a HAL service restart doesn't re-fire the last-known emotion on the first flush; a full device reboot starts fresh.
 
 The sensing handler (`handler.go`) routes `emotion.detected` events to the agent. When the agent is busy, these events are queued and replayed when idle.
 
@@ -653,7 +673,7 @@ See `user-emotion-detection/SKILL.md` for the agent's full response rules.
 
 ### `speech_emotion.detected` event
 
-Fired by HAL at the end of every speaker-identified STT session, after the same WAV bytes used for speaker `/embed` are forwarded to `dlbackend /api/dl/ser/recognize` (emotion2vec_plus_large). Buffering, per-user aggregation, polarity-bucket dedup, and the Lamp POST are all handled inside `os/hal/drivers/voice/speech_emotion/SpeechEmotionService` — `voice_service.py` only calls `submit(user, wav, duration)`. Message format mirrors the facial pipeline:
+Fired by HAL at the end of every speaker-identified STT session, after the same WAV bytes used for speaker `/embed` are forwarded to `perception-service /api/dl/ser/recognize` (emotion2vec_plus_large). Buffering, per-user aggregation, polarity-bucket dedup, and the Lamp POST are all handled inside `os/hal/drivers/voice/speech_emotion/SpeechEmotionService` — `voice_service.py` only calls `submit(user, wav, duration)`. Message format mirrors the facial pipeline:
 
 ```
 Speech emotion detected: <Label>. (weak voice cue; confidence=<0.00-1.00>; bucket=<positive|negative|other>; treat as uncertain, <bucket-tuned hedge>.)
@@ -674,7 +694,7 @@ Labels (from emotion2vec_plus_large): `angry`, `disgusted`, `fearful`, `happy`, 
 2. Unknown speaker (`match=false` or `name=="unknown"`) dropped — no subject to attribute emotion to.
 3. Low-confidence inferences (`< SPEECH_EMOTION_CONFIDENCE_THRESHOLD`) dropped by the worker.
 4. Neutral labels dropped at flush time.
-5. `(user, bucket)` TTL dedup over `SPEECH_EMOTION_DEDUP_WINDOW_S` (default 5 min). Each bucket keeps an independent timer — sending a positive event does not reset the negative window.
+5. `(user, bucket)` TTL dedup over `SPEECH_EMOTION_DEDUP_WINDOW_S` (default 5 min). Each bucket keeps an independent timer — sending a positive event does not reset the negative window. The map is persisted to a boot-scoped sidecar (`/tmp/hal-ser-state.json`) so a HAL service restart doesn't re-fire the last-known speech emotion; a full device reboot starts fresh.
 
 The event payload carries `current_user` explicitly so the Lamp sensing handler doesn't need to look it up.
 

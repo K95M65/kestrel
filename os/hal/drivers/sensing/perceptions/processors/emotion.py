@@ -14,6 +14,7 @@ import requests
 from typing_extensions import override
 
 import hal.config as config
+from hal.dedup_sidecar import DedupStateSidecar
 from hal.drivers.sensing.crypto import CryptoSession, resolve_public_key
 from hal.drivers.sensing.perceptions.models import (
     Face,
@@ -26,6 +27,16 @@ from hal.drivers.sensing.presence_service import PresenceState, PresenseService
 from .base import Perception
 
 logger = logging.getLogger(__name__)
+
+# Boot-scoped dedup sidecar — survives HAL service restarts so the first
+# flush after a deploy/OTA doesn't re-fire the last-known emotion as if it
+# were news (same pattern as the motion sidecar). tmpfs + boot_id: a full
+# device reboot starts fresh on purpose.
+_EMOTION_STATE_PATH = "/tmp/hal-emotion-state.json"
+
+# How long to stop calling the recognize API after a 429 (plan quota
+# exhausted) — every call inside the window is a guaranteed failure.
+_RATE_LIMIT_BACKOFF_S = 300.0
 
 EMOTIONS = [
     "Neutral",
@@ -55,7 +66,7 @@ EMOTION_BUCKETS = {
 }
 
 class RemoteEmotionRecognizer:
-    """Calls the dlbackend HTTP emotion-recognize endpoint for a single face crop."""
+    """Calls the perception-service HTTP emotion-recognize endpoint for a single face crop."""
 
     def __init__(
         self,
@@ -73,6 +84,10 @@ class RemoteEmotionRecognizer:
         self._threshold: float = threshold
         self._timeout: float = timeout
         self._crypto: CryptoSession | None = None
+        # Rate-limit backoff — same shape as fire_hazard: a 429 means the
+        # plan quota is exhausted, every further call (one per face per
+        # sensing tick) is a guaranteed failure + a WARNING log. Pause.
+        self._backoff_until: float = 0.0
 
         if config.DL_ENCRYPTION_ENABLED:
             self._setup_crypto()
@@ -100,6 +115,8 @@ class RemoteEmotionRecognizer:
         """
         if not self._url:
             return None
+        if time.time() < self._backoff_until:
+            return None
 
         try:
             plain_body = json.dumps({
@@ -122,6 +139,13 @@ class RemoteEmotionRecognizer:
                     timeout=self._timeout,
                 )
 
+            if resp.status_code == 429:
+                self._backoff_until = time.time() + _RATE_LIMIT_BACKOFF_S
+                logger.warning(
+                    "[activity.emotion] HTTP 429 (quota) — pausing recognition for %.0fs",
+                    _RATE_LIMIT_BACKOFF_S,
+                )
+                return None
             if resp.status_code != 200:
                 logger.warning(
                     "[activity.emotion] HTTP %d: %s", resp.status_code, resp.text
@@ -162,7 +186,7 @@ class EmotionData:
 
 
 class EmotionPerception(Perception[FaceDetectionData]):
-    """Detects facial emotions via face recognizer callback + dlbackend HTTP.
+    """Detects facial emotions via face recognizer callback + perception-service HTTP.
 
     Registers a callback with FaceRecognizer. When a face is detected,
     sends the face crop to the emotion-recognize HTTP endpoint. Buffers
@@ -205,7 +229,15 @@ class EmotionPerception(Perception[FaceDetectionData]):
         # window dropped even if other emotions were sent in between.
         # Last-key-only dedup let alternating sad/fear/sad/fear bypass the
         # window and spam the agent queue every flush.
-        self._last_sent_by_key: dict[tuple[str, str], float] = {}
+        # Restored from the boot-scoped sidecar so a service restart doesn't
+        # wipe the TTL map and re-fire the last emotion on the first flush.
+        # The debug-only _last_sent_key stays None after a restore — the
+        # reset_dedup user-change guard then no-ops, which is harmless: keys
+        # are (user, bucket), so a new user always forms fresh keys anyway.
+        self._sidecar: DedupStateSidecar = DedupStateSidecar(
+            _EMOTION_STATE_PATH, "activity.emotion"
+        )
+        self._last_sent_by_key: dict[tuple[str, str], float] = self._sidecar.load()
         self._last_sent_key: tuple[str, str] | None = None  # debug/to_dict
         self._last_sent_ts: float = 0.0  # debug/to_dict
         self._dedup_window_s: float = config.EMOTION_DEDUP_WINDOW_S
@@ -425,6 +457,7 @@ class EmotionPerception(Perception[FaceDetectionData]):
                 self._last_sent_by_key[key] = cur_ts
                 self._last_sent_key = key
                 self._last_sent_ts = cur_ts
+                self._sidecar.save(self._last_sent_by_key)
 
             logger.info("[activity.emotion] flushing: %s", message)
             self._send_event("emotion.detected", message, "emotion", snapshots, None)
@@ -455,6 +488,9 @@ class EmotionPerception(Perception[FaceDetectionData]):
             self._last_sent_by_key.clear()
             self._last_sent_key = None
             self._last_sent_ts = 0.0
+            # Sync the sidecar (unlinks it) so a restart can't resurrect the
+            # state this user-change reset just cleared.
+            self._sidecar.save(self._last_sent_by_key)
 
     def to_dict(self) -> dict[str, Any]:
         with self._state_lock:

@@ -3,7 +3,7 @@ set -e
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ota-config.sh"
 
-BUDDY_DIR="${ROOT_DIR}/companions/claude-desktop-buddy"
+BUDDY_DIR="${ROOT_DIR}/integrations/companions/claude-desktop-buddy"
 VERSION_FILE="${BUDDY_DIR}/VERSION_BUDDY"
 
 # Bucket and path: ${BUCKET_PREFIX}/ota/claude-desktop-buddy/[semver].zip

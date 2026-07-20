@@ -182,7 +182,7 @@ def play_recording(req: ServoRequest):
         raise HTTPException(503, "Servo not available")
     if getattr(state.animation_service, "_zero_mode", False) or getattr(state.animation_service, "_hold_mode", False):
         state.logger.debug("servo/play blocked: %s mode active",
-                           "zero-hold" if state.animation_service._zero_mode else "hold")
+                           "zero-hold" if getattr(state.animation_service, "_zero_mode", False) else "hold")
         return {"status": "ok"}
     if not state.animation_service._running.is_set():
         state.animation_service._running.set()
@@ -487,8 +487,12 @@ def aim_servo(req: ServoAimRequest):
         else:
             positions = {**preset, "base_yaw.pos": current.get("base_yaw.pos", preset["base_yaw.pos"])}
 
-        if req.duration > 0:
-            state.animation_service.move_to(positions, duration=req.duration)
+        # Safety speed cap (SAFETY.md motion.max_speed) — aim was the only servo
+        # move endpoint that sent req.duration unclamped; a short duration on a
+        # wide arc (look left = ~90° yaw) would exceed the deg/s ceiling.
+        eff_duration = min_move_duration(state.safety_policy, positions, current, req.duration)
+        if eff_duration > 0:
+            state.animation_service.move_to(positions, duration=eff_duration)
         else:
             with state.animation_service.bus_lock:
                 state.animation_service.robot.send_action(positions)

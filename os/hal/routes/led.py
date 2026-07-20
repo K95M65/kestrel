@@ -21,6 +21,7 @@ from hal.presets import (
     FX_SPEAKING_WAVE,
     LST_EFFECT,
     LST_OFF,
+    LST_PAINT,
     LST_SOLID,
     RGB_CMD_PAINT,
     RGB_CMD_SOLID,
@@ -78,23 +79,76 @@ def set_led_solid(req: LEDSolidRequest):
     color = tuple(req.color) if isinstance(req.color, list) else req.color
     state._stop_current_effect()
     state.rgb_service.dispatch(RGB_CMD_SOLID, color)
-    state._active_scene = None
+    # Transient = temporary overlay that gets restored — it must not exit the
+    # active scene (the boot-time breathing effect was silently killing the
+    # scene re-activated after a HAL restart).
+    if not req.transient:
+        state._active_scene = None
     if state.sensing_service and isinstance(color, tuple):
         state.sensing_service.presence.set_last_color(color)
     if req.transient:
         state._cancel_pending_restore()
     else:
+        # Explicit user look — wins over the mic-muted resting indicator.
+        state._dismiss_mic_muted_led("led/solid")
         state._save_user_led_state({"type": LST_SOLID, "color": list(color)})
     return {"status": "ok"}
 
 
+def _expand_gradient(stops, n: int) -> list:
+    """Linearly interpolate color stops across n pixels (CSS-gradient style)."""
+    rgb = []
+    for c in stops:
+        if isinstance(c, int):
+            rgb.append(((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF))
+        elif isinstance(c, (list, tuple)) and len(c) >= 3:
+            rgb.append(tuple(c[:3]))
+    if not rgb:
+        return []
+    if len(rgb) == 1 or n <= 1:
+        return [rgb[0]] * max(n, 1)
+    out = []
+    segs = len(rgb) - 1
+    for i in range(n):
+        pos = i * segs / (n - 1)
+        k = min(int(pos), segs - 1)
+        t = pos - k
+        a, b = rgb[k], rgb[k + 1]
+        out.append(tuple(int(x + (y - x) * t) for x, y in zip(a, b)))
+    return out
+
+
 @router.post("/led/paint", response_model=StatusResponse)
 def set_led_paint(req: LEDPaintRequest):
-    """Set individual pixel colors."""
+    """Set individual pixel colors (multi-color fills, gradients)."""
     if not state.rgb_service:
         raise HTTPException(503, "LED not available")
-    colors = [tuple(c) if isinstance(c, list) else c for c in req.colors]
+    if req.gradient:
+        colors = _expand_gradient(req.colors, state.rgb_service.led_count)
+    else:
+        colors = [tuple(c) if isinstance(c, list) else c for c in req.colors]
+    # A running effect repaints the strip every ~40ms and would overwrite
+    # the painted pixels — stop it first, same as /led/solid.
+    state._stop_current_effect()
     state.rgb_service.dispatch(RGB_CMD_PAINT, colors)
+    if not req.transient:
+        state._active_scene = None
+    if state.sensing_service:
+        avg = state._avg_paint_color(colors)
+        if avg:
+            state.sensing_service.presence.set_last_color(avg)
+    if req.transient:
+        state._cancel_pending_restore()
+    else:
+        state._dismiss_mic_muted_led("led/paint")
+        # Persist the final pixel list (gradient already expanded) so restore
+        # repaints exactly what the strip showed.
+        state._save_user_led_state(
+            {
+                "type": LST_PAINT,
+                "colors": [list(c) if isinstance(c, tuple) else c for c in colors],
+            }
+        )
     return {"status": "ok"}
 
 
@@ -106,12 +160,14 @@ def turn_off_leds(req: Optional[LEDOffRequest] = Body(default=None)):
     transient = req.transient if req else False
     state._stop_current_effect()
     state.rgb_service.clear()
-    state._active_scene = None
+    if not transient:
+        state._active_scene = None
     if state.sensing_service:
         state.sensing_service.presence.set_last_color((0, 0, 0))
     if transient:
         state._cancel_pending_restore()
     else:
+        state._dismiss_mic_muted_led("led/off")
         state._save_user_led_state({"type": LST_OFF})
     return {"status": "ok"}
 
@@ -130,8 +186,23 @@ def start_led_effect(req: LEDEffectRequest):
         state.logger.info("LED effect '%s' skipped -- TTS speaking_wave active", req.effect)
         return {"status": "ok", "effect": req.effect, "speed": req.speed}
 
+    # Mic-muted red is a privacy indicator — a transient system overlay
+    # (ambient breathing, Buddy Busy pulse, statusled) must NOT paint over
+    # it. Ambient's breathingLoop reads the current color and re-fires every
+    # 2s (see internal/ambient/service.go), and without this guard each tick
+    # would kill our red thread and start ambient's breathing in some dim
+    # frame we happened to sample. User-initiated writes (non-transient) go
+    # through unchanged and dismiss mic-muted below via _dismiss_mic_muted_led.
+    if req.transient and state._mic_muted_led_owns_strip():
+        state.logger.info(
+            "LED effect '%s' (transient) skipped -- mic-muted indicator owns strip",
+            req.effect,
+        )
+        return {"status": "ok", "effect": req.effect, "speed": req.speed}
+
     state._stop_current_effect()
-    state._active_scene = None
+    if not req.transient:
+        state._active_scene = None
 
     base_color = tuple(req.color) if req.color else (255, 180, 100)
     # Transient effects (e.g. Buddy's Busy pulse) overlay on the user's
@@ -168,6 +239,7 @@ def start_led_effect(req: LEDEffectRequest):
     if req.transient:
         state._cancel_pending_restore()
     else:
+        state._dismiss_mic_muted_led("led/effect")
         state._save_user_led_state(
             {
                 "type": LST_EFFECT,
@@ -216,11 +288,30 @@ def restore_led():
     if state._tts_speaking:
         state.logger.info("LED restore skipped -- TTS speaking_wave active")
         return {"status": "ok"}
+    if state._mic_muted_led_owns_strip():
+        # A transient driver releasing the strip while muted settles on the
+        # privacy indicator (the no-user-state branch below would clear it).
+        state._start_mic_muted_effect()
+        state.logger.info("LED restore: mic muted -- settling on privacy indicator")
+        return {"status": "ok"}
     user_state = state._user_led_state
-    if user_state is None or user_state.get("type") == LST_OFF:
+    if user_state is not None and user_state.get("type") == LST_OFF:
+        # User explicitly turned the strip off — honor it, restore to black.
         state._stop_current_effect()
         state.rgb_service.dispatch(RGB_CMD_SOLID, (0, 0, 0))
-        state.logger.info("LED restore: no user state -- strip cleared")
+        state.logger.info("LED restore: user state OFF -- cleared to black")
+        return {"status": "ok"}
+    if user_state is None:
+        # No saved user preference — settle on the ambient resting look
+        # (warm-white breathing, mirrors the Go ambient loop fallback) so a
+        # transient overlay releasing the strip (voice_service noise-session
+        # cleanup, Buddy) doesn't leave the lamp DARK for ~60s until
+        # ambient.breathingLoop resumes after its interaction quiet-window.
+        # Same pattern _clear_mic_muted_led uses when no user state exists.
+        from hal.presets import AMBIENT_RESTING_LED
+
+        state._start_preset_effect(AMBIENT_RESTING_LED, "led-ambient-fallback")
+        state.logger.info("LED restore: no user state -- settling on ambient resting")
         return {"status": "ok"}
     state._restore_user_led()
     return {"status": "ok"}
@@ -233,6 +324,18 @@ def stop_led_effect():
         raise HTTPException(503, "LED not available")
     if state._tts_speaking:
         state.logger.info("LED effect/stop skipped -- TTS speaking_wave active")
+        return {"status": "ok"}
+    # Same reasoning as /led/effect: don't let a transient overlay's cleanup
+    # pull the mic-muted red down. Ambient's breathingLoop calls StopEffect
+    # on pause/lock; without this the red vanishes the moment ambient stops
+    # its own effect. Detect via effect thread name — the mic-muted effect
+    # runs under "led-mic-muted", and stopping any OTHER effect while
+    # mic-muted owns the strip is a stale caller (the mic-muted effect kept
+    # running under it).
+    if state._mic_muted_led_owns_strip() and (
+        state._effect_thread is None or state._effect_thread.name == "led-mic-muted"
+    ):
+        state.logger.info("LED effect/stop skipped -- mic-muted indicator owns strip")
         return {"status": "ok"}
     state._stop_current_effect()
     return {"status": "ok"}

@@ -210,6 +210,9 @@ class TTSService:
         self._stream_rate: Optional[int] = None
         self._stream_lock = threading.Lock()
         self._write_started_ts: Optional[float] = None
+        # Pre-rendered gesture-ack ping, cached per stream rate (see
+        # play_ack_chime). Generated in-memory — no binary asset to ship.
+        self._ack_chime_cache = None
         if self._sd and self._device_rate:
             try:
                 self._ensure_stream(self._device_rate)
@@ -518,6 +521,17 @@ class TTSService:
             logger.info("TTS suppressed -- speaker muted: %s", text[:50])
             return False
 
+        # Cache-first: an exact-text WAV in the prerender cache plays with NO
+        # API call. This is what keeps OS notices (rate-limit, LLM-limit)
+        # audible while the TTS provider itself is rate-limited. Dynamic
+        # agent replies never match — the cache only ever holds warm-listed
+        # fixed phrases. speak_cached mirrors this method's lock semantics.
+        if self._tts_cache_path(text).exists():
+            logger.info("TTS cache-first hit: %s", text[:50])
+            return self.speak_cached(
+                text, interruptible=interruptible, realtime_feedback=realtime_feedback
+            )
+
         if not self._lock.acquire(blocking=False):
             # Busy — but if current speech is interruptible, stop it and retry
             if self._interruptible:
@@ -572,6 +586,16 @@ class TTSService:
         if self._speaker_muted():
             logger.info("TTS suppressed (queue) -- speaker muted: %s", text[:50])
             return False
+
+        # Cache-first — same rationale as speak(): exact-match warm phrases
+        # (OS notices) must play without an API call, or a rate-limited
+        # provider silences the very notice explaining the rate limit. Only
+        # taken while idle; a busy strip queues normally below.
+        if not self._speaking and self._tts_cache_path(text).exists():
+            logger.info("TTS cache-first hit (queue): %s", text[:50])
+            return self.speak_cached(
+                text, interruptible=interruptible, realtime_feedback=realtime_feedback
+            )
 
         if self._lock.acquire(blocking=False):
             # Idle — start a normal speech (same as speak()).
@@ -1165,6 +1189,20 @@ class TTSService:
 
         self._lock.release()
 
+        # Zero-sample completion = backend failure (all producer retries
+        # gave up: Cloudflare 5xx, timeout, network drop). Flash amber so
+        # the user knows their request was heard but the backend broke —
+        # otherwise the device just goes silent and looks frozen. Skip when
+        # the user explicitly stopped (stop_event set) — that's a normal
+        # barge-in, not a failure.
+        if total_samples == 0 and not self._stop_event.is_set():
+            try:
+                from hal import app_state
+
+                app_state._flash_backend_error()
+            except Exception:
+                logger.exception("backend-error flash dispatch failed")
+
         # Lock is released before announcing so the notice can re-acquire it via
         # the cached-play path. Announce is a no-op unless a rate limit was hit.
         if self._rate_limit_hit:
@@ -1339,6 +1377,61 @@ class TTSService:
             "HIT" if hit else "MISS-played",
             len(samples), dst_rate, (time.perf_counter() - t0) * 1000.0, path.name,
         )
+
+    def _ack_chime_samples(self, rate: int):
+        """Pre-rendered acknowledgment ping: E6 + E7 sine partials, ~120ms,
+        exponential decay, 5ms attack ramp (no onset click). Cached per
+        stream rate; regenerated only if the device rate changes."""
+        cached = self._ack_chime_cache
+        if cached is not None and cached[0] == rate:
+            return cached[1]
+        np = self._np
+        t = np.arange(int(rate * 0.12)) / rate
+        envelope = np.exp(-t * 28.0)
+        # 0.4 base: pure-sine pings read perceptually quieter than speech at
+        # equal peak, so sit above typical TTS RMS. Backend volume_boost is
+        # applied at play time (not baked in) so runtime boost changes and
+        # this cache never disagree.
+        tone = 0.4 * envelope * (
+            np.sin(2 * np.pi * 1318.5 * t) + 0.5 * np.sin(2 * np.pi * 2637.0 * t)
+        )
+        samples = tone.astype(np.float32).reshape(-1, 1)
+        attack = max(1, int(rate * 0.005))
+        samples[:attack, 0] *= np.linspace(0.0, 1.0, attack, dtype=np.float32)
+        self._ack_chime_cache = (rate, samples)
+        return samples
+
+    def play_ack_chime(self) -> bool:
+        """Physical-gesture acknowledgment: write a short ping straight into
+        the persistent output stream. Deliberately bypasses self._lock (the
+        speak-level lock) — the ack must sound the instant a button/touch
+        registers, not after the current utterance winds down. Callers stop
+        TTS first; the playback loop then releases _stream_lock within one
+        10ms block, so the chime serializes on _stream_lock only. Doesn't
+        touch _speaking/_stop_event: 120ms of audio needs no stop support
+        and must survive the just-set stop event. Returns False when the
+        chime can't play (no audio, speaker muted, stream unopenable —
+        e.g. while a music aplay owns the ALSA device exclusively)."""
+        if not self.available or self._speaker_muted():
+            return False
+        if self._np is None or self._sd is None:
+            return False
+        try:
+            rate = self._device_rate or TTS_SAMPLE_RATE
+            samples = self._ack_chime_samples(rate)
+            # Same software gain TTS playback applies (_play_wav_inline) so
+            # the chime tracks perceived speech loudness, not just ALSA volume.
+            if self._backend is not None:
+                samples = self._np.clip(
+                    samples * self._backend.volume_boost, -1.0, 1.0
+                )
+            with self._stream_lock:
+                stream = self._ensure_stream(rate)
+                stream.write(samples)
+            return True
+        except Exception as e:
+            logger.debug("Ack chime failed: %s", e)
+            return False
 
     def _render_and_save_wav(self, text: str, cache_path: Path) -> None:
         """Pull all PCM from backend and write WAV atomically. Synchronous."""

@@ -67,6 +67,49 @@ var prunedImageMarkerRe = regexp.MustCompile(`\[image[^\]]*removed[^\]]*\]`)
 // normalizes these to slashes after capture.
 var hwMarkerRe = regexp.MustCompile(`\[HW:((?:/[^{:\]]+(?::[^{:\]]+)*))(?::(\{[^}]*\}))?\]`)
 
+// hwLinkRe matches markdown-link-form markers like
+// [Lights off right away!](HW:/led/off:{}) that markdown-trained LLMs sometimes
+// emit instead of the canonical [HW:/led/off:{}] — the sentence becomes a link
+// label and the marker moves into the URL slot. hwMarkerRe never matches that
+// shape, so the command was silently dropped (the LED never turned off) and
+// the raw link leaked into chat/TTS. normalizeHWMarkers rewrites it to the
+// canonical form, keeping the label as speakable text.
+//
+// Tolerances beyond the canonical grammar, all observed/plausible LLM
+// mangling: case-insensitive scheme (`hw:`), whitespace after `HW:`, and a
+// dangling `:` with no body (`(HW:/led/off:)`). The strip-only mirrors
+// (claudecode/codex stripForChannel, web stripHWMarkers, HAL strip_rt_markers)
+// MUST stay exactly as loose as this regex — a variant the executor rejects
+// must stay visible as raw text, never be silently scrubbed into a
+// confident-looking label.
+var hwLinkRe = regexp.MustCompile(`(?i)\[([^\]]*)\]\(\s*HW:\s*((?:/[^(){:\s]+(?::[^(){:\s]+)*))(?::(\{[^}]*\}))?:?\s*\)`)
+
+// normalizeHWMarkers rewrites markdown-link-form markers to the canonical
+// inline form. The marker is placed BEFORE the label so a reply that opens
+// with a link still counts as a leading marker (fires at stream time).
+func normalizeHWMarkers(text string) string {
+	return hwLinkRe.ReplaceAllStringFunc(text, func(m string) string {
+		sub := hwLinkRe.FindStringSubmatch(m)
+		label, path, body := sub[1], sub[2], sub[3]
+		if body == "" {
+			body = "{}"
+		}
+		marker := "[HW:" + path + ":" + body + "]"
+		// The label group can capture a preceding CANONICAL marker's content:
+		// in `[HW:/led/effect/stop:{}](HW:/led/solid:{...})` (LLM link-wrapped
+		// only the second marker) the label is `HW:/led/effect/stop:{}`.
+		// Reconstruct BOTH markers in emitted order instead of demoting the
+		// first one to spoken text.
+		if len(label) >= 3 && strings.EqualFold(label[:3], "HW:") {
+			return "[HW:" + label[3:] + "]" + marker
+		}
+		if strings.TrimSpace(label) == "" {
+			return marker
+		}
+		return marker + " " + label
+	})
+}
+
 type hwCall struct {
 	path string
 	body string
@@ -75,6 +118,7 @@ type hwCall struct {
 // extractHWCalls parses all [HW:/path:{"json"}] markers from text,
 // returns the list of calls and the text with all markers stripped.
 func extractHWCalls(text string) ([]hwCall, string) {
+	text = normalizeHWMarkers(text)
 	matches := hwMarkerRe.FindAllStringSubmatch(text, -1)
 	calls := make([]hwCall, 0, len(matches))
 	for _, m := range matches {
@@ -111,6 +155,7 @@ func extractHWCalls(text string) ([]hwCall, string) {
 // Caller hands the resulting count to recordFiredHWCount so lifecycle:end can
 // skip these markers via extractHWCalls's stable in-order output.
 func extractLeadingHWCalls(text string) []hwCall {
+	text = normalizeHWMarkers(text)
 	matches := hwMarkerRe.FindAllStringSubmatchIndex(text, -1)
 	var calls []hwCall
 	expectedPos := 0
@@ -221,6 +266,20 @@ func (h *AgentHandler) fireHWCall(c hwCall, flowRunID string, client *http.Clien
 	case strings.Contains(c.path, "/scene"), strings.Contains(c.path, "/led"):
 		flow.Log("hw_led", map[string]any{"path": c.path, "args": c.body, "run_id": flowRunID}, flowRunID)
 		h.monitorBus.Push(domain.MonitorEvent{Type: "hw_led", Summary: c.path + " " + c.body, RunID: flowRunID})
+		// Lock/unlock ambient breathing, mirroring the session-tool path
+		// (handler_event_session_tool.go). Without this, an agent reply
+		// marker like [HW:/led/effect:{"effect":"rainbow"}] never sets
+		// ambient's ledLocked, and ~60s after the turn ambient's breathing
+		// resumes and tramples the agent-set color/effect.
+		switch {
+		case strings.Contains(c.path, "/led/off"), strings.Contains(c.path, "/scene/off"):
+			h.monitorBus.Push(domain.MonitorEvent{Type: "led_off", Summary: "agent hw: " + c.path})
+		case strings.Contains(c.path, "/led/effect/stop"), strings.Contains(c.path, "/led/restore"):
+			// stop/restore release the strip — neither a deliberate look
+			// (no lock) nor a turn-off (no unlock).
+		default:
+			h.monitorBus.Push(domain.MonitorEvent{Type: "led_set", Summary: "agent hw: " + c.path})
+		}
 	case strings.Contains(c.path, "/servo"):
 		flow.Log("hw_servo", map[string]any{"path": c.path, "args": c.body, "run_id": flowRunID}, flowRunID)
 		h.monitorBus.Push(domain.MonitorEvent{Type: "hw_servo", Summary: c.path + " " + c.body, RunID: flowRunID})

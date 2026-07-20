@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="650" viewBox="0 0 980 650" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <marker id="arrd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="980" height="650" fill="#f7f7f8"/>
+  <text x="490" y="30" text-anchor="middle" font-size="20" font-weight="700" fill="#111111">Integrations — how everything connects to the device</text>
+
+  <!-- External chat sources -->
+  <rect x="20" y="70" width="180" height="52" rx="10" fill="#a78bfa"/>
+  <text x="110" y="92" text-anchor="middle" font-size="13" font-weight="600" fill="#ffffff">Twitch chat</text>
+  <text x="110" y="110" text-anchor="middle" font-size="11" fill="#ffffff" fill-opacity="0.9">EventSub / IRC</text>
+
+  <rect x="20" y="160" width="180" height="52" rx="10" fill="#a78bfa"/>
+  <text x="110" y="182" text-anchor="middle" font-size="13" font-weight="600" fill="#ffffff">Autonomous web chat</text>
+  <text x="110" y="200" text-anchor="middle" font-size="11" fill="#ffffff" fill-opacity="0.9">BE publishes to MQTT</text>
+
+  <!-- chat-bridges -->
+  <rect x="250" y="70" width="200" height="52" rx="10" fill="#84cc16"/>
+  <text x="350" y="92" text-anchor="middle" font-size="13" font-weight="600" fill="#ffffff">twitch-chat-hook</text>
+  <text x="350" y="110" text-anchor="middle" font-size="11" fill="#ffffff" fill-opacity="0.9">Go · backend (public HTTPS)</text>
+
+  <rect x="250" y="160" width="200" height="52" rx="10" fill="#84cc16"/>
+  <text x="350" y="182" text-anchor="middle" font-size="13" font-weight="600" fill="#ffffff">autonomous-chat-hook</text>
+  <text x="350" y="200" text-anchor="middle" font-size="11" fill="#ffffff" fill-opacity="0.9">Go · runs on the device</text>
+
+  <line x1="200" y1="96" x2="246" y2="96" stroke="#475569" stroke-width="1.6" marker-end="url(#arr)"/>
+  <line x1="200" y1="186" x2="246" y2="186" stroke="#475569" stroke-width="1.6" marker-end="url(#arr)"/>
+
+  <!-- Device -->
+  <rect x="510" y="56" width="250" height="330" rx="14" fill="#0ea5e9" fill-opacity="0.12" stroke="#0ea5e9" stroke-width="1.5"/>
+  <text x="635" y="80" text-anchor="middle" font-size="15" font-weight="700" fill="#0369a1">Autonomous device</text>
+
+  <rect x="530" y="96" width="210" height="46" rx="8" fill="#0ea5e9"/>
+  <text x="635" y="115" text-anchor="middle" font-size="13" font-weight="600" fill="#ffffff">os-server :5000</text>
+  <text x="635" y="132" text-anchor="middle" font-size="10.5" fill="#ffffff" fill-opacity="0.9">/api/sensing/event → intent → agent turn</text>
+
+  <rect x="530" y="158" width="210" height="42" rx="8" fill="#0ea5e9"/>
+  <text x="635" y="176" text-anchor="middle" font-size="13" font-weight="600" fill="#ffffff">HAL :5001</text>
+  <text x="635" y="192" text-anchor="middle" font-size="10.5" fill="#ffffff" fill-opacity="0.9">voice · vision · sensing · LED</text>
+
+  <rect x="530" y="216" width="210" height="40" rx="8" fill="#84cc16"/>
+  <text x="635" y="233" text-anchor="middle" font-size="12.5" font-weight="600" fill="#ffffff">autonomous-chat-hook</text>
+  <text x="635" y="248" text-anchor="middle" font-size="10.5" fill="#ffffff" fill-opacity="0.9">MQTT subscribe → loopback :5000</text>
+
+  <rect x="530" y="272" width="210" height="46" rx="8" fill="#f59e0b"/>
+  <text x="635" y="291" text-anchor="middle" font-size="12.5" font-weight="600" fill="#ffffff">claude-desktop-buddy :5002</text>
+  <text x="635" y="308" text-anchor="middle" font-size="10.5" fill="#ffffff" fill-opacity="0.9">state machine → LED · display · TTS</text>
+
+  <text x="635" y="352" text-anchor="middle" font-size="10.5" fill="#0369a1">bridges enter the same door as voice/camera</text>
+
+  <!-- bridge arrows into device -->
+  <line x1="450" y1="96" x2="526" y2="110" stroke="#475569" stroke-width="1.6" marker-end="url(#arr)"/>
+  <text x="480" y="86" text-anchor="middle" font-size="10" fill="#475569">POST /api/sensing/event</text>
+  <line x1="450" y1="186" x2="526" y2="230" stroke="#475569" stroke-width="1.6" marker-end="url(#arr)"/>
+  <text x="472" y="212" text-anchor="middle" font-size="10" fill="#475569">MQTT</text>
+
+  <!-- User's Mac -->
+  <rect x="800" y="56" width="160" height="270" rx="14" fill="#f59e0b" fill-opacity="0.12" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="880" y="80" text-anchor="middle" font-size="15" font-weight="700" fill="#b45309">User's Mac</text>
+
+  <rect x="812" y="96" width="136" height="44" rx="8" fill="#f59e0b"/>
+  <text x="880" y="114" text-anchor="middle" font-size="12" font-weight="600" fill="#ffffff">Claude Desktop</text>
+  <text x="880" y="130" text-anchor="middle" font-size="10" fill="#ffffff" fill-opacity="0.9">BLE (NUS) → :5002</text>
+
+  <rect x="812" y="156" width="136" height="44" rx="8" fill="#f59e0b"/>
+  <text x="880" y="174" text-anchor="middle" font-size="12" font-weight="600" fill="#ffffff">claude-code-buddy</text>
+  <text x="880" y="190" text-anchor="middle" font-size="10" fill="#ffffff" fill-opacity="0.9">HTTP + Bearer → :5002</text>
+
+  <rect x="812" y="216" width="136" height="44" rx="8" fill="#f59e0b" fill-opacity="0.55"/>
+  <text x="880" y="234" text-anchor="middle" font-size="12" font-weight="600" fill="#ffffff">autonomous-buddy</text>
+  <text x="880" y="250" text-anchor="middle" font-size="10" fill="#ffffff" fill-opacity="0.9">WS ← device · planned</text>
+
+  <!-- Mac ↔ device arrows -->
+  <line x1="808" y1="118" x2="744" y2="288" stroke="#475569" stroke-width="1.6" marker-end="url(#arr)"/>
+  <line x1="808" y1="178" x2="744" y2="298" stroke="#475569" stroke-width="1.6" marker-end="url(#arr)"/>
+  <line x1="764" y1="119" x2="808" y2="234" stroke="#94a3b8" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#arrd)"/>
+
+  <!-- perception-service -->
+  <rect x="510" y="450" width="450" height="150" rx="14" fill="#4f46e5" fill-opacity="0.12" stroke="#4f46e5" stroke-width="1.5"/>
+  <text x="735" y="476" text-anchor="middle" font-size="15" font-weight="700" fill="#4338ca">perception-service (cloud GPU)</text>
+
+  <rect x="530" y="492" width="120" height="44" rx="8" fill="#4f46e5"/>
+  <text x="590" y="510" text-anchor="middle" font-size="12" font-weight="600" fill="#ffffff">nginx :8899</text>
+  <text x="590" y="526" text-anchor="middle" font-size="10.5" fill="#ffffff" fill-opacity="0.9">TLS front door</text>
+
+  <rect x="680" y="492" width="120" height="44" rx="8" fill="#4f46e5"/>
+  <text x="740" y="510" text-anchor="middle" font-size="12" font-weight="600" fill="#ffffff">lbserver :7999</text>
+  <text x="740" y="526" text-anchor="middle" font-size="10.5" fill="#ffffff" fill-opacity="0.9">LB · RSA/AES</text>
+
+  <rect x="830" y="492" width="110" height="44" rx="8" fill="#4f46e5"/>
+  <text x="885" y="510" text-anchor="middle" font-size="12" font-weight="600" fill="#ffffff">dlserver :8001</text>
+  <text x="885" y="526" text-anchor="middle" font-size="10.5" fill="#ffffff" fill-opacity="0.9">models</text>
+
+  <line x1="650" y1="514" x2="676" y2="514" stroke="#475569" stroke-width="1.6" marker-end="url(#arr)"/>
+  <line x1="800" y1="514" x2="826" y2="514" stroke="#475569" stroke-width="1.6" marker-end="url(#arr)"/>
+  <text x="735" y="572" text-anchor="middle" font-size="10.5" fill="#4338ca">action · facial/speech emotion · pose + ergonomics · objects · speaker embedding</text>
+
+  <!-- HAL → perception-service -->
+  <line x1="580" y1="390" x2="585" y2="486" stroke="#475569" stroke-width="1.6" marker-end="url(#arr)"/>
+  <text x="560" y="440" text-anchor="end" font-size="10.5" fill="#475569">HAL → /hal/api/dl/* · WS + HTTP · X-API-Key</text>
+</svg>

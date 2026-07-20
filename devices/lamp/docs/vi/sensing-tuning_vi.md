@@ -16,7 +16,7 @@ SPEECH_EMOTION_ENABLED = True
 SPEECH_EMOTION_FLUSH_S = 10.0               # Chu kỳ drain buffer theo user
 SPEECH_EMOTION_DEDUP_WINDOW_S = 300.0       # TTL (user, bucket) — 5 phút
 SPEECH_EMOTION_MIN_AUDIO_S = 3.0            # Bỏ utterance ngắn hơn (mặc định config)
-SPEECH_EMOTION_API_TIMEOUT_S = 15           # Timeout HTTP dlbackend
+SPEECH_EMOTION_API_TIMEOUT_S = 15           # Timeout HTTP perception-service
 DL_SER_ENDPOINT = "/lelamp/api/dl/ser/recognize"
 ```
 
@@ -58,9 +58,84 @@ Dòng `flushing` hiển thị danh sách label thô — đó là mode trên các
 | Một utterance nhiễu vẫn lọt | Tăng entry tương ứng trong `CONFIDENCE_THRESHOLD_BY_LABEL` (`constants.py`) — ví dụ `"sad": 0.6 → 0.7`. Chỉ tăng `DEFAULT_CONFIDENCE_THRESHOLD` khi nhiễu diện rộng |
 | "Ừ" / "ok" ngắn bị flag | Tăng `SPEECH_EMOTION_MIN_AUDIO_S` (3.0 → 4.0) |
 | Lamp phản ứng chậm sau đổi mood thật | Giảm `SPEECH_EMOTION_FLUSH_S` (10 → 5) |
-| Cảnh báo worker queue full | Kiểm tra độ trễ dlbackend; tăng queue không đủ nếu downstream kẹt |
+| Cảnh báo worker queue full | Kiểm tra độ trễ perception-service; tăng queue không đủ nếu downstream kẹt |
 | Quá nhiều `speech_emotion.detected` cho người lạ | **Kỳ vọng:** `user="unknown"`; siết entry per-label trong `CONFIDENCE_THRESHOLD_BY_LABEL` (`constants.py`) hoặc dedup — **không** tắt SER chỉ vì transcript có `Unknown Speaker:` |
 
 ### Áp dụng thay đổi
 
 Sau khi sửa `os/hal/config.py` hoặc `voice_service.py` trên Pi: restart service HAL (xem [os-server_vi.md](os-server_vi.md)).
+
+---
+
+## Nhận Diện Hoạt Động (Motion / Activity Recognition)
+
+`MotionPerception` chạy nhận diện hành động Kinetics (qua perception-service) và phát event
+`motion.activity` kèm các label hoạt động nhận được.
+
+**File:** `os/hal/config.py`
+
+```python
+MOTION_CONFIDENCE_THRESHOLD = 0.3    # confidence tối thiểu để buffer 1 label
+MOTION_FLUSH_S = 10.0                # nhịp xả buffer — tối đa 1 flush mỗi 10s
+MOTION_EVENT_COOLDOWN_S = 900.0      # floor heartbeat cùng-class giữa 2 lần phát (15 phút)
+MOTION_TRANSITION_MIN_GAP_S = 60.0   # gap tối thiểu cho bypass khi đổi class
+```
+
+**Các gate phát event (theo thứ tự, `motion.py`):**
+
+1. **Nhịp flush** — detection buffer xả tối đa 1 lần mỗi `MOTION_FLUSH_S`.
+2. **Gate presence** — không phát event nếu presence != PRESENT.
+3. **Cooldown toàn cục** — không phát `motion.activity` quá 1 lần mỗi `MOTION_EVENT_COOLDOWN_S`
+   khi **coarse activity class** (tập `ACTIVITY_GROUP`: sedentary/eat/drink/…) không đổi.
+   Label thô flip cùng class (`writing → drawing`) vẫn bị floor đè — đó là nhiễu.
+   Bypass khi: **đổi class** (`computer → eat` là thông tin thật, phát ngay khi đã qua
+   `MOTION_TRANSITION_MIN_GAP_S` — gap này chặn detection chớp tắt mở lại spam mỗi flush),
+   posture nudge (đã time-gate bởi pose window), và đổi user (user/phiên mới thấy event
+   mới ngay lập tức).
+4. **Dedup per-label** — kể cả khi qua được cooldown, cùng `(user, label-set)` trong
+   cửa sổ 5 phút vẫn bị drop. Label Kinetics nhiễu flip set thường xuyên nên cooldown
+   toàn cục ở trên mới là gate chính.
+
+**Đọc log:**
+
+```
+INFO hal...motion: [motion] raw actions in window: ['writing', 'typing']
+INFO hal...motion: [motion] flushing: Activity detected: writing.
+INFO hal...motion: [motion] cooldown drop: ... (last event 42.1s ago < 900s floor, class unchanged)
+INFO hal...motion: [motion] transition bypass: ['sedentary'] → ['eat'] (last event 312.4s ago)
+```
+
+**Tuning:**
+
+| Triệu chứng | Cách chỉnh |
+|-------------|------------|
+| `motion.activity` fire liên tục (mỗi ~10s) | Tăng `MOTION_EVENT_COOLDOWN_S` — đây là floor cùng-class |
+| Event lặp do detection chớp tắt (drink lúc có lúc không) | Tăng `MOTION_TRANSITION_MIN_GAP_S` (60 → 120+) |
+| Không bắt được hoạt động nào | Giảm `MOTION_CONFIDENCE_THRESHOLD` (0.3 → 0.2) |
+| Label hoạt động rác | Tăng `MOTION_CONFIDENCE_THRESHOLD` (0.3 → 0.4) |
+| Phản ứng chậm khi đổi hoạt động thật | Giảm `MOTION_FLUSH_S` (10 → 5) và/hoặc `MOTION_TRANSITION_MIN_GAP_S` — đổi class đã tự bypass cooldown |
+
+---
+
+## Nhận Diện Hoạt Động Per-Face (Per-Face Motion)
+
+**File:** `os/hal/config.py`
+
+```python
+MOTION_PER_FACE_ENABLED = false            # Bật nhận diện hành động per-face
+MOTION_PER_FACE_DEDUP_WINDOW_S = 300.0     # Cửa sổ dedup per-action (5 phút)
+MOTION_PER_FACE_SESSION_TTL_S = 30.0       # Xóa session sau bao lâu không thấy face
+MOTION_PER_FACE_MIN_FRAMES = 4             # Số frame tối thiểu trước event đầu tiên
+```
+
+Per-face motion mở WS session riêng cho từng khuôn mặt và chạy action recognition trên crop mở rộng quanh mặt. Mỗi action dedup độc lập theo face. Trên lớp dedup per-face có MỘT cooldown floor toàn cục chung cho mọi face — cùng semantics và cùng knobs với motion thường (`MOTION_EVENT_COOLDOWN_S` floor cùng-class, `MOTION_TRANSITION_MIN_GAP_S` gap tối thiểu cho bypass đổi class, floor xóa khi user thực sự đổi) — nên N mặt trong frame vẫn chỉ tối đa 1 `motion.activity` cùng-class mỗi cooldown, không phải N.
+
+**Tuning:**
+
+| Triệu chứng | Cách chỉnh |
+|-------------|------------|
+| Quá nhiều event cho một người | Tăng `MOTION_PER_FACE_DEDUP_WINDOW_S` (300 → 600) |
+| Quá nhiều event khi nhiều người | Tăng `MOTION_EVENT_COOLDOWN_S` — floor toàn cục dùng chung với motion thường |
+| Phân loại nhiễu từ frame đơn lẻ | Tăng `MOTION_PER_FACE_MIN_FRAMES` (4 → 8) |
+| Session tồn đọng cho face thoáng qua | Giảm `MOTION_PER_FACE_SESSION_TTL_S` (30 → 15) |
+| WS connection chồng chất khi nhiều người | Tắt bằng `MOTION_PER_FACE_ENABLED=false` |

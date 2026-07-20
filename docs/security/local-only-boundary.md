@@ -843,7 +843,7 @@ Expected: reachable only if local UI/debug flow requires it.
 
 ### Evidence
 
-`dlbackend/src/server.py`:
+`integrations/perception-service/src/server.py`:
 
 ```py
 async def verify_api_key(api_key: str = Security(api_key_header)):
@@ -854,13 +854,13 @@ async def verify_api_key(api_key: str = Security(api_key_header)):
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
 ```
 
-`dlbackend/src/server.py` CLI default:
+`integrations/perception-service/src/server.py` CLI default:
 
 ```py
 parser.add_argument("--host", default="0.0.0.0", help="Bind host (default: 0.0.0.0)")
 ```
 
-`dlbackend/Makefile`:
+`integrations/perception-service/Makefile`:
 
 ```make
 HOST ?= 0.0.0.0
@@ -886,7 +886,7 @@ This is especially risky for endpoints that process images/audio and may consume
 
 ### Required remediation
 
-#### File: `dlbackend/src/server.py`
+#### File: `integrations/perception-service/src/server.py`
 
 Change CLI default host to loopback:
 
@@ -901,7 +901,7 @@ python server.py                    # default 127.0.0.1:8001
 python server.py --host 0.0.0.0     # expose externally; requires DL_API_KEY
 ```
 
-#### File: `dlbackend/Makefile`
+#### File: `integrations/perception-service/Makefile`
 
 Change:
 
@@ -915,7 +915,7 @@ To:
 HOST ?= 127.0.0.1
 ```
 
-#### File: `dlbackend/src/server.py`
+#### File: `integrations/perception-service/src/server.py`
 
 Make missing `DL_API_KEY` safe. Recommended behavior:
 
@@ -959,7 +959,7 @@ async def verify_api_key(request: Request, api_key: str = Security(api_key_heade
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
 ```
 
-#### File: `dlbackend/src/protocols/utils/common.py`
+#### File: `integrations/perception-service/src/protocols/utils/common.py`
 
 Update WebSocket API key verification similarly:
 
@@ -1265,17 +1265,17 @@ Files to edit:
   - Add local-only middleware.
   - Protect or remove `system exec`, `system shell`, `openclaw config-json`.
 
-- `dlbackend/src/server.py`
+- `integrations/perception-service/src/server.py`
   - Default host `127.0.0.1`.
   - Missing `DL_API_KEY` should allow loopback only, reject non-loopback.
 
-- `dlbackend/src/protocols/utils/common.py`
+- `integrations/perception-service/src/protocols/utils/common.py`
   - Apply same non-loopback API key requirement to WebSocket auth.
 
-- `dlbackend/Makefile`
+- `integrations/perception-service/Makefile`
   - Default `HOST ?= 127.0.0.1`.
 
-- `dlbackend/README.md`
+- `integrations/perception-service/README.md`
   - Update default host and warning for public bind.
 
 - Docs:

@@ -17,12 +17,12 @@ claudecode-specific protocol, layout, and quirks.
 > and the **claude.ai OAuth login** flow (§7b) as an alternative to the
 > config.json API key. Known caveats are flagged ⚠️ in §11.
 
-Code: `os/services/internal/claudecode/`.
+Code: `os/services/internal/agent/runtimes/claudecode/`.
 
 | What | Where on device |
 |------|-----------------|
 | Claude Code CLI | `/usr/local/bin/claude` (symlink → `/root/.local/bin/claude`) |
-| Bridge (systemd `claudecode.service`) | `os-server claudecode-gatewayd` subcommand (compiled into `/usr/local/bin/os-server`; code `os/services/internal/claudecode/gatewayd/`) |
+| Bridge (systemd `claudecode.service`) | `os-server claudecode-gatewayd` subcommand (compiled into `/usr/local/bin/os-server`; code `os/services/internal/agent/runtimes/claudecode/gatewayd/`) |
 | Launch env (`ANTHROPIC_*`, channel flags) | `/root/.claudecode/.env` (presync-owned) |
 | Workspace (Claude's cwd) | `/root/.claudecode/workspace/` |
 | Persona / memory | `workspace/{CLAUDE,SOUL,IDENTITY,USER,MEMORY,KNOWLEDGE}.md`, `workspace/memory/*.md` |
@@ -107,7 +107,7 @@ without a switch):
 ## 3. The bridge (`os-server claudecode-gatewayd`)
 
 Claude Code has no server mode, so the systemd unit runs a small Go gatewayd
-(`internal/claudecode/gatewayd/`, structurally mirroring the codex gatewayd —
+(`internal/agent/runtimes/claudecode/gatewayd/`, structurally mirroring the codex gatewayd —
 no python3/websockets dependency) that:
 
 - holds **one persistent headless Claude process**:
@@ -152,6 +152,14 @@ Outbound frame:
 
 Claude serializes queued inputs itself, so one turn is in flight at a time and
 the single pending/current runID correlation holds.
+
+`sendChat` also reproduces OpenClaw's `emotion-acknowledge` hook **natively in
+Go** (`emotion_ack.go`, mirroring codex/hermes/picoclaw): each user-visible turn
+fires `{emotion:"thinking"}` to HAL — same skip prefixes, same intensity, same
+capability gate (`skills.SupportedHooks`) as the TS handler. The companion
+`turn-gate` hook is intentionally not mirrored (sendChat already marks the turn
+busy). ⚠️ Keep it in lockstep with
+`os/services/internal/agent/runtimes/openclaw/hooks/emotion-acknowledge/handler.ts`.
 
 ## 5. Inbound events → `domain.WSEvent` (`translator.go`)
 
@@ -202,7 +210,7 @@ in-session conversation is lost. `CompactSession` returns
 ## 7. Channels — all device-owned (telegram, discord, slack)
 
 `SupportedChannels() = [telegram, slack, discord]`. All three receive loops
-run inside os-server, mirroring `internal/codex` 1:1. Claude Code's native
+run inside os-server, mirroring `internal/agent/runtimes/codex` 1:1. Claude Code's native
 telegram/discord channel plugins are **deliberately not used**: they proved
 undebuggable in the field (bun children with no journal logs, silent
 allowlist drops, silent death on bridge-restart races), and they would compete
@@ -236,7 +244,7 @@ plugin.
   ~30 s, but rotating it while a session is open takes effect on the next
   session cycle. whatsapp → `domain.ErrChannelNotSupported`.
 - **Slack is DEVICE-OWNED** (`slack.go` + `slack_sender.go`, a mirror of
-  `internal/codex/slack.go`): Claude Code has no slack channel plugin ("Claude
+  `internal/agent/runtimes/codex/slack.go`): Claude Code has no slack channel plugin ("Claude
   in Slack" is a separate cloud feature that spawns web sessions from `@Claude`
   mentions, not a device channel). Instead the public bff-campaign-service
   proxy receives Slack Events API deliveries and fans them out over MQTT to the
@@ -266,7 +274,7 @@ plugin.
 ## 7b. Auth — claude.ai OAuth login (alternative to the API key)
 
 The device can authenticate with the **user's own Claude subscription** instead
-of `llm_api_key`. The flow (`internal/claudecode/login.go`, the
+of `llm_api_key`. The flow (`internal/agent/runtimes/claudecode/login.go`, the
 `domain.ClaudeLoginPairer` optional interface) mirrors the WhatsApp pairing
 flow — streaming `PairingEvent`s — with one extra leg: the OAuth code travels
 back into the flow.
@@ -338,6 +346,21 @@ Telegram, across multiple folders each with its own session.
   its session). This runs in os-server directly (its own `claude` subprocess per
   turn), independent of the persistent gatewayd child, so coding turns and the
   device-main persona never collide.
+- **Terminal side — the `claude-sessions` picker (`cmd/os-server/cc.go`).**
+  Claude's interactive `/resume` picker **excludes headless (`--print`)
+  sessions by design** (filtered on how the session was created), so
+  Telegram-created sessions never appear in it — but `claude --resume <id>`
+  opens ANY session by id (device-proven). The device therefore ships its own
+  picker: `claude-sessions` (a thin `/usr/local/bin/claude-sessions` wrapper
+  installed by presync §5, sudo-reexecs into `os-server claude-sessions`)
+  lists every session for the **current folder** (`-a` for all folders,
+  `--json` for scripts) via the same `allCodingSessions` discovery (one source
+  of truth, exposed as `claudecode.ListCodingSessions`), then execs
+  `claude --resume <id>` in the session's folder with the presync `.env` +
+  `IS_SANDBOX=1` + `HOME=/root` merged in. Telegram's `/resume <n>`·`/here`
+  replies include the matching `claude --resume <id>` / `claude-sessions`
+  hint. Codex needs no equivalent — `codex resume`'s own picker is global and
+  already lists Telegram-created threads.
 
 ## 8. Workspace, persona, skills, MCP
 
@@ -345,8 +368,34 @@ Telegram, across multiple folders each with its own session.
   OS-managed block (marker-delimited, owner notes preserved below) holding the
   persona **@imports** (`@SOUL.md @IDENTITY.md @USER.md @MEMORY.md
   @KNOWLEDGE.md` — CLAUDE.md is the only file Claude loads by name) and the
-  prompt discipline (skills whitelist rule, memory rules, user priority),
-  adapted from picoclaw's AGENTS.md block.
+  prompt discipline (skills whitelist rule, connectors rule, memory rules, user
+  priority), adapted from picoclaw's AGENTS.md block.
+- **Skills are USER-scoped** (`/root/.claude/skills/`, `claudecodeSkillsDir`), not
+  project-scoped. Claude Code resolves *project* skills as `<cwd>/.claude/skills`,
+  so a workspace-only install is invisible to any session whose cwd is not the
+  workspace — notably the **coding sessions** the device spawns in `/root`,
+  `/root/myapp`, … (`coding_sessions.go`). Field symptom: a coding session
+  reported Gmail/Calendar "not connected" and wrote its own `send_email.py`,
+  while the device chat (workspace cwd) answered correctly from the same tokens.
+  User-level skills load in every session regardless of cwd.
+  `migrateSkillsToUserScope()` lifts skills left in the workspace by an older
+  os-server and deletes the legacy dir (leaving it would double-register every
+  skill). A factory reset wipes `/root/.claude/skills` explicitly.
+- **User-level memory** (`/root/.claude/CLAUDE.md`, `userClaudeMDBlock`): the
+  workspace `CLAUDE.md` only reaches the device-chat session, so the device-wide
+  connector rules are also injected here — Claude Code loads this file in every
+  session, in any folder. Kept small on purpose: persona/memory rules stay
+  workspace-scoped; only facts that must survive a `cd` live here.
+- **Connectors rule (in both CLAUDE.md blocks).** Claude Code auto-discovers the
+  `connectors` skill, but discovery alone is not enough:
+  the model would not select it, and answered "no Gmail/Calendar connected" from
+  `.mcp.json` while a valid `google_calendar` token sat on disk. The block
+  therefore states the connector facts outright — credentials live in
+  `/root/.openclaw/workspace/configs/<code>_access_tokens.json`, token
+  connectors (Gmail/Calendar/Drive) have **no** MCP server so `.mcp.json` is not
+  the connector list, and a question *about* a linked service is not "ordinary
+  chat" exempt from skills. It also disambiguates "my events" (Google Calendar)
+  from `/root/local/flow_events_*.jsonl` (device events).
 - **SOUL block**: same `soul_ref` device-soul injection as openclaw/picoclaw.
 - **Persona migration** (`migrate_persona/runtime_claudecode.go`): the layout is
   deliberately **identical to OpenClaw's** (IDENTITY.md its own slot, MEMORY.md

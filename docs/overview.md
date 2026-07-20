@@ -44,7 +44,7 @@ os/services/
 os/hal/
 ├── server.py                     — FastAPI server (38 endpoints)
 ├── config.py                     — Runtime constants (sensing thresholds, timeouts, URLs)
-├── devices/                      — Camera device abstraction (LocalVideoCaptureDevice)
+├── drivers/camera/               — Camera device (LocalVideoCaptureDevice, V4L2)
 ├── service/
 │   ├── voice/voice_service.py    — Local VAD + Deepgram STT
 │   ├── voice/stt/                — Pluggable STT (Deepgram / autonomous)
@@ -61,10 +61,8 @@ os/hal/
 
 devices/                          — Per-device configs and overlays
 skills/                           — SKILL.md files for agent runtime
-hooks/                            — HOOK.md lifecycle hooks for agent runtime
-companions/                       — Companion apps (e.g. Autonomous Buddy)
-contract/                         — Shared API contracts
-cts/                              — Compatibility test suite
+integrations/                     — Off-device: companions/, chat-bridges/, perception-service/
+contract/                         — Shared API contracts (+ cts/ compliance suite)
 ```
 
 ## Principles

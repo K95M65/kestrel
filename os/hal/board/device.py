@@ -203,7 +203,7 @@ def parse_device(device_type: str, text: str) -> DeviceProfile:
         )
     capabilities = parse_capabilities(front_matter)
     # `presence` (people perception: who is here + their emotional state) is a
-    # routeless capability — it runs ML over a sensor via dlbackend. It reads the
+    # routeless capability — it runs ML over a sensor via perception-service. It reads the
     # user's emotion from EITHER the camera (facial emotion, needs `vision`) OR the
     # microphone (speech emotion / SER, needs `audio`), so it needs at least one
     # people sensor to function. This is what `required: true` MEANS for a

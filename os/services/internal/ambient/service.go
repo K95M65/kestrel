@@ -119,6 +119,28 @@ func (s *Service) isPaused() bool {
 	return s.paused || s.sleeping
 }
 
+// LockLED marks the LED as explicitly set by the user/agent so the ambient
+// breathing loop won't override it. Same effect as the "led_set" monitor
+// event — exposed for the /api/hardware proxy, where web-UI LED writes reach
+// HAL directly and never pass through the intent/agent paths that emit the
+// event (without this, ambient resumes ~60s after the last interaction and
+// tramples a web-set color/effect).
+func (s *Service) LockLED() {
+	s.mu.Lock()
+	s.ledLocked = true
+	s.mu.Unlock()
+	slog.Debug("LED locked by hardware proxy", "component", "ambient")
+}
+
+// UnlockLED clears the lock (web-UI /led/off or /scene/off) so breathing can
+// resume on idle. Counterpart of the "led_off" monitor event.
+func (s *Service) UnlockLED() {
+	s.mu.Lock()
+	s.ledLocked = false
+	s.mu.Unlock()
+	slog.Debug("LED unlocked by hardware proxy", "component", "ambient")
+}
+
 // watchInteractions monitors the event bus and pauses/resumes accordingly.
 func (s *Service) watchInteractions(ctx context.Context, eventCh <-chan domain.MonitorEvent) {
 	ticker := time.NewTicker(2 * time.Second)
@@ -261,8 +283,10 @@ func (s *Service) mumbleLoop(ctx context.Context) {
 			continue
 		}
 
+		// SpeakCached: fixed pool, self-caches into hal's WAV cache on first
+		// render so replays skip the TTS provider.
 		mumble := i18n.Pick(i18n.PhraseMumble)
-		if err := hal.Speak(mumble); err != nil {
+		if err := hal.SpeakCached(mumble); err != nil {
 			slog.Debug("mumble TTS failed", "component", "ambient", "error", err)
 		}
 		slog.Debug("mumble", "component", "ambient", "text", mumble)

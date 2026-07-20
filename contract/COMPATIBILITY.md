@@ -1,7 +1,7 @@
 # Autonomous Compatibility Definition
 
 What a device must satisfy to call itself **Autonomous-compatible**. This is the spec; the
-enforcer is the test suite in [`cts/`](../cts/). A device that passes `cts` may use the
+enforcer is the test suite in [`cts/`](cts/). A device that passes the CTS may use the
 Autonomous-compatible mark and run the skill catalog. This is the single thing that keeps a
 hundreds-of-device ecosystem from fragmenting.
 

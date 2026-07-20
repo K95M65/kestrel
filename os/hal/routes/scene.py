@@ -1,6 +1,8 @@
 """Scene route handlers -- /scene endpoints."""
 
+import json
 import threading
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
@@ -15,6 +17,52 @@ from hal.models import (
 from hal.presets import LST_OFF, LST_SCENE, RGB_CMD_SOLID, SCENE_PRESETS
 
 router = APIRouter(tags=["Scene"])
+
+# Persisted active scene — survives HAL *service* restarts so the agent's
+# belief ("focus mode is on") stays true instead of silently desyncing from a
+# scene-less HAL. Deliberately boot-scoped, twice over: the file lives on
+# tmpfs AND carries the kernel boot_id — a full device reboot starts scene-less
+# by design (restoring a days-old focus scene after a power cycle would be
+# wrong), only an in-boot restart (OTA, deploy, crash) restores.
+_SCENE_STATE_PATH = Path("/tmp/hal-scene-state.json")
+
+
+def _boot_id() -> str:
+    try:
+        return Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+    except Exception:
+        return ""
+
+
+def _persist_scene(scene: str | None) -> None:
+    try:
+        if scene is None:
+            _SCENE_STATE_PATH.unlink(missing_ok=True)
+        else:
+            _SCENE_STATE_PATH.write_text(json.dumps({"scene": scene, "boot_id": _boot_id()}))
+    except Exception as e:
+        state.logger.warning("scene persist failed: %s", e)
+
+
+def restore_persisted_scene() -> None:
+    """Re-activate the scene that was live before a service restart.
+
+    Called once from server lifespan (background thread) after the hardware
+    services it touches (LED, servo, voice) are up. Stale files (other boot,
+    unknown scene) are removed, not applied.
+    """
+    try:
+        if not _SCENE_STATE_PATH.exists():
+            return
+        data = json.loads(_SCENE_STATE_PATH.read_text())
+        scene = data.get("scene")
+        if not scene or data.get("boot_id") != _boot_id() or scene not in SCENE_PRESETS:
+            _SCENE_STATE_PATH.unlink(missing_ok=True)
+            return
+        activate_scene(SceneRequest(scene=scene))
+        state.logger.info("Scene restore: re-activated '%s' after service restart", scene)
+    except Exception as e:
+        state.logger.warning("scene restore failed: %s", e)
 
 
 @router.get("/scene", response_model=SceneListResponse)
@@ -44,6 +92,7 @@ def activate_scene(req: SceneRequest):
         raise HTTPException(500, f"Failed to set scene: {e}")
 
     state._active_scene = req.scene
+    _persist_scene(req.scene)
     if state.sensing_service:
         state.sensing_service.presence.set_last_color(tuple(scaled))
     state._save_user_led_state({"type": LST_SCENE, "scene": req.scene})
@@ -85,12 +134,17 @@ def activate_scene(req: SceneRequest):
         state._mic_muted = True
         if state.voice_service and state.voice_service.available:
             state.voice_service.stop()
+        state._persist_mic_state()
         state.logger.info("Scene %s: mic muted", req.scene)
     elif mic == "on" and state._mic_muted:
         state._mic_muted = False
         state._mic_manual_override = False
         if state.voice_service:
             state.voice_service.start()
+        # Mic is live again — drop a lingering privacy indicator flag (the
+        # scene paint already owns the strip look).
+        state._clear_mic_muted_led()
+        state._persist_mic_state()
         state.logger.info("Scene %s: mic unmuted", req.scene)
 
     # Speaker control
@@ -101,9 +155,11 @@ def activate_scene(req: SceneRequest):
             state.tts_service.stop()
         if state.music_service and state.music_service.playing:
             state.music_service.stop()
+        state._persist_speaker_state()
         state.logger.info("Scene %s: speaker muted", req.scene)
     elif spk == "on" and state._speaker_muted:
         state._speaker_muted = False
+        state._persist_speaker_state()
         state.logger.info("Scene %s: speaker unmuted", req.scene)
 
     return {
@@ -124,6 +180,7 @@ def deactivate_scene():
     """
     prev = state._active_scene
     state._active_scene = None
+    _persist_scene(None)
     state._save_user_led_state(None)
 
     # Release servo hold
@@ -142,11 +199,14 @@ def deactivate_scene():
         state._mic_manual_override = False
         if state.voice_service:
             state.voice_service.start()
+        state._clear_mic_muted_led()
+        state._persist_mic_state()
         state.logger.info("Scene off: mic unmuted")
 
     # Unmute speaker
     if state._speaker_muted:
         state._speaker_muted = False
+        state._persist_speaker_state()
         state.logger.info("Scene off: speaker unmuted")
 
     # Restore idle LED

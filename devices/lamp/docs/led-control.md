@@ -13,7 +13,7 @@
 | GET | `/led` | LED strip info (count, available) |
 | GET | `/led/color` | Current color `{"r", "g", "b"}` |
 | POST | `/led/solid` | Fill entire strip with one color |
-| POST | `/led/paint` | Set per-pixel colors (array up to 64 items) |
+| POST | `/led/paint` | Set per-pixel colors (array up to 64 items), or a gradient with `"gradient": true` |
 | POST | `/led/off` | Turn off all LEDs |
 | POST | `/led/effect` | Start an effect |
 | POST | `/led/effect/stop` | Stop running effect |
@@ -21,40 +21,49 @@
 
 ### Transient writes
 
-`/led/solid`, `/led/effect`, and `/led/off` accept an optional `"transient": true` flag. When set, the call paints the strip but does **not** overwrite the saved user LED state. The saved state is restored when the caller (e.g. Claude Desktop Buddy) is done — either via the natural emotion restore timer, or by an explicit `POST /led/restore`. Pulse effects launched with `transient: true` also overlay on the user's saved color instead of black.
+`/led/solid`, `/led/paint`, `/led/effect`, and `/led/off` accept an optional `"transient": true` flag. When set, the call paints the strip but does **not** overwrite the saved user LED state. The saved state is restored when the caller (e.g. Claude Desktop Buddy) is done — either via the natural emotion restore timer, or by an explicit `POST /led/restore`. Pulse effects launched with `transient: true` also overlay on the user's saved color instead of black.
 
 ## Solid Color
 
 ```json
 POST /led/solid
-{"r": 255, "g": 180, "b": 100}
+{"color": [255, 180, 100]}
 ```
 
-RGB values 0-255.
+`color` is an `[R, G, B]` array (values 0-255) or a packed `0xRRGGBB` int.
 
-## Paint (Per-Pixel)
+## Paint (Per-Pixel / Gradient)
 
 ```json
 POST /led/paint
-{"pixels": [{"i": 0, "r": 255, "g": 0, "b": 0}, {"i": 1, "r": 0, "g": 255, "b": 0}]}
+{"colors": [[255, 0, 0], [0, 255, 0], [0, 0, 255]]}
 ```
 
-`i` = pixel index (0-63).
+`colors` is an array of `[R, G, B]` (or packed-int) pixels applied in index order (0-63). Without `gradient`, only the first `len(colors)` pixels are painted — the rest of the strip keeps its previous color.
+
+```json
+POST /led/paint
+{"colors": [[0, 200, 200], [150, 0, 255]], "gradient": true}
+```
+
+With `"gradient": true` the colors are treated as gradient **stops** and linearly interpolated across the whole strip (CSS-gradient style) — the example above fades cyan → purple over all 64 pixels. Works with any number of stops ≥ 1.
+
+Paint stops any running effect first (an effect repaints the strip every ~40ms and would overwrite it) and, unless `"transient": true`, saves the painted pixel list as the user LED state — so emotion animations, TTS waves, and HAL restarts within the same boot restore the exact gradient. For gradients the *expanded* 64-pixel list is saved, not the stops.
 
 ## Effects
 
 ```json
 POST /led/effect
-{"effect": "breathing", "r": 255, "g": 100, "b": 50, "speed": 1.0}
+{"effect": "breathing", "color": [255, 100, 50], "speed": 1.0}
 ```
 
 | Effect | Description | Params |
 |--------|-------------|--------|
-| `breathing` | Sine-wave brightness up/down | r, g, b, speed |
-| `candle` | Random flickering candle | r, g, b |
+| `breathing` | Sine-wave brightness up/down | color, speed |
+| `candle` | Random flickering candle | color |
 | `rainbow` | Hue rotation across strip | speed |
-| `notification_flash` | Quick flash 3 times | r, g, b |
-| `pulse` | Single pulse from center outward | r, g, b, speed |
+| `notification_flash` | Quick flash 3 times | color |
+| `pulse` | Single pulse from center outward | color, speed |
 
 ## Lighting Scenes
 
@@ -66,6 +75,8 @@ POST /scene
 Each scene controls **all peripherals** — not just LED, but also camera, mic, speaker, and servo.
 
 Deactivate: `POST /scene/off` — clears active scene, restores idle LED, re-enables camera/speaker, releases servo hold.
+
+The active scene **survives HAL service restarts** (OTA, deploy, crash): it is persisted to a boot-scoped sidecar (`/tmp/hal-scene-state.json`, keyed to the kernel `boot_id`) and re-activated automatically when HAL comes back up, so the agent's belief ("focus mode is on") stays in sync. A full device reboot intentionally starts scene-less. Transient LED calls (`/led/solid`, `/led/off`, `/led/effect` with `"transient": true`, e.g. the boot breathing effect) overlay the strip without exiting the active scene; only non-transient LED overrides clear it.
 
 | Scene | Bright | Color (K) | Servo | Camera | Mic | Speaker |
 |-------|--------|-----------|-------|--------|-----|---------|
@@ -132,6 +143,25 @@ from `STATUS_LED_PRESETS`, overridable per device via `presets.json`'s `status_l
 (see [DEVICE-SPEC.md § Per-device presets](../../../contract/DEVICE-SPEC.md#per-device-presets-presetsjson)).
 `setup` is a persistent solid (saved as the displayed state); the rest are transient overlays.
 
+### Mic-muted idle indicator
+
+`STATUS_LED_PRESETS["mic_muted"]` — dark red `(140, 0, 0)` breathing at speed 0.8. HAL-local
+key (no Go statusled state): applied by `POST /voice/mute`, cleared by `POST /voice/unmute`
+(`app_state._mic_muted_led`). It is the strip's **resting look** while the mic is muted —
+nothing is blocked:
+
+- Emotions, effects, TTS/music waves, and transient overlays all run normally on top.
+  When they finish, every LED restore (`_restore_user_led`, `POST /led/restore`) settles
+  back on the red instead of the user state — "nothing happening + red breathing" means
+  the mic is muted.
+- An explicit user LED command (non-transient `/led/solid|off|effect`, `/led/paint`)
+  dismisses the indicator — the user's ask wins the strip; the mic stays muted.
+- Yields to deliberate lighting choices: user LED-off stays dark, an active scene keeps
+  its functional lighting (the flag persists, so leaving the scene while still muted
+  brings the red back on the next restore). Scene mic-unmute paths (`/scene` with
+  `mic:"on"`, `/scene/off`) also clear it.
+- `_user_led_state` is never touched — unmute restores the user's saved look.
+
 ### Setup-needed solid (lamp)
 
 When lamp starts and `config.SetUpCompleted == false` (device in AP/provisioning mode), `server/server.go` spawns a background goroutine that polls HAL `GET /health` once per second up to 30s, and once `health.led == true` fires `lelamp.SetSolid(255, 255, 255)` — paints the strip solid white as a "device ready, connect to my hotspot" cue. Polling (not a single call) handles the cold-boot race where os-server's :5000 is up before HAL's :5001. No status LED state is used. Booting blue-breathing still shows during init. See [setup-flow.md](setup-flow.md#ap-mode).
@@ -146,6 +176,10 @@ Auto-pauses on interaction, resumes after 60s of silence.
 ## LED in Emotion
 
 See [emotion-led-mapping.md](emotion-led-mapping.md) for the full emotion → LED color + effect + servo mapping.
+
+### Unknown emotion names
+
+`POST /emotion` (`os/hal/routes/emotion.py`) never rejects a non-empty emotion name. Names are lowercased/trimmed; anything not in `EMOTION_PRESETS` falls back to `curious` (a neutral, always-safe expression) with a warning logged — callers are AI agents that sometimes invent emotion names, and a 400 would waste their turn with nothing showing on the device. Exception: while the device is sleeping, an unknown name is **ignored** (`status: ignored`) instead of falling back — `curious` is a wake emotion, so the fallback would let an invented name bypass the sleep gate and wake the device. Otherwise everything downstream (servo, LED) uses the resolved emotion.
 
 ## Per-device preset overrides
 

@@ -1,5 +1,5 @@
 """
-One-shot test of the speech-emotion engine against a hosted dlbackend.
+One-shot test of the speech-emotion engine against a hosted perception-service.
 
 Records a fixed-length clip from the default mic, sends it to
 `/api/dl/ser/recognize`, prints `{label, confidence}`. No buffering,
@@ -7,7 +7,7 @@ no Lamp POST — just verifies the engine + network path.
 
 Usage (from repo root):
 
-    # Point at your hosted dlbackend
+    # Point at your hosted perception-service
     export DL_BACKEND_URL="https://<host>"            # no trailing slash
     export DL_API_KEY="<your shared secret>"          # if your backend requires it
 
@@ -46,7 +46,7 @@ logger = logging.getLogger("test.speech_emotion_engine")
 SAMPLE_RATE = 16000
 CHANNELS = 1
 DEFAULT_DURATION_S = 5.0
-# Hit FastAPI directly — the `/hal/` prefix only exists when dlbackend
+# Hit FastAPI directly — the `/hal/` prefix only exists when perception-service
 # is fronted by the production nginx config (RunPod) that strips it before
 # forwarding. Local dev runs uvicorn on its native port, no prefix.
 DEFAULT_ENDPOINT = "/api/dl/ser/recognize"
@@ -87,7 +87,7 @@ def main() -> int:
     parser.add_argument(
         "--dl-backend-url",
         default=os.environ.get("DL_BACKEND_URL", "http://localhost:8008"),
-        help="Base URL of the hosted dlbackend (no trailing slash).",
+        help="Base URL of the hosted perception-service (no trailing slash).",
     )
     parser.add_argument(
         "--api-key",

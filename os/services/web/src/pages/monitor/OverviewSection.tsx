@@ -242,9 +242,23 @@ export function OverviewSection({
                     <span style={{ fontSize: 10, padding: "3px 8px", borderRadius: 4, background: "var(--lm-amber-dim)", color: "var(--lm-amber)" }}>LIVE</span>
                   ) : null}
                 </div>
-                <ToggleButton active={!voice.mic_muted} label={voice.mic_muted ? "Unmute" : "Mute"}
-                  onClick={() => fetch(`${HW}/voice/${voice.mic_muted ? "unmute" : "mute"}`, { method: "POST" }).catch(() => {})} />
+                {/* HW slide switch is the authority: while it's off, /voice/unmute
+                    returns 409 (see routes/voice.py). Disable the toggle and show
+                    a text hint under it so the user knows to flip the physical
+                    switch. hw_mic_switch_muted === null → device has no switch
+                    (Lamp) → normal behavior. */}
+                <ToggleButton
+                  active={!voice.mic_muted}
+                  disabled={voice.hw_mic_switch_muted === true}
+                  label={voice.mic_muted ? "Unmute" : "Mute"}
+                  onClick={() => fetch(`${HW}/voice/${voice.mic_muted ? "unmute" : "mute"}`, { method: "POST" }).catch(() => {})}
+                />
               </div>
+              {voice.hw_mic_switch_muted === true && (
+                <div style={{ fontSize: 10.5, color: "#d97706", marginTop: -6 }}>
+                  Hardware mic switch is off — flip the physical switch to unmute.
+                </div>
+              )}
 
               {/* TTS row */}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -812,16 +826,18 @@ function AudioSkeleton() {
 // `active` (e.g. mic live) it shows a destructive red tone; when inactive
 // (already muted) it offers a green "Unmute". Tones come from STATUS_TONE so
 // they stay theme-aware (the old code hardcoded #f87171 which broke on light).
-function ToggleButton({ active, label, onClick }: {
+function ToggleButton({ active, label, onClick, disabled = false }: {
   active: boolean;
   label: string;
   onClick: () => void;
+  disabled?: boolean;
 }) {
   const tone = active ? STATUS_TONE.error : STATUS_TONE.ok;
   return (
-    <button className="lm-u-btn" onClick={onClick} style={{
+    <button className="lm-u-btn" onClick={onClick} disabled={disabled} style={{
       fontSize: 11, padding: "5px 14px", borderRadius: 6, fontWeight: 600,
       background: tone.bg, border: `1px solid ${tone.border}`, color: tone.color,
+      opacity: disabled ? 0.45 : 1, cursor: disabled ? "not-allowed" : "pointer",
     }}>
       {label}
     </button>

@@ -13,7 +13,7 @@
 | GET | `/led` | LED strip info (count, available) |
 | GET | `/led/color` | Màu hiện tại `{"r", "g", "b"}` |
 | POST | `/led/solid` | Fill toàn bộ strip 1 màu |
-| POST | `/led/paint` | Set từng pixel (array tối đa 64 items) |
+| POST | `/led/paint` | Set từng pixel (array tối đa 64 items), hoặc gradient với `"gradient": true` |
 | POST | `/led/off` | Tắt tất cả LED |
 | POST | `/led/effect` | Bật effect |
 | POST | `/led/effect/stop` | Dừng effect đang chạy |
@@ -21,40 +21,49 @@
 
 ### Transient writes
 
-`/led/solid`, `/led/effect`, `/led/off` chấp nhận flag tùy chọn `"transient": true`. Khi bật, call sẽ paint strip nhưng **không** ghi đè user LED state. State đã lưu sẽ được restore khi caller (vd Claude Desktop Buddy) xong việc — qua emotion restore timer tự nhiên, hoặc qua `POST /led/restore`. Pulse effect chạy với `transient: true` cũng overlay trên màu user thay vì nền đen.
+`/led/solid`, `/led/paint`, `/led/effect`, `/led/off` chấp nhận flag tùy chọn `"transient": true`. Khi bật, call sẽ paint strip nhưng **không** ghi đè user LED state. State đã lưu sẽ được restore khi caller (vd Claude Desktop Buddy) xong việc — qua emotion restore timer tự nhiên, hoặc qua `POST /led/restore`. Pulse effect chạy với `transient: true` cũng overlay trên màu user thay vì nền đen.
 
 ## Solid Color
 
 ```json
 POST /led/solid
-{"r": 255, "g": 180, "b": 100}
+{"color": [255, 180, 100]}
 ```
 
-Giá trị RGB 0-255.
+`color` là array `[R, G, B]` (giá trị 0-255) hoặc int packed `0xRRGGBB`.
 
-## Paint (Per-Pixel)
+## Paint (Per-Pixel / Gradient)
 
 ```json
 POST /led/paint
-{"pixels": [{"i": 0, "r": 255, "g": 0, "b": 0}, {"i": 1, "r": 0, "g": 255, "b": 0}]}
+{"colors": [[255, 0, 0], [0, 255, 0], [0, 0, 255]]}
 ```
 
-`i` = pixel index (0-63).
+`colors` là array các pixel `[R, G, B]` (hoặc packed int) áp theo thứ tự index (0-63). Không có `gradient`, chỉ `len(colors)` pixel đầu được paint — phần còn lại của strip giữ màu cũ.
+
+```json
+POST /led/paint
+{"colors": [[0, 200, 200], [150, 0, 255]], "gradient": true}
+```
+
+Với `"gradient": true`, các màu được coi là **stop** của gradient và nội suy tuyến tính trên toàn bộ strip (kiểu CSS gradient) — ví dụ trên fade cyan → tím qua cả 64 pixel. Chấp nhận số stop bất kỳ ≥ 1.
+
+Paint tự dừng effect đang chạy trước (effect repaint strip mỗi ~40ms sẽ đè lên) và, trừ khi `"transient": true`, lưu danh sách pixel đã paint làm user LED state — nên emotion animation, TTS wave, và HAL restart trong cùng phiên boot đều restore đúng gradient. Với gradient, danh sách 64 pixel *đã expand* được lưu, không phải các stop.
 
 ## Effects
 
 ```json
 POST /led/effect
-{"effect": "breathing", "r": 255, "g": 100, "b": 50, "speed": 1.0}
+{"effect": "breathing", "color": [255, 100, 50], "speed": 1.0}
 ```
 
 | Effect | Mô tả | Params |
 |--------|-------|--------|
-| `breathing` | Sine-wave brightness lên xuống | r, g, b, speed |
-| `candle` | Nến lung linh ngẫu nhiên | r, g, b |
+| `breathing` | Sine-wave brightness lên xuống | color, speed |
+| `candle` | Nến lung linh ngẫu nhiên | color |
 | `rainbow` | Xoay hue qua toàn bộ strip | speed |
-| `notification_flash` | Flash nhanh 3 lần | r, g, b |
-| `pulse` | Pulse đơn từ tâm ra ngoài | r, g, b, speed |
+| `notification_flash` | Flash nhanh 3 lần | color |
+| `pulse` | Pulse đơn từ tâm ra ngoài | color, speed |
 
 ## Lighting Scenes
 
@@ -64,6 +73,10 @@ POST /scene
 ```
 
 Mỗi scene điều khiển **toàn bộ thiết bị ngoại vi** — không chỉ LED mà cả camera, mic, speaker và servo.
+
+Tắt scene: `POST /scene/off` — xoá scene đang active, khôi phục LED idle, bật lại camera/speaker, nhả servo hold.
+
+Scene đang active **sống sót qua các lần restart HAL service** (OTA, deploy, crash): trạng thái được persist vào sidecar theo phiên boot (`/tmp/hal-scene-state.json`, gắn với `boot_id` của kernel) và tự động kích hoạt lại khi HAL chạy trở lại, nên niềm tin của agent ("focus mode đang bật") luôn đồng bộ. Reboot toàn bộ thiết bị thì chủ đích khởi động không có scene. Các lệnh LED transient (`/led/solid`, `/led/off`, `/led/effect` với `"transient": true`, vd hiệu ứng breathing lúc boot) chỉ overlay lên strip mà không thoát scene đang active; chỉ LED override non-transient mới xoá scene.
 
 | Scene | Sáng | Màu (K) | Servo | Camera | Mic | Speaker |
 |-------|------|---------|-------|--------|-----|---------|
@@ -129,6 +142,24 @@ màu/effect/speed từ `STATUS_LED_PRESETS`, override per-device qua section `st
 `presets.json` (xem [DEVICE-SPEC.md § Per-device presets](../../../../contract/DEVICE-SPEC.md#per-device-presets-presetsjson)).
 `setup` là solid bền (lưu thành trạng thái hiển thị); còn lại là overlay transient.
 
+### Đèn báo mic đang mute (idle indicator)
+
+`STATUS_LED_PRESETS["mic_muted"]` — đỏ sẫm `(140, 0, 0)` breathing speed 0.8. Key HAL-local
+(không có state Go statusled tương ứng): bật bởi `POST /voice/mute`, tắt bởi `POST /voice/unmute`
+(`app_state._mic_muted_led`). Đây là **trạng thái nghỉ** của strip khi mic đang mute —
+không chặn gì cả:
+
+- Emotion, effect, TTS/music wave, transient overlay vẫn chạy bình thường đè lên. Chạy
+  xong thì mọi LED restore (`_restore_user_led`, `POST /led/restore`) lắng về màu đỏ
+  thay vì user state — "không có gì xảy ra + đỏ breathing" nghĩa là mic đang mute.
+- Lệnh LED explicit của user (non-transient `/led/solid|off|effect`, `/led/paint`)
+  dismiss indicator — ý user thắng strip; mic vẫn mute.
+- Nhường các lựa chọn ánh sáng chủ đích: user tắt đèn thì strip vẫn tối, scene active
+  giữ nguyên ánh sáng chức năng (flag vẫn giữ, thoát scene mà còn mute thì đỏ quay lại
+  ở lần restore kế). Các đường scene unmute mic (`/scene` với `mic:"on"`, `/scene/off`)
+  cũng clear indicator.
+- `_user_led_state` không bao giờ bị đụng — unmute là về lại đúng state user đã lưu.
+
 ### Setup-needed solid (lamp)
 
 Khi lamp start và `config.SetUpCompleted == false` (device đang ở AP/provisioning mode), `server/server.go` spawn goroutine background poll `GET /health` của HAL mỗi giây tối đa 30s, khi `health.led == true` thì fire `lelamp.SetSolid(255, 255, 255)` — paint strip trắng solid báo "device ready, vào hotspot đi". Phải poll (không phải call 1 lần) vì cold boot os-server bind :5000 trước HAL :5001. Không dùng status LED state. Blue-breathing booting vẫn show trong lúc init. Xem [setup-flow_vi.md](setup-flow_vi.md#ap-mode).
@@ -154,6 +185,10 @@ Mỗi emotion preset có LED color riêng:
 | excited | Cam sáng |
 | shy | Hồng nhạt |
 | shock | Trắng flash |
+
+### Tên emotion không nhận diện được
+
+`POST /emotion` (`os/hal/routes/emotion.py`) không bao giờ từ chối tên emotion khác rỗng. Tên được lowercase/trim; tên nào không có trong `EMOTION_PRESETS` sẽ fallback về `curious` (biểu cảm trung tính, luôn an toàn) kèm log warning — caller là AI agent đôi khi bịa tên emotion, trả 400 sẽ phí lượt mà thiết bị không hiển thị gì. Ngoại lệ: khi thiết bị đang ngủ, tên lạ bị **ignore** (`status: ignored`) thay vì fallback — `curious` là wake emotion, nên fallback sẽ cho tên bịa vượt sleep gate và đánh thức thiết bị. Ngoài trường hợp đó, downstream (servo, LED) dùng emotion đã resolve.
 
 ## Override preset theo từng thiết bị
 

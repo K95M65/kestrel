@@ -237,7 +237,7 @@ The agent is LLM-driven so "the code is correct" doesn't guarantee "the agent co
 
 If Lamp suddenly stops forwarding sensing events — log shows a stream of `sensing event queued — agent busy ... runId=` (empty runId) but OpenClaw is idle (`active=0 queued=0`) — the busy flag is wedged. Most common trigger is an OpenClaw heartbeat / memoryFlush turn (`target=none`) that never emits `lifecycle.end` SSE.
 
-See **[`busy-stuck.md`](./busy-stuck.md)** for full root-cause + diagnostic commands + fix paths. Self-heals after `busyTTL = 5 min` (`os/services/internal/openclaw/service_events.go:29`).
+See **[`busy-stuck.md`](./busy-stuck.md)** for full root-cause + diagnostic commands + fix paths. Self-heals after `busyTTL = 5 min` (`os/services/internal/agent/runtimes/openclaw/service_events.go:29`).
 
 ---
 

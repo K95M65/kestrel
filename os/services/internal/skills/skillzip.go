@@ -15,7 +15,7 @@ import (
 )
 
 // Runtime-agnostic skill-sync plumbing shared by every backend's skill watcher
-// (internal/openclaw/skill_watcher.go, internal/hermes/skill_watcher.go). The
+// (internal/agent/runtimes/openclaw/skill_watcher.go, internal/agent/runtimes/hermes/skill_watcher.go). The
 // per-backend watchers differ only in WHERE skills land and HOW the agent is
 // notified; the CDN fetch / atomic extract / content-hash logic is identical, so
 // it lives here once. Keep the two watchers thin and parallel against this.

@@ -11,6 +11,7 @@ Control the device's RGB light directly. Use this skill only when the user reque
 ## Workflow
 1. Determine the user's intent:
    - Specific color -> `[HW:/led/effect/stop:{}][HW:/led/solid:{"color":[R,G,B]}]`
+   - Two or more colors / mix / gradient -> `[HW:/led/effect/stop:{}][HW:/led/paint:{"colors":[[R,G,B],[R,G,B]],"gradient":true}]`
    - Effect -> `[HW:/led/effect:{"effect":"name","color":[R,G,B],"speed":1.0}]`
    - Turn off -> `[HW:/led/off:{}]`
 2. Place markers at start of reply — the device fires them in order before TTS
@@ -29,6 +30,9 @@ Output: `[HW:/led/effect/stop:{}][HW:/led/solid:{"color":[255,0,0]}]` Red light 
 
 Input: "Turn on white light" / "set white" / "white light"
 Output: `[HW:/led/effect/stop:{}][HW:/led/solid:{"color":[255,255,255]}]` White light on!
+
+Input: "Change to cyan purple" / "mix blue and pink" / "gradient from red to orange"
+Output: `[HW:/led/effect/stop:{}][HW:/led/paint:{"colors":[[0,200,200],[150,0,255]],"gradient":true}]` Cyan-to-purple gradient on!
 
 Input: "Do a breathing light with warm color"
 Output: `[HW:/led/effect:{"effect":"breathing","color":[255,180,100],"speed":0.5}]` Breathing effect started with a warm glow.
@@ -54,6 +58,14 @@ Output: Do NOT use this skill. Use **Emotion** skill instead.
 [HW:/led/effect/stop:{}][HW:/led/solid:{"color":[255,220,0]}] Yellow light on!
 ```
 Color is an RGB array `[R, G, B]`.
+
+### Multi-color / gradient (stop effect first)
+```
+[HW:/led/effect/stop:{}][HW:/led/paint:{"colors":[[0,200,200],[150,0,255]],"gradient":true}] Cyan-to-purple gradient!
+```
+- `colors`: list of RGB gradient stops (2+ colors), blended smoothly across the whole strip
+- `gradient: true` is REQUIRED — without it the colors paint only the first N pixels and the rest of the strip keeps its old color
+- Works with 3+ stops too: `{"colors":[[255,0,0],[255,220,0],[0,200,80]],"gradient":true}` = red -> yellow -> green
 
 ### Effect
 ```
@@ -100,8 +112,10 @@ Color is an RGB array `[R, G, B]`.
 
 ## Rules
 - **ALWAYS include the JSON body, even for no-argument commands.** Every marker is `[HW:/path:{...}]` — for commands that take no arguments the body is the empty object `{}`. Emit `[HW:/led/off:{}]` and `[HW:/led/effect/stop:{}]`, **NEVER** the bodyless `[HW:/led/off]` or `[HW:/led/effect/stop]`. A marker without `:{...}` is malformed and the device silently drops it — the light will NOT turn off.
+- **The marker is NOT a markdown link.** Never wrap it as `[some text](HW:/led/off:{})` — emit the plain marker `[HW:/led/off:{}]` followed by your sentence as normal text.
 - **"Turn on color X" / "set light X" / "change color X" = THIS skill.** Any request naming a color (yellow, red, green, purple, white, orange, pink…) routes here — NOT to Emotion or Scene. Emotion yellow/happy is for YOUR feelings, not user's lighting request.
 - **NEVER use `/led-color` or `/led/color` for setting color — these endpoints do NOT exist.** Always use `[HW:/led/effect/stop:{}][HW:/led/solid:{"color":[R,G,B]}]`.
+- **Two or more colors at once = `/led/paint` with `"gradient":true`.** `/led/solid` takes exactly ONE color — never try to express "cyan purple" as a single blended RGB; paint a gradient instead.
 - **Stop effect before solid.** Always call `/led/effect/stop` before `/led/solid`. A running effect thread overwrites solid every 40ms — skipping the stop causes the color to flicker and revert.
 - **Solid colors = full brightness.** For dim/ambient lighting, use the Scene skill instead.
 - **Effects run until stopped** (unless `duration_ms` is set). Starting a new effect auto-stops the previous one.

@@ -3,7 +3,7 @@ End-to-end test of `SpeechEmotionService` on a local machine.
 
 What it exercises:
   - Mic capture (sounddevice) → in-process `submit()`
-  - Worker thread → POST dlbackend `/api/dl/ser/recognize`
+  - Worker thread → POST perception-service `/api/dl/ser/recognize`
   - Per-user buffer + polarity-bucket dedup
   - Flush thread → POST sensing event to Lamp
 
@@ -33,7 +33,7 @@ Usage (from repo root):
 
 Run the engine-only script first
 (`python -m hal.test.test_speech_emotion_engine`) to confirm
-connectivity to dlbackend before attempting this one.
+connectivity to perception-service before attempting this one.
 """
 
 from __future__ import annotations
@@ -63,7 +63,7 @@ CHANNELS = 1
 MOCK_OS_HOST = "127.0.0.1"
 MOCK_OS_PORT = 5000
 # Hit FastAPI directly. Production prefix `/hal/api/dl/ser/recognize`
-# only works when nginx fronts dlbackend (RunPod) and strips `/hal/`.
+# only works when nginx fronts perception-service (RunPod) and strips `/hal/`.
 # Local dev hits uvicorn straight on its port, no prefix.
 DEFAULT_SER_ENDPOINT = "/api/dl/ser/recognize"
 
@@ -147,11 +147,11 @@ def main() -> int:
     parser.add_argument(
         "--dl-backend-url",
         default=os.environ.get("DL_BACKEND_URL", "http://localhost:8008"),
-        help="Base URL of the hosted dlbackend.",
+        help="Base URL of the hosted perception-service.",
     )
     parser.add_argument(
         "--api-key", default=os.environ.get("DL_API_KEY", ""),
-        help="X-API-Key header (if dlbackend requires it).",
+        help="X-API-Key header (if perception-service requires it).",
     )
     parser.add_argument(
         "--endpoint", default=os.environ.get("DL_SER_ENDPOINT", "") or DEFAULT_SER_ENDPOINT,
@@ -190,7 +190,7 @@ def main() -> int:
     # `args.endpoint` defaults to the no-prefix FastAPI path so local dev
     # (uvicorn without nginx) works out of the box. Override with
     # --endpoint /hal/api/dl/ser/recognize when hitting a production
-    # deployment that fronts dlbackend with nginx.
+    # deployment that fronts perception-service with nginx.
     from hal import config as _cfg
     _cfg.DL_BACKEND_URL = args.dl_backend_url
     _cfg.DL_API_KEY = args.api_key
@@ -215,7 +215,7 @@ def main() -> int:
     if not svc.available:
         print(
             "ERROR: SpeechEmotionService reports unavailable. Check "
-            "DL_BACKEND_URL + that dlbackend is reachable.",
+            "DL_BACKEND_URL + that perception-service is reachable.",
             file=sys.stderr,
         )
         return 3

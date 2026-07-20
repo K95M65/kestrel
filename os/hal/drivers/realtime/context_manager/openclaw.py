@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 from typing import override
 
+import hal.config as app_config
 from hal.drivers.realtime.context_manager.base import ContextManagerBase
 
 logger = logging.getLogger(__name__)
@@ -42,7 +43,13 @@ class OpenClawContextManager(ContextManagerBase):
 
     @override
     def load_device_context(self) -> str:
-        """Load SOUL.md, IDENTITY.md, and USER.md from the workspace."""
+        """Load SOUL.md, IDENTITY.md, and USER.md from the workspace.
+
+        Capped as a whole: this section is billed every realtime turn and
+        USER.md/IDENTITY.md are agent-writable, so without a ceiling the
+        floor grows unbounded over time. File order is the priority order —
+        SOUL (personality) survives truncation first, USER tail goes first.
+        """
         parts: list[str] = []
         for filename in ("SOUL.md", "IDENTITY.md", "USER.md"):
             path: Path = self._workspace / filename
@@ -54,7 +61,16 @@ class OpenClawContextManager(ContextManagerBase):
                 continue
             except Exception as e:
                 logger.warning("[realtime] Failed to read %s: %s", path, e)
-        return "\n\n".join(parts)
+        joined: str = "\n\n".join(parts)
+        max_chars: int = app_config.REALTIME_IDENTITY_MAX_CHARS
+        if len(joined) > max_chars:
+            logger.warning(
+                "[realtime] identity context truncated %d → %d chars "
+                "(SOUL/IDENTITY/USER.md have grown — consider pruning USER.md)",
+                len(joined), max_chars,
+            )
+            joined = joined[:max_chars]
+        return joined
 
     @override
     def load_device_memory(self) -> list[str]:
@@ -195,6 +211,14 @@ class OpenClawContextManager(ContextManagerBase):
         )
         new_summary: str = self._summarizer.summarize(to_summarize)
         if new_summary:
+            # Same write-time cap as the realtime summary in base.py — billed
+            # every turn and re-fed as [Previous summary], so it compounds.
+            if len(new_summary) > self._summary_max_chars:
+                logger.warning(
+                    "[realtime] device summary truncated %d → %d chars",
+                    len(new_summary), self._summary_max_chars,
+                )
+                new_summary = new_summary[: self._summary_max_chars]
             self._device_summary_path.parent.mkdir(parents=True, exist_ok=True)
             _ = self._device_summary_path.write_text(
                 new_summary + "\n", encoding="utf-8"

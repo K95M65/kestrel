@@ -21,11 +21,11 @@ This repo is developed in both **Cursor** and **Claude Code**. The following rul
    | OTA, bootstrap | `docs/bootstrap-ota.md` | `docs/vi/bootstrap-ota.md` |
    | Speech emotion recognition (SER) | `docs/speech-emotion.md` | `docs/vi/speech-emotion_vi.md` |
    | Realtime voice agent (HAL `drivers/realtime`, Gemini Live / OpenAI Realtime, delegate) | `docs/realtime-voice.md` | `docs/vi/realtime-voice_vi.md` |
-   | DL backend, load balancer, encryption, models | `docs/dlbackend.md` | `docs/vi/dlbackend_vi.md` |
-   | Hermes agent backend (`agent_runtime`, internal/hermes) | `docs/agentic/hermes.md` | `docs/vi/agentic/hermes_vi.md` |
-   | PicoClaw agent backend (`agent_runtime`, internal/picoclaw, WebSocket) | `docs/agentic/picoclaw.md` | `docs/vi/agentic/picoclaw_vi.md` |
-   | Codex agent backend (`agent_runtime`, internal/codex, WS bridge) | `docs/agentic/codex.md` | `docs/vi/agentic/codex_vi.md` |
-   | Claude Code agent backend (`agent_runtime`, internal/claudecode, bridge WebSocket, native Telegram channel plugin) | `docs/agentic/claudecode.md` | `docs/vi/agentic/claudecode_vi.md` |
+   | Perception service (cloud DL inference), load balancer, encryption, models | `docs/perception-service.md` | `docs/vi/perception-service_vi.md` |
+   | Hermes agent backend (`agent_runtime`, internal/agent/runtimes/hermes) | `docs/agentic/hermes.md` | `docs/vi/agentic/hermes_vi.md` |
+   | PicoClaw agent backend (`agent_runtime`, internal/agent/runtimes/picoclaw, WebSocket) | `docs/agentic/picoclaw.md` | `docs/vi/agentic/picoclaw_vi.md` |
+   | Codex agent backend (`agent_runtime`, internal/agent/runtimes/codex, WS bridge) | `docs/agentic/codex.md` | `docs/vi/agentic/codex_vi.md` |
+   | Claude Code agent backend (`agent_runtime`, internal/agent/runtimes/claudecode, bridge WebSocket, native Telegram channel plugin) | `docs/agentic/claudecode.md` | `docs/vi/agentic/claudecode_vi.md` |
    | Adding/changing an agentic backend (AgentGateway contract, switch, install/presync, migration, skills, hooks, reset) | `docs/agentic/adding-agent-runtime.md` | `docs/vi/agentic/adding-agent-runtime_vi.md` |
    | Safety engine (SAFETY.md bounds, deterministic enforcement gate) | `docs/safety.md` | `docs/vi/safety_vi.md` |
 
@@ -39,7 +39,7 @@ This repo is developed in both **Cursor** and **Claude Code**. The following rul
    | Habit tracking, pattern building, habit-aware nudge phrasing | `devices/lamp/docs/habit-tracking.md` | `devices/lamp/docs/vi/habit-tracking_vi.md` |
    | Vision tracking, object follow, servo track | `devices/lamp/docs/vision-tracking.md` | `devices/lamp/docs/vi/vision-tracking_vi.md` |
    | Physical controls (GPIO button, TTP223 touchpad, gestures, pet response) | `devices/lamp/docs/physical-controls.md` | `devices/lamp/docs/vi/physical-controls_vi.md` |
-   | Autonomous Buddy (Mac companion app) | `autonomous-buddy/docs/autonomous-buddy.md`, `autonomous-buddy/docs/autonomous-buddy-mvp.md`, `autonomous-buddy/docs/release-signing.md` | `autonomous-buddy/docs/vi/autonomous-buddy_vi.md`, `autonomous-buddy/docs/vi/autonomous-buddy-mvp_vi.md`, `autonomous-buddy/docs/vi/release-signing_vi.md` |
+   | Autonomous Buddy (Mac companion app) | `integrations/companions/autonomous-buddy/docs/autonomous-buddy.md`, `integrations/companions/autonomous-buddy/docs/autonomous-buddy-mvp.md`, `integrations/companions/autonomous-buddy/docs/release-signing.md` | `integrations/companions/autonomous-buddy/docs/vi/autonomous-buddy_vi.md`, `integrations/companions/autonomous-buddy/docs/vi/autonomous-buddy-mvp_vi.md`, `integrations/companions/autonomous-buddy/docs/vi/release-signing_vi.md` |
    | Security test checklist | `devices/lamp/docs/security-test.md` | _(no vi version)_ |
 
 2. **Comments in English** — Project standard.
@@ -122,7 +122,7 @@ Uses **Google Wire** for compile-time DI. After changing provider signatures, ru
 **Go backend — `os/services/`:**
 
 - **`server/`** — HTTP layer: Gin router, route handlers organized by domain. Each handler follows `delivery/http/handler.go` convention.
-- **`internal/`** — Business logic services (agent, ambient, beclient, buddy, device, healthwatch, intent, monitor, network, openclaw, ota, statusled).
+- **`internal/`** — Business logic services (ambient, beclient, buddy, device, healthwatch, intent, monitor, network, skills, statusled, vision) plus the agent hub: `internal/agent/` (AgentGateway factory + persona/config/channel/MCP migration) with the swappable backends under `internal/agent/runtimes/{openclaw,hermes,picoclaw,codex,claudecode}`.
 - **`bootstrap/`** — OTA worker: metadata fetching, update execution, state persistence.
 - **`domain/`** — Shared data structures.
 - **`server/serializers/`** — Standard JSON response wrapper.
@@ -136,7 +136,7 @@ Uses **Google Wire** for compile-time DI. After changing provider signatures, ru
 - **`board/`** — Per-board profiles (pin maps, debounce).
 - **`routes/`** — FastAPI route modules (servo, led, camera, audio, emotion, …).
 
-**OS-level dirs (repo root):** `contract/` (device specs), `skills/` (agent skills), `devices/` (per-device declarations + docs), `cts/` (compliance tests), `imager/` (OrangePi image build), `scripts/` (setup + OTA upload), `dlbackend/`, `companions/`.
+**OS-level dirs (repo root):** `contract/` (device specs), `skills/` (agent skills), `devices/` (per-device declarations + docs), `contract/cts/` (compliance tests), `imager/` (OrangePi image build), `scripts/` (setup + OTA upload), `integrations/perception-service/`, `integrations/companions/`.
 
 ### API Response Format
 

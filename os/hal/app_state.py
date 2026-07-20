@@ -13,6 +13,7 @@ import threading
 from typing import Optional
 
 from hal.presets import (
+    AMBIENT_RESTING_LED,
     EMO_IDLE,
     EMO_THINKING,
     EMOTION_PRESETS,
@@ -20,10 +21,13 @@ from hal.presets import (
     FX_SPEAKING_WAVE_RAINBOW,
     LST_EFFECT,
     LST_OFF,
+    LST_PAINT,
     LST_SCENE,
     LST_SOLID,
+    RGB_CMD_PAINT,
     RGB_CMD_SOLID,
     SCENE_PRESETS,
+    STATUS_LED_PRESETS,
 )
 
 # Background emotions don't override user's saved LED state. They still
@@ -111,6 +115,23 @@ _mic_muted = False
 _mic_manual_override = False
 _speaker_muted = False
 
+# Hardware mic-mute slide switch position (Intern v2 Pro's PD1 kill switch).
+# None on devices without the switch (Lamp) — the web UI uses that to decide
+# whether to show the "HW switch is off" hint at all. True/False mirrors the
+# physical position, published by hal.drivers.mic_button on every reconcile.
+# When True, /voice/unmute rejects with 409 and single_click_action bails
+# early: the slide switch is the authority whenever it is physically muted.
+_hw_mic_switch_muted: "bool | None" = None
+
+# Mic-muted idle LED indicator (STATUS_LED_PRESETS["mic_muted"], dark red
+# breathing). Set by /voice/mute, cleared by /voice/unmute. It is the strip's
+# RESTING look while muted: emotions/effects/waves still run normally on top,
+# but every _restore_user_led lands back on the red instead of the user state
+# — "nothing happening + red breathing" tells the user the mic is muted.
+# An explicit user LED command (/led/solid|off|effect|paint) dismisses it
+# (the user's ask wins; mic stays muted). Yields to LST_OFF and active scenes.
+_mic_muted_led = False
+
 # True only while a live voice enrollment is recording. record-enroll sets
 # _speaker_muted as a transient guard (keep TTS out of the captured WAV), which
 # is NOT a user preference — this flag lets the single-click "unmute speaker"
@@ -166,12 +187,154 @@ def _cancel_pending_restore():
         _restore_timer = None
 
 
+# Boot-scoped sidecar for the user LED state — same pattern as the scene /
+# presence / motion sidecars. Without it a HAL service restart wipes
+# _user_led_state, and the os-server's post-boot POST /led/restore then finds
+# "no user state" and CLEARS the strip — the lamp goes dark for ~45s until
+# ambient breathing kicks in, instead of coming back in the user's color.
+_LED_STATE_PATH = "/tmp/hal-led-state.json"
+
+
+def _boot_id() -> str:
+    try:
+        with open("/proc/sys/kernel/random/boot_id") as f:
+            return f.read().strip()
+    except Exception:
+        return ""
+
+
+def _load_user_led_state() -> Optional[dict]:
+    import json
+    try:
+        with open(_LED_STATE_PATH) as f:
+            data = json.load(f)
+        if data.get("boot_id") != _boot_id():
+            os.unlink(_LED_STATE_PATH)
+            return None
+        saved = data.get("state")
+        if saved:
+            logger.info("User LED state restored from sidecar: %s", saved)
+        return saved or None
+    except FileNotFoundError:
+        return None
+    except Exception as e:
+        logger.warning("User LED state load failed: %s", e)
+        return None
+
+
+# Restore across service restarts (boot-scoped; a device reboot starts fresh).
+_user_led_state = _load_user_led_state()
+
+
+# --- Peripheral switch sidecars (boot-scoped, one file per peripheral) ---
+# Mic/speaker mute and camera disable are user-facing switches that must
+# survive a HAL service restart (OTA, deploy, config change) — without these
+# every restart silently unmutes the mic, re-enables the speaker and turns
+# the camera back on. One sidecar per peripheral so each switch is written,
+# inspected and cleared independently. Same boot_id rule as the LED sidecar:
+# a full device reboot starts fresh (and on switch-equipped devices the
+# physical mic switch re-applies itself at boot regardless).
+# NOT persisted: record-enroll's transient speaker mute (routes/speaker.py
+# writes the flag directly and never calls the persist helpers — by design).
+_MIC_STATE_PATH = "/tmp/hal-mic-state.json"
+_SPEAKER_STATE_PATH = "/tmp/hal-speaker-state.json"
+_CAMERA_STATE_PATH = "/tmp/hal-camera-state.json"
+
+
+def _save_boot_sidecar(path: str, payload: dict):
+    import json
+
+    try:
+        with open(path, "w") as f:
+            json.dump({"boot_id": _boot_id(), **payload}, f)
+    except Exception as e:
+        logger.warning("Sidecar save failed (%s): %s", path, e)
+
+
+def _load_boot_sidecar(path: str) -> Optional[dict]:
+    import json
+
+    try:
+        with open(path) as f:
+            data = json.load(f)
+        if data.get("boot_id") != _boot_id():
+            os.unlink(path)
+            return None
+        return data
+    except FileNotFoundError:
+        return None
+    except Exception as e:
+        logger.warning("Sidecar load failed (%s): %s", path, e)
+        return None
+
+
+def _persist_mic_state():
+    _save_boot_sidecar(
+        _MIC_STATE_PATH,
+        {"muted": _mic_muted, "manual_override": _mic_manual_override},
+    )
+
+
+def _persist_speaker_state():
+    _save_boot_sidecar(_SPEAKER_STATE_PATH, {"muted": _speaker_muted})
+
+
+def _persist_camera_state():
+    _save_boot_sidecar(
+        _CAMERA_STATE_PATH,
+        {"disabled": _camera_disabled, "manual_override": _camera_manual_override},
+    )
+
+
+def _load_peripheral_sidecars():
+    """Restore the switches at import. APPLYING them happens where each
+    peripheral boots: routes/voice.py start_voice skips opening the mic,
+    server.py lifespan skips starting the camera and re-paints the mic-muted
+    LED indicator. The speaker flag needs no apply step — TTS checks it at
+    speak time."""
+    global _mic_muted, _mic_manual_override, _speaker_muted
+    global _camera_disabled, _camera_manual_override, _mic_muted_led
+    if d := _load_boot_sidecar(_MIC_STATE_PATH):
+        _mic_muted = bool(d.get("muted"))
+        _mic_manual_override = bool(d.get("manual_override"))
+        # Indicator follows the restored mute; painted at the end of
+        # lifespan startup once the RGB service is up.
+        _mic_muted_led = _mic_muted
+    if d := _load_boot_sidecar(_SPEAKER_STATE_PATH):
+        _speaker_muted = bool(d.get("muted"))
+    if d := _load_boot_sidecar(_CAMERA_STATE_PATH):
+        _camera_disabled = bool(d.get("disabled"))
+        _camera_manual_override = bool(d.get("manual_override"))
+    if _mic_muted or _speaker_muted or _camera_disabled:
+        logger.info(
+            "Peripheral switches restored: mic_muted=%s speaker_muted=%s camera_disabled=%s",
+            _mic_muted,
+            _speaker_muted,
+            _camera_disabled,
+        )
+
+
+_load_peripheral_sidecars()
+
+
 def _save_user_led_state(state: dict):
     """Save the user-set LED state and cancel any pending emotion restore."""
     global _user_led_state
+    import json
     logger.info("User LED state saved: %s", state)
     _user_led_state = state
     _cancel_pending_restore()
+    try:
+        if state is None:
+            try:
+                os.unlink(_LED_STATE_PATH)
+            except FileNotFoundError:
+                pass
+        else:
+            with open(_LED_STATE_PATH, "w") as f:
+                json.dump({"boot_id": _boot_id(), "state": state}, f)
+    except Exception as e:
+        logger.warning("User LED state save failed: %s", e)
 
 
 def _get_recording_duration(recording_name: str) -> float:
@@ -197,6 +360,24 @@ def _is_nonblack(color) -> bool:
     return color and any(c > 0 for c in color)
 
 
+def _avg_paint_color(colors) -> Optional[tuple]:
+    """Average RGB of a paint pixel list (packed-int pixels included).
+
+    Paint states have no single color, but presence dimming and overlay
+    effects need one base color — the average is the closest stand-in.
+    Returns None when the list has no usable pixels.
+    """
+    rgb = []
+    for c in colors:
+        if isinstance(c, int):
+            rgb.append(((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF))
+        elif isinstance(c, (list, tuple)) and len(c) >= 3:
+            rgb.append(tuple(c[:3]))
+    if not rgb:
+        return None
+    return tuple(sum(ch) // len(rgb) for ch in zip(*rgb))
+
+
 def _led_off_by_user() -> bool:
     """True when the user explicitly turned the LED off (LST_OFF).
 
@@ -220,6 +401,10 @@ def _get_current_led_color() -> tuple:
             return tuple(_user_led_state["color"])
         if stype == LST_EFFECT and _is_nonblack(_user_led_state.get("color")):
             return tuple(_user_led_state["color"])
+        if stype == LST_PAINT:
+            avg = _avg_paint_color(_user_led_state.get("colors") or [])
+            if _is_nonblack(avg):
+                return avg
         if stype == LST_SCENE:
             preset = SCENE_PRESETS.get(_user_led_state.get("scene", ""))
             if preset:
@@ -243,11 +428,172 @@ def _get_user_base_color() -> tuple:
     if stype in (LST_SOLID, LST_EFFECT):
         color = _user_led_state.get("color")
         return tuple(color) if color else (0, 0, 0)
+    if stype == LST_PAINT:
+        return _avg_paint_color(_user_led_state.get("colors") or []) or (0, 0, 0)
     if stype == LST_SCENE:
         preset = SCENE_PRESETS.get(_user_led_state.get("scene", ""))
         if preset:
             return tuple(int(c * preset["brightness"]) for c in preset["color"])
     return (0, 0, 0)
+
+
+def _mic_muted_led_owns_strip() -> bool:
+    """True when the mic-muted indicator is the strip's current resting look.
+
+    Yields to two deliberate user lighting choices: LST_OFF (a dark strip
+    stays dark) and an active scene (reading/focus lighting is functional).
+    The flag stays set in both cases, so leaving the scene while still
+    muted brings the red back on the next restore."""
+    if not _mic_muted_led:
+        return False
+    if _led_off_by_user():
+        return False
+    if _active_scene or (_user_led_state and _user_led_state.get("type") == LST_SCENE):
+        return False
+    return True
+
+
+def _start_preset_effect(preset: dict, thread_name: str):
+    """Start a preset-described background effect ({"effect","color","speed"}).
+
+    Display-only: never touches _user_led_state. Cancels any pending
+    restore timer and running effect first."""
+    global _restore_timer, _effect_thread, _effect_name, _effect_base_color
+    if not rgb_service:
+        return
+    if _restore_timer is not None and _restore_timer.is_alive():
+        _restore_timer.cancel()
+        _restore_timer = None
+    _stop_current_effect()
+    color = tuple(preset["color"])
+    _effect_stop.clear()
+    _effect_name = preset["effect"]
+    _effect_base_color = color
+    _effect_thread = threading.Thread(
+        target=_run_effect,
+        args=(preset["effect"], color, preset.get("speed", 1.0), None, _effect_stop, rgb_service),
+        daemon=True,
+        name=thread_name,
+    )
+    _effect_thread.start()
+
+
+def _start_mic_muted_effect():
+    """Paint the mic-muted indicator (dark red breathing). Display-only:
+    never touches _user_led_state, so unmute restores the saved user look."""
+    if not _mic_muted_led_owns_strip():
+        return
+    _start_preset_effect(STATUS_LED_PRESETS["mic_muted"], "led-mic-muted")
+
+
+def _apply_mic_muted_led(force: bool = False):
+    """Turn on the mic-muted resting indicator (called by POST /voice/mute).
+
+    Paints immediately unless a TTS/music wave owns the strip — then the
+    wave-end restore lands on the red (see _restore_user_led).
+
+    force=True (physical mic switch) paints NOW even over a live wave: a
+    hardware throw is the most deliberate mute there is, so its feedback
+    must not wait out the current utterance. TTS audio keeps playing —
+    only the wave visual is replaced; the wave-end restore then keeps
+    settling on the red as usual."""
+    global _mic_muted_led
+    if _mic_muted_led and not force:
+        return
+    _mic_muted_led = True
+    logger.info("Mic-muted LED indicator ON%s", " (forced)" if force else "")
+    if not force and (_tts_speaking or _music_playing):
+        return
+    _start_mic_muted_effect()
+
+
+def _clear_mic_muted_led(force: bool = False):
+    """Drop the mic-muted indicator and restore the user's saved LED state
+    (called by POST /voice/unmute and scene mic-unmute paths).
+
+    force=True (physical mic switch) also kills a red painted over a live
+    wave (see _apply_mic_muted_led force) so the strip never shows "muted"
+    while the mic is actually hot — the wave-end restore then lands on the
+    user state."""
+    global _mic_muted_led, _effect_thread, _effect_name, _effect_base_color
+    if not _mic_muted_led and not force:
+        return
+    _mic_muted_led = False
+    logger.info("Mic-muted LED indicator OFF -- restoring user state")
+    if _tts_speaking or _music_playing:
+        if force and _effect_thread is not None and _effect_thread.name == "led-mic-muted":
+            # A forced mute painted red over this wave; stop it now. The
+            # strip stays dark for the rest of the utterance and the
+            # wave-end restore repaints the user state.
+            _stop_current_effect()
+        return
+    # With no saved user state (fresh boot, user never picked a color)
+    # _restore_user_led is a no-op ("keeping emotion color") and would
+    # leave the red breathing running. If the active effect is ours, stop
+    # it and settle on the ambient resting look ourselves — the Go ambient
+    # loop thinks its effect is still running and won't re-light the strip
+    # until its next pause/resume cycle.
+    if _effect_thread is not None and _effect_thread.name == "led-mic-muted":
+        _stop_current_effect()
+        if _user_led_state is None and rgb_service:
+            _start_preset_effect(AMBIENT_RESTING_LED, "led-ambient-fallback")
+            return
+    _restore_user_led()
+
+
+def _dismiss_mic_muted_led(source: str):
+    """Explicit user LED command while muted: the user's ask wins the strip
+    and restores stop re-asserting the red. The mic itself STAYS muted.
+    Caller paints right after, so no restore here."""
+    global _mic_muted_led
+    if not _mic_muted_led:
+        return
+    _mic_muted_led = False
+    logger.info("Mic-muted LED indicator dismissed by %s (mic stays muted)", source)
+
+
+def _flash_backend_error():
+    """3x amber flashes signalling a TTS/backend failure. Called from the
+    TTS service when a speak() returns 0 samples (Cloudflare 524, upstream
+    timeout, all retries exhausted) — the user hears no reply and would
+    otherwise be left wondering; the flash makes the failure visible.
+
+    Runs a short notification_flash (~1s) on its own thread and then hands
+    the strip back via _restore_user_led / mic-muted repaint, so it never
+    leaves the strip stuck at the last flash frame. Skips silently when
+    the mic-muted privacy indicator owns the strip — a hardware kill-switch
+    red must survive any error signal."""
+    if not rgb_service:
+        return
+    if _mic_muted_led_owns_strip():
+        return
+
+    def _run_then_settle():
+        from hal.drivers.rgb.effects import notification_flash
+
+        color = (255, 191, 0)  # amber-yellow, distinct from statusled hardware fault
+        local_stop = threading.Event()
+        try:
+            notification_flash(color, 1.0, local_stop, rgb_service)
+        except Exception as e:
+            logger.warning("backend-error flash failed: %s", e)
+        # Hand the strip back to whatever the resting look should be. The
+        # notification_flash never sets _effect_thread etc. (it runs
+        # standalone here), so nothing to clear — just repaint.
+        try:
+            if _mic_muted_led_owns_strip():
+                _start_mic_muted_effect()
+            else:
+                _restore_user_led()
+        except Exception as e:
+            logger.warning("backend-error flash restore failed: %s", e)
+
+    logger.info("Flashing backend-error cue (3x amber)")
+    threading.Thread(
+        target=_run_then_settle,
+        daemon=True,
+        name="led-backend-error-flash",
+    ).start()
 
 
 def _restore_user_led():
@@ -264,6 +610,13 @@ def _restore_user_led():
         return
 
     if not rgb_service:
+        return
+
+    # Mic muted → the resting look is the privacy red, not the user state:
+    # whatever just finished (emotion, wave, transient) settles back onto it.
+    if _mic_muted_led_owns_strip():
+        logger.info("LED restore: mic muted -- settling on privacy indicator")
+        _start_mic_muted_effect()
         return
 
     state = _user_led_state
@@ -286,6 +639,14 @@ def _restore_user_led():
             _stop_current_effect()
             rgb_service.dispatch(RGB_CMD_SOLID, tuple(state["color"]))
             logger.info("LED restore: solid color=%s", state["color"])
+        elif stype == LST_PAINT:
+            _stop_current_effect()
+            colors = [
+                tuple(c) if isinstance(c, list) else c
+                for c in state.get("colors") or []
+            ]
+            rgb_service.dispatch(RGB_CMD_PAINT, colors)
+            logger.info("LED restore: paint %d pixels", len(colors))
         elif stype == LST_EFFECT:
             _stop_current_effect()
             global _effect_thread, _effect_name, _effect_base_color
@@ -473,8 +834,16 @@ def _on_music_play_end():
     _restore_user_led()
 
 
-def _apply_emotion_led_display(emotion: str, intensity: float = 1.0) -> Optional[list]:
-    """Apply LED effect + display expression for an emotion. Returns scaled LED color or None."""
+def _apply_emotion_led_display(
+    emotion: str, intensity: float = 1.0, force_led: bool = False
+) -> Optional[list]:
+    """Apply LED effect + display expression for an emotion. Returns scaled LED color or None.
+
+    force_led bypasses ONLY the background-emotion guard below (user saved
+    color wins over idle/thinking). The realtime voice turn uses it for its
+    thinking cue: a deliberate, once-per-turn, always-cleared overlay — unlike
+    the per-message agent-hook thinking spam the guard was built against.
+    The user-LED-off and TTS-speaking guards still apply."""
     preset = EMOTION_PRESETS.get(emotion)
     if not preset:
         return None
@@ -504,7 +873,7 @@ def _apply_emotion_led_display(emotion: str, intensity: float = 1.0) -> Optional
     # color every turn. Original idle-only check kept its behavior unchanged
     # (idle is in _BACKGROUND_EMOTIONS). Re-narrow this set if a background
     # emotion needs LED feedback again.
-    if emotion in _BACKGROUND_EMOTIONS and _user_led_state is not None:
+    if not force_led and emotion in _BACKGROUND_EMOTIONS and _user_led_state is not None:
         logger.info("Emotion LED skipped (%s) -- respecting user saved state", emotion)
         if display_service:
             try:
@@ -573,6 +942,7 @@ def _auto_camera_off(reason: str) -> bool:
         return False
     _camera_disabled = True
     camera_capture.stop()
+    _persist_camera_state()
     logger.info("Camera auto-disabled (reason: %s)", reason)
     return True
 
@@ -589,6 +959,7 @@ def _auto_camera_on(reason: str) -> bool:
         return False
     _camera_disabled = False
     camera_capture.start()
+    _persist_camera_state()
     logger.info("Camera auto-enabled (reason: %s)", reason)
     return True
 

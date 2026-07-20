@@ -371,12 +371,12 @@ Interactive chat interface for communicating with the agent. Layout: sidebar (co
 
 **Response Handling**
 - Tracks response by `runId` correlation across SSE events
-- Inline HW control markers (`[HW:/emotion:...]`) stripped from displayed text
+- Inline HW control markers (`[HW:/emotion:...]`) stripped from displayed text; the markdown-link form some LLMs emit (`[label](HW:/led/off:{})`) is also stripped, keeping the label. Both strip patterns mirror the os-server executor grammar exactly — a malformed variant the executor won't fire stays visible as raw text
 - 120-second timeout: if streaming text received, shows partial text; otherwise shows error with retry button
 - **Pending-turn recovery across reload**: messages persist an epoch `ts`; a pending reply bubble younger than 10 minutes survives a page reload instead of being finalized as an error. On the first render with the Chat tab active, the UI re-attaches to the stored `runId` and the reply is backfilled from the flow JSONL replay (`/api/agent/flow-stream` re-sends the last 500 events of the day on every connect — `tts_send` / `tts_suppressed` / `no_reply`). If nothing resolves the run within 30 s, it is finalized as "no response" with retry.
 - Local intent fast path: sub-50ms responses bypassing agent
 - Busy/dropped handling: shows "busy — try again"
-- Markdown rendering: bold, italic, inline code (amber-tinted), code blocks (monospace), URLs, ordered/unordered lists, and tables (styled header + zebra rows)
+- Markdown rendering: bold, italic, inline code (amber-tinted), code blocks (monospace), `[label](url)` links, bare URLs (mangled http/https schemes like `hthtps://` from upstream limit banners are repaired before linkifying; unknown schemes stay plain text), ordered/unordered lists, and tables (styled header + zebra rows). Agent bubbles get full markdown; user bubbles stay verbatim except URLs, which are linkified with the same scheme repair
 
 **Empty State & Suggestions**
 - When a conversation has no messages, the chat area shows a large breathing assistant orb, a localized title/subtitle, and four clickable **suggestion chips**. Clicking a chip fills the composer (does not auto-send) so the user can edit first.

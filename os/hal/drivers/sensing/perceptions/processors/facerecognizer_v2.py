@@ -114,6 +114,20 @@ STRANGER_STATE_DIR.mkdir(exist_ok=True, parents=True)
 _STRANGER_STATS_FILE = USERS_DIR / ".stranger_stats.json"
 _STRANGER_SNAPSHOTS_DIR = STRANGER_STATE_DIR / "snapshots"
 
+# Presence memory sidecar — who was last seen when. tmpfs + boot_id makes it
+# boot-scoped (same pattern as the scene sidecar): an in-boot HAL service
+# restart must NOT wipe last_seen — everyone would look "new" on the first
+# frame and presence.enter (the greeting) would re-fire mid-session. A full
+# device reboot starts fresh on purpose.
+_PRESENCE_STATE_PATH = Path("/tmp/hal-presence-state.json")
+
+
+def _current_boot_id() -> str:
+    try:
+        return Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+    except Exception:
+        return ""
+
 # Visit count at which hal prompts the user to enroll a familiar stranger.
 # Fires exactly once per stranger when count first reaches this value; the
 # face-enroll skill handles asking the user and POST /face/enroll on confirm.
@@ -1776,6 +1790,9 @@ class FacePerception(Perception[cv2.typing.MatLike]):
         self._faces_n: int = 0
         self._face_present: bool = False
         self._people_data_dict: dict[str, PersonData] = {}
+        self._last_stranger_enter_ts: float = 0.0
+        self._last_presence_save_ts: float = 0.0
+        self._load_presence_state()
         self._owners: set[str] = set()
         self._strangers: set[str] = set()
 
@@ -2190,7 +2207,30 @@ class FacePerception(Perception[cv2.typing.MatLike]):
             )
             stranger_ids_to_send = new_strangers.union(flushed_stranger_ids)
 
+            # Stranger-only enter floor: embedding flicker mints a fresh
+            # stranger_N id every few seconds for the same unrecognizable
+            # person, and a fresh id is always "new" — each would be a full
+            # agent turn with only the 10s FACE_COOLDOWN between them. One
+            # stranger update per floor window is plenty; a friend appearing
+            # is never floored.
+            if (
+                annotated_frames_to_send
+                and not new_owners
+                and stranger_ids_to_send
+                and (cur_ts - self._last_stranger_enter_ts)
+                < config.FACE_STRANGER_ENTER_FLOOR_S
+            ):
+                logger.info(
+                    "[face] stranger-only enter floored: %s (last stranger enter %.0fs ago < %.0fs)",
+                    sorted(stranger_ids_to_send),
+                    cur_ts - self._last_stranger_enter_ts,
+                    config.FACE_STRANGER_ENTER_FLOOR_S,
+                )
+                annotated_frames_to_send = []
+
             if annotated_frames_to_send:
+                if not new_owners and stranger_ids_to_send:
+                    self._last_stranger_enter_ts = cur_ts
                 parts = []
                 if new_owners:
                     parts.append(f"friend ({', '.join(new_owners)})")
@@ -2252,6 +2292,58 @@ class FacePerception(Perception[cv2.typing.MatLike]):
 
     # -- Presence leave detection ------------------------------------------------
 
+    def _load_presence_state(self) -> None:
+        """Restore last_seen from the boot-scoped sidecar after a service restart."""
+        try:
+            if not _PRESENCE_STATE_PATH.exists():
+                return
+            data = json.loads(_PRESENCE_STATE_PATH.read_text())
+            if data.get("boot_id") != _current_boot_id():
+                _PRESENCE_STATE_PATH.unlink(missing_ok=True)
+                return
+            for pid, entry in (data.get("people") or {}).items():
+                try:
+                    kind = PersonKind(entry["kind"])
+                    last_seen = float(entry["last_seen"])
+                except (KeyError, TypeError, ValueError):
+                    continue
+                if kind == PersonKind.UNSURE:
+                    continue
+                self._people_data_dict[pid] = PersonData(
+                    id=pid, kind=kind, last_seen=last_seen
+                )
+            if self._people_data_dict:
+                logger.info(
+                    "[face] presence state restored — %d people known from "
+                    "before the service restart (no re-greeting)",
+                    len(self._people_data_dict),
+                )
+        except Exception as e:
+            logger.warning("[face] presence state load failed: %s", e)
+
+    def _persist_presence_state(self, cur_ts: float, force: bool = False) -> None:
+        """Throttled dump of the last_seen map.
+
+        Must run periodically, not just on enter/leave: the restore above only
+        suppresses a re-greeting when the saved timestamps are FRESH — an
+        enter-time-only save would already be past the forget window by the
+        next restart. tmpfs makes the 30s write essentially free.
+        """
+        if not force and (cur_ts - self._last_presence_save_ts) < 30.0:
+            return
+        self._last_presence_save_ts = cur_ts
+        try:
+            people = {
+                pid: {"kind": str(pd.kind), "last_seen": pd.last_seen}
+                for pid, pd in self._people_data_dict.items()
+                if pd.last_seen is not None
+            }
+            _PRESENCE_STATE_PATH.write_text(
+                json.dumps({"boot_id": _current_boot_id(), "people": people})
+            )
+        except Exception as e:
+            logger.warning("[face] presence state save failed: %s", e)
+
     def _check_leaves(self, cur_ts: float) -> None:
         """Fire presence.leave for anyone not seen within their forget interval."""
         deleted_ids: set[str] = set()
@@ -2285,6 +2377,11 @@ class FacePerception(Perception[cv2.typing.MatLike]):
             if self._any_stranger_logged and not current_strangers:
                 self._post_wellbeing("unknown", "leave")
                 self._any_stranger_logged = False
+
+            # _check_leaves runs on every perception pass (both the faces and
+            # no-faces paths), so this is the one natural heartbeat for the
+            # presence sidecar.
+            self._persist_presence_state(cur_ts)
 
     def _send_leave_event(self, person_id: str, kind: PersonKind) -> None:
         self._send_event(
@@ -2481,6 +2578,16 @@ class FacePerception(Perception[cv2.typing.MatLike]):
         """Clear all last-seen timestamps so next detection fires events immediately."""
         with self._state_lock:
             self._people_data_dict.clear()
+            # Persist the now-empty map immediately (bypassing the 30s
+            # throttle) — otherwise a HAL restart within the throttle window
+            # would restore the sidecar's stale last_seen and silently undo
+            # this reset.
+            self._persist_presence_state(time.time(), force=True)
+            # And re-arm the throttle so the NEXT detection persists its fresh
+            # last_seen right away — the force call above just stamped the
+            # save ts, which would otherwise leave a <30s window where a
+            # restart loses the first post-reset sighting and re-enters again.
+            self._last_presence_save_ts = 0.0
             _ = self._flush_stranger_buffer(time.time())
             logger.info("Face recognition cooldowns reset")
 

@@ -48,8 +48,11 @@ class VoiceService:
     """Local VAD + pluggable STT provider for autonomous sensing."""
 
     # Strip HW markers, audio tags, and system tags from realtime agent output.
+    # The HW alternative mirrors the Go executor grammar (handler_hw.go
+    # hwMarkerRe): brace-anchored optional body, so a `]` inside a JSON array
+    # body (e.g. {"color":[255,0,0]}) doesn't truncate the match.
     RT_MARKER_RE: re.Pattern[str] = re.compile(
-        r"\[HW:/[^\]]*\]"
+        r"\[HW:/[^{\]]*(?:\{[^}]*\})?\]"
         r"|\[(?:laughs|LAUGHS|sighs|chuckle|light chuckle|giggle|big laugh|gasps|gulps|breathes|clears throat|whispers|pause|pauses|hesitates|stammers|thinking|thinks|thought|thoughtful|pondering|ponders|reasoning)"
         r"[^\]]*\]"
         r"|\[(?:cheerfully|playfully|quietly|nervously|deadpan|flatly|dramatic tone|resigned tone|excited|calm|tired|sad|sorrowful|nervous|frustrated)"
@@ -67,9 +70,24 @@ class VoiceService:
         re.IGNORECASE,
     )
 
+    # Markdown-link-form HW marker like [Lights off](HW:/led/off:{}) — some LLMs
+    # wrap the marker in a link. Keep the label, drop the marker. Mirrors
+    # hwLinkRe in os-server handler_hw.go EXACTLY: never looser than the
+    # executor, so a variant it won't fire stays visible as raw text instead
+    # of being scrubbed into a confident-looking label.
+    RT_HW_LINK_RE: re.Pattern[str] = re.compile(
+        r"\[([^\]]*)\]\(\s*HW:\s*(?:/[^(){:\s]+(?::[^(){:\s]+)*)(?::\{[^}]*\})?:?\s*\)",
+        re.IGNORECASE,
+    )
+
     @staticmethod
     def strip_rt_markers(text: str) -> str:
         """Remove HW markers, audio tags, and system tags from realtime agent text."""
+        # Label may itself be a canonical marker's content (LLM link-wrapped
+        # the second of a back-to-back pair) — both are markers, keep neither.
+        text = VoiceService.RT_HW_LINK_RE.sub(
+            lambda m: "" if m.group(1)[:3].lower() == "hw:" else m.group(1), text
+        )
         cleaned: str = VoiceService.RT_MARKER_RE.sub("", text)
         cleaned = re.sub(r"  +", " ", cleaned).strip()
         return cleaned
@@ -184,6 +202,12 @@ class VoiceService:
                     # spoken (often an OpenClaw reply, not Gemini's own output) is
                     # pushed to Gemini as history so it stays aware of what the
                     # device said and won't repeat it. Not a Gemini-generated line.
+                    # Capped: it accumulates in session context and is re-billed
+                    # on every later turn until recycle — the gist is enough to
+                    # avoid repetition.
+                    max_hist = hal_config.REALTIME_TTS_HISTORY_MAX_CHARS
+                    if len(text) > max_hist:
+                        text = text[:max_hist] + "…"
                     logger.info(
                         "[realtime<-tts] Notifying realtime agent of spoken text: %r",
                         text[:100],
@@ -261,7 +285,25 @@ class VoiceService:
     def stop(self):
         self._running = False
         if hal_config.REALTIME_ENABLED:
-            self._realtime.stop()
+            # realtime.stop() calls _context.summarize_device_memory() +
+            # summarize_realtime_memory() which fire LLM requests — an
+            # unresponsive backend (Cloudflare 524, network stall) can hang
+            # them for tens of seconds and stall the entire voice teardown.
+            # Wrap in a daemon thread with a bounded join so the summarize
+            # is best-effort: if it doesn't finish in 3s we orphan it and
+            # continue teardown. Better to lose one summary than to leave
+            # the whole voice pipeline stuck waiting.
+            rt_thread = threading.Thread(
+                target=self._realtime.stop,
+                daemon=True,
+                name="voice-realtime-teardown",
+            )
+            rt_thread.start()
+            rt_thread.join(timeout=3.0)
+            if rt_thread.is_alive():
+                logger.warning(
+                    "realtime.stop() did not finish in 3s -- orphaning (memory summary or WS disconnect stalled)"
+                )
         if self._thread:
             self._thread.join(timeout=5)
             self._thread = None
@@ -847,11 +889,15 @@ class VoiceService:
         longest_partial = [""]
         final_segments = []
         final_sent = [False]
-        # One-shot per session: fire emotion=listening on the first STT
-        # partial so the device leans forward + LED blue-pulses while the user
-        # is talking. Not on mic-open — that would fire on silence-only
-        # false starts (wake word noise, accidental button press).
+        # Two-stage listening cue. Stage 1 at SESSION OPEN: LED-only blue
+        # pulse — instant feedback (~0.3s after the first word), cheap to be
+        # wrong. Stage 2 on the FIRST STT PARTIAL: full emotion=listening
+        # (servo lean + face). The entry VAD alone is NOT enough for stage 2:
+        # loud transients pass it and open sessions that end with an empty
+        # transcript (~half of all sessions in a noisy room, measured
+        # 2026-07-16), and leaning on every bang reads as mis-triggering.
         listening_emotion_sent = [False]
+        led_cue_fired = [False]
         # Collect every resampled 16kHz int16 PCM chunk so we can identify the
         # speaker at session end. This list is LOCAL to _stream_session — a
         # fresh empty list every call, no cross-session carry-over.
@@ -977,6 +1023,20 @@ class VoiceService:
             # the user stops, so without this the voiceprint ends up 30-50%
             # silence and the embedding degrades. (Pre-initialized to -1 above.)
             last_speech_idx = len(audio_buffer) - 1
+            # Stage-1 listening cue (see two-stage note above): the SAME LED
+            # render the listening emotion uses — black base + blue pulse, so
+            # it reads clearly over any user color and stage 2 is a seamless
+            # upgrade. NOT the /led/effect transient path: transient overlays
+            # the pulse on the user's saved color (a blue ripple inside white
+            # is barely visible). LED only — no servo lean, no face,
+            # no _current_emotion commit.
+            try:
+                from hal import app_state
+
+                app_state._apply_emotion_led_display(presets.EMO_LISTENING, 0.7)
+                led_cue_fired[0] = True
+            except Exception as e:
+                logger.debug("listening LED cue failed: %s", e)
             # Signal the OS server to show listening LED as soon as mic session opens (before transcript arrives)
             try:
                 requests.post(
@@ -1099,6 +1159,19 @@ class VoiceService:
                 )
             except Exception:
                 pass
+
+            # Stage-1 cue cleanup: a noise session (LED cue fired, but no STT
+            # partial → no emotion) must not leave the blue pulse hanging.
+            # restore_led() is TTS-guarded internally, so an agent reply that
+            # already started speaking keeps its speaking wave.
+            if led_cue_fired[0] and not listening_emotion_sent[0]:
+                try:
+                    from hal.routes.led import restore_led
+
+                    restore_led()
+                    logger.info("listening LED cue restored (noise session, no transcript)")
+                except Exception as e:
+                    logger.debug("listening LED cue restore failed: %s", e)
 
             # Safety net: if we fired emotion=listening but no follow-up
             # emotion arrives (LLM error, silence-only after first partial,

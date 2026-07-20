@@ -1,7 +1,7 @@
-"""Pose estimation + ergonomic sampling via dlbackend WS.
+"""Pose estimation + ergonomic sampling via perception-service WS.
 
 Follows the same pattern as MotionPerception (RemoteMotionChecker):
-- Maintains a WS connection to dlbackend /api/dl/pose-estimation/ws
+- Maintains a WS connection to perception-service /api/dl/pose-estimation/ws
 - Sends camera frames, receives pose_2d + optional pose_3d + optional ergo
 - Silently samples each frame into a rolling RAM buffer + daily JSONL file.
 - Does NOT emit a pose.ergo_risk event directly. MotionPerception queries
@@ -133,7 +133,7 @@ class _PoseSample:
     """One posture snapshot recorded into the rolling buffer.
 
     All RULA values (score / risk_level / per-side body_scores + angles) are
-    passed through verbatim from dlbackend (Khanh's RULA scorer). We do not
+    passed through verbatim from perception-service (Khanh's RULA scorer). We do not
     derive or override anything on this side."""
 
     ts: float
@@ -149,7 +149,7 @@ class _PoseSample:
 
 
 class RemotePoseEstimator:
-    """WS client to dlbackend /api/dl/pose-estimation/ws."""
+    """WS client to perception-service /api/dl/pose-estimation/ws."""
 
     def __init__(
         self,
@@ -335,14 +335,14 @@ def _dir_size(path: str) -> int:
         pass
     return total
 
-# dlbackend signed_flexion_angle currently returns the opposite sign of
+# perception-service signed_flexion_angle currently returns the opposite sign of
 # its docstring; we flip on receive while waiting for the upstream fix.
 # lower_arm_angle is unsigned so it stays as-is.
 _SIGNED_ANGLE_KEYS: tuple[str, ...] = ("neck_angle", "trunk_angle", "upper_arm_angle")
 
 
 def _flip_signed_angles(side: dict[str, Any]) -> dict[str, Any]:
-    """Return a copy of `side` (a per-side ergo dict from dlbackend) with
+    """Return a copy of `side` (a per-side ergo dict from perception-service) with
     the three signed angle keys negated inside `body_scores`. Safe no-op
     when keys are missing or non-numeric."""
     if not side:
@@ -364,7 +364,7 @@ class PosePerception(Perception[cv2.typing.MatLike]):
     """Pose estimation + silent ergonomic sampling.
 
     Each tick:
-    1. Send the frame to dlbackend pose-estimation WS.
+    1. Send the frame to perception-service pose-estimation WS.
     2. While the user is present, append one sample per
        POSE_SAMPLE_INTERVAL_S to a rolling RAM deque AND a daily JSONL file.
     3. NEVER emit an event directly — MotionPerception calls
@@ -707,7 +707,7 @@ class PosePerception(Perception[cv2.typing.MatLike]):
             i += 1
 
     def _append_sample_file(self, sample: _PoseSample) -> None:
-        # Pass through dlbackend's raw left / right dicts verbatim
+        # Pass through perception-service's raw left / right dicts verbatim
         # (body_scores + angles + skipped_joints from Khanh's RULA scorer).
         # We do not derive any new value; aggregation reads these as-is.
         payload: dict[str, Any] = {

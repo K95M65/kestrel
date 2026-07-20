@@ -90,8 +90,16 @@ class ServiceBase(ABC):
                     self.logger.error(f"Error handling event {event.event_type}: {e}")
                 finally:
                     with self._event_lock:
-                        self._current_event = None
-                        self._event_available.clear()
+                        # Only clear when the mailbox still holds the event we
+                        # just handled. A dispatch() that lands while
+                        # handle_event is running replaces _current_event —
+                        # clearing unconditionally here deleted that event
+                        # before it was ever handled (user LED commands were
+                        # silently dropped whenever they arrived mid-frame
+                        # while an effect was animating).
+                        if self._current_event is event:
+                            self._current_event = None
+                            self._event_available.clear()
             
             if self._stop_event.is_set():
                 break

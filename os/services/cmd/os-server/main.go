@@ -9,8 +9,8 @@ import (
 
 	"github.com/joho/godotenv"
 
-	ccgatewayd "go.autonomous.ai/os/internal/claudecode/gatewayd"
-	"go.autonomous.ai/os/internal/codex/gatewayd"
+	ccgatewayd "go.autonomous.ai/os/internal/agent/runtimes/claudecode/gatewayd"
+	"go.autonomous.ai/os/internal/agent/runtimes/codex/gatewayd"
 	"go.autonomous.ai/os/lib/logger"
 	"go.autonomous.ai/os/server"
 	"go.autonomous.ai/os/server/config"
@@ -26,6 +26,12 @@ func main() {
 	}
 	if len(os.Args) > 1 && os.Args[1] == "claudecode-gatewayd" {
 		os.Exit(ccgatewayd.Main())
+	}
+	// `os-server claude-sessions` is the terminal coding-session picker (cc.go)
+	// — installed on the device as the /usr/local/bin/claude-sessions wrapper
+	// by the claudecode presync.
+	if len(os.Args) > 1 && os.Args[1] == "claude-sessions" {
+		os.Exit(ccMain(os.Args[2:]))
 	}
 
 	var showVersion bool

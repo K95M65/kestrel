@@ -138,6 +138,7 @@ export const FLOW_NODES: FlowNodeDef[] = [
     triggers: [
       "tts",
       "flow_event:tts_send", "flow_enter:tts_send", "flow_exit:tts_send",
+      "flow_event:tts_muted",
       "intent_match", "flow_event:intent_match",
       "flow_event:voice_pipeline_start",
     ] },
@@ -159,6 +160,7 @@ export const FLOW_NODES: FlowNodeDef[] = [
       "led_set", "led_off", "ambient_pause", "ambient_resume",
       "flow_event:led_set", "flow_event:led_off",
       "flow_event:tts_suppressed",
+      "flow_event:tts_muted",
       "hw_emotion", "flow_event:hw_emotion",
       "hw_led", "flow_event:hw_led",
       "hw_servo", "flow_event:hw_servo",

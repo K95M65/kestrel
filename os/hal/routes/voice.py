@@ -7,6 +7,7 @@ recognition service, kept next to the rest of that code.
 
 import asyncio
 import json
+import threading
 import time
 from typing import Optional
 
@@ -132,7 +133,13 @@ def start_voice(req: VoiceStartRequest):
             wake_words=wake_words,
             alsa_device=AUDIO_INPUT_ALSA,
         )
-        state.voice_service.start()
+        if state._mic_muted:
+            # Mute restored from the sidecar (or applied by the physical
+            # switch) before the pipeline was built: create the service but
+            # don't open the mic. /voice/unmute (or the switch) starts it.
+            state.logger.info("Voice pipeline created but not started -- mic muted")
+        else:
+            state.voice_service.start()
         return {"status": "ok"}
     except Exception as e:
         state.voice_service = None
@@ -340,21 +347,50 @@ def mute_mic():
         return {"status": "already_muted"}
     state._mic_muted = True
     state._mic_manual_override = True
+    # LED + sidecar BEFORE the pipeline teardown: voice_service.stop() can
+    # block for seconds (session teardown), and the mute feedback must not
+    # wait that out.
+    state._apply_mic_muted_led()
+    state._persist_mic_state()
     if state.voice_service and state.voice_service.available:
-        state.voice_service.stop()
-    state.logger.info("Mic muted by user")
+        # voice_service.stop() has been observed to block for 20-30s when
+        # realtime.stop's LLM memory-summarization call hangs on an
+        # unresponsive backend (Cloudflare 524, network stall). Detaching
+        # to a daemon thread lets this route return in ms — critical because
+        # the caller is often the mic-switch driver, which holds an
+        # apply_lock while inside this route. If that lock stays held for
+        # 27s, the driver can't process the user's next flip (verified in
+        # trace: unmute reconcile blocked 11s waiting for the mute lock).
+        # Voice service already tolerates parallel start/stop via its
+        # _running flag; a small race with a subsequent unmute is
+        # acceptable — realtime reconnect logic self-heals.
+        threading.Thread(
+            target=state.voice_service.stop,
+            daemon=True,
+            name="voice-mute-teardown",
+        ).start()
+    state.logger.info("Mic muted by user (voice_service.stop() dispatched to bg thread)")
     return {"status": "ok"}
 
 
 @router.post("/voice/unmute", response_model=StatusResponse)
 def unmute_mic():
     """Unmute mic -- restart voice pipeline."""
+    # HW kill-switch beats software: while the physical PD1 slide switch is
+    # muted, the web/API is not allowed to override it — mic_button.py would
+    # just flip it back on the next reconcile anyway, leaving the UI briefly
+    # showing "unmuted" while the pipeline stays down. 409 lets the web toast
+    # a specific "flip the switch first" message.
+    if state._hw_mic_switch_muted is True:
+        raise HTTPException(409, "Hardware mic switch is off -- flip the physical switch to unmute")
     if not state._mic_muted:
         return {"status": "already_unmuted"}
     state._mic_muted = False
     state._mic_manual_override = False
     if state.voice_service:
         state.voice_service.start()
+    state._clear_mic_muted_led()
+    state._persist_mic_state()
     state.logger.info("Mic unmuted")
     return {"status": "ok"}
 
@@ -461,4 +497,5 @@ def voice_status():
         "tts_speaking": state.tts_service.speaking if state.tts_service else False,
         "tts_detail": tts_detail,
         "mic_muted": state._mic_muted,
+        "hw_mic_switch_muted": state._hw_mic_switch_muted,
     }

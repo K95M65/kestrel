@@ -196,7 +196,7 @@ export function FlowDiagram({
   const gateR = compact ? 22 : 30;
 
   const ttsSuppressed = turnEvents.some((ev) =>
-    ev.type === "flow_event" && (ev.detail as Record<string, any>)?.node === "tts_suppressed"
+    ev.type === "flow_event" && ["tts_suppressed", "tts_muted"].includes((ev.detail as Record<string, any>)?.node)
   );
 
   function nodeColor(id: FlowStage) {

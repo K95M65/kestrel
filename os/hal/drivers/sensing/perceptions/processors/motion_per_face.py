@@ -121,6 +121,22 @@ class MotionPerFacePerception(Perception[FaceDetectionData]):
         self._lock: threading.RLock = threading.RLock()
         self._last_flush_ts: float = 0.0
 
+        # Global (cross-face) cooldown floor, mirroring MotionPerception's.
+        # The per-face dedup keys on (face, action) only — with N faces in
+        # frame it would still allow N motion.activity emissions per flush
+        # (one per person), and every new/re-detected face reopens it. One
+        # shared floor bounds the whole perception to a single same-class
+        # emission per MOTION_EVENT_COOLDOWN_S, with the same coarse-class
+        # transition bypass (min-gapped against detection flicker) as
+        # MotionPerception. NOTE: this perception is an ALTERNATIVE to
+        # MotionPerception (both emit motion.activity); when both are enabled
+        # their floors are independent — don't run both.
+        self._event_cooldown_s: float = config.MOTION_EVENT_COOLDOWN_S
+        self._transition_min_gap_s: float = config.MOTION_TRANSITION_MIN_GAP_S
+        self._last_event_ts: float = 0.0
+        self._last_sent_class: frozenset[str] | None = None
+        self._last_sent_user: str = ""
+
     @staticmethod
     def _load_whitelist() -> list[str] | None:
         from pathlib import Path
@@ -226,6 +242,31 @@ class MotionPerFacePerception(Perception[FaceDetectionData]):
                     pass
             self._sessions.clear()
 
+    def reset_dedup(self, new_user: str = "") -> None:
+        """Clear the global cooldown floor only if the visible user actually
+        changed — same guard as MotionPerception.reset_dedup (stranger flicker
+        collapses to "unknown" and must not reopen the floor on every
+        presence.enter). Per-face dedup maps are keyed by face_id and stay:
+        a returning face keeps its own recent-action history.
+        """
+        with self._lock:
+            if self._last_sent_class is None:
+                return
+            if self._last_sent_user == new_user:
+                logger.debug(
+                    "[motion_per_face] floor reset skipped — same user %r",
+                    new_user,
+                )
+                return
+            logger.info(
+                "[motion_per_face] floor reset (user %r → %r)",
+                self._last_sent_user,
+                new_user,
+            )
+            self._last_event_ts = 0.0
+            self._last_sent_class = None
+            self._last_sent_user = ""
+
     @override
     def _check_impl(self, data: FaceDetectionData) -> None:
         if data.frame is None or not data.faces:
@@ -317,6 +358,49 @@ class MotionPerFacePerception(Perception[FaceDetectionData]):
             ):
                 continue
 
+            # Global cooldown floor — same semantics as MotionPerception:
+            # within the same coarse activity class, at most one emission per
+            # _event_cooldown_s across ALL faces; a coarse-class TRANSITION
+            # bypasses the floor but is itself min-gapped against detection
+            # flicker. Checked BEFORE the per-face dedup so a floored label
+            # isn't marked sent and can still fire once the floor clears.
+            classes: frozenset[str] = frozenset(
+                ACTIVITY_GROUP.get(label, label) for label in labels
+            )
+            class_changed: bool = (
+                self._last_sent_class is not None
+                and classes != self._last_sent_class
+            )
+            transition_bypass: bool = class_changed and (
+                (cur_ts - self._last_event_ts) >= self._transition_min_gap_s
+            )
+            if (
+                not transition_bypass
+                and self._last_sent_class is not None
+                and (cur_ts - self._last_event_ts) < self._event_cooldown_s
+            ):
+                logger.info(
+                    "[motion_per_face] cooldown drop for '%s': %s "
+                    "(last event %.1fs ago < %.0fs floor, class %s)",
+                    session.face_id,
+                    sorted(labels),
+                    cur_ts - self._last_event_ts,
+                    self._event_cooldown_s,
+                    "changed but < %.0fs transition gap"
+                    % self._transition_min_gap_s
+                    if class_changed
+                    else "unchanged",
+                )
+                continue
+            if transition_bypass:
+                logger.info(
+                    "[motion_per_face] transition bypass: %s → %s "
+                    "(last event %.1fs ago)",
+                    sorted(self._last_sent_class or ()),
+                    sorted(classes),
+                    cur_ts - self._last_event_ts,
+                )
+
             # Per-action dedup: only send actions not seen in the last 5 min
             new_labels = session.filter_new_actions(labels, cur_ts)
             if not new_labels:
@@ -336,6 +420,10 @@ class MotionPerFacePerception(Perception[FaceDetectionData]):
                 )
             session.mark_sent(new_labels, cur_ts)
             labels = new_labels
+
+            self._last_event_ts = cur_ts
+            self._last_sent_class = classes
+            self._last_sent_user = self._perception_state.current_user.data or ""
 
             message = (
                 f"Activity detected ({session.face_id}): {', '.join(sorted(labels))}."

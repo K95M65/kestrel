@@ -863,7 +863,10 @@ Type=simple
 User=root
 WorkingDirectory=/opt/hal
 Environment="PYTHONPATH=/opt"
-ExecStart=/opt/hal/.venv/bin/uvicorn hal.server:app --host 127.0.0.1 --port 5001
+# --timeout-graceful-shutdown: without it uvicorn waits forever for open
+# connections (an SSE/MJPEG stream holds SIGTERM until systemd's 90s SIGKILL).
+ExecStart=/opt/hal/.venv/bin/uvicorn hal.server:app --host 127.0.0.1 --port 5001 --timeout-graceful-shutdown 5
+TimeoutStopSec=30
 Restart=always
 RestartSec=5
 StandardOutput=journal

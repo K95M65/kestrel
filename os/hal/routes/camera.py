@@ -71,6 +71,7 @@ def disable_camera():
     state._camera_disabled = True
     state._camera_manual_override = True
     state.camera_capture.stop()
+    state._persist_camera_state()
     state.logger.info("Camera disabled by user (manual override set)")
     return {"status": "ok"}
 
@@ -85,6 +86,7 @@ def enable_camera():
     state._camera_disabled = False
     state._camera_manual_override = False
     state.camera_capture.start()
+    state._persist_camera_state()
     state.logger.info("Camera re-enabled by user (manual override cleared)")
     return {"status": "ok"}
 
@@ -109,7 +111,7 @@ def camera_snapshot(
     # Lazy import: video_capture_device imports cv2 at module level, and this
     # route module must stay importable on cv2-less devices (server.py imports
     # it unconditionally). Guarded by the cv2 check above.
-    from hal.devices.video_capture_device import capture_still
+    from hal.drivers.camera.video_capture_device import capture_still
 
     was_disabled = state._camera_disabled
     if was_disabled:

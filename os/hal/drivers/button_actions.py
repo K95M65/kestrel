@@ -40,26 +40,45 @@ FACTORY_RESET_DURATION = 10.0  # seconds held → factory-reset on release (supe
 # conversation history without speaking back.
 OS_SENSING_URL = "http://127.0.0.1:5000/api/sensing/event"
 
+# Agent-notify batching for petting. Every notify is a full LLM turn on the
+# OS server side (the NO_REPLY hint suppresses speech, not the turn), and the
+# local phrase playback alone would allow one notify every ~2-4s during a
+# sustained petting session. One turn per window carries the same
+# information; extra pats ride along as a count on the next notify.
+HEAD_PAT_NOTIFY_WINDOW_S = 60.0
+_head_pat_lock = threading.Lock()
+_head_pat_last_notify_ts: float = 0.0
+_head_pat_suppressed: int = 0
+
 
 def _notify_head_pat(spoken: str):
     """Tell the OS server that the device was just stroked. Called from the
-    head-pat TTS thread *after* speak_cached actually played a phrase,
-    so the rate is bounded by phrase playback (~1-3s) — no extra
-    debounce needed. TTS-busy strokes are dropped silently and never
-    notify, which is the right behaviour: the agent only learns about
-    petting moments the user actually heard a response to.
+    head-pat TTS thread *after* speak_cached actually played a phrase.
+    TTS-busy strokes are dropped silently and never notify, which is the
+    right behaviour: the agent only learns about petting moments the user
+    actually heard a response to. At most one notify per
+    HEAD_PAT_NOTIFY_WINDOW_S — pats in between are batched into a count.
 
     `spoken` is the exact phrase the agent just said (incl. eleven_v3 audio
     tags like [laughs] / [whispers]) so the agent can read its own tone
     and weave it into memory — "I laughed and said tickles" lands
     differently than "I sighed and asked them to stop"."""
+    global _head_pat_last_notify_ts, _head_pat_suppressed
+    with _head_pat_lock:
+        now = time.monotonic()
+        if (now - _head_pat_last_notify_ts) < HEAD_PAT_NOTIFY_WINDOW_S:
+            _head_pat_suppressed += 1
+            return
+        batched = _head_pat_suppressed
+        _head_pat_suppressed = 0
+        _head_pat_last_notify_ts = now
+    message = f'You were petted and responded: "{spoken}"'
+    if batched:
+        message += f" (and {batched} more pat(s) since the last report)"
     try:
         requests.post(
             OS_SENSING_URL,
-            json={
-                "type": "touch.head_pat",
-                "message": f'You were petted and responded: "{spoken}"',
-            },
+            json={"type": "touch.head_pat", "message": message},
             timeout=0.5,
         )
     except Exception:
@@ -103,9 +122,15 @@ def _announce_listening():
     giving up silently."""
     text = _phrase(PHRASE_LISTENING)
     state.tts_service.stop()
-    for delay in (0.15, 0.4, 0.8, 1.6, 3.0):
-        time.sleep(delay)
-        if state.tts_service.speak_cached(text):
+    # First attempt is immediate: when TTS is idle (the common case — mic
+    # unmute path) the cue plays with zero added delay. Backoff only kicks
+    # in when the lock is still held by winding-down playback.
+    # interruptible=True so any follow-up speech (agent reply, gesture
+    # announce) preempts a stale cue instead of being busy-skipped.
+    for delay in (0, 0.15, 0.4, 0.8, 1.6, 3.0):
+        if delay:
+            time.sleep(delay)
+        if state.tts_service.speak_cached(text, interruptible=True):
             return
     logger.warning("listening cue dropped: TTS busy after retries")
 
@@ -135,12 +160,65 @@ def _wake_if_sleepy(source: str):
         logger.warning("Wake emotion call failed: %s", e)
 
 
-def single_click_action(source: str = "button"):
-    """Stop in-flight speech / unmute mic + speaker, then announce listening cue."""
+def play_ack_chime(source: str = "button"):
+    """Instant audible acknowledgment (~120ms ping) that a physical gesture
+    registered. Humans need sub-200ms feedback to feel 'it heard me' — the
+    spoken cue can never get there (it waits out gesture disambiguation
+    windows), the chime can. Neutral by design: valid ack for a tap, the
+    first stroke of a pet, or the start of a triple-click burst. Silent
+    no-op when TTS is unavailable or the speaker is muted."""
+    tts = state.tts_service
+    if tts is None:
+        return
+    try:
+        tts.play_ack_chime()
+    except Exception as e:
+        logger.debug("%s ack chime failed: %s", source, e)
+
+
+def announce_listening_cue(source: str = "button"):
+    """Fire the listening-cue TTS off-thread. Split from single_click_action
+    so callers that resolve gestures in two steps (GPIO button: floor-grab
+    on release, cue after the click window) can defer just the audible part
+    — a cue talking over the user mid-triple-click disrupts their rhythm."""
+    # Same HW kill-switch guard as single_click_action: gpio_button.py's
+    # _on_click_timeout calls this DIRECTLY (bypassing single_click_action)
+    # after the click window closes, so the guard has to live here too or
+    # "I'm listening" still fires while the mic is physically off. Guarding
+    # only single_click_action leaves the GPIO-button path leaky.
+    if state._hw_mic_switch_muted is True:
+        logger.info("%s listening cue skipped -- HW mic switch is off", source)
+        return
+    if _tts_available():
+        threading.Thread(
+            target=_announce_listening,
+            daemon=True,
+            name=f"{source}-single-click-tts",
+        ).start()
+
+
+def single_click_action(source: str = "button", announce: bool = True, chime: bool = True):
+    """Stop in-flight speech / unmute mic + speaker, then announce listening cue.
+    announce=False skips the cue (caller fires announce_listening_cue later).
+    chime=False skips the ack ping (caller already chimed at gesture start)."""
+    # Hardware mic-mute switch is the authority: while it is physically off,
+    # taps on the GPIO button / TTP223 touchpad must NOT wake, unmute, or
+    # announce — the whole gesture flow would violate the kill-switch promise.
+    # Skip silently (no chime, no cue): the red mic-muted LED is already the
+    # visual "off" indicator; a chime here would read as "action accepted"
+    # when nothing happened. mic_button.py's own unmute-path call flips the
+    # flag to False BEFORE calling this, so the slide switch's own unmute is
+    # not blocked. None = device has no HW switch (Lamp) → always fall through.
+    if state._hw_mic_switch_muted is True:
+        logger.info("%s single click ignored -- HW mic switch is off", source)
+        return
+
     from hal.routes.music import audio_stop, unmute_speaker
     from hal.routes.voice import stop_tts, unmute_mic
 
+    t_start = time.monotonic()
     _wake_if_sleepy(source)
+    logger.info("[sca-trace] wake done +%.0fms", (time.monotonic() - t_start) * 1000)
 
     # A single click is a "give me the floor" gesture, so relax a user/scene
     # speaker mute too — otherwise the listening cue stays silent and the reply
@@ -150,27 +228,34 @@ def single_click_action(source: str = "button"):
     # Must run before the _tts_available() check below so the cue can play.
     if state._speaker_muted and not state._enrolling:
         logger.info("%s single click -- unmuting speaker", source)
+        t = time.monotonic()
         unmute_speaker()
+        logger.info("[sca-trace] unmute_speaker done +%.0fms", (time.monotonic() - t) * 1000)
 
     if state._mic_muted:
         logger.info("%s single click -- unmuting mic", source)
+        t = time.monotonic()
         unmute_mic()
+        logger.info("[sca-trace] unmute_mic done +%.0fms", (time.monotonic() - t) * 1000)
     else:
         logger.info("%s single click -- stopping speaker", source)
         stop_tts()
         audio_stop()
-    # Always announce the listening cue so the user hears confirmation
-    # of the click — both for unmute (mic just opened) and for
-    # stop-speaker (the device was talking, user wants the floor). The cue
-    # itself preempts in-flight TTS via stop() + speak_cached retry,
-    # so calling stop_tts() above is fine — _announce_listening handles
-    # the lock handoff.
-    if _tts_available():
-        threading.Thread(
-            target=_announce_listening,
-            daemon=True,
-            name=f"{source}-single-click-tts",
-        ).start()
+    # Ack ping AFTER the stop: stop_tts frees the persistent stream lock
+    # within ~10ms, so the chime sounds effectively at gesture time.
+    if chime:
+        t = time.monotonic()
+        play_ack_chime(source)
+        logger.info("[sca-trace] chime done +%.0fms", (time.monotonic() - t) * 1000)
+    # Announce the listening cue so the user hears confirmation of the
+    # click — both for unmute (mic just opened) and for stop-speaker (the
+    # device was talking, user wants the floor). The cue itself preempts
+    # in-flight TTS via stop() + speak_cached retry, so calling stop_tts()
+    # above is fine — _announce_listening handles the lock handoff.
+    if announce:
+        t = time.monotonic()
+        announce_listening_cue(source)
+        logger.info("[sca-trace] announce_listening_cue dispatched +%.0fms (total_sca=%.0fms)", (time.monotonic() - t) * 1000, (time.monotonic() - t_start) * 1000)
 
 
 def triple_click_action(source: str = "button"):

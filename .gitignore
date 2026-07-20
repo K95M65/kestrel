@@ -14,7 +14,7 @@
 docs/superpowers/
 
 *.log
-dlbackend/local
+integrations/perception-service/local
 *.pt
 *.pth
 
@@ -49,8 +49,8 @@ os/services/web/dist/
 *.zip
 
 # Claude Desktop Buddy (Go) — binary outputs
-companions/claude-desktop-buddy/buddy-plugin
-companions/claude-desktop-buddy/claude-desktop-buddy
+integrations/companions/claude-desktop-buddy/buddy-plugin
+integrations/companions/claude-desktop-buddy/claude-desktop-buddy
 
 # LeLamp (Python)
 .venv
@@ -61,7 +61,7 @@ imager/output/*.img
 scripts/release/.skill-hashes
 
 
-dlbackend/src/core/ser/models/emotion2vec_plus_large/emotion2vec.onnx
-dlbackend/tests/mock_data/audio/speakers/
+integrations/perception-service/src/core/ser/models/emotion2vec_plus_large/emotion2vec.onnx
+integrations/perception-service/tests/mock_data/audio/speakers/
 
 # Hardware CAD binaries are stored via Git LFS — see .gitattributes

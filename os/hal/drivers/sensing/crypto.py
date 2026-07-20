@@ -1,6 +1,6 @@
 """Client-side RSA+AES-GCM encryption for DL backend communication.
 
-Mirrors the wire format defined in dlbackend/src/lbserver/models.py.
+Mirrors the wire format defined in integrations/perception-service/src/lbserver/models.py.
 Public key can be loaded from a local PEM file or fetched from the load balancer.
 """
 
@@ -22,7 +22,7 @@ GCM_NONCE_SIZE: int = 12
 
 
 # ---------------------------------------------------------------------------
-# Wire-format models (mirrors dlbackend/src/lbserver/models.py)
+# Wire-format models (mirrors integrations/perception-service/src/lbserver/models.py)
 # ---------------------------------------------------------------------------
 
 

@@ -19,9 +19,9 @@ Storage layout per user::
                                    merged on write, never overwritten blindly.
         voice/
             embedding.npy       — single L2-normalized aggregated vector [D].
-                                   Mirrors dlbackend's per-speaker storage so
+                                   Mirrors perception-service's per-speaker storage so
                                    recognize uses the same per-chunk voting
-                                   logic as dlbackend's /recognize endpoint.
+                                   logic as perception-service's /recognize endpoint.
             metadata.json       — voice-specific (enrolled_at, updated_at,
                                    num_samples, sample_files, embedding_dim)
             sample_<ts>_<uuid>.wav  — source WAV files (16kHz mono)
@@ -108,7 +108,7 @@ _VOICE_STRANGER_DIR_RE = re.compile(r"^voice_\d+$")
 _TARGET_SR = 16000
 
 # Chunk window the /embed endpoint slices the waveform with before per-chunk
-# embedding extraction. Bumped from the dlbackend default (0.5s) because
+# embedding extraction. Bumped from the perception-service default (0.5s) because
 # device audio is overwhelmingly single-speaker per turn — longer chunks
 # yield smoother per-chunk embeddings, at the cost of fewer votes in
 # recognize() and reduced ability to detect a speaker switch mid-turn.
@@ -170,7 +170,7 @@ def _weighted_aggregate(
 ) -> np.ndarray:
     """Self-consistency weighted mean + L2-normalize.
 
-    Mirrors ``dlbackend.audio_preprocess.weighted_aggregate`` so pooling
+    Mirrors ``perception-service.audio_preprocess.weighted_aggregate`` so pooling
     per-sample embeddings client-side produces a vector comparable with one
     the server would produce from the same samples — without the server-side
     artifact of concatenating multiple WAVs into a single waveform before
@@ -423,7 +423,7 @@ class SpeakerRecognizer:
         Returns the L2-normalized aggregated vector ``[D]`` by default. When
         ``return_chunks=True`` returns the matrix of per-chunk embeddings
         ``[M, D]`` instead — used by ``recognize()`` to do per-chunk voting
-        against stored speakers (mirroring dlbackend's /recognize logic).
+        against stored speakers (mirroring perception-service's /recognize logic).
         """
         if not self._api_url:
             raise SpeakerRecognizerError(
@@ -593,7 +593,7 @@ class SpeakerRecognizer:
     def _load_all_embeddings(self) -> dict[str, np.ndarray]:
         """Load every stored aggregated embedding [D] — source of truth for recognize().
 
-        Mirrors dlbackend's per-speaker storage: one L2-normalized vector
+        Mirrors perception-service's per-speaker storage: one L2-normalized vector
         per user. Recognize then runs per-chunk voting against these.
         """
         out: dict[str, np.ndarray] = {}
@@ -739,7 +739,7 @@ class SpeakerRecognizer:
                 )
 
         if not new_embeddings:
-            # Surface the actual reason from dlbackend (VAD reject text, etc.)
+            # Surface the actual reason from perception-service (VAD reject text, etc.)
             # or from local gates (too short / silent) — no hardcoded summary.
             if len(per_sample_errors) == 1:
                 raise SpeakerRecognizerError(per_sample_errors[0][1])
@@ -934,7 +934,7 @@ class SpeakerRecognizer:
         # in Steps 2 + 3 instead of issuing one more /embed call with every
         # kept WAV. Bundling all samples into one server call would concat
         # them into a single waveform before VAD/chunking — a sample-level
-        # boundary loss that differs from what dlbackend's own register()
+        # boundary loss that differs from what perception-service's own register()
         # does (preprocess each file separately, then pool chunks). Each
         # per-sample embedding is already L2-normalized, so the self-
         # consistency weighted mean below matches the server's aggregation
@@ -1193,7 +1193,7 @@ class SpeakerRecognizer:
         try:
             payload = self._prepare_wav_for_embedding(wav_bytes)
             # Per-chunk query embeddings — same per-chunk granularity that
-            # dlbackend's /recognize uses internally, so per-chunk voting
+            # perception-service's /recognize uses internally, so per-chunk voting
             # below produces apples-to-apples confidence.
             query_chunks = self._call_embedding_api(
                 payload, return_chunks=True
@@ -1238,7 +1238,7 @@ class SpeakerRecognizer:
                 "candidates": [],
             }
 
-        # Per-chunk voting (mirrors dlbackend.recognize line 614-645):
+        # Per-chunk voting (mirrors perception-service.recognize line 614-645):
         # for each query chunk, pick the highest-confidence speaker, record
         # one vote and one confidence sample. Winner = most votes, tiebreak
         # by avg confidence. Returned confidence = avg of winner's votes.

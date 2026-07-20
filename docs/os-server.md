@@ -119,9 +119,10 @@ Config field: `guard_mode` in `config/config.json` (bool, default `false`). The 
 
 **Processing flow:**
 1. `voice_command` or `voice` + local intent enabled → match intent → execute directly (~50ms). `web_chat` skips local intent (typed text ≠ wake-word voice).
-2. No match → forward to OpenClaw via WebSocket `chat.send`
-3. If event has `image` → call `SendChatMessageWithImage` → send image with text for AI vision analysis. For `web_chat`, attached image is saved to `/tmp/web-chat-*.jpg` and tagged `[image: <path>]` so the agent can reference it (e.g. for face enrollment).
-4. `web_chat` runs are tagged via `MarkWebChatRun(runID)` so the SSE handler suppresses TTS at lifecycle end — reply is rendered in the web UI only.
+2. Ambient turn floor: `motion.activity`, `emotion.detected`, `speech_emotion.detected`, `sound`, `presence.away`, `light.level` are dropped when the last agent turn created by this handler (any type) was less than `sensing_turn_floor_s` seconds ago (config key, default `120`, `0` disables; guard mode bypasses). One cross-type floor on top of HAL's independent per-type gates — a burst of different event types costs at most one agent turn per window. Dropped events surface as `sensing_drop` (reason `ambient_floor`) in the Flow Monitor.
+3. No match → forward to OpenClaw via WebSocket `chat.send`
+4. If event has `image` → call `SendChatMessageWithImage` → send image with text for AI vision analysis. For `web_chat`, attached image is saved to `/tmp/web-chat-*.jpg` and tagged `[image: <path>]` so the agent can reference it (e.g. for face enrollment).
+5. `web_chat` runs are tagged via `MarkWebChatRun(runID)` so the SSE handler suppresses TTS at lifecycle end — reply is rendered in the web UI only.
 
 ### OpenClaw
 
@@ -161,7 +162,7 @@ Accessed via nginx proxy: `/hw/*` → `127.0.0.1:5001`
 | GET | `/led` | LED strip info |
 | GET | `/led/color` | Current LED color |
 | POST | `/led/solid` | Fill entire strip with one color |
-| POST | `/led/paint` | Set individual pixels (array up to 64) |
+| POST | `/led/paint` | Set individual pixels (array up to 64), or gradient stops with `"gradient": true` |
 | POST | `/led/off` | Turn off all LEDs |
 | POST | `/led/effect` | Start effect (breathing, candle, rainbow, notification_flash, pulse) |
 | POST | `/led/effect/stop` | Stop running effect |
@@ -297,8 +298,11 @@ When receiving a `voice_command` or `voice` event, the OS server checks local in
 | "brighter" | scene:energize |
 | "happy" | emotion:happy |
 | "sad" | emotion:sad |
-| "volume up" | volume 80 |
+| "volume up" | volume 100 |
 | "volume down" | volume 30 |
-| "mute" | volume 0 |
+| "mute speaker" | `POST /speaker/mute` (silent — no TTS confirm) |
+| "unmute speaker" | `POST /speaker/unmute` + "Speaker on!" |
+
+Keyword matching is whole-phrase with ASCII word boundaries — "unmute speaker" does not trigger the "mute speaker" rule.
 
 No match → forward to OpenClaw.

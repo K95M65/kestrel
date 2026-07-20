@@ -11,7 +11,7 @@ import (
 	"go.autonomous.ai/os/domain"
 	"go.autonomous.ai/os/internal/device"
 	"go.autonomous.ai/os/internal/network"
-	"go.autonomous.ai/os/internal/openclaw"
+	"go.autonomous.ai/os/internal/agent/runtimes/openclaw"
 	"go.autonomous.ai/os/lib/mqtt"
 	"go.autonomous.ai/os/server/config"
 )

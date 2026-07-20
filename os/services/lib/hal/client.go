@@ -5,6 +5,7 @@ package hal
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +13,13 @@ import (
 	"sync/atomic"
 	"time"
 )
+
+// ErrSpeakerMuted reports that HAL accepted the speak request but suppressed
+// playback because the device speaker is muted (HTTP 200 with
+// status="suppressed" — see HAL routes/voice.py). Nothing was synthesized or
+// spoken. Callers can surface the mute (e.g. a tts_muted flow event) instead
+// of treating it as a delivery failure.
+var ErrSpeakerMuted = errors.New("speaker muted")
 
 const BaseURL = "http://127.0.0.1:5001"
 
@@ -154,14 +162,14 @@ func SpeakQueue(text string) error {
 // notices) must use plain Speak so it never pollutes the realtime model.
 func SpeakReply(text string) error {
 	body, _ := json.Marshal(map[string]any{"text": text, "realtime_feedback": true})
-	return post("/voice/speak", body)
+	return postSpeak("/voice/speak", body)
 }
 
 // SpeakQueueReply is SpeakQueue with realtime feedback — the queued sibling of
 // SpeakReply for sentence-streamed agent replies. See SpeakReply.
 func SpeakQueueReply(text string) error {
 	body, _ := json.Marshal(map[string]any{"text": text, "realtime_feedback": true})
-	return post("/voice/speak-queue", body)
+	return postSpeak("/voice/speak-queue", body)
 }
 
 // SpeakInterruptible sends text to TTS; playback can be cut short by incoming voice.
@@ -486,6 +494,32 @@ func post(path string, body []byte) error {
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("POST %s returned %d", path, resp.StatusCode)
+	}
+	return nil
+}
+
+// postSpeak is post() for /voice/speak* endpoints: on 2xx it also decodes the
+// response body and returns ErrSpeakerMuted when HAL reports the request was
+// suppressed (speaker muted). A malformed/unexpected body is NOT an error —
+// the speak itself succeeded, so decode failures are ignored.
+func postSpeak(path string, body []byte) error {
+	var reader io.Reader
+	if body != nil {
+		reader = bytes.NewReader(body)
+	}
+	resp, err := doPost(path, reader)
+	if err != nil {
+		return fmt.Errorf("POST %s: %w", path, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("POST %s returned %d", path, resp.StatusCode)
+	}
+	var r struct {
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&r); err == nil && r.Status == "suppressed" {
+		return ErrSpeakerMuted
 	}
 	return nil
 }

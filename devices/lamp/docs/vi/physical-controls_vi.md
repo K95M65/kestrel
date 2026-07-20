@@ -26,8 +26,8 @@ Cả hai handler đều detect board qua `/proc/device-tree/model`:
 
 | Cử chỉ | Nút GPIO | Touchpad TTP223 |
 |---|---|---|
-| **1 chạm** | Stop loa / unmute mic + speaker + báo "Mình nghe đây" | Y hệt — fire ~1.2 s sau khi nhả (chi phí decision-window, xem dưới) |
-| **2 chạm** (≤ 0.4 s, nút) / (≤ 1.2 s, TTP223) | Bỏ qua (panic-click guard) | Pet response — TTS chọn ngẫu nhiên 1 câu từ pool theo ngôn ngữ |
+| **1 chạm** | Stop loa / unmute mic + speaker + chime ack (~120 ms ping) — tất cả fire ngay khi nhả nút (không đợi click window); cue "Mình nghe đây" phát sau khi click window 0.4 s phân giải xong | Tách y hệt — TTS đang nói bị cắt và chime ack kêu ~0.2 s sau khi nhấc tay (session đầu kết thúc); unmute + cue đợi decision window 1.2 s (chi phí tap-vs-pet, xem dưới) |
+| **2 chạm** (≤ 0.4 s, nút) / (≤ 1.2 s, TTP223) | Không thêm gì ngoài single-click đã fire ở chạm 1 (panic-click guard) | Pet response — TTS chọn ngẫu nhiên 1 câu từ pool theo ngôn ngữ |
 | **3 chạm** (≤ 0.4 s, nút) | Reboot OS (TTS báo → `sudo reboot`) | n/a — TTP223 dừng ở 2 (chạm thêm bị cooldown nuốt) |
 | **Giữ 5–10 s rồi nhả** | Shutdown OS (TTS báo → release servo → `sudo shutdown -h now`). LED nháy đỏ khi đã arm. | n/a — phần cứng TTP223 không hold đáng tin được (xem "FastMode" dưới) |
 | **Giữ 10 s+ rồi nhả** | Factory-reset: wipe state thiết bị + reboot vào AP setup (TTS báo → release servo → POST `/api/system/factory-reset` trên OS server). LED đỏ đứng khi đã arm. | n/a |
@@ -59,11 +59,10 @@ Driver đếm edge nơi **mọi destructive action commit ở rising edge (nhả
 2. **Rising edge (nhả):** dừng LED watcher, tính `held = now − press_start` rồi rẽ nhánh:
    - `held >= 10 s` (`FACTORY_RESET_DURATION`) → scrub mọi click đang chờ, khoá LED đỏ đứng, chạy `factory_reset_action` off-thread.
    - `held >= 5 s` (`LONG_PRESS_DURATION`) → scrub click đang chờ, freeze LED đỏ, chạy `long_press_action` (shutdown) off-thread.
-   - khác (tap ngắn) → `click_count += 1` và (re)start click-window timer 0.4 s.
+   - khác (tap ngắn) → `click_count += 1` và (re)start click-window timer 0.4 s. Ở tap **đầu tiên** của chuỗi, phần im lặng của `single_click_action` (`announce=False`) fire ngay off-thread — nó không phá huỷ ("cho tôi nói"), nên không cần đợi window. Cue nói được hoãn lại để không nói đè lên chuỗi triple-click đang bấm dở.
 3. Khi click window hết:
-   - `count == 1` → `single_click_action`
-   - `count == 3` → `triple_click_action`
-   - `count == 2` hoặc `>= 4` → bỏ qua (panic-click guard)
+   - `count == 3` → `triple_click_action` (không cue — chỉ announce reboot)
+   - count khác → `announce_listening_cue` phát cue "Mình nghe đây" đã hoãn, đúng 1 lần mỗi chuỗi; `count == 2` / `>= 4` log thêm ignored (panic-click guard — floor-grab đã chạy ở tap 1, không gì phá huỷ fire)
 
 Release edge không có press khớp (press bị debounce nuốt) thì bỏ qua — `press_start` có thể là cũ, hành động theo nó có thể fire destructive action trên timestamp cũ vài phút. Destructive action chạy trên daemon thread riêng vì callback `lgpio` phải return ngay, nếu không các edge sau sẽ dồn hàng.
 
@@ -98,7 +97,8 @@ Bất kỳ edge nào — rising hay falling, pad nào — đều restart timer 2
 Sau khi session kết thúc:
 
 1. Nếu **pet cooldown** đang active (head-pat vừa fire gần đây), session bị nuốt im lặng và cooldown được extend. Ngăn `single_click` chen ngang giữa các stroke liên tục.
-2. Khác thì increment session count rồi:
+2. Ngược lại tăng session count. Ở session **đầu tiên** của chuỗi (`_ack_first_session`): nếu TTS đang nói giữa chừng → cắt lời ngay lập tức, rồi chime ack kêu (trung tính với gesture — hợp lệ cho cả tap lẫn nhịp vuốt đầu của pet). Chỉ cắt TTS + chime — nhạc, unmute và cue vẫn đợi phân giải. Trade-off có chủ đích: vuốt đầu Lamp lúc nó đang nói giờ sẽ cắt lời nó (câu giggle pet theo sau) — đổi lấy tap-to-interrupt tức thời.
+3. Rồi phân giải:
    - `count >= 2` → fire `head_pat_action` ngay lập tức, arm pet cooldown 1.5 s
    - `count < 2` → schedule decision timer 1.2 s. Khi timer fire với `count == 1`, fire `single_click_action`.
 
@@ -121,7 +121,7 @@ Các action sống ở một chỗ để nút GPIO, TTP223, và mọi input tư�
 | `triple_click_action(source)` | Nói "Đang khởi động lại" → đợi 5 s cho clip cached → `sudo reboot`. | Có |
 | `long_press_action(source)` | Nói "Đang tắt máy" → đợi 5 s → `release_servos()` (để đèn không slam xuống giữa pose) → `sudo shutdown -h now`. | Có |
 | `factory_reset_action(source)` | Nói "Đang khôi phục cài đặt gốc. Đang khởi động lại" → `release_servos()` → POST `/api/system/factory-reset` trên OS server (server lo phần wipe + reboot, xem dưới). | Có |
-| `head_pat_action(source)` | Chọn ngẫu nhiên 1 câu pet local, nói qua `speak_cached` trên daemon thread. **Không cắt**: nếu TTS đang nói, câu pet bị drop im lặng — vuốt giữa câu không được làm Lamp mất lời. | Không |
+| `head_pat_action(source)` | Chọn ngẫu nhiên 1 câu pet local, nói qua `speak_cached` trên daemon thread. **Không cắt**: nếu TTS vẫn busy thì câu pet bị drop im lặng. Thực tế trên TTP223, session chạm đầu tiên đã cắt lời đang nói (`_grab_floor_if_speaking`) nên tới lúc pet fire thì TTS thường rảnh và câu giggle phát được. | Không |
 
 ### Factory-reset: wipe những gì
 
@@ -132,6 +132,21 @@ Các action sống ở một chỗ để nút GPIO, TTP223, và mọi input tư�
 3. Reboot. Thiết bị lên lại ở AP mode `<device_type>-XXXX` với setup wizard mới (~30 s).
 
 Reset là **single-flight** + cooldown 5 phút (`FactoryResetMinInterval`) dùng chung cho mọi trigger (giữ GPIO, HTTP, MQTT) — circuit breaker chống caller chạy loạn và lặp do vô tình.
+
+## Persist mute/disable qua HAL restart
+
+Mic mute, speaker mute và camera disable mỗi cái persist vào một sidecar
+boot-scoped riêng — `/tmp/hal-mic-state.json`, `/tmp/hal-speaker-state.json`,
+`/tmp/hal-camera-state.json` (cùng pattern `boot_id` với sidecar LED/scene) —
+nên HAL restart (OTA, deploy, đổi config) không còn âm thầm unmute mic, mở lại
+speaker hay bật lại camera. Mọi route flip switch đều persist (`/voice/mute|unmute`,
+`/speaker/mute|unmute`, `/camera/disable|enable`, scene đổi mic/speaker,
+`_auto_camera_on/off`); gesture nút/touchpad đi qua đúng các route đó. Khi
+restore: `start_voice` tạo voice pipeline nhưng không mở mic, lifespan trong
+`server.py` không start camera capture và vẽ lại đèn báo mic-muted, còn cờ
+speaker không cần bước apply (TTS check lúc speak). Reboot nguyên máy thì bắt
+đầu fresh (Intern v2 Pro có công tắc gạt tự apply lại). Mute speaker transient
+của record-enroll chủ đích KHÔNG persist.
 
 ## Phrase local
 

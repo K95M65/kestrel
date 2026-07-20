@@ -18,6 +18,15 @@ Gửi POST                                              - nói hoặc NO_REPLY
 
 HAL sở hữu logic tracker theo từng type (sound escalation, motion filtering). Go là người gác cổng — drop event nếu agent bận, sau đó forward. Agent quyết định *cách* phản ứng, bị ràng buộc bởi `SOUL.md`.
 
+### Floor toàn cục cho ambient turn (xuyên event-type)
+
+Các gate per-type ở trên độc lập với nhau — không có gate xuyên-type thì một loạt event *khác type* (emotion + sound + motion trong vài giây, điển hình ngay sau presence change hoặc HAL restart) vẫn tốn nhiều agent turn. `SensingHandler` phía Go vì vậy áp MỘT floor chung cho mọi type **ambient**: tối đa 1 agent turn mỗi `sensing_turn_floor_s` giây (key trong `config/config.json`, mặc định **120**, `0` = tắt) cho `motion.activity`, `emotion.detected`, `speech_emotion.detected`, `sound`, `presence.away`, `light.level`.
+
+- Đồng hồ floor được cập nhật bởi **mọi** agent turn mà sensing handler tạo ra — kể cả voice, web chat, presence, fire — nên ambient event cũng im lặng đủ floor window sau bất kỳ tương tác nào.
+- **Không bao giờ bị floor:** type do user khởi phát (`voice`, `voice_command`, `voice_agent_handled`, `web_chat`, `touch.head_pat`), an toàn (`fire_hazard.detected`), và `presence.enter`/`presence.leave` (UX chào hỏi + bookkeeping session).
+- Guard mode bypass hoàn toàn floor (giám sát cần mọi event).
+- Event bị floor là drop, không queue (`sensing_drop` với reason `ambient_floor` trong Flow Monitor). Mọi ambient emitter đều tự re-offer theo heartbeat riêng, nên drop chỉ làm chậm nhận biết — không bao giờ mất tương tác user-facing.
+
 ---
 
 ## Âm thanh (Sound)
@@ -31,12 +40,14 @@ HAL bắn một sound event cho mỗi audio sample vượt ngưỡng `SOUND_RMS_
 | Giai đoạn | Agent nhận | Phản ứng của agent |
 |---|---|---|
 | Lần 1 | `... — occurrence 1` | `/emotion shock` (0.8), im lặng |
-| Lần 2 | `... — occurrence 2` | `/emotion curious` (0.7), im lặng |
+| Lần 2 | **không có gì** — chỉ đếm ở tracker, không forward | không tốn turn agent |
 | Lần 3+ | `... — persistent (occurrence 3)` | `/emotion curious` (0.9), nói 1 lần |
 | Sau khi nói | Python drop (suppress 3 phút) | Không có gì đến agent |
 | Im lặng 2 phút | Window reset | Trở về lần 1 |
 
-Ví dụ: một con chó nghe tiếng động — nó nhìn lên (lần 1), tiếp tục theo dõi (lần 2), rồi sủa một lần nếu tiếng ồn kéo dài (lần 3+). Sau khi sủa thì không sủa tiếp.
+Các lần giữa (2 .. persistent−1) chỉ tăng counter chứ không forward: mỗi forward là một turn LLM đầy đủ, mà "vẫn còn ồn" giữa lúc chuyển trạng thái (lần 1) và lúc leo thang (persistent) không cho agent thông tin gì để hành động — khi ồn kéo dài, số turn mỗi chu kỳ giảm từ 3 xuống 2.
+
+Ví dụ: một con chó nghe tiếng động — nó nhìn lên (lần 1), tiếp tục theo dõi trong im lặng (lần 2, không báo), rồi sủa một lần nếu tiếng ồn kéo dài (lần 3+). Sau khi sủa thì không sủa tiếp.
 
 ### Hằng số (`sound.py`)
 
@@ -62,7 +73,8 @@ _SUPPRESS_DURATION_S  = 180.0  # suppress sau khi đã nói (3 phút)
 Python đẩy `sound_tracker` events trực tiếp vào monitor bus qua `POST /api/monitor/event`. Chúng hiện trên Flow Monitor cạnh `sensing_input` turn:
 
 ```json
-{ "action": "silent",    "occurrence": 1 }  // lần 1 hoặc 2 — forwarded, im lặng
+{ "action": "silent",    "occurrence": 1 }  // lần 1 — forwarded, im lặng
+{ "action": "counted",   "occurrence": 2 }  // lần giữa — chỉ đếm, không forward
 { "action": "persistent","occurrence": 3 }  // lần 3+ — agent sẽ nói
 { "action": "drop" }                        // dedup hoặc suppress — không forward
 ```
@@ -123,13 +135,13 @@ Chỉ chuyển động lớn được forward — HAL lọc và không gửi chu
 
 ## Tư thế (RULA — sampling thầm lặng, gắn vào `motion.activity`)
 
-HAL stream từng frame camera lên dlbackend `/api/dl/pose-estimation/ws` và nhận RULA breakdown từng frame (whole-body score + `risk_level` + `body_scores` + `*_angle` cho `neck / trunk / upper_arm / lower_arm / wrist`, mỗi bên trái/phải). `PosePerception` throttle thành **một sample mỗi `POSE_SAMPLE_INTERVAL_S` (default 60s)** vào tumbling window + JSONL theo ngày tại `/tmp/hal-sensing-snapshots/sensing_pose/samples_YYYY-MM-DD.jsonl`. **Không emit event trực tiếp** — `MotionPerception` check `is_window_complete()` mỗi tick và gắn aggregate vào `motion.activity` kế tiếp khi gate đỏ.
+HAL stream từng frame camera lên perception-service `/api/dl/pose-estimation/ws` và nhận RULA breakdown từng frame (whole-body score + `risk_level` + `body_scores` + `*_angle` cho `neck / trunk / upper_arm / lower_arm / wrist`, mỗi bên trái/phải). `PosePerception` throttle thành **một sample mỗi `POSE_SAMPLE_INTERVAL_S` (default 60s)** vào tumbling window + JSONL theo ngày tại `/tmp/hal-sensing-snapshots/sensing_pose/samples_YYYY-MM-DD.jsonl`. **Không emit event trực tiếp** — `MotionPerception` check `is_window_complete()` mỗi tick và gắn aggregate vào `motion.activity` kế tiếp khi gate đỏ.
 
 ### Tumbling window (lúc nào summary được inject)
 
 Window mở khi **motion flush đầu tiên có label sedentary** — `MotionPerception` gọi `pose.start_window()` ngay lúc thấy bất kỳ label sedentary nào (`using computer`, `writing`, `reading book`, …). Pose samples đã đến trước thời điểm đó (vd user đang đứng/stretching nhưng vẫn present) bị clear, để bad_ratio chỉ phản ánh giai đoạn ngồi. Sau khi mở, window chạy **chỉ theo thời gian**: stay open đủ `POSE_WINDOW_DURATION_S` bất kể user có break sedentary giữa chừng — stretch break không stop clock, chỉ làm bad_ratio honest hơn. Default **600 s = 10 phút** test; đổi 3600 cho production — 1 biến duy nhất, không có nhánh code test/prod.
 
-Khi window complete, `MotionPerception` ra đúng 1 quyết định và **luôn gọi `reset_window()`** — không carry-over samples cũ. Nếu user vẫn sedentary ở flush kế tiếp, `start_window()` mở cycle mới ngay; nếu không, window stay unanchored đến lần sedentary tiếp theo. Detection miss (dlbackend không trả `ergo`, bị che, low confidence) không kéo dài window; chỉ làm giảm số sample trong window.
+Khi window complete, `MotionPerception` ra đúng 1 quyết định và **luôn gọi `reset_window()`** — không carry-over samples cũ. Nếu user vẫn sedentary ở flush kế tiếp, `start_window()` mở cycle mới ngay; nếu không, window stay unanchored đến lần sedentary tiếp theo. Detection miss (perception-service không trả `ergo`, bị che, low confidence) không kéo dài window; chỉ làm giảm số sample trong window.
 
 Sample được tính là **bad** khi **một trong hai**:
 
@@ -142,12 +154,12 @@ Inject fire khi **tất cả** điều kiện sau đúng:
 
 - window complete (`time.time() - _window_start_ts >= POSE_WINDOW_DURATION_S`)
 - user vẫn sedentary ở flush này (`has_sedentary` True — không nag giữa stretch break)
-- samples trong window `>= POSE_WINDOW_MIN_SAMPLES` (default `3`) — noise floor, bỏ qua window mà dlbackend miss quá nhiều frame
+- samples trong window `>= POSE_WINDOW_MIN_SAMPLES` (default `3`) — noise floor, bỏ qua window mà perception-service miss quá nhiều frame
 - `bad_ratio >= POSE_BAD_RATIO` (default **0.6**)
 
 Không có gate "minimum sedentary streak" riêng và không có "nudge cooldown" riêng — window chính là rhythm. Window-start yêu cầu sedentary nên khi complete, user đã ở máy tính ít nhất `POSE_WINDOW_DURATION_S`; unconditional reset sau mỗi cycle khiến lần fire kế tiếp tự nhiên cách 1 window.
 
-Khi inject fire, cả per-label dedup check **lẫn** global event cooldown (`MOTION_EVENT_COOLDOWN_S`, default 360 s — sàn giới hạn các `motion.activity` thông thường) đều được **bypass** cho event đó: posture nudge là tín hiệu khác hẳn "user vẫn đang dùng máy tính", và mất nó vì dedup hay cooldown sẽ phải chờ thêm cả một window đầy đủ trước khi có cơ hội tiếp.
+Khi inject fire, cả per-label dedup check **lẫn** global event cooldown (`MOTION_EVENT_COOLDOWN_S`, default 900 s — sàn giới hạn các `motion.activity` thông thường) đều được **bypass** cho event đó: posture nudge là tín hiệu khác hẳn "user vẫn đang dùng máy tính", và mất nó vì dedup hay cooldown sẽ phải chờ thêm cả một window đầy đủ trước khi có cơ hội tiếp.
 
 Lifecycle window:
 1. **Open** — `pose.start_window()` gọi từ motion-side khi label sedentary đầu tiên xuất hiện. Clear samples pre-window và anchor `_window_start_ts = now`. Idempotent — call thêm khi window đã mở là no-op.
@@ -198,7 +210,7 @@ Khi agent quyết định nudge qua `/dm`, SSE handler của Lamp gọi `Consume
 
 ### Workaround sign góc (tạm thời)
 
-`signed_flexion_angle` ở dlbackend hiện trả về dấu ngược với docstring ("Positive = forward flexion") — user chúi cổ rõ ràng lại ra **góc âm**, không phải dương. HAL negate `upper_arm_angle`, `neck_angle`, `trunk_angle` khi nhận từ dlbackend (`POSE_FLIP_DLBACKEND_ANGLE_SIGN=True`, mặc định bật) để bảng monitor + JSONL khớp thực tế. `lower_arm_angle` unsigned nên bỏ qua. RULA score đã dùng `abs(angle)` nên risk/score không đổi dù theo convention nào. **Revert** bằng cách set flag `False` (hoặc xóa `_flip_signed_angles`) ngay khi dlbackend ship fix upstream.
+`signed_flexion_angle` ở perception-service hiện trả về dấu ngược với docstring ("Positive = forward flexion") — user chúi cổ rõ ràng lại ra **góc âm**, không phải dương. HAL negate `upper_arm_angle`, `neck_angle`, `trunk_angle` khi nhận từ perception-service (`POSE_FLIP_DLBACKEND_ANGLE_SIGN=True`, mặc định bật) để bảng monitor + JSONL khớp thực tế. `lower_arm_angle` unsigned nên bỏ qua. RULA score đã dùng `abs(angle)` nên risk/score không đổi dù theo convention nào. **Revert** bằng cách set flag `False` (hoặc xóa `_flip_signed_angles`) ngay khi perception-service ship fix upstream.
 
 ---
 
@@ -550,6 +562,7 @@ Tùy chọn thay thế cho `MotionPerception` — chạy nhận diện hành đ�
 - Mỗi `face_id` có WS session riêng với backend action recognition.
 - Person detection luôn **tắt** trên các session này.
 - Dedup theo từng action riêng biệt cho mỗi face (mặc định 5 phút).
+- **Cooldown floor toàn cục chung cho MỌI face** — cùng semantics và cùng knobs với `MotionPerception`: cùng coarse class thì tối đa 1 `motion.activity` mỗi `MOTION_EVENT_COOLDOWN_S` (mặc định 15 phút); **transition** đổi coarse class bypass floor khi đã qua `MOTION_TRANSITION_MIN_GAP_S` (mặc định 60s); floor được xóa khi user thực sự đổi (`reset_dedup`), không xóa khi stranger chớp tắt. Không có floor này, N người trong frame = N event mỗi flush.
 - Session cần tối thiểu 4 frame trước khi gửi event đầu tiên.
 - Session bị xóa sau 30 giây không thấy face đó.
 
@@ -568,15 +581,15 @@ Tùy chọn thay thế cho `MotionPerception` — chạy nhận diện hành đ�
 
 Lamp nhận diện trạng thái cảm xúc **của người dùng** qua ba kênh:
 
-1. **Biểu cảm khuôn mặt** (chính) — event `emotion.detected` từ `os/hal/drivers/sensing/perceptions/emotion.py`. Dùng emotion classifier chuyên dụng chạy trên dlbackend tự host qua WebSocket. Nhận diện 7 cảm xúc: Angry, Disgust, Fear, Happy, Sad, Surprise, Neutral. Ngưỡng confidence cấu hình được (`EMOTION_CONFIDENCE_THRESHOLD`).
-2. **Cảm xúc giọng nói** (phụ) — event `speech_emotion.detected` từ `os/hal/drivers/voice/speech_emotion/`. Chạy ở cuối mỗi phiên STT đã nhận diện được speaker, cùng WAV bytes đã dùng cho speaker recognition. Dùng `emotion2vec_plus_large` trên dlbackend qua HTTP. Xem [Speech Emotion Recognition](../speech-emotion.md) cho pipeline đầy đủ.
+1. **Biểu cảm khuôn mặt** (chính) — event `emotion.detected` từ `os/hal/drivers/sensing/perceptions/emotion.py`. Dùng emotion classifier chuyên dụng chạy trên perception-service tự host qua WebSocket. Nhận diện 7 cảm xúc: Angry, Disgust, Fear, Happy, Sad, Surprise, Neutral. Ngưỡng confidence cấu hình được (`EMOTION_CONFIDENCE_THRESHOLD`).
+2. **Cảm xúc giọng nói** (phụ) — event `speech_emotion.detected` từ `os/hal/drivers/voice/speech_emotion/`. Chạy ở cuối mỗi phiên STT đã nhận diện được speaker, cùng WAV bytes đã dùng cho speaker recognition. Dùng `emotion2vec_plus_large` trên perception-service qua HTTP. Xem [Speech Emotion Recognition](../speech-emotion.md) cho pipeline đầy đủ.
 3. **Body action** (cấp 3) — emotional X3D actions từ action recognition **cố ý bị loại** khỏi `motion.activity` (giờ thuần vật lý: sedentary/drink/break). Một event type `motion.emotional` riêng đang được lên kế hoạch.
 
 > **Đừng nhầm lẫn với Emotion Expression** (`emotion/SKILL.md`) — cái đó điều khiển cảm xúc đầu ra của Lamp (servo + LED + eyes). Emotion Detection là cảm nhận *user* đang cảm thấy gì; Emotion Expression là cách *Lamp* thể hiện cảm xúc của chính nó.
 
 ### Event `emotion.detected`
 
-Được HAL fire khi dlbackend emotion classifier nhận diện biểu cảm khuôn mặt vượt ngưỡng confidence. Format message:
+Được HAL fire khi perception-service emotion classifier nhận diện biểu cảm khuôn mặt vượt ngưỡng confidence. Format message:
 
 ```
 Emotion detected: <Label>. (weak camera cue; confidence=<0.00-1.00>; bucket=<positive|negative|other>; treat as uncertain, <hedge theo bucket>.)
@@ -591,7 +604,7 @@ Emotion detected: Happy. (weak camera cue; confidence=0.78; bucket=positive; tre
 
 Prefix `Emotion detected: <Label>.` được giữ nguyên để parser của `user-emotion-detection/SKILL.md` và mood mapping Fear→stressed / Sad→sad vẫn chạy như cũ. Phần ngoặc đơn phía sau là để LLM không over-commit khi FER read nhiễu (bug từng gặp: Fear → "Oh hello there again"). Hedge theo bucket: `negative` → "do not assume the user is distressed"; `positive` → "do not over-celebrate"; `other` → "do not over-react".
 
-**Dedup theo polarity bucket** (`EMOTION_BUCKETS` trong `os/hal/drivers/sensing/perceptions/processors/emotion.py`) gộp các label chi tiết thành `positive` / `negative` / `other` và dedup theo `(current_user, bucket)` trong window 5 phút. Nhiễu trong cùng bucket (Fear↔Sad↔Anger) gộp thành 1 event/window; flip giữa hai bucket (Fear→Happy) vẫn fire như mood change thật. Confidence trong message được average **chỉ trên các lần xuất hiện của dominant label** — confidence của label khác không pha loãng.
+**Dedup theo polarity bucket** (`EMOTION_BUCKETS` trong `os/hal/drivers/sensing/perceptions/processors/emotion.py`) gộp các label chi tiết thành `positive` / `negative` / `other` và dedup theo `(current_user, bucket)` trong window 5 phút. Nhiễu trong cùng bucket (Fear↔Sad↔Anger) gộp thành 1 event/window; flip giữa hai bucket (Fear→Happy) vẫn fire như mood change thật. Confidence trong message được average **chỉ trên các lần xuất hiện của dominant label** — confidence của label khác không pha loãng. Map dedup được persist vào sidecar boot-scoped (`/tmp/hal-emotion-state.json`) nên restart HAL service không re-fire emotion cuối cùng ở flush đầu tiên; reboot cả device thì bắt đầu sạch.
 
 Sensing handler (`handler.go`) route `emotion.detected` events tới agent. Khi agent đang bận, events được queue và replay khi agent rảnh.
 
@@ -618,7 +631,7 @@ Xem `user-emotion-detection/SKILL.md` để biết rules phản hồi đầy đ�
 
 ### Event `speech_emotion.detected`
 
-Được HAL fire ở cuối mỗi phiên STT đã nhận diện được speaker, sau khi WAV bytes (cùng bytes đã dùng cho speaker `/embed`) được forward sang `dlbackend /api/dl/ser/recognize` (emotion2vec_plus_large). Buffering, aggregation theo từng user, dedup theo polarity bucket, và POST sang Lamp đều nằm trong `os/hal/drivers/voice/speech_emotion/SpeechEmotionService` — `voice_service.py` chỉ gọi `submit(user, wav, duration)`. Format message giống pipeline khuôn mặt:
+Được HAL fire ở cuối mỗi phiên STT đã nhận diện được speaker, sau khi WAV bytes (cùng bytes đã dùng cho speaker `/embed`) được forward sang `perception-service /api/dl/ser/recognize` (emotion2vec_plus_large). Buffering, aggregation theo từng user, dedup theo polarity bucket, và POST sang Lamp đều nằm trong `os/hal/drivers/voice/speech_emotion/SpeechEmotionService` — `voice_service.py` chỉ gọi `submit(user, wav, duration)`. Format message giống pipeline khuôn mặt:
 
 ```
 Speech emotion detected: <Label>. (weak voice cue; confidence=<0.00-1.00>; bucket=<positive|negative|other>; treat as uncertain, <hedge theo bucket>.)
@@ -639,7 +652,7 @@ Labels (từ emotion2vec_plus_large): `angry`, `disgusted`, `fearful`, `happy`, 
 2. Unknown speaker (`match=false` hoặc `name=="unknown"`) drop — không có subject để gán cảm xúc.
 3. Confidence thấp (`< CONFIDENCE_THRESHOLD_BY_LABEL[label]`, fallback `DEFAULT_CONFIDENCE_THRESHOLD` — đều ở `speech_emotion/constants.py`) bị worker drop.
 4. Neutral labels drop ở flush.
-5. TTL dedup `(user, bucket)` trong `SPEECH_EMOTION_DEDUP_WINDOW_S` (mặc định 5 phút). Mỗi bucket có timer riêng — gửi event positive KHÔNG reset window của negative.
+5. TTL dedup `(user, bucket)` trong `SPEECH_EMOTION_DEDUP_WINDOW_S` (mặc định 5 phút). Mỗi bucket có timer riêng — gửi event positive KHÔNG reset window của negative. Map được persist vào sidecar boot-scoped (`/tmp/hal-ser-state.json`) nên restart HAL service không re-fire speech emotion cuối cùng; reboot cả device thì bắt đầu sạch.
 
 Payload event gửi kèm `current_user` rõ ràng nên sensing handler Lamp không phải tra cứu lại.
 

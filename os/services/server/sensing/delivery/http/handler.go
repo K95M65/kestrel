@@ -71,6 +71,7 @@ type SensingHandler struct {
 	voiceActiveUntil atomic.Int64 // unix ms; set on voice_listening, extended on voice_listening_end
 	isSleeping       func() bool  // returns true when agent last expressed "sleepy" emotion
 	lastNotReadyTTS  atomic.Int64 // unix ms; cooldown for "brain restarting" TTS
+	lastAgentTurn    atomic.Int64 // unix ms of the last agent turn created here — ambient floor reference
 }
 
 // ProvideSensingHandler constructs a SensingHandler.
@@ -212,6 +213,35 @@ func (h *SensingHandler) PostEvent(c *gin.Context) {
 		return
 	}
 
+	// Global cross-type floor for ambient sensing turns: at most one agent
+	// turn per SensingTurnFloorSeconds across ALL ambient event types.
+	// Per-event cooldowns live in HAL, but they are independent per type —
+	// without this floor a burst of different types (emotion + sound +
+	// motion within seconds, typical right after a presence change) still
+	// costs several agent turns. The clock is updated by EVERY turn this
+	// handler creates (voice, web_chat, presence, fire included), so
+	// ambient events stay quiet for the floor window after any interaction.
+	// Trade-off: a floored drop can make a HAL-side dedup believe "sent" —
+	// acceptable, every ambient emitter re-offers on its own heartbeat.
+	// Guard mode bypasses the floor entirely (surveillance wants every
+	// event). Placed BEFORE the describe gate so a floored event never
+	// spends a vision-describe API call.
+	if floorS := h.config.SensingTurnFloorSeconds(); floorS > 0 &&
+		ambientFloorTypes[req.Type] && !h.config.GuardModeEnabled() {
+		if sinceMs := time.Now().UnixMilli() - h.lastAgentTurn.Load(); sinceMs < int64(floorS)*1000 {
+			slog.Info("INBOUND from HAL → FLOOR-DROPPED (ambient turn floor)",
+				"component", "sensing", "backend", h.agentGateway.Name(),
+				"type", req.Type, "sinceS", sinceMs/1000, "floorS", floorS)
+			h.monitorBus.Push(domain.MonitorEvent{
+				Type:    "sensing_drop",
+				Summary: "[" + req.Type + "] " + req.Message,
+				Detail:  map[string]any{"type": req.Type, "reason": "ambient_floor", "since_s": sinceMs / 1000, "floor_s": floorS},
+			})
+			c.JSON(http.StatusOK, serializers.ResponseSuccess(map[string]string{"handler": "dropped_floor"}))
+			return
+		}
+	}
+
 	// Voice wake: when a voice command arrives while sleeping, fire greeting emotion
 	// to HAL so it wakes up (LED + servo) before the agent processes the turn.
 	// Without this, the agent's emotion:thinking would be blocked by HAL's wake guard.
@@ -318,6 +348,9 @@ func (h *SensingHandler) PostEvent(c *gin.Context) {
 				"msgLen", len(req.Message),
 				"message", req.Message)
 			h.agentGateway.QueuePendingEvent(req.Type, req.Message, req.Image, queuedRunID)
+			// A queued event consumes an agent turn on replay — counts
+			// against the ambient floor like a live forward.
+			h.lastAgentTurn.Store(time.Now().UnixMilli())
 			resp := map[string]string{"handler": "queued"}
 			if queuedRunID != "" {
 				resp["runId"] = queuedRunID
@@ -353,7 +386,10 @@ func (h *SensingHandler) PostEvent(c *gin.Context) {
 			if last := h.lastNotReadyTTS.Load(); now-last > 60_000 {
 				if h.lastNotReadyTTS.CompareAndSwap(last, now) {
 					go func() {
-						if err := hal.Speak(i18n.One(i18n.PhraseBrainRestart)); err != nil {
+						// SpeakCached: fixed phrase, self-caches into hal's WAV
+						// cache — fires while the brain restarts, when a live
+						// provider render is least reliable.
+						if err := hal.SpeakCached(i18n.One(i18n.PhraseBrainRestart)); err != nil {
 							slog.Warn("not-ready TTS failed", "component", "sensing", "error", err)
 						}
 					}()
@@ -521,6 +557,7 @@ func (h *SensingHandler) PostEvent(c *gin.Context) {
 		return
 	}
 
+	h.lastAgentTurn.Store(time.Now().UnixMilli())
 	flow.End("sensing_input", turnStart, map[string]any{"path": "agent", "run_id": runID}, runID)
 	flow.Log("agent_call", map[string]any{"type": req.Type, "run_id": runID}, runID)
 
@@ -968,7 +1005,7 @@ func extractPostureSummaryJSON(message string) string {
 	return ""
 }
 
-// riskLevelLabel maps the dlbackend RULA risk_level enum to the string
+// riskLevelLabel maps the perception-service RULA risk_level enum to the string
 // vocabulary the habit skill expects on posture_alert rows.
 func riskLevelLabel(level int) string {
 	switch level {
@@ -1128,6 +1165,22 @@ func (h *SensingHandler) PostMusicSuggestionStatus(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, serializers.ResponseSuccess(nil))
+}
+
+// ambientFloorTypes are the passive sensing event types subject to the global
+// cross-type turn floor (config.SensingTurnFloorSeconds). Everything here is
+// ambient/advisory — each emitter re-offers on its own heartbeat, so dropping
+// one occurrence only delays awareness. User-initiated types (voice, voice_command,
+// voice_agent_handled, web_chat, touch.head_pat), safety (fire_hazard.detected),
+// and presence enter/leave (greeting UX + session bookkeeping) are deliberately
+// NOT floored.
+var ambientFloorTypes = map[string]bool{
+	"motion.activity":         true,
+	"emotion.detected":        true,
+	"speech_emotion.detected": true,
+	"sound":                   true,
+	"presence.away":           true,
+	"light.level":             true,
 }
 
 // shouldQueueEvent returns true if this sensing event type should be queued

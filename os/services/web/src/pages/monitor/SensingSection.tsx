@@ -11,7 +11,7 @@ function fmtAgo(seconds: number | null | undefined): string {
   return `${Math.floor(seconds / 3600)}h ago`;
 }
 
-// Raw per-side ergo data from dlbackend (passed through by the device).
+// Raw per-side ergo data from perception-service (passed through by the device).
 interface PoseSide {
   score?: number;
   risk_level?: number;
@@ -403,7 +403,7 @@ export function SensingSection() {
               ) : null}
             </div>
             <div style={{ fontSize: 10, color: "var(--lm-text-muted)", marginBottom: 4, letterSpacing: "0.05em", textTransform: "uppercase" }}>
-              Samples (newest first) — sub-score@angle° raw from dlbackend; L = left, R = right
+              Samples (newest first) — sub-score@angle° raw from perception-service; L = left, R = right
             </div>
             {samples.length === 0 ? (
               <span style={{ color: "var(--lm-text-muted)", fontSize: 11 }}>No samples yet</span>

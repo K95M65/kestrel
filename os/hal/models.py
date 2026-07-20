@@ -80,6 +80,11 @@ class LEDOffRequest(BaseModel):
 
 class LEDPaintRequest(BaseModel):
     colors: list[Union[list[int], int]]
+    # Treat `colors` as gradient stops and interpolate them across the whole
+    # strip (2 stops -> smooth 64-pixel fade) instead of painting the first
+    # len(colors) pixels and leaving the rest stale.
+    gradient: bool = False
+    transient: bool = False
 
     model_config = {
         "json_schema_extra": {
@@ -303,7 +308,7 @@ class ServoAimRequest(BaseModel):
         description="Named direction: desk, wall, left, right, up, down, center, user",
     )
     duration: float = Field(
-        2.0, ge=0.0, le=10.0, description="Move duration in seconds (default: 2.0)"
+        0.5, ge=0.0, le=10.0, description="Move duration in seconds — stretched automatically when the move would exceed the SAFETY.md speed ceiling"
     )
 
     model_config = {
@@ -316,7 +321,7 @@ class ServoAimRequest(BaseModel):
 class ServoNudgeRequest(BaseModel):
     yaw: float = Field(0.0, ge=-180.0, le=180.0, description="Relative yaw in degrees (negative=left, positive=right)")
     pitch: float = Field(0.0, ge=-90.0, le=90.0, description="Relative pitch in degrees (negative=down, positive=up)")
-    duration: float = Field(2.0, ge=0.0, le=10.0, description="Move duration in seconds")
+    duration: float = Field(0.5, ge=0.0, le=10.0, description="Move duration in seconds — stretched automatically when the move would exceed the SAFETY.md speed ceiling")
 
     model_config = {
         "json_schema_extra": {
@@ -434,6 +439,11 @@ class VoiceStatusResponse(BaseModel):
     tts_speaking: bool
     tts_detail: Optional[dict] = None
     mic_muted: bool = False
+    # Hardware kill-switch position (Intern v2 Pro PD1 slide switch). null on
+    # devices without the switch (Lamp) so the web UI can hide the "HW-locked"
+    # hint entirely. True/False mirrors the physical throw and is the authority:
+    # while True, /voice/unmute rejects with 409 and the touchpad ignores taps.
+    hw_mic_switch_muted: Optional[bool] = None
 
 
 class HealthResponse(BaseModel):
@@ -466,10 +476,10 @@ class ServoMoveRequest(BaseModel):
         ),
     )
     duration: float = Field(
-        2.0,
+        0.5,
         ge=0.0,
         le=10.0,
-        description="Move duration in seconds. 0 = instant jump, >0 = smooth interpolation (default: 2.0)",
+        description="Move duration in seconds. 0 = instant jump, >0 = smooth interpolation — stretched automatically when the move would exceed the SAFETY.md speed ceiling",
     )
 
     model_config = {

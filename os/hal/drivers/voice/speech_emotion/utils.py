@@ -1,7 +1,7 @@
 """Pure helpers for the speech emotion pipeline.
 
 Kept free of I/O and threading so they can be unit-tested without spinning
-up the service or hitting dlbackend.
+up the service or hitting perception-service.
 """
 
 from __future__ import annotations

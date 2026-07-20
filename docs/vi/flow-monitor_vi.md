@@ -73,6 +73,7 @@ Component `FlowDiagram` trong `os/services/web/src/pages/Monitor.tsx` vẽ **ba 
   - Tool có `/audio/play` → KHÔNG suppress TTS nữa; thứ tự TTS-rồi-nhạc do HAL xử lý (music_service chờ TTS xong mới chiếm loa)
   - Tool có `/led/*` → pause ambient breathing (không ghi đè màu agent set)
   - Assistant text accumulate → flush sang TTS khi lifecycle_end
+  - Loa thiết bị đang mute → HAL trả HTTP 200 `{"status":"suppressed"}` cho call TTS, không phát gì — surface thành flow event `tts_muted` (xem mục *TTS muted event*)
 
 ### Agentic Runtime (lưới 3 cột)
 
@@ -92,7 +93,7 @@ Bảng tọa độ gần đúng và ASCII grid: xem mục *Turn Pipeline* và *A
 | `os/services/lib/flow/flow.go` | Emit flow, JSONL, API runID từng event |
 | `os/services/server/sensing/delivery/http/handler.go` | Sensing → flow.Start/End |
 | `os/services/server/openclaw/delivery/sse/handler.go` | Agent → flow.Log, map runID |
-| `os/services/internal/openclaw/service.go` | sendChat / idempotencyKey |
+| `os/services/internal/agent/runtimes/openclaw/service.go` | sendChat / idempotencyKey |
 | `os/services/web/src/pages/Monitor.tsx` | `groupIntoTurns`, `FlowDiagram`, v.v. |
 
 **Tải để so sánh:** nút **↓ Bundle** trên Flow Panel tải cùng lúc JSONL tail server, snapshot UI và OpenClaw debug payload (xem bảng *Turns list vs downloaded log* trong `docs/flow-monitor.md`).
@@ -144,6 +145,10 @@ Web (chat + flow Output) đọc text reply từ event `tts_send`, ưu tiên `dat
 ### TTS suppress event
 
 Khi `SendToHalTTS` thật sự bị skip (loa không phát), OS server emit `tts_suppressed` thay vì `tts_send`. Field `data.reason` discriminate: `channel_run` (real Telegram user turn — detect qua runID có prefix `tg-` OS server tự sinh trong `session.message` handler, hoặc `channelRuns` map mark từ chat.history fallback; reply đi qua OpenClaw session fan-out thay vì loa thiết bị), `already_spoken` (built-in tts tool đã route trước), `voice_agent_handled` (realtime voice agent đã nói turn này), `web_chat` (Flow Monitor chat — reply chỉ hiện trên web UI). UI hiển thị 🔇 ở Gate column thay vì 🔊 — tránh case trước đây log nói "TTS" nhưng loa im. Lưu ý: KHÔNG còn reason `music_playing` — phát nhạc không còn nuốt câu reply; OS server luôn gửi reply TTS và HAL serialize cho nói trước rồi mới phát nhạc. Classifier chỉ dùng positive evidence: UUID runs từ OpenClaw steer-mode self-fire, cron fire, heartbeat KHÔNG bị coi là `channel_run` và VẪN phát loa.
+
+### TTS muted event
+
+Node TTS tint đỏ (giống suppressed); detail panel hiện "🔇 speaker muted — reply not spoken", dòng gate "🔇 → TTS muted (speaker)". Emit NGAY SAU `tts_send` cùng run: reply đã gửi sang HAL, nhưng loa thiết bị đang mute nên HAL trả HTTP 200 `{"status":"suppressed"}` và KHÔNG synthesize/không phát gì (không tốn API call TTS). Go HAL client (`lib/hal` `SpeakReply`/`SpeakQueueReply`) decode body đó thành sentinel error `hal.ErrSpeakerMuted`, handler log `tts_muted` `{run_id, text}`. Khác `tts_suppressed` (quyết định phía Go TRƯỚC khi gửi, không có `tts_send` đi kèm — text chat lấy từ chính event suppress), text reply vẫn lên web chat qua `tts_send`; chỉ có tiếng là im.
 
 ### Cron-fire auto-force TTS
 

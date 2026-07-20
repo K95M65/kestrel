@@ -16,12 +16,12 @@ protocol, layout và các quirk đặc thù claudecode.
 > và flow **claude.ai OAuth login** (§7b) thay thế cho API key trong
 > config.json. Các caveat đã biết được đánh dấu ⚠️ ở §11.
 
-Code: `os/services/internal/claudecode/`.
+Code: `os/services/internal/agent/runtimes/claudecode/`.
 
 | Thành phần | Vị trí trên thiết bị |
 |------|-----------------|
 | Claude Code CLI | `/usr/local/bin/claude` (symlink → `/root/.local/bin/claude`) |
-| Bridge (systemd `claudecode.service`) | subcommand `os-server claudecode-gatewayd` (biên dịch sẵn trong `/usr/local/bin/os-server`; code `os/services/internal/claudecode/gatewayd/`) |
+| Bridge (systemd `claudecode.service`) | subcommand `os-server claudecode-gatewayd` (biên dịch sẵn trong `/usr/local/bin/os-server`; code `os/services/internal/agent/runtimes/claudecode/gatewayd/`) |
 | Env khởi chạy (`ANTHROPIC_*`, cờ channel) | `/root/.claudecode/.env` (presync sở hữu) |
 | Workspace (cwd của Claude) | `/root/.claudecode/workspace/` |
 | Persona / memory | `workspace/{CLAUDE,SOUL,IDENTITY,USER,MEMORY,KNOWLEDGE}.md`, `workspace/memory/*.md` |
@@ -107,7 +107,7 @@ không cần switch):
 ## 3. Bridge (`os-server claudecode-gatewayd`)
 
 Claude Code không có server mode, nên systemd unit chạy một gatewayd Go nhỏ
-(`internal/claudecode/gatewayd/`, cấu trúc mirror gatewayd của codex — không
+(`internal/agent/runtimes/claudecode/gatewayd/`, cấu trúc mirror gatewayd của codex — không
 còn phụ thuộc python3/websockets), gatewayd này:
 
 - giữ **một process Claude headless bền**:
@@ -150,6 +150,13 @@ frame được ghi — reply về trên read loop. Frame outbound:
 
 Claude tự serialize các input đang queue, nên mỗi lúc chỉ một turn in-flight và
 tương quan pending/current runID đơn lẻ vẫn đúng.
+
+`sendChat` cũng tái hiện hook `emotion-acknowledge` của OpenClaw **native bằng
+Go** (`emotion_ack.go`, mirror codex/hermes/picoclaw): mỗi turn user-visible
+bắn `{emotion:"thinking"}` sang HAL — cùng prefix skip, cùng intensity, cùng
+capability gate (`skills.SupportedHooks`) như handler TS. Hook `turn-gate` đi
+kèm cố ý không mirror (sendChat đã đánh dấu turn busy rồi). ⚠️ Giữ lockstep với
+`os/services/internal/agent/runtimes/openclaw/hooks/emotion-acknowledge/handler.ts`.
 
 ## 5. Event inbound → `domain.WSEvent` (`translator.go`)
 
@@ -200,7 +207,7 @@ có compact RPC ngoài).
 ## 7. Kênh — tất cả do device sở hữu (telegram, discord, slack)
 
 `SupportedChannels() = [telegram, slack, discord]`. Cả ba receive loop đều
-chạy trong os-server, mirror `internal/codex` 1:1. Channel plugin native
+chạy trong os-server, mirror `internal/agent/runtimes/codex` 1:1. Channel plugin native
 telegram/discord của Claude Code **cố ý không dùng**: thực địa cho thấy không
 debug được (bun child không log ra journal, allowlist drop im lặng, chết im
 lặng khi race restart bridge), và chúng sẽ giành bot với các loop device sở
@@ -234,7 +241,7 @@ nào.
   session đang mở thì có hiệu lực ở chu kỳ session kế. whatsapp →
   `domain.ErrChannelNotSupported`.
 - **Slack do DEVICE SỞ HỮU** (`slack.go` + `slack_sender.go`, mirror của
-  `internal/codex/slack.go`): Claude Code không có slack channel plugin
+  `internal/agent/runtimes/codex/slack.go`): Claude Code không có slack channel plugin
   ("Claude in Slack" là một tính năng cloud riêng, spawn web session từ mention
   `@Claude`, không phải một kênh của thiết bị). Thay vào đó proxy public
   bff-campaign-service nhận delivery từ Slack Events API và fan-out qua MQTT
@@ -263,7 +270,7 @@ nào.
 ## 7b. Auth — claude.ai OAuth login (thay thế cho API key)
 
 Thiết bị có thể xác thực bằng **Claude subscription của chính user** thay vì
-`llm_api_key`. Flow này (`internal/claudecode/login.go`, interface tùy chọn
+`llm_api_key`. Flow này (`internal/agent/runtimes/claudecode/login.go`, interface tùy chọn
 `domain.ClaudeLoginPairer`) mô phỏng flow pairing WhatsApp — stream các
 `PairingEvent` — với thêm một chặng: OAuth code đi ngược trở lại flow.
 
@@ -332,6 +339,20 @@ folder một phiên riêng.
   phiên). Chạy thẳng trong os-server (mỗi lượt một tiến trình `claude` con riêng),
   độc lập với child thường trú của gatewayd, nên lượt coding và persona device-main
   không đụng nhau.
+- **Phía terminal — picker `claude-sessions` (`cmd/os-server/cc.go`).** Picker
+  `/resume` interactive của claude **loại phiên headless (`--print`) theo thiết
+  kế** (lọc theo cách phiên được tạo), nên phiên tạo từ Telegram không bao giờ
+  hiện trong đó — nhưng `claude --resume <id>` mở được MỌI phiên theo id (đã
+  kiểm chứng trên device). Vì vậy device có picker riêng: `claude-sessions`
+  (wrapper mỏng `/usr/local/bin/claude-sessions` do presync §5 cài, sudo-reexec
+  vào `os-server claude-sessions`) liệt kê mọi phiên của **folder hiện tại**
+  (`-a` cho mọi folder, `--json` cho script) qua đúng discovery
+  `allCodingSessions` (một nguồn sự thật, export là
+  `claudecode.ListCodingSessions`), rồi exec `claude --resume <id>` trong folder
+  của phiên với `.env` presync + `IS_SANDBOX=1` + `HOME=/root` merge vào. Reply
+  `/resume <n>`·`/here` bên Telegram kèm gợi ý `claude --resume <id>` /
+  `claude-sessions` tương ứng. Codex không cần tương đương — picker của `codex
+  resume` là global, đã liệt kê sẵn thread tạo từ Telegram.
 
 ## 8. Workspace, persona, skills, MCP
 
@@ -339,8 +360,34 @@ folder một phiên riêng.
   OS-managed (giới hạn bằng marker, ghi chú của owner được giữ bên dưới) chứa
   các **@import** persona (`@SOUL.md @IDENTITY.md @USER.md @MEMORY.md
   @KNOWLEDGE.md` — CLAUDE.md là file duy nhất Claude nạp theo tên) và prompt
-  discipline (rule whitelist skills, rule memory, ưu tiên user), phỏng theo
-  khối AGENTS.md của picoclaw.
+  discipline (rule whitelist skills, rule connectors, rule memory, ưu tiên
+  user), phỏng theo khối AGENTS.md của picoclaw.
+- **Skills nằm ở phạm vi USER** (`/root/.claude/skills/`, `claudecodeSkillsDir`),
+  không phải phạm vi project. Claude Code phân giải skill *project* theo
+  `<cwd>/.claude/skills`, nên nếu chỉ cài trong workspace thì mọi session có cwd
+  khác workspace sẽ không thấy — điển hình là **coding session** mà thiết bị tạo
+  ở `/root`, `/root/myapp`, … (`coding_sessions.go`). Triệu chứng thực tế: một
+  coding session báo Gmail/Calendar "không kết nối" và tự viết `send_email.py`,
+  trong khi chat thiết bị (cwd = workspace) vẫn trả lời đúng từ cùng bộ token.
+  Skill ở phạm vi user được nạp trong MỌI session, bất kể cwd.
+  `migrateSkillsToUserScope()` chuyển các skill mà os-server cũ để lại trong
+  workspace sang phạm vi user rồi xoá thư mục cũ (nếu giữ lại, mỗi skill sẽ bị
+  đăng ký hai lần). Factory reset xoá hẳn `/root/.claude/skills`.
+- **Memory phạm vi user** (`/root/.claude/CLAUDE.md`, `userClaudeMDBlock`):
+  `CLAUDE.md` trong workspace chỉ đến được session chat thiết bị, nên các rule
+  connector ở mức thiết bị cũng được inject vào đây — Claude Code nạp file này ở
+  mọi session, trong mọi thư mục. Cố ý giữ nhỏ: rule persona/memory vẫn thuộc
+  phạm vi workspace; chỉ những sự thật phải "sống sót" qua một lệnh `cd` mới nằm ở đây.
+- **Rule connectors (trong cả hai khối CLAUDE.md).** Claude Code tự phát hiện
+  skill `connectors`, nhưng chỉ phát hiện thôi là chưa đủ: model
+  không chọn skill đó, và trả lời "không có Gmail/Calendar nào được kết nối" dựa
+  trên `.mcp.json` trong khi token `google_calendar` hợp lệ vẫn nằm trên đĩa. Vì
+  vậy khối này nêu thẳng các sự thật về connector — credential nằm ở
+  `/root/.openclaw/workspace/configs/<code>_access_tokens.json`, các connector
+  dạng token (Gmail/Calendar/Drive) **không** có MCP server nên `.mcp.json`
+  không phải danh sách connector, và câu hỏi *về* một dịch vụ đã liên kết không
+  phải "chat thường" được miễn dùng skill. Khối cũng phân biệt rõ "my events"
+  (Google Calendar) với `/root/local/flow_events_*.jsonl` (event của thiết bị).
 - **Khối SOUL**: cùng cơ chế inject device-soul theo `soul_ref` như
   openclaw/picoclaw.
 - **Migrate persona** (`migrate_persona/runtime_claudecode.go`): layout **cố ý
