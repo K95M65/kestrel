@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"go.autonomous.ai/os/system/lib/usercanon"
-	"go.autonomous.ai/os/system/lib/wellbeing"
+	"go.autonomous.ai/os/system/skillcontext/wellbeing"
 )
 
 // presenceLookbackDays caps how far back LastActionTS scans for the most

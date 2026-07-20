@@ -12,7 +12,7 @@
 //     /api/posture/log when the wellbeing skill decides to coach or
 //     acknowledge a fix. Notes carry the spoken line.
 //
-// Mirrors lib/mood structure (newer pattern than lib/wellbeing). Daily
+// Mirrors skillcontext/mood structure (newer pattern than skillcontext/wellbeing). Daily
 // JSONL files with 60-day retention.
 //
 // Usage:

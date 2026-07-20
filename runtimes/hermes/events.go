@@ -9,8 +9,8 @@ import (
 
 	"go.autonomous.ai/os/system/domain"
 	"go.autonomous.ai/os/system/lib/flow"
-	"go.autonomous.ai/os/system/lib/mood"
 	"go.autonomous.ai/os/system/lib/sensingmsg"
+	"go.autonomous.ai/os/system/skillcontext/mood"
 )
 
 // pendingEvent is a sensing event buffered while the agent was busy.

@@ -8,12 +8,12 @@ import (
 
 	"go.autonomous.ai/os/system/domain"
 	"go.autonomous.ai/os/system/lib/flow"
-	"go.autonomous.ai/os/system/lib/mood"
-	"go.autonomous.ai/os/system/lib/musicsuggestion"
-	"go.autonomous.ai/os/system/lib/posture"
-	"go.autonomous.ai/os/system/lib/wellbeing"
 	"go.autonomous.ai/os/system/monitor"
 	"go.autonomous.ai/os/system/server/config"
+	"go.autonomous.ai/os/system/skillcontext/mood"
+	"go.autonomous.ai/os/system/skillcontext/musicsuggestion"
+	"go.autonomous.ai/os/system/skillcontext/posture"
+	"go.autonomous.ai/os/system/skillcontext/wellbeing"
 	"go.autonomous.ai/os/system/statusled"
 )
 

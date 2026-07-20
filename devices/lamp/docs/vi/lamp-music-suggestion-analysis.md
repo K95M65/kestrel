@@ -93,7 +93,7 @@ Music suggestion là tính năng Lamp chủ động đề xuất nhạc phù h�
 
 ## Mood History (data có sẵn nhưng chưa dùng)
 
-**File:** `system/lib/mood/mood.go`
+**File:** `system/skillcontext/mood/mood.go`
 
 Log 2 loại event vào `/root/local/mood_YYYY-MM-DD.jsonl`:
 1. **Sensing input:** `music.mood`, `presence.enter`, `wellbeing.break`, etc.
@@ -216,7 +216,7 @@ Bỏ proactive timer, chỉ suggest khi:
 | `hal/config.py` | Config | `HAL_WELLBEING_MUSIC_S` |
 | `hal/drivers/voice/music_service.py` | Playback | yt-dlp + ffmpeg + ALSA |
 | `hal/server.py` | API | `POST /audio/play` (có `person`), `POST /audio/stop` |
-| `system/lib/mood/mood.go` | Data | Mood history logger |
+| `system/skillcontext/mood/mood.go` | Data | Mood history logger |
 | `system/server/sensing/delivery/http/handler.go` | Pipeline | Event routing + queueing |
 | `lamp/resources/openclaw-skills/sensing/SKILL.md` | AI | Nhận + process music.mood event |
 | `lamp/resources/openclaw-skills/music/SKILL.md` | AI | Mood→music mapping, suggestion rules |

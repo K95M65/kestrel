@@ -13,9 +13,9 @@ import (
 	"time"
 
 	"go.autonomous.ai/os/system/lib/hal"
-	"go.autonomous.ai/os/system/lib/mood"
-	"go.autonomous.ai/os/system/lib/musicsuggestion"
 	"go.autonomous.ai/os/system/lib/usercanon"
+	"go.autonomous.ai/os/system/skillcontext/mood"
+	"go.autonomous.ai/os/system/skillcontext/musicsuggestion"
 )
 
 // detectedEmotionRe pulls the label out of either an emotion.detected or
