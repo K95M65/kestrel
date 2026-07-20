@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import hal.app_state as app_state
-from devices.video_capture_device import VideoCaptureDeviceBase
+from hal.drivers.camera.video_capture_device import VideoCaptureDeviceBase
 from hal.drivers.sensing.perceptions.models import (
     PerceptionConfig,
 )
