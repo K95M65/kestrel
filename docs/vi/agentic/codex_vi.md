@@ -449,7 +449,7 @@ tái hiện **native bằng Go** (`internal/agent/runtimes/codex/emotion_ack.go`
 `{emotion:"thinking"}` sang HAL — cùng prefix skip, cùng intensity, cùng
 capability gate (`skills.SupportedHooks`) như handler TS. Hook `turn-gate` đi
 kèm cố ý không mirror (sendChat đã đánh dấu turn busy rồi). ⚠️ Giữ lockstep với
-`hooks/emotion-acknowledge/handler.ts`.
+`os/services/internal/agent/runtimes/openclaw/hooks/emotion-acknowledge/handler.ts`.
 
 ## 7. Connector MCP (`mcp.go`)
 

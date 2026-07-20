@@ -189,6 +189,12 @@ type ClaudeCodeService struct {
 	// Channel senders (Telegram, Slack).
 	channels []domain.ChannelSender
 
+	// ackHookEnabled mirrors OpenClaw's emotion-acknowledge hook: when the device
+	// declares the `expression` capability, every visible turn flashes a "thinking"
+	// face before the reply lands. Resolved once at construction from the shared
+	// hook registry (skills.SupportedHooks). See emotion_ack.go.
+	ackHookEnabled bool
+
 	// Pending chat traces (idempotencyKey ↔ message text for MatchPendingByMessage).
 	pendingChatMu  sync.Mutex
 	pendingChatBuf []pendingTrace
@@ -236,6 +242,7 @@ func ProvideService(cfg *config.Config, bus *monitor.Bus, sled *statusled.Servic
 		&TelegramSender{svc: s},
 		&SlackSender{svc: s},
 	}
+	s.ackHookEnabled = ackEmotionEnabled(cfg.DeviceTypeOrDefault())
 	return s
 }
 

@@ -153,6 +153,14 @@ Outbound frame:
 Claude serializes queued inputs itself, so one turn is in flight at a time and
 the single pending/current runID correlation holds.
 
+`sendChat` also reproduces OpenClaw's `emotion-acknowledge` hook **natively in
+Go** (`emotion_ack.go`, mirroring codex/hermes/picoclaw): each user-visible turn
+fires `{emotion:"thinking"}` to HAL — same skip prefixes, same intensity, same
+capability gate (`skills.SupportedHooks`) as the TS handler. The companion
+`turn-gate` hook is intentionally not mirrored (sendChat already marks the turn
+busy). ⚠️ Keep it in lockstep with
+`os/services/internal/agent/runtimes/openclaw/hooks/emotion-acknowledge/handler.ts`.
+
 ## 5. Inbound events → `domain.WSEvent` (`translator.go`)
 
 Claude stream-json events are translated into the same frames the OpenClaw

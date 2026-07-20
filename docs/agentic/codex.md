@@ -460,7 +460,7 @@ hermes' `emotion_ack.go`): on each user-visible turn, sendChat fires
 `{emotion:"thinking"}` to HAL — same skip prefixes, same intensity, same
 capability gate (`skills.SupportedHooks`) as the TS handler. The companion
 `turn-gate` hook is intentionally not mirrored (sendChat already marks the turn
-busy). ⚠️ Keep it in lockstep with `hooks/emotion-acknowledge/handler.ts`.
+busy). ⚠️ Keep it in lockstep with `os/services/internal/agent/runtimes/openclaw/hooks/emotion-acknowledge/handler.ts`.
 
 ## 7. MCP connectors (`mcp.go`)
 

@@ -296,12 +296,13 @@ What was done:
   busy (`busySince`/`activeTurn`) before the network round-trip, so a separate
   gate would duplicate it.
 
-> ⚠️ **Maintenance coupling — no compile-time link.** `hooks/emotion-acknowledge/
-> handler.ts` (OpenClaw) and `internal/agent/runtimes/hermes/emotion_ack.go` (Hermes) are two
-> independent implementations of the same behavior. **When you change one, change
-> the other** — skip rules, emotion name/intensity, and capability gate must stay
-> identical, or the two backends drift apart silently. Keep the cross-reference
-> comments in both files.
+> ⚠️ **Maintenance coupling — no compile-time link.** `os/services/internal/agent/runtimes/openclaw/hooks/emotion-acknowledge/
+> handler.ts` (OpenClaw) and the `emotion_ack.go` files in
+> `internal/agent/runtimes/{hermes,picoclaw,codex,claudecode}` are independent
+> implementations of the same behavior. **When you change one, change them
+> all** — skip rules, emotion name/intensity, and capability gate must stay
+> identical, or the backends drift apart silently. Keep the cross-reference
+> comments in every file.
 
 **When a backend-native (Python) hook *would* be needed.** Only for turns that
 originate **inside** the backend and never pass through `sendChat` — e.g. a

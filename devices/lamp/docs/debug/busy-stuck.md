@@ -25,7 +25,7 @@ OpenClaw heartbeat turn (target=none) ──────────────
 ```
 
 Files:
-- Hook source: `hooks/turn-gate/handler.ts`
+- Hook source: `os/services/internal/agent/runtimes/openclaw/hooks/turn-gate/handler.ts`
 - Lamp handler: `os/services/server/openclaw/delivery/sse/handler_api_monitor.go` (`SetBusy`)
 - Auto-clear: `os/services/internal/agent/runtimes/openclaw/service_events.go` (`busyTTL`, `IsBusy`, `drainPendingEvents`)
 
@@ -57,7 +57,7 @@ Wedged when:
 
 ## Real fix paths
 
-1. **Hook side (preferred)** — turn-gate skips `/api/openclaw/busy` when OpenClaw turn metadata says `target=none` or `isHeartbeat=true`. Edit `hooks/turn-gate/handler.ts`. This is cheapest and removes the trigger entirely.
+1. **Hook side (preferred)** — turn-gate skips `/api/openclaw/busy` when OpenClaw turn metadata says `target=none` or `isHeartbeat=true`. Edit `os/services/internal/agent/runtimes/openclaw/hooks/turn-gate/handler.ts`. This is cheapest and removes the trigger entirely.
 2. **Lamp side** — propagate heartbeat marker into `lifecycle.start` payload and have the SSE handler skip `SetBusy(true)` for those. Or shorten `busyTTL` to 60-90s (heartbeat turns finish in ~20s, no point waiting 5 min).
 
 ## Risk profile

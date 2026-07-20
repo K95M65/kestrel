@@ -285,11 +285,12 @@ vào là đồ chết dưới Hermes).
 - **`turn-gate` → không mirror (thừa).** `sendChat` đã set busy
   (`busySince`/`activeTurn`) trước round-trip mạng, nên gate riêng sẽ trùng lặp.
 
-> ⚠️ **Coupling bảo trì — không có liên kết compile-time.** `hooks/emotion-acknowledge/
-> handler.ts` (OpenClaw) và `internal/agent/runtimes/hermes/emotion_ack.go` (Hermes) là hai bản
-> cài đặt độc lập của cùng một hành vi. **Sửa cái này phải sửa cái kia** — skip
-> rules, tên/intensity emotion, và cap-gate phải y hệt, nếu không hai backend lệch
-> nhau trong im lặng. Giữ comment chéo trong cả hai file.
+> ⚠️ **Coupling bảo trì — không có liên kết compile-time.** `os/services/internal/agent/runtimes/openclaw/hooks/emotion-acknowledge/
+> handler.ts` (OpenClaw) và các file `emotion_ack.go` trong
+> `internal/agent/runtimes/{hermes,picoclaw,codex,claudecode}` là các bản cài đặt
+> độc lập của cùng một hành vi. **Sửa một cái phải sửa tất cả** — skip rules,
+> tên/intensity emotion, và cap-gate phải y hệt, nếu không các backend lệch
+> nhau trong im lặng. Giữ comment chéo trong mọi file.
 
 **Khi nào *mới cần* hook native (Python).** Chỉ cho turn phát sinh **bên trong**
 backend và không bao giờ qua `sendChat` — ví dụ heartbeat của backend, hoặc một

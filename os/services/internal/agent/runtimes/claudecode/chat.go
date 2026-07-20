@@ -111,6 +111,11 @@ func (s *ClaudeCodeService) sendChat(message, imageBase64, fixedReqID, fixedRunI
 	s.busySince.Store(time.Now().UnixMilli())
 	s.activeTurn.Store(true)
 	s.setPendingRunID(runID)
+
+	// Flash the "thinking" face for visible turns (OpenClaw emotion-acknowledge
+	// hook parity). Skips passive sensing + realtime-handled turns. See emotion_ack.go.
+	s.fireAckEmotion(runID, message)
+
 	s.SetPendingChatTrace(runID, message)
 
 	slog.Info("claudecode >>> SEND user message", "component", "claudecode",

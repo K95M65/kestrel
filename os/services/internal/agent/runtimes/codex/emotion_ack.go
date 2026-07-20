@@ -12,7 +12,7 @@ import (
 
 // emotion-acknowledge parity for Codex.
 //
-// OpenClaw runs an `emotion-acknowledge` hook (hooks/emotion-acknowledge/
+// OpenClaw runs an `emotion-acknowledge` hook (os/services/internal/agent/runtimes/openclaw/hooks/emotion-acknowledge/
 // handler.ts): on every preprocessed turn it POSTs {emotion:"thinking"} to HAL
 // so the body shows it is working before the reply lands. Codex ships no
 // ~/.codex/hooks loader (the handler.ts copied in by `claw migrate` is never
@@ -32,7 +32,7 @@ const (
 	ackEmotionIntensity = 0.7
 )
 
-// ackSkipPrefixes mirror hooks/emotion-acknowledge/handler.ts exactly: passive
+// ackSkipPrefixes mirror os/services/internal/agent/runtimes/openclaw/hooks/emotion-acknowledge/handler.ts exactly: passive
 // sensing turns frequently resolve to NO_REPLY, which would leave the face stuck
 // on "thinking" with nothing to overwrite it. These are NARROWER than
 // deviceInternalPrefixes on purpose — [ambient]/[wellbeing]/wake greetings DO

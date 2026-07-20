@@ -151,6 +151,13 @@ frame được ghi — reply về trên read loop. Frame outbound:
 Claude tự serialize các input đang queue, nên mỗi lúc chỉ một turn in-flight và
 tương quan pending/current runID đơn lẻ vẫn đúng.
 
+`sendChat` cũng tái hiện hook `emotion-acknowledge` của OpenClaw **native bằng
+Go** (`emotion_ack.go`, mirror codex/hermes/picoclaw): mỗi turn user-visible
+bắn `{emotion:"thinking"}` sang HAL — cùng prefix skip, cùng intensity, cùng
+capability gate (`skills.SupportedHooks`) như handler TS. Hook `turn-gate` đi
+kèm cố ý không mirror (sendChat đã đánh dấu turn busy rồi). ⚠️ Giữ lockstep với
+`os/services/internal/agent/runtimes/openclaw/hooks/emotion-acknowledge/handler.ts`.
+
 ## 5. Event inbound → `domain.WSEvent` (`translator.go`)
 
 Event stream-json của Claude được dịch thành đúng các frame mà handler OpenClaw

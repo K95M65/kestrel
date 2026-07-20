@@ -1,33 +1,30 @@
-package hermes
+package claudecode
 
 import (
 	"log/slog"
 	"strings"
 
-	"go.autonomous.ai/os/domain"
 	"go.autonomous.ai/os/internal/device"
 	"go.autonomous.ai/os/internal/skills"
 	"go.autonomous.ai/os/lib/hal"
 	"go.autonomous.ai/os/lib/safego"
 )
 
-// Compile-time check: *HermesService fires the channel-turn "thinking" ack.
-var _ domain.ChannelStartEmotioner = (*HermesService)(nil)
-
-// emotion-acknowledge parity for Hermes.
+// emotion-acknowledge parity for Claude Code.
 //
 // OpenClaw runs an `emotion-acknowledge` hook (os/services/internal/agent/runtimes/openclaw/hooks/emotion-acknowledge/
 // handler.ts): on every preprocessed turn it POSTs {emotion:"thinking"} to HAL
-// so the body shows it is working before the reply lands. Hermes ships no
-// ~/.hermes/hooks loader (the handler.ts copied in by `claw migrate` is never
-// executed under Hermes), so we reproduce the same behavior natively here,
-// fired from sendChat. Keep this in lockstep with the TS handler — same skip
-// rules, same emotion/intensity, same capability gate.
+// so the body shows it is working before the reply lands. Claude Code executes
+// its own native hooks, not the OpenClaw TS handlers, so we reproduce the same
+// behavior natively here, fired from sendChat — the same approach as
+// codex/emotion_ack.go, hermes/emotion_ack.go and picoclaw/emotion_ack.go.
+// Keep this in lockstep with the TS handler — same skip rules, same
+// emotion/intensity, same capability gate.
 //
 // The capability gate is resolved through the SAME registry OpenClaw uses to
 // decide whether to install the hook at all (skills.SupportedHooks →
 // HookCapability "emotion-acknowledge" = expression). Going through that table
-// rather than a hand-rolled cap check keeps the two backends consistent if the
+// rather than a hand-rolled cap check keeps the backends consistent if the
 // gate ever changes. The companion `turn-gate` hook is intentionally NOT mirrored:
 // sendChat already marks the turn busy (busySince/activeTurn) before the network
 // round-trip, so a separate gate would be redundant.
@@ -65,7 +62,7 @@ func ackEmotionEnabled(deviceType string) bool {
 // visible reply. Mirrors the OpenClaw emotion-acknowledge hook. Fire-and-forget
 // (the TS handler ignores POST errors too) and off the caller's goroutine so
 // sendChat never blocks on the HAL round-trip.
-func (s *HermesService) fireAckEmotion(runID, message string) {
+func (s *ClaudeCodeService) fireAckEmotion(runID, message string) {
 	if !s.ackHookEnabled {
 		return
 	}
@@ -85,18 +82,9 @@ func (s *HermesService) fireAckEmotion(runID, message string) {
 	if runID != "" && s.IsSilentRun(runID) {
 		return
 	}
-	safego.Go("hermes-ack-emotion", func() {
+	safego.Go("claudecode-ack-emotion", func() {
 		if err := hal.SetEmotion(ackEmotionName, ackEmotionIntensity); err != nil {
-			slog.Debug("ack emotion post failed", "component", "hermes", "error", err)
+			slog.Debug("ack emotion post failed", "component", "claudecode", "error", err)
 		}
 	})
-}
-
-// FireChannelStartEmotion gives the "thinking" ack to gateway-owned channel turns
-// (native Telegram/Discord) that never reach sendChat. Called from the shared
-// ChannelTurn handler on agent:start (domain.ChannelStartEmotioner). os-server-mediated
-// turns (Slack/web = api_server/cli) are dropped by skipPlatform before this fires,
-// so no double-ack. Delegates to fireAckEmotion to keep gate + skip rules single-sourced.
-func (s *HermesService) FireChannelStartEmotion(message, runID string) {
-	s.fireAckEmotion(runID, message)
 }
