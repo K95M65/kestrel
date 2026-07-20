@@ -411,17 +411,17 @@ HAL lives inside this repo as a Python subfolder alongside Go and TypeScript:
 
 ```
 autonomous/
-├── services/          # Go code (forked from lobster)
+├── system/          # Go code (forked from lobster)
 │   ├── cmd/              # Go entrypoints
 │   ├── server/           # Go HTTP layer
 │   ├── internal/         # Go business logic
 │   ├── bootstrap/        # Go OTA worker
 │   └── domain/           # Shared structs
-├── services/web/      # TypeScript/React SPA (copied from lobster, renamed intern→lamp)
+├── system/web/      # TypeScript/React SPA (copied from lobster, renamed intern→lamp)
 ├── hal/               # Python hardware drivers (NEW)
 │   ├── __init__.py       # Package init, exposes __version__
 │   ├── server.py         # HTTP API server (FastAPI) — NEW, not from upstream
-│   ├── services/
+│   ├── system/
 │   │   ├── motors.py     # MotorsService — 5x Feetech servo (from upstream)
 │   │   ├── rgb.py        # RGBService — 64x WS2812 LED (from upstream)
 │   │   ├── audio.py      # Audio — amixer, playback (from upstream)

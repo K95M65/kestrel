@@ -125,7 +125,7 @@ The actions live in one place so the GPIO button, TTP223, and any future input (
 
 ### Factory-reset: what gets wiped
 
-`factory_reset_action` only **announces + delegates** — the actual reset lives in the OS server (`services/server/system/factoryreset.go`), reachable from the device over loopback without a Bearer token (authoritative because of physical presence: a deliberate 10 s hold). `POST /api/system/factory-reset` is a **soft** reset (state wipe, not a reflash — kernel / OS packages / binaries / HAL `.venv` are untouched):
+`factory_reset_action` only **announces + delegates** — the actual reset lives in the OS server (`system/server/system/factoryreset.go`), reachable from the device over loopback without a Bearer token (authoritative because of physical presence: a deliberate 10 s hold). `POST /api/system/factory-reset` is a **soft** reset (state wipe, not a reflash — kernel / OS packages / binaries / HAL `.venv` are untouched):
 
 1. Wipe the active agent backend's state (OpenClaw or Hermes, auto-detected from `config.json` `agent_runtime`).
 2. Wipe the device state paths: `/root/config` (config.json — API keys, channel tokens, MQTT creds), `/root/local/users` + `/root/local/strangers` (face/voice enrollments), `/var/lib/hal/snapshots` (camera snapshots), and `/etc/wpa_supplicant/wpa_supplicant-wlan0.conf` (home WiFi creds → forces AP mode on next boot).

@@ -1,4 +1,4 @@
-# Web Frontend Architecture (`services/web`)
+# Web Frontend Architecture (`system/web`)
 
 Single-page app served by the Go `os-server`. It is the device's local control
 panel: it onboards the device (WiFi / AI brain / channels), lets the operator
@@ -166,7 +166,7 @@ There is **no test runner installed** today. Easiest → most thorough:
 The dev proxy forwards `/api` and `/hw` (with WS upgrade) to a device, so you get
 real data with hot reload and no device-side rebuild:
 ```bash
-cd services/web
+cd system/web
 echo "LAMP_PROXY=http://<DEVICE_IP>" > .env
 npm install
 npm run dev          # http://localhost:5173, proxied to the Pi

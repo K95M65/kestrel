@@ -10,7 +10,7 @@ which brain is active.
 - **`openclaw`** (default): persistent WebSocket to the OpenClaw daemon. See `docs/os-server.md` + `internal/agent/runtimes/openclaw`.
 - **`hermes`**: HTTP + SSE client against a local Hermes API server. See `docs/agentic/hermes.md` + `internal/agent/runtimes/hermes`.
 - **`picoclaw`**: persistent WebSocket client against a local PicoClaw runtime. See `docs/agentic/picoclaw.md` + `internal/agent/runtimes/picoclaw`.
-- **`codex`**: the **OpenAI Codex CLI** as the device agent brain, behind a local WS bridge. This doc. Code: `services/internal/agent/runtimes/codex/`.
+- **`codex`**: the **OpenAI Codex CLI** as the device agent brain, behind a local WS bridge. This doc. Code: `system/internal/agent/runtimes/codex/`.
 
 > Source of truth is the code. This documents `internal/agent/runtimes/codex/` as implemented;
 > keep it in sync on change (EN: this file, VI: `docs/vi/agentic/codex_vi.md`).
@@ -460,7 +460,7 @@ hermes' `emotion_ack.go`): on each user-visible turn, sendChat fires
 `{emotion:"thinking"}` to HAL — same skip prefixes, same intensity, same
 capability gate (`skills.SupportedHooks`) as the TS handler. The companion
 `turn-gate` hook is intentionally not mirrored (sendChat already marks the turn
-busy). ⚠️ Keep it in lockstep with `services/internal/agent/runtimes/openclaw/hooks/emotion-acknowledge/handler.ts`.
+busy). ⚠️ Keep it in lockstep with `system/internal/agent/runtimes/openclaw/hooks/emotion-acknowledge/handler.ts`.
 
 ## 7. MCP connectors (`mcp.go`)
 

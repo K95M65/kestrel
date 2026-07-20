@@ -408,17 +408,17 @@ HAL nằm trong repo này dưới dạng subfolder Python, cùng với Go và Ty
 
 ```
 autonomous/
-├── services/          # Go code (fork từ lobster)
+├── system/          # Go code (fork từ lobster)
 │   ├── cmd/              # Go entrypoints
 │   ├── server/           # Go HTTP layer
 │   ├── internal/         # Go business logic
 │   ├── bootstrap/        # Go OTA worker
 │   └── domain/           # Struct dùng chung
-├── services/web/      # TypeScript/React SPA (copy từ lobster, đổi intern→lamp)
+├── system/web/      # TypeScript/React SPA (copy từ lobster, đổi intern→lamp)
 ├── hal/               # Python hardware drivers (MỚI)
 │   ├── __init__.py       # Package init, expose __version__
 │   ├── server.py         # HTTP API server (FastAPI) — MỚI, không từ upstream
-│   ├── services/
+│   ├── system/
 │   │   ├── motors.py     # MotorsService — 5x Feetech servo (từ upstream)
 │   │   ├── rgb.py        # RGBService — 64x WS2812 LED (từ upstream)
 │   │   ├── audio.py      # Audio — amixer, playback (từ upstream)

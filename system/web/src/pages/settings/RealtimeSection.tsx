@@ -6,7 +6,7 @@ import type { LlmLoadedState } from "@/hooks/setup/types";
 // Realtime voice-agent (Gemini Live / OpenAI Realtime) config. Values map 1:1 to
 // the config.json `realtime` block (HAL reads it; os-server restarts HAL on save).
 // Voice + reasoning are provider-specific — keep these lists in sync with
-// services/server/config/realtime.go (ValidateRealtimeKnobs) and the HAL enums.
+// system/server/config/realtime.go (ValidateRealtimeKnobs) and the HAL enums.
 const PROVIDERS = ["gemini", "openai", "qwen", "none"];
 const VOICES: Record<string, string[]> = {
   gemini: ["Puck", "Charon", "Kore", "Fenrir", "Aoede"],

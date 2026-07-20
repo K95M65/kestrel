@@ -1,4 +1,4 @@
-package claudecode
+package codex
 
 import (
 	"log/slog"
@@ -10,21 +10,20 @@ import (
 	"go.autonomous.ai/os/lib/safego"
 )
 
-// emotion-acknowledge parity for Claude Code.
+// emotion-acknowledge parity for Codex.
 //
-// OpenClaw runs an `emotion-acknowledge` hook (services/internal/agent/runtimes/openclaw/hooks/emotion-acknowledge/
+// OpenClaw runs an `emotion-acknowledge` hook (system/internal/agent/runtimes/openclaw/hooks/emotion-acknowledge/
 // handler.ts): on every preprocessed turn it POSTs {emotion:"thinking"} to HAL
-// so the body shows it is working before the reply lands. Claude Code executes
-// its own native hooks, not the OpenClaw TS handlers, so we reproduce the same
-// behavior natively here, fired from sendChat — the same approach as
-// codex/emotion_ack.go, hermes/emotion_ack.go and picoclaw/emotion_ack.go.
-// Keep this in lockstep with the TS handler — same skip rules, same
-// emotion/intensity, same capability gate.
+// so the body shows it is working before the reply lands. Codex ships no
+// ~/.codex/hooks loader (the handler.ts copied in by `claw migrate` is never
+// executed under Codex), so we reproduce the same behavior natively here,
+// fired from sendChat. Keep this in lockstep with the TS handler — same skip
+// rules, same emotion/intensity, same capability gate.
 //
 // The capability gate is resolved through the SAME registry OpenClaw uses to
 // decide whether to install the hook at all (skills.SupportedHooks →
 // HookCapability "emotion-acknowledge" = expression). Going through that table
-// rather than a hand-rolled cap check keeps the backends consistent if the
+// rather than a hand-rolled cap check keeps the two backends consistent if the
 // gate ever changes. The companion `turn-gate` hook is intentionally NOT mirrored:
 // sendChat already marks the turn busy (busySince/activeTurn) before the network
 // round-trip, so a separate gate would be redundant.
@@ -33,7 +32,7 @@ const (
 	ackEmotionIntensity = 0.7
 )
 
-// ackSkipPrefixes mirror services/internal/agent/runtimes/openclaw/hooks/emotion-acknowledge/handler.ts exactly: passive
+// ackSkipPrefixes mirror system/internal/agent/runtimes/openclaw/hooks/emotion-acknowledge/handler.ts exactly: passive
 // sensing turns frequently resolve to NO_REPLY, which would leave the face stuck
 // on "thinking" with nothing to overwrite it. These are NARROWER than
 // deviceInternalPrefixes on purpose — [ambient]/[wellbeing]/wake greetings DO
@@ -62,7 +61,7 @@ func ackEmotionEnabled(deviceType string) bool {
 // visible reply. Mirrors the OpenClaw emotion-acknowledge hook. Fire-and-forget
 // (the TS handler ignores POST errors too) and off the caller's goroutine so
 // sendChat never blocks on the HAL round-trip.
-func (s *ClaudeCodeService) fireAckEmotion(runID, message string) {
+func (s *CodexService) fireAckEmotion(runID, message string) {
 	if !s.ackHookEnabled {
 		return
 	}
@@ -82,9 +81,9 @@ func (s *ClaudeCodeService) fireAckEmotion(runID, message string) {
 	if runID != "" && s.IsSilentRun(runID) {
 		return
 	}
-	safego.Go("claudecode-ack-emotion", func() {
+	safego.Go("codex-ack-emotion", func() {
 		if err := hal.SetEmotion(ackEmotionName, ackEmotionIntensity); err != nil {
-			slog.Debug("ack emotion post failed", "component", "claudecode", "error", err)
+			slog.Debug("ack emotion post failed", "component", "codex", "error", err)
 		}
 	})
 }

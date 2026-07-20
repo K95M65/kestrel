@@ -458,28 +458,28 @@ Handled by bootstrap worker, not through MQTT handler directly.
 
 | File | Role |
 |------|------|
-| `services/lib/mqtt/client.go` | MQTT client (connect, subscribe, publish) |
-| `services/lib/mqtt/config.go` | Config struct |
-| `services/lib/mqtt/options.go` | Connection options |
-| `services/lib/mqtt/factory.go` | Factory to create client with unique ID |
-| `services/server/device/delivery/mqtt/handler.go` | Command dispatcher |
-| `services/server/device/delivery/mqtt/info_handler.go` | Handle `info` command |
-| `services/server/device/delivery/mqtt/add_channel_hander.go` | Handle `add_channel` command (streams pairing events for WhatsApp) |
-| `services/server/device/delivery/mqtt/slack_event_handler.go` | Handle `slack_event` / `slack_command` (runtime-aware: forwards Slack HTTP-mode events/slash commands to the local OpenClaw gateway, or drives a hermes turn when the runtime is a `SlackBridge`) |
-| `services/server/device/delivery/mqtt/data_handler.go` | Handle `data` command kinds `oauth.set`/`oauth.remove` (+ access-token store) |
-| `services/server/device/delivery/mqtt/connector_handler.go` | Handle `connector.set.<code>`/`connector.remove.<code>` (async, writer dispatch via `connectorWriterFor`) |
-| `services/server/device/delivery/mqtt/connector_writer.go` | `ConnectorWriter` interface + shared `<code>_access_tokens.json` file helpers |
-| `services/server/device/delivery/mqtt/connector_writer_generic.go` | Data-driven `connectorWriter`: payload-driven MCP routing, fallback table, path-traversal guard, per-connector token files |
-| `services/server/device/delivery/mqtt/mcp_connector_writer.go` | Special stdio MCP writer (`figma-api`): token file + local-wrapper `openclaw.json` MCP entry |
-| `services/server/device/delivery/mqtt/connector_refresh.go` | Connector token refresh loop (`/connector/refresh-token`) |
-| `services/server/device/delivery/mqtt/system_info_handler.go` | Handle `data` kinds `system.info`/`system.version`/`system.network` |
-| `services/server/device/delivery/mqtt/channel_refresh_handler.go` | Handle `data` kind `channel.refresh_config` (async re-apply of a channel's config block) |
-| `services/server/device/delivery/mqtt/timezone_set_handler.go` | Handle `data` kind `timezone.set` (async apply of the device IANA timezone) |
-| `services/internal/device/timezone.go` | `SetTimezone`/`CurrentTimezone`: validate zone, rewrite `/etc/localtime` + `/etc/timezone`, best-effort `timedatectl`, persist config |
-| `services/internal/device/service.go` | `RefreshChannelConfig` (generic per-channel request build + capability gate) |
-| `services/internal/agent/channel_reconcile.go` | `ChannelReconcile`: re-applies channels after a runtime switch, records `channels_unsupported` |
-| `services/server/device/delivery/mqtt/whatsapp_pair_handler.go` | Handle `whatsapp_pair` re-pair command |
-| `services/server/device/delivery/mqtt/claudecode_login_handler.go` | Handle `claudecode_login` / `claudecode_login_code` (claude.ai OAuth login) |
-| `services/internal/agent/runtimes/openclaw/pairing.go` | WhatsApp Baileys QR pairing subprocess driver |
-| `services/domain/device.go` | MQTTMessage, command constants |
-| `services/domain/pairing.go` | PairingEvent + status enum |
+| `system/lib/mqtt/client.go` | MQTT client (connect, subscribe, publish) |
+| `system/lib/mqtt/config.go` | Config struct |
+| `system/lib/mqtt/options.go` | Connection options |
+| `system/lib/mqtt/factory.go` | Factory to create client with unique ID |
+| `system/server/device/delivery/mqtt/handler.go` | Command dispatcher |
+| `system/server/device/delivery/mqtt/info_handler.go` | Handle `info` command |
+| `system/server/device/delivery/mqtt/add_channel_hander.go` | Handle `add_channel` command (streams pairing events for WhatsApp) |
+| `system/server/device/delivery/mqtt/slack_event_handler.go` | Handle `slack_event` / `slack_command` (runtime-aware: forwards Slack HTTP-mode events/slash commands to the local OpenClaw gateway, or drives a hermes turn when the runtime is a `SlackBridge`) |
+| `system/server/device/delivery/mqtt/data_handler.go` | Handle `data` command kinds `oauth.set`/`oauth.remove` (+ access-token store) |
+| `system/server/device/delivery/mqtt/connector_handler.go` | Handle `connector.set.<code>`/`connector.remove.<code>` (async, writer dispatch via `connectorWriterFor`) |
+| `system/server/device/delivery/mqtt/connector_writer.go` | `ConnectorWriter` interface + shared `<code>_access_tokens.json` file helpers |
+| `system/server/device/delivery/mqtt/connector_writer_generic.go` | Data-driven `connectorWriter`: payload-driven MCP routing, fallback table, path-traversal guard, per-connector token files |
+| `system/server/device/delivery/mqtt/mcp_connector_writer.go` | Special stdio MCP writer (`figma-api`): token file + local-wrapper `openclaw.json` MCP entry |
+| `system/server/device/delivery/mqtt/connector_refresh.go` | Connector token refresh loop (`/connector/refresh-token`) |
+| `system/server/device/delivery/mqtt/system_info_handler.go` | Handle `data` kinds `system.info`/`system.version`/`system.network` |
+| `system/server/device/delivery/mqtt/channel_refresh_handler.go` | Handle `data` kind `channel.refresh_config` (async re-apply of a channel's config block) |
+| `system/server/device/delivery/mqtt/timezone_set_handler.go` | Handle `data` kind `timezone.set` (async apply of the device IANA timezone) |
+| `system/internal/device/timezone.go` | `SetTimezone`/`CurrentTimezone`: validate zone, rewrite `/etc/localtime` + `/etc/timezone`, best-effort `timedatectl`, persist config |
+| `system/internal/device/service.go` | `RefreshChannelConfig` (generic per-channel request build + capability gate) |
+| `system/internal/agent/channel_reconcile.go` | `ChannelReconcile`: re-applies channels after a runtime switch, records `channels_unsupported` |
+| `system/server/device/delivery/mqtt/whatsapp_pair_handler.go` | Handle `whatsapp_pair` re-pair command |
+| `system/server/device/delivery/mqtt/claudecode_login_handler.go` | Handle `claudecode_login` / `claudecode_login_code` (claude.ai OAuth login) |
+| `system/internal/agent/runtimes/openclaw/pairing.go` | WhatsApp Baileys QR pairing subprocess driver |
+| `system/domain/device.go` | MQTTMessage, command constants |
+| `system/domain/pairing.go` | PairingEvent + status enum |

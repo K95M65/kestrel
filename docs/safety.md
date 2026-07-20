@@ -182,8 +182,8 @@ critical dependency it falls into a safe posture deterministically, below the ag
 Three conditions are enforced today; setup-incomplete and servo over-current are reserved.
 
 - [x] **Network / gateway loss → stop agent-driven tracking.** On gateway WebSocket
-      disconnect, `services/internal/agent/runtimes/openclaw/service_ws.go` calls
-      `hal.StopServoTracking()` (`services/lib/hal`) → HAL `POST /servo/track/stop`,
+      disconnect, `system/internal/agent/runtimes/openclaw/service_ws.go` calls
+      `hal.StopServoTracking()` (`system/lib/hal`) → HAL `POST /servo/track/stop`,
       so the body stops chasing a target it has no fresh vision for. Best-effort and
       guarded by `SetUpCompleted`. Key nuance: the device does **not** freeze or "hold
       pose" — local idle animation continues (it is local and harmless) and recovery

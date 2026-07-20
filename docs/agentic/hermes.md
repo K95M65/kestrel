@@ -8,7 +8,7 @@ hardware markers, Flow Monitor SSE, sensing drain, Telegram fan-out) never knows
 which brain is active.
 
 - **`openclaw`** (default): persistent WebSocket to the OpenClaw daemon. See `docs/os-server.md` + `internal/agent/runtimes/openclaw`.
-- **`hermes`**: HTTP + SSE client against a local Hermes API server (OpenAI *Responses API* style). This doc. Code: `services/internal/agent/runtimes/hermes/`.
+- **`hermes`**: HTTP + SSE client against a local Hermes API server (OpenAI *Responses API* style). This doc. Code: `system/internal/agent/runtimes/hermes/`.
 
 > Source of truth is the code. This documents `internal/agent/runtimes/hermes/` as implemented;
 > keep it in sync on change (EN: this file, VI: `docs/vi/agentic/hermes_vi.md`).
@@ -222,7 +222,7 @@ alerts, using the bot token and the `telegramTargetsFile` chat list.
 
 ### Slack — HTTP-mode bridge (for Socket-Mode-only runtimes)
 
-`domain.SlackBridge` (`services/domain/slack_bridge.go`) is a **generic
+`domain.SlackBridge` (`system/domain/slack_bridge.go`) is a **generic
 mechanism**, not hermes-specific: it is the interface for **any** runtime whose
 native Slack support is **Socket Mode only** (today: hermes is the one example)
 and which therefore has **no local HTTP Slack webhook** to receive events. For
@@ -325,7 +325,7 @@ regardless of backend.
 
 ## 10. Operating it
 
-Hermes is installed by `services/internal/agent/runtimes/hermes/install.sh` (co-located with
+Hermes is installed by `system/internal/agent/runtimes/hermes/install.sh` (co-located with
 its implementation). The script is **embedded in os-server** (`go:embed`,
 registered via `lib/runtimereg`), so it ships + OTA-updates with the binary;
 os-server materializes it to `/usr/local/lib/os-runtimes/hermes/install.sh` and

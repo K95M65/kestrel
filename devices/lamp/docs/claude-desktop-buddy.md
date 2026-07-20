@@ -576,7 +576,7 @@ skill from acting on stale prompts.
 
 ## 10. Lamp-side coordination
 
-### Config-change watcher (services/server/server.go)
+### Config-change watcher (system/server/server.go)
 
 When the user provisions the device via `POST /api/device/setup`, Lamp
 saves `device_id` to `config/config.json` and notifies the in-process

@@ -338,13 +338,13 @@ listener đầy đủ nằm ở phần header của file `lib/setupBridge.ts`.
 
 | File | Vai trò |
 |------|---------|
-| `services/internal/device/service.go` | Setup orchestration + goroutine early-capture IP LAN |
-| `services/web/src/lib/setupBridge.ts` | Bridge sự kiện về cửa sổ cha (postMessage) |
-| `services/web/src/pages/Setup.tsx` | UI wizard Setup + các điểm gọi emit bridge + link copy ưu tiên IP |
-| `services/web/src/hooks/setup/useSetupStatusPolling.ts` | Auto-redirect AP→STA: phase poll + LAN-IP probe + mDNS probe |
-| `services/web/src/hooks/setup/useWifiConnected.ts` | Nhận biết Wi-Fi-đã-xong sau reload từ trạng thái sống của thiết bị (`check-internet` + `network/current`) |
-| `services/internal/network/service.go` | WiFi connect, AP mode, `CurrentNetwork()` (SSID đang associated) |
-| `services/server/device/delivery/http/handler.go` | HTTP setup handler (goroutine async) |
-| `services/server/config/config.go` | Config load/save |
+| `system/internal/device/service.go` | Setup orchestration + goroutine early-capture IP LAN |
+| `system/web/src/lib/setupBridge.ts` | Bridge sự kiện về cửa sổ cha (postMessage) |
+| `system/web/src/pages/Setup.tsx` | UI wizard Setup + các điểm gọi emit bridge + link copy ưu tiên IP |
+| `system/web/src/hooks/setup/useSetupStatusPolling.ts` | Auto-redirect AP→STA: phase poll + LAN-IP probe + mDNS probe |
+| `system/web/src/hooks/setup/useWifiConnected.ts` | Nhận biết Wi-Fi-đã-xong sau reload từ trạng thái sống của thiết bị (`check-internet` + `network/current`) |
+| `system/internal/network/service.go` | WiFi connect, AP mode, `CurrentNetwork()` (SSID đang associated) |
+| `system/server/device/delivery/http/handler.go` | HTTP setup handler (goroutine async) |
+| `system/server/config/config.go` | Config load/save |
 | `imager/build-orangepi.sh`, `imager/build.sh`, `scripts/provision/setup.sh` | nginx config bake vào image (gồm CSP `connect-src`) |
 | `scripts/maintenance/patch-security.sh` | Patch bảo mật OTA cho thiết bị đã provision (migrate CSP) |

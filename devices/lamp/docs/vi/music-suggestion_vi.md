@@ -141,11 +141,11 @@ Agent: POST /api/music-suggestion/status → status="rejected"
 
 | File | Vai trò |
 |------|---------|
-| `services/lib/musicsuggestion/suggestion.go` | Logger JSONL per-user per-day. Log, Query, UpdateStatus, LastSuggestion, Days |
-| `services/lib/mood/mood.go` | Logger mood events |
-| `services/server/sensing/delivery/http/handler.go` | PostSuggestionLog/PostSuggestionStatus: API handlers. Motion.activity sedentary nudge agent follow Music skill |
-| `services/server/openclaw/delivery/sse/handler.go` | SuggestionHistory: GET endpoint |
-| `services/server/server.go` | Routes: /api/music-suggestion/*, /api/openclaw/music-suggestion-history |
+| `system/lib/musicsuggestion/suggestion.go` | Logger JSONL per-user per-day. Log, Query, UpdateStatus, LastSuggestion, Days |
+| `system/lib/mood/mood.go` | Logger mood events |
+| `system/server/sensing/delivery/http/handler.go` | PostSuggestionLog/PostSuggestionStatus: API handlers. Motion.activity sedentary nudge agent follow Music skill |
+| `system/server/openclaw/delivery/sse/handler.go` | SuggestionHistory: GET endpoint |
+| `system/server/server.go` | Routes: /api/music-suggestion/*, /api/openclaw/music-suggestion-history |
 
 ### OpenClaw Skills
 

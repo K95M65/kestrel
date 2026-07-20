@@ -15,7 +15,7 @@ Agentic Runtime (AI/LLM) → OS Server (Go, :5000) → HAL (Python, :5001) → P
 ## Thư Mục Dự Án
 
 ```
-services/
+system/
 ├── cmd/os-server/main.go              — Entry point OS Server
 ├── cmd/bootstrap/main.go         — OTA bootstrap worker
 ├── server/

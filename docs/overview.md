@@ -15,7 +15,7 @@ Agentic Runtime (AI/LLM) → OS Server (Go, :5000) → HAL (Python, :5001) → H
 ## Project Directory
 
 ```
-services/
+system/
 ├── cmd/os-server/main.go              — OS Server entry point
 ├── cmd/bootstrap/main.go         — OTA bootstrap worker
 ├── server/

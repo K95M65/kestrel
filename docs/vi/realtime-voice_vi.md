@@ -412,7 +412,7 @@ chỉ-thuộc-os-server.
 
 ### Block `realtime` trong `config.json`
 
-Model ở Go tại `services/server/config/realtime.go`; đọc ở HAL tại
+Model ở Go tại `system/server/config/realtime.go`; đọc ở HAL tại
 `hal/config.py`. Field chung ở trên; knob theo provider nằm trong sub-object
 `gemini` / `openai` / `qwen`, `provider` chọn cái đang active (`none` hoặc vắng →
 tắt realtime). `api_key` / `base_url` rỗng → fallback `llm_api_key` /
@@ -476,7 +476,7 @@ câu ngôn-ngữ-trả-lời trích dẫn tiếng Anh thì không. Mỗi câu b�
 `CoT leak dropped`.
 
 Đường agent chính (reply openclaw/hermes nói qua os-server) có bản port Go của
-filter này — `services/server/agent/delivery/http/cot_leak_filter.go` (thêm
+filter này — `system/server/agent/delivery/http/cot_leak_filter.go` (thêm
 TRIGGER identifier snake_case cho corpus leak DeepSeek); xem
 `docs/vi/flow-monitor_vi.md` § "CoT-leak filter (đường agent)". Harden bên nào
 thì nhớ sync bên kia.

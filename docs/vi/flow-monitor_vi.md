@@ -44,7 +44,7 @@ Tối đa 4 dòng JSONL bonus / turn (thực tế 0–2). Stream name từ OpenC
 
 ## Sơ đồ Turn Pipeline (SVG)
 
-Component `FlowDiagram` trong `services/web/src/pages/Monitor.tsx` vẽ **ba vùng** (màu viền nền):
+Component `FlowDiagram` trong `system/web/src/pages/Monitor.tsx` vẽ **ba vùng** (màu viền nền):
 
 | Vùng | Màu | Node |
 |------|-----|------|
@@ -90,11 +90,11 @@ Bảng tọa độ gần đúng và ASCII grid: xem mục *Turn Pipeline* và *A
 
 | File | Vai trò |
 |------|---------|
-| `services/lib/flow/flow.go` | Emit flow, JSONL, API runID từng event |
-| `services/server/sensing/delivery/http/handler.go` | Sensing → flow.Start/End |
-| `services/server/openclaw/delivery/sse/handler.go` | Agent → flow.Log, map runID |
-| `services/internal/agent/runtimes/openclaw/service.go` | sendChat / idempotencyKey |
-| `services/web/src/pages/Monitor.tsx` | `groupIntoTurns`, `FlowDiagram`, v.v. |
+| `system/lib/flow/flow.go` | Emit flow, JSONL, API runID từng event |
+| `system/server/sensing/delivery/http/handler.go` | Sensing → flow.Start/End |
+| `system/server/openclaw/delivery/sse/handler.go` | Agent → flow.Log, map runID |
+| `system/internal/agent/runtimes/openclaw/service.go` | sendChat / idempotencyKey |
+| `system/web/src/pages/Monitor.tsx` | `groupIntoTurns`, `FlowDiagram`, v.v. |
 
 **Tải để so sánh:** nút **↓ Bundle** trên Flow Panel tải cùng lúc JSONL tail server, snapshot UI và OpenClaw debug payload (xem bảng *Turns list vs downloaded log* trong `docs/flow-monitor.md`).
 
@@ -173,7 +173,7 @@ OUT  🔊 <output text>
 
 Với `speech_emotion.detected`, turn card hiển thị một player `<audio controls>` click-to-play gắn nhãn `🎙 debug` cho mỗi audio URL, để nghe chính xác clip đã tạo ra emotion được detect.
 
-- Đường dẫn clip trên Pi tới qua field `audio` (tùy chọn) trong body `POST /api/sensing/event`. `services/server/sensing/delivery/http/handler.go` chuyển basename của path thành URL servable (`audioURLForPath` → `/api/sensing/audio/<file>.wav`) và lưu vào `Detail` của monitor event ở key `audio` — **chỉ URL basename, không bao giờ là raw path**.
+- Đường dẫn clip trên Pi tới qua field `audio` (tùy chọn) trong body `POST /api/sensing/event`. `system/server/sensing/delivery/http/handler.go` chuyển basename của path thành URL servable (`audioURLForPath` → `/api/sensing/audio/<file>.wav`) và lưu vào `Detail` của monitor event ở key `audio` — **chỉ URL basename, không bao giờ là raw path**.
 - Frontend `turnIO()` (`helpers.ts`) rút các URL này vào `audioUrls` từ `detail.audio` của event `sensing_input`; `TurnBadge.tsx` render player.
 - **Đây là affordance CHỈ-ĐỂ-DEBUG — audio KHÔNG BAO GIỜ gửi cho LLM.** Path nằm trong field JSON riêng, không nằm trong text tin nhắn chat, nên tự nhiên bị loại khỏi những gì agent thấy — giống cách snapshot `motion.activity` được hiện trên UI nhưng strip trước khi tới LLM.
 - **Route**: `GET /api/sensing/audio/:name` (`SensingHandler.GetAudio`) serve file `.wav` theo basename từ `/var/lib/hal/speech-emotion` hoặc `/tmp/hal-speech-emotion`, với validation basename nghiêm ngặt — tên phải kết thúc `.wav` và không chứa `/`, `\`, hay `..` (nếu không → `404`).
@@ -195,7 +195,7 @@ Session agent auto-compact khi context vượt ~80k tokens. Mỗi lần compact 
 
 **Endpoint:** `GET /api/openclaw/compaction-latest?session=<key>` (mặc định `agent:main:main`). Response format: `{status:1, data:{found, sessionFile, timestamp, tokensBefore, summary, details:{readFiles}, ...}}`.
 
-Dùng khi agent viện rule mà grep không thấy trong bất kỳ `skills/**/SKILL.md` — gần như 100% nguồn là compaction summary, không phải skill đang load. Handler: `services/server/openclaw/delivery/sse/handler_api_compaction.go`.
+Dùng khi agent viện rule mà grep không thấy trong bất kỳ `skills/**/SKILL.md` — gần như 100% nguồn là compaction summary, không phải skill đang load. Handler: `system/server/openclaw/delivery/sse/handler_api_compaction.go`.
 
 ## Issue đang mở
 

@@ -20,12 +20,12 @@ calls.
 **System Managers** — the always-on Go daemon: `intent` (fast local commands), `network`,
 `sensing` routing, `monitor` (flow event bus), `healthwatch`, `ambient`, and `device`.
 Deterministic — they run with or without the runtime. OTA runs as its own worker
-(`bootstrap/`). *(`services/internal`)*
+(`bootstrap/`). *(`system/internal`)*
 
 **Agentic Runtime** — **OpenClaw**, **Hermes**, **PicoClaw**, **OpenAI Codex**, **Claude Code**,
 or a custom runtime. Runs the skills, embodies the device's `SOUL.md`, and decides what to act
 on. Swappable — and where Autonomous's differentiated value (the default brain, memory,
-character) lives. *(`services/internal/agent/runtimes/{openclaw,hermes,picoclaw,codex,claudecode}`)*
+character) lives. *(`system/internal/agent/runtimes/{openclaw,hermes,picoclaw,codex,claudecode}`)*
 
 **HAL — Capabilities** — the frozen, versioned interface, 12 capabilities: `audio`, `vision`,
 `sensing`, `presence`, `motion`, `light`, `display`, `expression`, `media`, `connectivity`,

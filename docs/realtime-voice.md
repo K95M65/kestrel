@@ -431,7 +431,7 @@ spurious HAL restart on the next boot after an os-server-only field changes.
 
 ### `config.json` `realtime` block
 
-Modelled in Go at `services/server/config/realtime.go`; read in HAL at
+Modelled in Go at `system/server/config/realtime.go`; read in HAL at
 `hal/config.py`. Shared fields sit at the top; per-provider knobs live in
 `gemini` / `openai` / `qwen` sub-objects, with `provider` selecting the active
 one (`none` or absent → realtime off). Empty `api_key` / `base_url` fall back to
@@ -497,7 +497,7 @@ is still caught, while a reply-language sentence quoting English is not.
 Every dropped sentence is logged as `CoT leak dropped`.
 
 The main-agent path (openclaw/hermes replies spoken via os-server) has a Go
-port of this filter — `services/server/agent/delivery/http/cot_leak_filter.go`
+port of this filter — `system/server/agent/delivery/http/cot_leak_filter.go`
 (adds a snake_case-identifier TRIGGER for the DeepSeek leak corpus); see
 `docs/flow-monitor.md` § "CoT-leak filter (agent path)". Keep the two in sync
 when hardening either side.

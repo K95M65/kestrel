@@ -996,7 +996,7 @@ AVAHI
   # with identical last-4 serial chars on the same LAN is rare (1/65536)
   # but possible — if it happens, the FE's redirect will hit the wrong
   # device, and we'd need to bump the suffix length here and in
-  # services/internal/device/hardware.go.
+  # system/internal/device/hardware.go.
   sleep 1
   if command -v avahi-resolve-host-name >/dev/null 2>&1; then
     if ! avahi-resolve-host-name -4 "${DEVICE_HOSTNAME}.local" >/dev/null 2>&1; then

@@ -110,8 +110,8 @@ build in tab 1 keeps running while you tail a log in tab 2.
   `/root/.claudecode/.env` for the Claude Code runtime), so `claude`,
   `codex`, `opencode` etc. inherit the campaign API key and don't prompt
   for login the way a raw SSH shell would.
-- Source: `services/server/system/shell.go` (backend PTY + WebSocket) and
-  `services/web/src/pages/monitor/CliSection.tsx` (xterm.js frontend).
+- Source: `system/server/system/shell.go` (backend PTY + WebSocket) and
+  `system/web/src/pages/monitor/CliSection.tsx` (xterm.js frontend).
 
 Use SSH for scripted / long-running work (rsync, tmux sessions that must
 survive a browser close). Use the Web CLI for quick "poke at the device"
@@ -241,14 +241,14 @@ build step needed.
 
 ```bash
 # From the repo root
-make os-build            # → services/os-server
-make os-build-bootstrap  # → services/bootstrap
+make os-build            # → system/os-server
+make os-build-bootstrap  # → system/bootstrap
 ```
 
 Push the binary and restart:
 
 ```bash
-sshpass -p 'orangepi' scp services/os-server orangepi@<ip>:/tmp/os-server-new
+sshpass -p 'orangepi' scp system/os-server orangepi@<ip>:/tmp/os-server-new
 sshpass -p 'orangepi' ssh orangepi@<ip> "echo orangepi | sudo -S bash -c '
   cp /usr/local/bin/os-server /usr/local/bin/os-server.bak.\$(date +%s)
   mv /tmp/os-server-new /usr/local/bin/os-server
@@ -280,15 +280,15 @@ sshpass -p 'orangepi' ssh orangepi@<ip> "echo orangepi | sudo -S bash -c '
 
 ### 4.3 Web (Setup + Admin UI)
 
-The React SPA lives in `services/web/`. Nginx serves the built assets from
+The React SPA lives in `system/web/`. Nginx serves the built assets from
 `/usr/share/nginx/html/setup/`.
 
 ```bash
 # Build
-cd services/web && npm install && npm run build   # → dist/
+cd system/web && npm install && npm run build   # → dist/
 
 # Push (from repo root)
-cd services/web/dist && zip -qr /tmp/setup-web.zip .
+cd system/web/dist && zip -qr /tmp/setup-web.zip .
 sshpass -p 'orangepi' scp /tmp/setup-web.zip orangepi@<ip>:/tmp/
 sshpass -p 'orangepi' ssh orangepi@<ip> "echo orangepi | sudo -S bash -c '
   find /usr/share/nginx/html/setup -mindepth 1 -not -name VERSION -exec rm -rf {} + 2>/dev/null || true
@@ -520,14 +520,14 @@ copy patterns from):
 
 | Caller | File | What it does |
 |---|---|---|
-| Status-cue overlay service | `services/internal/statusled/service.go:71` — `func (s *Service) Set(state State)` | Priority-stacked overlay: booting / ota / error / connectivity / hal_down / agent_down / hardware / wifi_connecting. Highest priority wins; on `Clear` the strip is restored. |
-| State constants (booting, wifi_connecting, agent_down, …) | `services/internal/statusled/service.go:19-26` | The exact set of states you can pass to `/led/status`. |
-| Wi-Fi connecting blue-blink | `services/internal/device/service.go:183` — `s.statusLED.Set(statusled.StateWifiConnecting)` | Fires the blue blink while the STA join is happening during setup. |
-| HAL health watchdog | `services/internal/healthwatch/service.go:94,107,136` | Sets `StateHALDown` / `StateHardware` when HAL or a driver stops responding. |
-| Agent-runtime health | `services/internal/agent/runtimes/openclaw/service_ws.go:43`, `internal/agent/runtimes/claudecode/client.go:57`, `internal/agent/runtimes/codex/client.go:60`, `internal/agent/runtimes/picoclaw/client.go:50`, `internal/agent/runtimes/hermes/health.go:126` | Every agent runtime sets `StateAgentDown` when its socket drops so the user sees the LED go red without having to check logs. |
-| Ambient "breathing" idle behaviour | `services/internal/ambient/service.go` | Drives soft colour drift + breathing while there's no interaction. Uses `/led/effect` with `transient=true` so it doesn't clobber the user's saved state. |
-| LLM skill / tool-call bridge (`[HW:/led/…:{...}]`) | `services/server/agent/delivery/http/handler_hw.go` | When an OpenClaw / Hermes / Claude Code skill emits e.g. `[HW:/led/solid:{"color":[255,0,0]}]`, this handler forwards it to HAL. This is how any skill turns the LED red without wiring plumbing itself. |
-| Go HAL client (helpers you'd call from an os-server service) | `services/lib/hal/client.go:76-131` — `StartEffect`, `StopEffect`, `SetLEDStatus`, `RestoreLED`, `GetColor` | Fire-and-forget wrappers around the endpoints above. New Go services should use these instead of hand-rolling HTTP. |
+| Status-cue overlay service | `system/internal/statusled/service.go:71` — `func (s *Service) Set(state State)` | Priority-stacked overlay: booting / ota / error / connectivity / hal_down / agent_down / hardware / wifi_connecting. Highest priority wins; on `Clear` the strip is restored. |
+| State constants (booting, wifi_connecting, agent_down, …) | `system/internal/statusled/service.go:19-26` | The exact set of states you can pass to `/led/status`. |
+| Wi-Fi connecting blue-blink | `system/internal/device/service.go:183` — `s.statusLED.Set(statusled.StateWifiConnecting)` | Fires the blue blink while the STA join is happening during setup. |
+| HAL health watchdog | `system/internal/healthwatch/service.go:94,107,136` | Sets `StateHALDown` / `StateHardware` when HAL or a driver stops responding. |
+| Agent-runtime health | `system/internal/agent/runtimes/openclaw/service_ws.go:43`, `internal/agent/runtimes/claudecode/client.go:57`, `internal/agent/runtimes/codex/client.go:60`, `internal/agent/runtimes/picoclaw/client.go:50`, `internal/agent/runtimes/hermes/health.go:126` | Every agent runtime sets `StateAgentDown` when its socket drops so the user sees the LED go red without having to check logs. |
+| Ambient "breathing" idle behaviour | `system/internal/ambient/service.go` | Drives soft colour drift + breathing while there's no interaction. Uses `/led/effect` with `transient=true` so it doesn't clobber the user's saved state. |
+| LLM skill / tool-call bridge (`[HW:/led/…:{...}]`) | `system/server/agent/delivery/http/handler_hw.go` | When an OpenClaw / Hermes / Claude Code skill emits e.g. `[HW:/led/solid:{"color":[255,0,0]}]`, this handler forwards it to HAL. This is how any skill turns the LED red without wiring plumbing itself. |
+| Go HAL client (helpers you'd call from an os-server service) | `system/lib/hal/client.go:76-131` — `StartEffect`, `StopEffect`, `SetLEDStatus`, `RestoreLED`, `GetColor` | Fire-and-forget wrappers around the endpoints above. New Go services should use these instead of hand-rolling HTTP. |
 
 Full LED preset catalogue and rendering rules (colours, priorities, per-preset
 behaviour): `docs/led-control.md`.
@@ -565,9 +565,9 @@ Example payload:
 
 ### 7.2 Receiving on the device — add a new handler
 
-Adding a new MQTT command is three edits inside `services/`:
+Adding a new MQTT command is three edits inside `system/`:
 
-1. **Declare the kind constant** in `services/domain/device.go`:
+1. **Declare the kind constant** in `system/domain/device.go`:
 
    ```go
    const (
@@ -578,13 +578,13 @@ Adding a new MQTT command is three edits inside `services/`:
    ```
 
 2. **Write the handler** — one file under
-   `services/server/device/delivery/mqtt/`. See
+   `system/server/device/delivery/mqtt/`. See
    `device_soft_reset_handler.go` and `device_rename_handler.go` for reference
    patterns (envelope unmarshalling, ack via `publishDataResult`,
    goroutine-off-callback for long work).
 
 3. **Wire it into the dispatcher** — one case in the switch in
-   `services/server/device/delivery/mqtt/handler.go` `dispatchData()`:
+   `system/server/device/delivery/mqtt/handler.go` `dispatchData()`:
 
    ```go
    case domain.KindDeviceSoftReset:
@@ -600,7 +600,7 @@ delivery, ack model) lives in `docs/mqtt.md`.
 
 ## 8. Web UI — Setup and Admin
 
-The React SPA in `services/web/` covers both flows:
+The React SPA in `system/web/` covers both flows:
 
 | Route | What it is | Key files |
 |---|---|---|
@@ -619,11 +619,11 @@ module load and stripped from the URL for privacy (see `hooks/setup/useSetupUrlP
 
 | Path | Owner |
 |---|---|
-| `services/cmd/os-server/main.go` | OS Server entry point |
-| `services/cmd/bootstrap/main.go` | OTA worker entry point |
-| `services/server/` | HTTP handlers (Gin), organised by domain |
-| `services/internal/` | Business services — agent, device, network, openclaw, hermes, mqtt, statusled, healthwatch, … |
-| `services/domain/` | Shared Go types |
+| `system/cmd/os-server/main.go` | OS Server entry point |
+| `system/cmd/bootstrap/main.go` | OTA worker entry point |
+| `system/server/` | HTTP handlers (Gin), organised by domain |
+| `system/internal/` | Business services — agent, device, network, openclaw, hermes, mqtt, statusled, healthwatch, … |
+| `system/domain/` | Shared Go types |
 | `hal/` | Python HAL — drivers, routes, board profiles |
 | `hal/drivers/` | Hardware drivers (rgb, motors, voice, sensing, gpio_button, mic_button, …) |
 | `hal/routes/` | FastAPI routes (voice, led, camera, emotion, scene, music, servo, …) |

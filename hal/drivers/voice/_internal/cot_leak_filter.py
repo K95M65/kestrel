@@ -37,7 +37,7 @@ English reply is never at risk from the heuristics.
 
 NOTE: the main-agent path (openclaw/hermes replies spoken via os-server) has a
 Go port of this filter in
-services/server/agent/delivery/http/cot_leak_filter.go — keep the two in
+system/server/agent/delivery/http/cot_leak_filter.go — keep the two in
 sync when hardening either side.
 """
 

@@ -72,12 +72,12 @@ consistent), `← Monitor` link, theme toggle, error banner, SectionCard usages,
 EditConfig's own mobile `@media` `<style>` block (independent of Setup's).
 
 ## Files
-- `services/web/src/index.css` — scope widening (chrome classes only)
-- `services/web/src/pages/EditConfig.tsx` — 3 inline→className swaps + 1 font size
-- `services/web/src/pages/Setup.tsx` — reference only (confirm no regression)
+- `system/web/src/index.css` — scope widening (chrome classes only)
+- `system/web/src/pages/EditConfig.tsx` — 3 inline→className swaps + 1 font size
+- `system/web/src/pages/Setup.tsx` — reference only (confirm no regression)
 
 ## Verification
-1. `cd services/web && ./node_modules/.bin/tsc -b` → expect TSC=0.
+1. `cd system/web && ./node_modules/.bin/tsc -b` → expect TSC=0.
 2. `./node_modules/.bin/vite build` → expect clean build.
 3. Run `make web-dev`, open `/edit` and `/setup` side by side:
    - `/edit` sidebar nav now shows the amber accent rail + hover lift, matching Setup.

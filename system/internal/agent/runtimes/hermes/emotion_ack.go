@@ -1,22 +1,26 @@
-package codex
+package hermes
 
 import (
 	"log/slog"
 	"strings"
 
+	"go.autonomous.ai/os/domain"
 	"go.autonomous.ai/os/internal/device"
 	"go.autonomous.ai/os/internal/skills"
 	"go.autonomous.ai/os/lib/hal"
 	"go.autonomous.ai/os/lib/safego"
 )
 
-// emotion-acknowledge parity for Codex.
+// Compile-time check: *HermesService fires the channel-turn "thinking" ack.
+var _ domain.ChannelStartEmotioner = (*HermesService)(nil)
+
+// emotion-acknowledge parity for Hermes.
 //
-// OpenClaw runs an `emotion-acknowledge` hook (services/internal/agent/runtimes/openclaw/hooks/emotion-acknowledge/
+// OpenClaw runs an `emotion-acknowledge` hook (system/internal/agent/runtimes/openclaw/hooks/emotion-acknowledge/
 // handler.ts): on every preprocessed turn it POSTs {emotion:"thinking"} to HAL
-// so the body shows it is working before the reply lands. Codex ships no
-// ~/.codex/hooks loader (the handler.ts copied in by `claw migrate` is never
-// executed under Codex), so we reproduce the same behavior natively here,
+// so the body shows it is working before the reply lands. Hermes ships no
+// ~/.hermes/hooks loader (the handler.ts copied in by `claw migrate` is never
+// executed under Hermes), so we reproduce the same behavior natively here,
 // fired from sendChat. Keep this in lockstep with the TS handler — same skip
 // rules, same emotion/intensity, same capability gate.
 //
@@ -32,7 +36,7 @@ const (
 	ackEmotionIntensity = 0.7
 )
 
-// ackSkipPrefixes mirror services/internal/agent/runtimes/openclaw/hooks/emotion-acknowledge/handler.ts exactly: passive
+// ackSkipPrefixes mirror system/internal/agent/runtimes/openclaw/hooks/emotion-acknowledge/handler.ts exactly: passive
 // sensing turns frequently resolve to NO_REPLY, which would leave the face stuck
 // on "thinking" with nothing to overwrite it. These are NARROWER than
 // deviceInternalPrefixes on purpose — [ambient]/[wellbeing]/wake greetings DO
@@ -61,7 +65,7 @@ func ackEmotionEnabled(deviceType string) bool {
 // visible reply. Mirrors the OpenClaw emotion-acknowledge hook. Fire-and-forget
 // (the TS handler ignores POST errors too) and off the caller's goroutine so
 // sendChat never blocks on the HAL round-trip.
-func (s *CodexService) fireAckEmotion(runID, message string) {
+func (s *HermesService) fireAckEmotion(runID, message string) {
 	if !s.ackHookEnabled {
 		return
 	}
@@ -81,9 +85,18 @@ func (s *CodexService) fireAckEmotion(runID, message string) {
 	if runID != "" && s.IsSilentRun(runID) {
 		return
 	}
-	safego.Go("codex-ack-emotion", func() {
+	safego.Go("hermes-ack-emotion", func() {
 		if err := hal.SetEmotion(ackEmotionName, ackEmotionIntensity); err != nil {
-			slog.Debug("ack emotion post failed", "component", "codex", "error", err)
+			slog.Debug("ack emotion post failed", "component", "hermes", "error", err)
 		}
 	})
+}
+
+// FireChannelStartEmotion gives the "thinking" ack to gateway-owned channel turns
+// (native Telegram/Discord) that never reach sendChat. Called from the shared
+// ChannelTurn handler on agent:start (domain.ChannelStartEmotioner). os-server-mediated
+// turns (Slack/web = api_server/cli) are dropped by skipPlatform before this fires,
+// so no double-ack. Delegates to fireAckEmotion to keep gate + skip rules single-sourced.
+func (s *HermesService) FireChannelStartEmotion(message, runID string) {
+	s.fireAckEmotion(runID, message)
 }

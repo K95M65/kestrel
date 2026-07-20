@@ -4,7 +4,7 @@
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 
 # Directories
-OS_DIR         := services
+OS_DIR         := system
 HAL_DIR        := hal
 BUDDY_DIR      := integrations/companions/claude-desktop-buddy
 TWITCH_DIR     := integrations/chat-bridges/twitch-chat-hook

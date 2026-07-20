@@ -3,8 +3,8 @@ set -e
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ota-config.sh"
 
-BOOTSTRAP_BIN="${ROOT_DIR}/services/bootstrap-server"
-VERSION_FILE="${ROOT_DIR}/services/${VERSION_FILE:-VERSION_BOOTSTRAP}"
+BOOTSTRAP_BIN="${ROOT_DIR}/system/bootstrap-server"
+VERSION_FILE="${ROOT_DIR}/system/${VERSION_FILE:-VERSION_BOOTSTRAP}"
 
 # Bucket and path: ${BUCKET_PREFIX}/ota/bootstrap/[semver].zip
 

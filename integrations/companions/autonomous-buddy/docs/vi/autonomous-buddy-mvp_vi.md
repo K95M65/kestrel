@@ -80,15 +80,15 @@ Mỗi phase ship & review độc lập được.
 - `autonomous-buddy/macos/Sources/AutonomousBuddy/Pairing/PairingWindow.swift` (UI nhập code)
 
 **File Lamp Go:**
-- `services/internal/buddy/types.go`
-- `services/internal/buddy/store.go`
-- `services/internal/buddy/pairing.go`
-- `services/internal/buddy/service.go`
-- `services/server/buddy/delivery/http/handler.go`
-- `services/server/buddy/delivery/http/handler_pair.go`
-- `services/internal/buddy/wire.go`
-- Sửa: `services/server/server.go` (đăng ký route)
-- Sửa: `services/server/wire.go` (provider)
+- `system/internal/buddy/types.go`
+- `system/internal/buddy/store.go`
+- `system/internal/buddy/pairing.go`
+- `system/internal/buddy/service.go`
+- `system/server/buddy/delivery/http/handler.go`
+- `system/server/buddy/delivery/http/handler_pair.go`
+- `system/internal/buddy/wire.go`
+- Sửa: `system/server/server.go` (đăng ký route)
+- Sửa: `system/server/wire.go` (provider)
 - Chạy: `make generate`
 
 **File Lamp web:**
@@ -119,10 +119,10 @@ Mỗi phase ship & review độc lập được.
 - `autonomous-buddy/macos/Sources/AutonomousBuddy/Connection/Reconnect.swift`
 
 **File Lamp Go:**
-- `services/internal/buddy/registry.go`
-- `services/internal/buddy/ws.go`
-- `services/server/buddy/delivery/http/handler_ws.go`
-- Update: `services/server/server.go` (đăng ký route WS)
+- `system/internal/buddy/registry.go`
+- `system/internal/buddy/ws.go`
+- `system/server/buddy/delivery/http/handler_ws.go`
+- Update: `system/server/server.go` (đăng ký route WS)
 
 **Route thêm:**
 - `GET /api/buddy/ws` (WS upgrade)
@@ -161,8 +161,8 @@ Mỗi phase ship & review độc lập được.
 **Status:** ✓ Done — sync `/api/buddy/command` (localOnly) + marker-friendly `/api/buddy/exec/:action`. Cross-compile `GOOS=linux GOARCH=arm64 go build ./...` sạch. Có debug log instrumentation suốt chain (handler_hw → exec/command handler → dispatcher → ws read loop) để truy từng stage khi turn fail.
 
 **Files:**
-- `services/internal/buddy/dispatcher.go`
-- `services/server/buddy/delivery/http/handler_command.go`
+- `system/internal/buddy/dispatcher.go`
+- `system/server/buddy/delivery/http/handler_command.go`
 - Update: wire provider, chạy `make generate`
 
 **Route thêm:**
@@ -273,7 +273,7 @@ Subfolder `autonomous-buddy/windows/` và `autonomous-buddy/linux/` sẽ host po
 
 ### Go (`lamp/`)
 ```
-services/internal/buddy/
+system/internal/buddy/
 ├── types.go
 ├── store.go
 ├── pairing.go
@@ -283,7 +283,7 @@ services/internal/buddy/
 ├── service.go
 └── wire.go
 
-services/server/buddy/delivery/http/
+system/server/buddy/delivery/http/
 ├── handler.go
 ├── handler_pair.go
 ├── handler_ws.go
@@ -291,9 +291,9 @@ services/server/buddy/delivery/http/
 ```
 
 Sửa:
-- `services/server/server.go` (đăng ký route)
-- `services/server/wire.go` (provider set)
-- `services/server/wire_gen.go` (regenerated)
+- `system/server/server.go` (đăng ký route)
+- `system/server/wire.go` (provider set)
+- `system/server/wire_gen.go` (regenerated)
 
 ### Web (`lamp/web/`)
 ```

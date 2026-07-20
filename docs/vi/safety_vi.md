@@ -172,8 +172,8 @@ thuộc tới hạn, nó rơi về tư thế an toàn một cách tất định,
 kiện đã thực thi; setup-incomplete và over-current servo còn dự trữ.
 
 - [x] **Mất mạng / gateway → dừng tracking do agent điều khiển.** Khi gateway
-      WebSocket disconnect, `services/internal/agent/runtimes/openclaw/service_ws.go` gọi
-      `hal.StopServoTracking()` (`services/lib/hal`) → HAL `POST /servo/track/stop`,
+      WebSocket disconnect, `system/internal/agent/runtimes/openclaw/service_ws.go` gọi
+      `hal.StopServoTracking()` (`system/lib/hal`) → HAL `POST /servo/track/stop`,
       để body thôi đuổi theo một target không còn cập nhật vision mới. Best-effort và
       được gác bởi `SetUpCompleted`. Lưu ý then chốt: thiết bị **không** đóng băng hay
       "giữ pose" — animation idle local vẫn tiếp tục (nó local và vô hại) và các reflex

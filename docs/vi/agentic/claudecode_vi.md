@@ -16,12 +16,12 @@ protocol, layout và các quirk đặc thù claudecode.
 > và flow **claude.ai OAuth login** (§7b) thay thế cho API key trong
 > config.json. Các caveat đã biết được đánh dấu ⚠️ ở §11.
 
-Code: `services/internal/agent/runtimes/claudecode/`.
+Code: `system/internal/agent/runtimes/claudecode/`.
 
 | Thành phần | Vị trí trên thiết bị |
 |------|-----------------|
 | Claude Code CLI | `/usr/local/bin/claude` (symlink → `/root/.local/bin/claude`) |
-| Bridge (systemd `claudecode.service`) | subcommand `os-server claudecode-gatewayd` (biên dịch sẵn trong `/usr/local/bin/os-server`; code `services/internal/agent/runtimes/claudecode/gatewayd/`) |
+| Bridge (systemd `claudecode.service`) | subcommand `os-server claudecode-gatewayd` (biên dịch sẵn trong `/usr/local/bin/os-server`; code `system/internal/agent/runtimes/claudecode/gatewayd/`) |
 | Env khởi chạy (`ANTHROPIC_*`, cờ channel) | `/root/.claudecode/.env` (presync sở hữu) |
 | Workspace (cwd của Claude) | `/root/.claudecode/workspace/` |
 | Persona / memory | `workspace/{CLAUDE,SOUL,IDENTITY,USER,MEMORY,KNOWLEDGE}.md`, `workspace/memory/*.md` |
@@ -156,7 +156,7 @@ Go** (`emotion_ack.go`, mirror codex/hermes/picoclaw): mỗi turn user-visible
 bắn `{emotion:"thinking"}` sang HAL — cùng prefix skip, cùng intensity, cùng
 capability gate (`skills.SupportedHooks`) như handler TS. Hook `turn-gate` đi
 kèm cố ý không mirror (sendChat đã đánh dấu turn busy rồi). ⚠️ Giữ lockstep với
-`services/internal/agent/runtimes/openclaw/hooks/emotion-acknowledge/handler.ts`.
+`system/internal/agent/runtimes/openclaw/hooks/emotion-acknowledge/handler.ts`.
 
 ## 5. Event inbound → `domain.WSEvent` (`translator.go`)
 

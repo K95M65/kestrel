@@ -234,7 +234,7 @@ STATUS_LED_PRESETS = {
 
 # Ambient resting look — the warm-white breathing the strip settles into when
 # no user LED state exists. MUST mirror the Go ambient fallback
-# (services/internal/ambient/service.go breathingLoop: (255,200,140) @ 0.3)
+# (system/internal/ambient/service.go breathingLoop: (255,200,140) @ 0.3)
 # so a HAL-side settle (e.g. mic unmute with no saved state) is visually
 # identical to what ambient paints on idle.
 AMBIENT_RESTING_LED = {"effect": FX_BREATHING, "color": [255, 200, 140], "speed": 0.3}

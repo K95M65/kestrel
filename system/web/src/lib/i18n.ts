@@ -1,5 +1,5 @@
 // Lightweight UI i18n for the web frontend, mirroring the Go backend's
-// services/lib/i18n conventions:
+// system/lib/i18n conventions:
 //
 //   - Same BCP-47 language constants (en / vi / zh-CN / zh-TW) plus the
 //     alias codes (zh, zh-Hans, zh-Hant) the STT config accepts, normalised

@@ -37,7 +37,7 @@ contract/              the frozen ABI — what skills + devices build against
   COMPATIBILITY.md     the CDD — what a compliant device MUST do
 skills/                the apps (SKILL.md), by domain
 os/
-  services/            System Services (Go): intent, network, OTA, sensing routing
+  system/            System Services (Go): intent, network, OTA, sensing routing
   runtime/             the agentic-runtime bridge (gateway client, skill loader)
   hal/
     contract/          the capability interface (the routes/IDL)
@@ -104,7 +104,7 @@ committees, no heavy process. Docs live in-tree beside the code they describe.
 The restructure landed in CI-gated stages:
 
 1. ✅ **Conformance + base**: `contract/COMPATIBILITY.md`, `contract/cts/`, `devices/_base`.
-2. ✅ **Go layer**: `os/core` → `services` (runtime bridge stays `services/internal/agent/runtimes/openclaw`).
+2. ✅ **Go layer**: `os/core` → `services` (runtime bridge stays `system/internal/agent/runtimes/openclaw`).
 3. ✅ **HAL package**: `lelamp` → `hal`, surfaced as `hal/drivers` (by subsystem) +
    `hal/board` (by board). Deploy identifiers renamed consistently (`/opt/hal`,
    `os/ota/hal`, `python -m hal.server`). On-device `LELAMP_*` env vars remain as **legacy

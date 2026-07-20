@@ -224,15 +224,15 @@ Observations: Bỏ qua hydration đầu tiên, phản hồi tốt từ lần 2.
 
 | File | Vai trò |
 |------|---------|
-| `services/server/openclaw/delivery/sse/handler.go` | Xử lý lifecycle end: fire HW calls (emotion), broadcast qua Telegram, suppress TTS nếu cần |
-| `services/lib/mood/mood.go` | Log `wellbeing.hydration`, `wellbeing.break` events. `IsMoodEvent()` whitelist cả 2 type |
+| `system/server/openclaw/delivery/sse/handler.go` | Xử lý lifecycle end: fire HW calls (emotion), broadcast qua Telegram, suppress TTS nếu cần |
+| `system/lib/mood/mood.go` | Log `wellbeing.hydration`, `wellbeing.break` events. `IsMoodEvent()` whitelist cả 2 type |
 
 ### OpenClaw Skills
 
 | File | Vai trò |
 |------|---------|
 | `lamp/resources/openclaw-skills/sensing/SKILL.md` | Toàn bộ wellbeing logic: bootstrap crons, science reference, principles, presence.enter/leave workflow, motion activity reset |
-| `services/internal/agent/runtimes/openclaw/resources/SOUL.md` | Định nghĩa user folder structure (wellbeing.md, wellbeing/YYYY-MM-DD.md) |
+| `system/internal/agent/runtimes/openclaw/resources/SOUL.md` | Định nghĩa user folder structure (wellbeing.md, wellbeing/YYYY-MM-DD.md) |
 
 ### HAL (Python)
 

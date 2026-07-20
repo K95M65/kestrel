@@ -17,12 +17,12 @@ claudecode-specific protocol, layout, and quirks.
 > and the **claude.ai OAuth login** flow (§7b) as an alternative to the
 > config.json API key. Known caveats are flagged ⚠️ in §11.
 
-Code: `services/internal/agent/runtimes/claudecode/`.
+Code: `system/internal/agent/runtimes/claudecode/`.
 
 | What | Where on device |
 |------|-----------------|
 | Claude Code CLI | `/usr/local/bin/claude` (symlink → `/root/.local/bin/claude`) |
-| Bridge (systemd `claudecode.service`) | `os-server claudecode-gatewayd` subcommand (compiled into `/usr/local/bin/os-server`; code `services/internal/agent/runtimes/claudecode/gatewayd/`) |
+| Bridge (systemd `claudecode.service`) | `os-server claudecode-gatewayd` subcommand (compiled into `/usr/local/bin/os-server`; code `system/internal/agent/runtimes/claudecode/gatewayd/`) |
 | Launch env (`ANTHROPIC_*`, channel flags) | `/root/.claudecode/.env` (presync-owned) |
 | Workspace (Claude's cwd) | `/root/.claudecode/workspace/` |
 | Persona / memory | `workspace/{CLAUDE,SOUL,IDENTITY,USER,MEMORY,KNOWLEDGE}.md`, `workspace/memory/*.md` |
@@ -159,7 +159,7 @@ fires `{emotion:"thinking"}` to HAL — same skip prefixes, same intensity, same
 capability gate (`skills.SupportedHooks`) as the TS handler. The companion
 `turn-gate` hook is intentionally not mirrored (sendChat already marks the turn
 busy). ⚠️ Keep it in lockstep with
-`services/internal/agent/runtimes/openclaw/hooks/emotion-acknowledge/handler.ts`.
+`system/internal/agent/runtimes/openclaw/hooks/emotion-acknowledge/handler.ts`.
 
 ## 5. Inbound events → `domain.WSEvent` (`translator.go`)
 

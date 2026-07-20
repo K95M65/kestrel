@@ -49,7 +49,7 @@ device's own abilities (through the HAL); tools are external capabilities the ru
 The always-on Go daemon: `intent` (fast local commands), `network`, `sensing` routing,
 `monitor` (flow event bus), `healthwatch`, `ambient`, and `device`. Deterministic — they run
 with or without the runtime. OTA runs as its own worker (`bootstrap/`).
-*(`services/internal`)*
+*(`system/internal`)*
 
 ### Agentic Runtime
 
@@ -57,7 +57,7 @@ with or without the runtime. OTA runs as its own worker (`bootstrap/`).
 runtime. Runs the skills, embodies the device's `SOUL.md`, and decides what to act on.
 Swappable at runtime (web Settings or MQTT) — and where Autonomous OS's differentiated value
 (the default brain, memory, character) lives.
-*(`services/internal/agent/runtimes/{openclaw,hermes,picoclaw,codex,claudecode}`; adding
+*(`system/internal/agent/runtimes/{openclaw,hermes,picoclaw,codex,claudecode}`; adding
 your own: `docs/agentic/adding-agent-runtime.md`)*
 
 ### Hardware Abstraction Layer (HAL)
@@ -106,7 +106,7 @@ The tree maps onto the architecture layers (top of the stack first):
 contract/         HAL capability ABI — frozen, versioned (what skills build against)
   cts/            compliance test suite — validates devices against the contract
 skills/           Skills — the apps (SKILL.md)
-services/         Agentic-runtime bridge + System Services (Go): intent, network, OTA, sensing
+system/           System Managers + agentic-runtime bridge (Go): intent, network, OTA, sensing
   web/            on-device setup + monitor UI (React)
 hal/              HAL (Python) — the package; capability host + routes
   drivers/        Drivers — by subsystem (motion, audio, vision, light, display, sensing)
@@ -130,7 +130,7 @@ integrations/
 
 ```bash
 # Go system services (cross-compiled to linux/arm64 — Pi or OrangePi)
-make os-build              # builds the system server (services)
+make os-build              # builds the system server (system/)
 make os-test               # go test ./...
 
 # Hardware runtime (runs on the Pi or OrangePi)

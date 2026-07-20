@@ -183,9 +183,9 @@ Every unknown voice is locally clustered so the server can say "this is the same
 | Enroll gate | `hal/drivers/voice/voice_service.py` | `_should_request_enroll()` |
 | Message formatting | `hal/drivers/voice/voice_service.py` | `_format_unknown_speaker()` |
 | Speaker recognizer | `hal/drivers/voice/speaker_recognizer/speaker_recognizer.py` | `SpeakerRecognizer` |
-| Nudge injection + cooldown | `services/domain/voice.go` | `AppendEnrollNudge()` |
-| Direct event path | `services/server/sensing/delivery/http/handler.go` | `PostEvent()` |
-| Drain/replay path | `services/internal/agent/runtimes/openclaw/service.go` | `drainPendingEvents()` |
+| Nudge injection + cooldown | `system/domain/voice.go` | `AppendEnrollNudge()` |
+| Direct event path | `system/server/sensing/delivery/http/handler.go` | `PostEvent()` |
+| Drain/replay path | `system/internal/agent/runtimes/openclaw/service.go` | `drainPendingEvents()` |
 | Agent skill | `lamp/resources/openclaw-skills/speaker-recognizer/SKILL.md` | — |
 | Embedding model | `integrations/perception-service/src/core/audio_recognition/audio_recognizer.py` | `ResNet34Recognizer` (default), `EcapaTdnn1024Recognizer`, `CamPPlusRecognizer` — chọn qua env `AUDIO_RECOGNIZER_ENGINE` |
 | Embedding endpoint | `integrations/perception-service/src/protocols/htpp/audio_recognizer.py` | `embed_audio()` |

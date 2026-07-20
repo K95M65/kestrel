@@ -9,15 +9,23 @@ import (
 	"go.autonomous.ai/os/server/config"
 )
 
-// repoDevicesDir resolves the committed devices/ tree from the test working dir
-// (services/internal/agent/runtimes/openclaw → repo root is six levels up).
+// repoDevicesDir resolves the committed devices/ tree by walking up from the
+// test working dir until it finds it, so package moves don't silently break
+// the SOUL.md tests with an off-by-one ".." chain again.
 func repoDevicesDir(t *testing.T) string {
 	t.Helper()
 	wd, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("getwd: %v", err)
 	}
-	return filepath.Join(wd, "..", "..", "..", "..", "..", "..", "devices")
+	for dir := wd; dir != filepath.Dir(dir); dir = filepath.Dir(dir) {
+		candidate := filepath.Join(dir, "devices")
+		if st, err := os.Stat(filepath.Join(candidate, "lamp")); err == nil && st.IsDir() {
+			return candidate
+		}
+	}
+	t.Fatalf("devices/ tree not found above %s", wd)
+	return ""
 }
 
 func soulFor(t *testing.T, deviceType string) ([]byte, bool) {

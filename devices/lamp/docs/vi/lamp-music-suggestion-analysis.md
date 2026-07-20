@@ -49,7 +49,7 @@ Music suggestion là tính năng Lamp chủ động đề xuất nhạc phù h�
 
 ### Layer 2 — Event Pipeline (Lamp Go server)
 
-**File:** `services/server/sensing/delivery/http/handler.go`
+**File:** `system/server/sensing/delivery/http/handler.go`
 
 - Nhận `POST /api/sensing/event` với `type: "music.mood"`
 - Log vào mood history (`mood.Log`)
@@ -93,7 +93,7 @@ Music suggestion là tính năng Lamp chủ động đề xuất nhạc phù h�
 
 ## Mood History (data có sẵn nhưng chưa dùng)
 
-**File:** `services/lib/mood/mood.go`
+**File:** `system/lib/mood/mood.go`
 
 Log 2 loại event vào `/root/local/mood_YYYY-MM-DD.jsonl`:
 1. **Sensing input:** `music.mood`, `presence.enter`, `wellbeing.break`, etc.
@@ -216,8 +216,8 @@ Bỏ proactive timer, chỉ suggest khi:
 | `hal/config.py` | Config | `HAL_WELLBEING_MUSIC_S` |
 | `hal/drivers/voice/music_service.py` | Playback | yt-dlp + ffmpeg + ALSA |
 | `hal/server.py` | API | `POST /audio/play` (có `person`), `POST /audio/stop` |
-| `services/lib/mood/mood.go` | Data | Mood history logger |
-| `services/server/sensing/delivery/http/handler.go` | Pipeline | Event routing + queueing |
+| `system/lib/mood/mood.go` | Data | Mood history logger |
+| `system/server/sensing/delivery/http/handler.go` | Pipeline | Event routing + queueing |
 | `lamp/resources/openclaw-skills/sensing/SKILL.md` | AI | Nhận + process music.mood event |
 | `lamp/resources/openclaw-skills/music/SKILL.md` | AI | Mood→music mapping, suggestion rules |
 | `lamp/resources/openclaw-skills/scheduling/SKILL.md` | AI | cron.add tool (nếu dùng Option B) |

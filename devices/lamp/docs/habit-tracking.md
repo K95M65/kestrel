@@ -239,9 +239,9 @@ The Users tab shows a **habit** badge per user when `patterns.json` exists. The 
 | File | Purpose |
 |------|---------|
 | `lamp/resources/openclaw-skills/habit/SKILL.md` | Skill definition — Flows A–D, algorithm, storage |
-| `services/internal/agent/runtimes/openclaw/resources/SOUL.md` | "Observing Habits" section — conversation intent logging |
+| `system/internal/agent/runtimes/openclaw/resources/SOUL.md` | "Observing Habits" section — conversation intent logging |
 | `lamp/resources/openclaw-skills/wellbeing/SKILL.md` | Step 3b — invokes Flow A on nudge fire; uses patterns.json to enrich nudge phrasing |
-| `services/internal/agent/runtimes/openclaw/onboarding.go` | Registers habit in skills list |
+| `system/internal/agent/runtimes/openclaw/onboarding.go` | Registers habit in skills list |
 | `hal/models.py` | `habit_patterns` field in FacePersonDetail |
 | `hal/routes/sensing.py` | Checks habit/patterns.json in face/owners API |
 | `lamp/web/src/pages/monitor/FaceOwnersSection.tsx` | Habit badge + folder in Users tab |

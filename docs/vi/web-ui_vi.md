@@ -15,7 +15,7 @@ File build output (`dist/`) được nginx serve tại root `/` trên thiết b�
 
 ### 1.1 Tiêu đề tab trình duyệt
 
-Tiêu đề tab trình duyệt (`document.title`) hiển thị đúng theo page/tab đang focus, để mở nhiều tab thiết bị vẫn phân biệt được. Dùng hook chung `useDocumentTitle` (`services/web/src/hooks/useDocumentTitle.ts`); format: `Lamp · <segment>[· <sub-segment>]`.
+Tiêu đề tab trình duyệt (`document.title`) hiển thị đúng theo page/tab đang focus, để mở nhiều tab thiết bị vẫn phân biệt được. Dùng hook chung `useDocumentTitle` (`system/web/src/hooks/useDocumentTitle.ts`); format: `Lamp · <segment>[· <sub-segment>]`.
 
 | Route / trạng thái | Title |
 |--------------------|-------|
@@ -31,7 +31,7 @@ Tiêu đề tab trình duyệt (`document.title`) hiển thị đúng theo page/
 ## 2. Cấu Trúc Thư Mục
 
 ```
-services/web/
+system/web/
 ├── src/
 │   ├── pages/
 │   │   ├── Monitor.tsx        # Dashboard monitor (file chính)
@@ -69,7 +69,7 @@ Layout: **Sidebar 216px cố định + Main area co giãn**, chiều cao 100vh.
 
 Góc dưới sidebar hiển thị trạng thái OpenClaw (online/offline) và thời điểm cập nhật gần nhất.
 
-**Tìm kiếm chức năng.** Một ô tìm kiếm (`SidebarSearch`, `services/web/src/pages/monitor/index.tsx`) nằm ở đầu sidebar để gọn gàng hoá danh sách nav vốn rất dài. Nó lọc các mục nav theo nhãn **hoặc** tên nhóm cha (không phân biệt hoa thường, khớp chuỗi con) và tuân theo đúng các điều kiện hiển thị như nav gốc — các mục chỉ-debug (`PUBLIC_SECTIONS`) và các tab thiếu phần cứng (`sectionVisible`) sẽ không xuất hiện trong kết quả. Khi đang có từ khoá, cây nhóm bị ẩn và được thay bằng danh sách kết quả phẳng; mỗi dòng tái sử dụng `.lm-snav-item` nên giữ nguyên hiệu ứng active/hover màu hổ phách, kèm một chip nhỏ ghi tên nhóm cha (ví dụ `General` · `Settings`). Biểu tượng kính lúp ở đầu chuyển sang màu hổ phách khi focus; nút xoá (×) ở cuối xuất hiện ngay khi có từ khoá (cũng xoá được bằng `Esc`). `Enter` nhảy tới kết quả đầu tiên.
+**Tìm kiếm chức năng.** Một ô tìm kiếm (`SidebarSearch`, `system/web/src/pages/monitor/index.tsx`) nằm ở đầu sidebar để gọn gàng hoá danh sách nav vốn rất dài. Nó lọc các mục nav theo nhãn **hoặc** tên nhóm cha (không phân biệt hoa thường, khớp chuỗi con) và tuân theo đúng các điều kiện hiển thị như nav gốc — các mục chỉ-debug (`PUBLIC_SECTIONS`) và các tab thiếu phần cứng (`sectionVisible`) sẽ không xuất hiện trong kết quả. Khi đang có từ khoá, cây nhóm bị ẩn và được thay bằng danh sách kết quả phẳng; mỗi dòng tái sử dụng `.lm-snav-item` nên giữ nguyên hiệu ứng active/hover màu hổ phách, kèm một chip nhỏ ghi tên nhóm cha (ví dụ `General` · `Settings`). Biểu tượng kính lúp ở đầu chuyển sang màu hổ phách khi focus; nút xoá (×) ở cuối xuất hiện ngay khi có từ khoá (cũng xoá được bằng `Esc`). `Enter` nhảy tới kết quả đầu tiên.
 
 ### 3.3 Dark Theme Variables
 
@@ -97,9 +97,9 @@ Góc dưới sidebar hiển thị trạng thái OpenClaw (online/offline) và th
 
 ### 3.4 Settings (`/setting`) — shell dùng chung
 
-Settings **không phải là một trang riêng**. Nó là một khu vực (area) của chính shell Monitor (`services/web/src/pages/monitor/index.tsx`), truy cập tại route `/setting`. Trong `App.tsx`, `/monitor` và `/setting` là các route con của một layout route duy nhất có element render `<Monitor/>`; React Router giữ element đó luôn mounted khi chỉ đường dẫn con thay đổi, nên sidebar **không** bị remount khi chuyển giữa Monitor và Settings (không có hiện tượng nháy toàn trang). Shell suy ra khu vực — `"monitor"` hoặc `"setting"` — từ `useLocation().pathname`.
+Settings **không phải là một trang riêng**. Nó là một khu vực (area) của chính shell Monitor (`system/web/src/pages/monitor/index.tsx`), truy cập tại route `/setting`. Trong `App.tsx`, `/monitor` và `/setting` là các route con của một layout route duy nhất có element render `<Monitor/>`; React Router giữ element đó luôn mounted khi chỉ đường dẫn con thay đổi, nên sidebar **không** bị remount khi chuyển giữa Monitor và Settings (không có hiện tượng nháy toàn trang). Shell suy ra khu vực — `"monitor"` hoặc `"setting"` — từ `useLocation().pathname`.
 
-Nhóm Settings có thể thu gọn nằm trong `NAV` của sidebar dùng chung (`services/web/src/pages/monitor/types.ts`). Bấm một mục Settings sẽ điều hướng tới `/setting` và render `SettingsPanel` (`services/web/src/pages/settings/SettingsPanel.tsx`) ở khu vực chính; bấm một mục Monitor sẽ điều hướng tới `/monitor`.
+Nhóm Settings có thể thu gọn nằm trong `NAV` của sidebar dùng chung (`system/web/src/pages/monitor/types.ts`). Bấm một mục Settings sẽ điều hướng tới `/setting` và render `SettingsPanel` (`system/web/src/pages/settings/SettingsPanel.tsx`) ở khu vực chính; bấm một mục Monitor sẽ điều hướng tới `/monitor`.
 
 **Sơ đồ URL hash** — section trong bộ nhớ vẫn giữ id nội bộ `settings:*`, nhưng URL hash dùng nhãn ngắn trong khu vực setting (các helper `sectionToHash`/`hashToSection` trong `types.ts`):
 
@@ -289,7 +289,7 @@ Mỗi event hiển thị: type badge, phase (nếu có), runId (8 ký tự đầ
 - Chỉ fallback poll 2 giây khi stream bị ngắt.
 - Turn/event hiển thị được suy ra hoàn toàn từ JSONL flow log.
 
-**Turn Pipeline (SVG)** — `FlowDiagram` trong `services/web/src/pages/Monitor.tsx`. Bố cục đầy đủ (ba vùng OS server / HAL / OpenClaw, lưới cột OpenClaw, Cron thuộc OS server, hàng HAL thẳng Tool, bảng tọa độ) nằm trong **`docs/flow-monitor.md`**; tóm tắt tiếng Việt: **`docs/vi/flow-monitor_vi.md`**.
+**Turn Pipeline (SVG)** — `FlowDiagram` trong `system/web/src/pages/Monitor.tsx`. Bố cục đầy đủ (ba vùng OS server / HAL / OpenClaw, lưới cột OpenClaw, Cron thuộc OS server, hàng HAL thẳng Tool, bảng tọa độ) nằm trong **`docs/flow-monitor.md`**; tóm tắt tiếng Việt: **`docs/vi/flow-monitor_vi.md`**.
 
 Hành vi gom nhóm Turn Pipeline:
 - Turn vẫn bắt đầu từ các event input/trigger (`sensing_input`, `chat_input`, `schedule_trigger`, ...).
@@ -377,7 +377,7 @@ Giao diện chat tương tác với agent. Layout: sidebar (danh sách hội tho
 - Khi cuộc trò chuyện chưa có tin nhắn, khu vực chat hiển thị một quả cầu assistant lớn đang "thở", tiêu đề/phụ đề đã bản địa hóa, và bốn **chip gợi ý** bấm được. Bấm một chip sẽ điền sẵn vào ô nhập (không tự gửi) để người dùng chỉnh trước.
 
 **Bản địa hóa (i18n)**
-- Các chuỗi UI riêng của chat (tiêu đề/phụ đề empty-state, chip gợi ý, trạng thái "đang suy nghĩ"/"trực tuyến" trên thanh trên cùng) được bản địa hóa qua `src/lib/i18n.ts` — một module nhẹ tự viết, mô phỏng convention của backend Go `services/lib/i18n` (mã chuẩn `en` / `vi` / `zh-CN` / `zh-TW`, chuẩn hóa alias, **fallback về tiếng Anh** theo từng key).
+- Các chuỗi UI riêng của chat (tiêu đề/phụ đề empty-state, chip gợi ý, trạng thái "đang suy nghĩ"/"trực tuyến" trên thanh trên cùng) được bản địa hóa qua `src/lib/i18n.ts` — một module nhẹ tự viết, mô phỏng convention của backend Go `system/lib/i18n` (mã chuẩn `en` / `vi` / `zh-CN` / `zh-TW`, chuẩn hóa alias, **fallback về tiếng Anh** theo từng key).
 - Ngôn ngữ active được lấy từ trường `stt_language` trong device config (cùng nguồn mà `i18n.Lang()` của Go đọc từ `config.STTLanguage`) qua `setLanguage()` trong `App.tsx` khi load config lần đầu, và Chat section áp lại từ lần fetch config của chính nó. Các component đọc chuỗi qua hook `useT()`, hook này re-render khi ngôn ngữ được xác định.
 - Module i18n này hiện chỉ phủ các chuỗi chat thêm vào trong đợt redesign; phần còn lại của UI Monitor vẫn hardcode tiếng Anh.
 
@@ -433,7 +433,7 @@ def get_led_color():
 
 ## 8. Global Source Footer (Tuân thủ GPL v3 §6)
 
-`services/web/src/components/SourceFooter.tsx` là một link nhỏ `position: fixed`, mount tại App root (`App.tsx`, ngoài `<Routes>`), nên xuất hiện ở mọi trang — Setup, Login, Monitor, GwConfig.
+`system/web/src/components/SourceFooter.tsx` là một link nhỏ `position: fixed`, mount tại App root (`App.tsx`, ngoài `<Routes>`), nên xuất hiện ở mọi trang — Setup, Login, Monitor, GwConfig.
 
 Render tại `bottom: 6px, right: 8px` với chữ monospace 10px và opacity `0.7` — ai cần là thấy nhưng không đè form action buttons (Back / Next / Setup / Save) hoặc scroll. Link target: `https://github.com/autonomous-ai/autonomous-os`.
 
@@ -445,7 +445,7 @@ Lý do tồn tại: HAL Python (`hal/`) ship dưới GPL v3, bake sẵn vào ima
 
 ```bash
 # Build production
-make web-build        # tsc + vite build → services/web/dist/
+make web-build        # tsc + vite build → system/web/dist/
 
 # Deploy lên Pi
 make web-deploy       # web-build + rsync dist/ → /usr/share/nginx/html/setup/
