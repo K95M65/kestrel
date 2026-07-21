@@ -83,7 +83,7 @@ class FacePerception(Perception[cv2.typing.MatLike]):
         area_ratio_threshold: float = config.FACE_AREA_RATIO_THRESHOLD,
         owners_forget_ts: float = config.FACE_OWNER_FORGET_S,
         strangers_forget_ts: float = config.FACE_STRANGER_FORGET_S,
-        max_extended_images: int = 5,
+        max_extended_images: int = 10,
         diversity_threshold: float = 0.8,
     ):
         super().__init__(perception_state, send_event)
