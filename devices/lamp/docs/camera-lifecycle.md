@@ -231,6 +231,18 @@ In `auto` mode the control is actively set to 3 (aperture-priority) on every ope
 
 Frame rate vs brightness is a hard physical trade-off in a dark room: the max exposure that still holds 30fps is ~33ms (`HAL_CAMERA_EXPOSURE=330`); a brighter image needs a longer exposure (fewer fps) or more gain (noisier). The stream endpoint is separately capped at `HAL_CAMERA_STREAM_FPS` (default 10), so the monitor's live view does not reflect the capture rate.
 
+## Device Selection
+
+By default the camera is opened by index: `HAL_CAMERA_INDEX` (default `0`) → `/dev/video0`, with a fallback scan (`/dev/cam` udev symlink, then indexes 0–5). A bare index is fragile — plugging another USB device or a changed boot enumeration order can shuffle `/dev/video<N>`.
+
+`HAL_CAMERA_NAME` (optional) selects the camera by hardware name instead, mirroring how audio devices are picked (`resolve_camera_device_id()` in `drivers/camera/video_capture_device.py`). It is a case-insensitive substring of the v4l2 device name (e.g. `OPENAICAM`). Resolution order:
+
+1. **`/dev/v4l/by-id` capture symlink** (`...-video-index0`) whose name contains the needle — returned as the symlink path, so reopens keep following it even when the kernel renumbers `/dev/video<N>` after a replug or USB power-cycle.
+2. **sysfs name scan** — `/sys/class/video4linux/video<N>/name` match (lowest N first), skipping UVC metadata sibling nodes (same name, non-zero `index` attribute, cannot capture).
+3. **Legacy index fallback** with a warning when nothing matches (camera absent or renamed).
+
+Unset `HAL_CAMERA_NAME` keeps the exact legacy index behavior.
+
 ## Failure Recovery
 
 The capture loop (`drivers/camera/video_capture_device.py`) recovers from two distinct device failures, both by releasing and reopening the V4L2 device via `_reopen_with_backoff()` (retry with exponential backoff 1s→30s, never permanently exits the loop while HAL runs; MJPEG, resolution and exposure are re-applied on every reopen):

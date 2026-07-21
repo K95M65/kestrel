@@ -11,6 +11,87 @@ import numpy.typing as npt
 from .base import IDevice
 from .models import VideoCaptureDeviceInfo, VideoCaptureDeviceResponse
 
+_resolve_logger = logging.getLogger("CameraResolve")
+
+
+def _norm_device_name(s: str) -> str:
+    """Lowercase and strip non-alphanumerics so 'OPENAICAM', 'openaicam' and
+    the by-id mangling ('usb-SunplusIT_Inc_OPENAICAM-video-index0') all
+    compare equal on the parts that matter."""
+    return "".join(c for c in s.lower() if c.isalnum())
+
+
+def resolve_camera_device_id(
+    name: str | None,
+    fallback_index: int,
+    by_id_dir: str = "/dev/v4l/by-id",
+    sysfs_dir: str = "/sys/class/video4linux",
+):
+    """Resolve a camera device id from a hardware name, mirroring how audio
+    devices are picked by name instead of a bare index.
+
+    Preference order:
+    1. /dev/v4l/by-id capture symlink ("...-video-index0") whose name contains
+       the needle — returned AS the symlink path, so later reopens follow it
+       to the right node even when the kernel renumbers /dev/video<N> after a
+       replug or USB power-cycle.
+    2. /sys/class/video4linux/video<N>/name match (lowest N first), skipping
+       non-capture sibling nodes (UVC cams expose a metadata node with the
+       same name; its sysfs `index` attribute is non-zero).
+    3. The legacy index fallback, with a warning — camera absent or renamed.
+
+    With no name configured the legacy index passes through untouched.
+    """
+    if not name:
+        return fallback_index
+    needle = _norm_device_name(name)
+    try:
+        if os.path.isdir(by_id_dir):
+            for entry in sorted(os.listdir(by_id_dir)):
+                if not entry.endswith("video-index0"):
+                    continue
+                if needle in _norm_device_name(entry):
+                    path = os.path.join(by_id_dir, entry)
+                    _resolve_logger.info(
+                        "Camera resolved by name %r -> %s (%s)",
+                        name,
+                        path,
+                        os.path.realpath(path),
+                    )
+                    return path
+        if os.path.isdir(sysfs_dir):
+            nodes = [
+                e
+                for e in os.listdir(sysfs_dir)
+                if e.startswith("video") and e[5:].isdigit()
+            ]
+            for node in sorted(nodes, key=lambda e: int(e[5:])):
+                try:
+                    with open(os.path.join(sysfs_dir, node, "name")) as f:
+                        node_name = f.read().strip()
+                except OSError:
+                    continue
+                if needle not in _norm_device_name(node_name):
+                    continue
+                try:
+                    with open(os.path.join(sysfs_dir, node, "index")) as f:
+                        if f.read().strip() != "0":
+                            continue  # metadata sibling node, cannot capture
+                except OSError:
+                    pass  # no index attribute — assume capture-capable
+                _resolve_logger.info(
+                    "Camera resolved by name %r -> /dev/%s (%s)", name, node, node_name
+                )
+                return f"/dev/{node}"
+    except OSError:
+        _resolve_logger.exception("Camera name resolution failed for %r", name)
+    _resolve_logger.warning(
+        "Camera name %r matched no video device — falling back to index %d",
+        name,
+        fallback_index,
+    )
+    return fallback_index
+
 
 class VideoCaptureDeviceBase(
     IDevice[VideoCaptureDeviceInfo, VideoCaptureDeviceResponse]
