@@ -228,6 +228,18 @@ Capture loop (`drivers/camera/video_capture_device.py`) tự khôi phục 2 dạ
 - **`read()` fail** — USB autosuspend hoặc lỗi V4L2 thoáng qua làm `read()` trả `ret=False`. Retry 1 lần sau 1s, rồi reopen.
 - **ISP đóng băng** — camera cứ nhả lại **cùng một buffer** với `ret=True` (đã gặp trên UVC cam khi dùng manual exposure/gain), nên nhánh recovery `read()`-fail không bao giờ kích hoạt trong khi mọi consumer (realtime look, sensing, tracking, snapshot) âm thầm xử lý cảnh cũ. Watchdog so sánh chữ ký frame đã subsample; frame byte-identical liên tục 10s (`_FREEZE_REOPEN_S`) không thể đến từ sensor thật → reopen. Log: `Camera frozen — identical frames for Ns, reopening device`.
 
+### ISP kẹt sâu → leo thang USB power-cycle
+
+Đôi khi ISP kẹt **sâu** hơn mức reopen V4L2 chữa được: frame trở lại vẫn posterize xanh/hồng hoặc freeze lại ngay sau reopen, dù mọi v4l2 control đều đúng (auto_exposure=3, gain hợp lý). Đã quan sát trên UVC cam SunplusIT (`1bcf:28cc`); cách chữa duy nhất đã verify (không cần reboot) là power-cycle cổng USB.
+
+Freeze watchdog tự leo thang:
+
+- **Trigger** — ≥3 lần reopen do freeze (`_FREEZE_ESCALATE_COUNT`) trong cửa sổ trượt 10 phút (`_FREEZE_ESCALATE_WINDOW_S`, 600s). Reopen do `read()`-fail **không** được tính.
+- **Resolve USB path** — động, không hardcode: đi ngược chuỗi parent sysfs từ `/sys/class/video4linux/video<N>/device` tới node có `idVendor` (chính là USB device), lấy basename (ví dụ `1-1`). Nếu camera không phải USB (ví dụ sensor CSI) → bỏ qua leo thang, log lý do và giữ nguyên đường reopen thường.
+- **Power-cycle** — ghi bus path vào `/sys/bus/usb/drivers/usb/unbind`, đợi ~3s (`_USB_REBIND_DELAY_S`), ghi vào `.../bind` (HAL chạy root), rồi đợi tối đa 15s (`_USB_DEVNODE_TIMEOUT_S`) cho `/dev/video<N>` enumerate lại trước khi trả quyền cho `_reopen_with_backoff()`. Best-effort: lỗi sysfs nào cũng chỉ log rồi fallback về reopen thường.
+- **Cooldown** — tối đa 1 lần power-cycle mỗi 10 phút (`_USB_POWER_CYCLE_COOLDOWN_S`); camera chết hẳn không được kéo loop unbind/bind vô hạn. Trong thời gian cooldown, freeze vẫn đi đường reopen thường.
+- **Log** — `Camera USB power-cycle (ISP deep-stuck: N freeze-reopens in Ws)`.
+
 ## Edge Cases
 
 - **Guard mode + camera off**: ✅ Done — guard SKILL.md bước 1: `[HW:/camera/enable:{}]` trước khi enable guard. Override manual disable.

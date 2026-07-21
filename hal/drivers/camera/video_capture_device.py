@@ -1,4 +1,5 @@
 import logging
+import os
 import threading
 import time
 from typing import cast, override
@@ -46,6 +47,23 @@ class LocalVideoCaptureDevice(VideoCaptureDeviceBase):
     # so the read()-failure recovery never fires.
     _FREEZE_REOPEN_S: float = 10.0
 
+    # ISP deep-stuck escalation: when the freeze watchdog has to reopen this
+    # many times within _FREEZE_ESCALATE_WINDOW_S, a plain V4L2 reopen is
+    # clearly not resetting the camera firmware (frames come back posterized
+    # green/pink and freeze again even with correct v4l2 controls) — the only
+    # verified fix short of a reboot is power-cycling the USB port via the
+    # usb driver's unbind/bind sysfs interface. Read-failure reopens do NOT
+    # count toward escalation.
+    _FREEZE_ESCALATE_COUNT: int = 3
+    _FREEZE_ESCALATE_WINDOW_S: float = 600.0
+    # Never power-cycle more often than this — a physically dead camera must
+    # not put the loop into an endless unbind/bind cycle.
+    _USB_POWER_CYCLE_COOLDOWN_S: float = 600.0
+    # Delay between unbind and bind so the device fully powers down.
+    _USB_REBIND_DELAY_S: float = 3.0
+    # How long to wait for /dev/video<N> to reappear after the bind.
+    _USB_DEVNODE_TIMEOUT_S: float = 15.0
+
     def __init__(
         self,
         device_info: VideoCaptureDeviceInfo,
@@ -79,6 +97,12 @@ class LocalVideoCaptureDevice(VideoCaptureDeviceBase):
         self.actual_width: int | None = None
         self.actual_height: int | None = None
         self.actual_fps: float | None = None
+
+        # ISP deep-stuck escalation state: monotonic timestamps of recent
+        # freeze-triggered reopens (sliding window) and of the last USB
+        # power-cycle (None = never; cooldown gate).
+        self._freeze_reopen_times: list[float] = []
+        self._last_usb_power_cycle: float | None = None
 
         self._logger: logging.Logger = logging.getLogger(self.__class__.__name__)
 
@@ -209,6 +233,101 @@ class LocalVideoCaptureDevice(VideoCaptureDeviceBase):
                 "Camera exposure control failed — continuing with camera defaults"
             )
 
+    @staticmethod
+    def _video_dev_node(device_id) -> str | None:
+        """Map a capture device id to its /dev/video<N> node path.
+
+        Accepts an integer index (0 → /dev/video0) or a device path string;
+        symlinks like /dev/cam (udev rule) are resolved to the real node.
+        Returns None when the id doesn't map to a video4linux node.
+        """
+        if isinstance(device_id, int):
+            return f"/dev/video{device_id}"
+        if isinstance(device_id, str) and device_id.startswith("/dev/"):
+            node = os.path.realpath(device_id)
+            if os.path.basename(node).startswith("video"):
+                return node
+        return None
+
+    def _resolve_usb_path(self, device_id) -> str | None:
+        """Resolve the USB bus path (e.g. "1-1") behind /dev/video<N>.
+
+        Walks up the sysfs parent chain from
+        /sys/class/video4linux/video<N>/device until it reaches the node
+        carrying an idVendor attribute — that directory's basename is the
+        bus path the usb driver's bind/unbind interface expects. Returns
+        None when the camera is not USB-backed (e.g. a CSI sensor) or the
+        sysfs walk fails.
+        """
+        node = self._video_dev_node(device_id)
+        if node is None:
+            return None
+        try:
+            sys_dev = os.path.realpath(
+                f"/sys/class/video4linux/{os.path.basename(node)}/device"
+            )
+            # Bounded walk — the USB device node sits a few levels above the
+            # interface (e.g. .../1-1/1-1:1.0/video4linux/video0).
+            for _ in range(10):
+                if os.path.isfile(os.path.join(sys_dev, "idVendor")):
+                    return os.path.basename(sys_dev)
+                parent = os.path.dirname(sys_dev)
+                if parent == sys_dev:
+                    break
+                sys_dev = parent
+        except OSError:
+            self._logger.exception("USB path resolve failed for %s", node)
+        return None
+
+    def _usb_power_cycle(self, device_id) -> bool:
+        """Power-cycle the camera's USB device via driver unbind/bind.
+
+        Best-effort: returns True when the unbind/bind writes succeeded
+        (whether or not the /dev/video node reappeared within the timeout —
+        the reopen backoff copes either way), False when the camera is not
+        USB-backed or a sysfs write failed, in which case the caller falls
+        back to the plain reopen path. Requires root (HAL runs as root).
+        """
+        usb_path = self._resolve_usb_path(device_id)
+        if usb_path is None:
+            self._logger.warning(
+                "Camera USB power-cycle skipped — no USB bus path for %r "
+                "(non-USB camera?), falling back to plain reopen",
+                device_id,
+            )
+            return False
+        try:
+            with open("/sys/bus/usb/drivers/usb/unbind", "w") as f:
+                f.write(usb_path)
+            self._stopped.wait(self._USB_REBIND_DELAY_S)
+            with open("/sys/bus/usb/drivers/usb/bind", "w") as f:
+                f.write(usb_path)
+        except OSError:
+            self._logger.exception(
+                "Camera USB power-cycle failed for %s — falling back to plain reopen",
+                usb_path,
+            )
+            return False
+        # Wait for the video node to re-enumerate before handing control back
+        # to the reopen backoff — enumeration takes a couple of seconds.
+        node = self._video_dev_node(device_id)
+        deadline = time.monotonic() + self._USB_DEVNODE_TIMEOUT_S
+        while not self._stopped.is_set() and time.monotonic() < deadline:
+            if node and os.path.exists(node):
+                self._logger.info(
+                    "Camera USB power-cycled (%s) — %s is back", usb_path, node
+                )
+                return True
+            self._stopped.wait(0.5)
+        self._logger.warning(
+            "Camera USB power-cycled (%s) but %s not back after %.0fs — "
+            "reopen backoff will keep retrying",
+            usb_path,
+            node or device_id,
+            self._USB_DEVNODE_TIMEOUT_S,
+        )
+        return True
+
     def _reopen_with_backoff(self, video_capture, device_id, reason: str):
         """Release and reopen the capture device, retrying with backoff.
 
@@ -257,7 +376,6 @@ class LocalVideoCaptureDevice(VideoCaptureDeviceBase):
 
         # Fallback: try /dev/cam symlink (udev rule), then scan index 0-5
         if not video_capture.isOpened():
-            import os
             fallbacks = ["/dev/cam"] + [i for i in range(6) if i != device_id]
             for fb in fallbacks:
                 if isinstance(fb, str) and not os.path.exists(fb):
@@ -364,10 +482,46 @@ class LocalVideoCaptureDevice(VideoCaptureDeviceBase):
                 now_mono = time.monotonic()
                 if sig == freeze_sig:
                     if now_mono - freeze_since >= self._FREEZE_REOPEN_S:
-                        self._logger.warning(
-                            "Camera frozen — identical frames for %.0fs, reopening device",
-                            now_mono - freeze_since,
+                        # Track freeze-triggered reopens in a sliding window;
+                        # repeated freezes shortly after a reopen mean the ISP
+                        # is deep-stuck and a V4L2 reopen alone won't unwedge
+                        # it — escalate to a USB power-cycle (cooldown-gated).
+                        self._freeze_reopen_times = [
+                            t
+                            for t in self._freeze_reopen_times
+                            if now_mono - t < self._FREEZE_ESCALATE_WINDOW_S
+                        ]
+                        self._freeze_reopen_times.append(now_mono)
+                        n_freezes = len(self._freeze_reopen_times)
+                        cooldown_ok = (
+                            self._last_usb_power_cycle is None
+                            or now_mono - self._last_usb_power_cycle
+                            >= self._USB_POWER_CYCLE_COOLDOWN_S
                         )
+                        if n_freezes >= self._FREEZE_ESCALATE_COUNT and cooldown_ok:
+                            self._logger.warning(
+                                "Camera USB power-cycle (ISP deep-stuck: "
+                                "%d freeze-reopens in %.0fs)",
+                                n_freezes,
+                                self._FREEZE_ESCALATE_WINDOW_S,
+                            )
+                            # Release before unbind so the driver detaches
+                            # cleanly; _reopen_with_backoff's release below
+                            # is then a no-op.
+                            try:
+                                video_capture.release()
+                            except Exception:
+                                self._logger.exception(
+                                    "Camera release failed before USB power-cycle"
+                                )
+                            if self._usb_power_cycle(device_id):
+                                self._last_usb_power_cycle = time.monotonic()
+                                self._freeze_reopen_times.clear()
+                        else:
+                            self._logger.warning(
+                                "Camera frozen — identical frames for %.0fs, reopening device",
+                                now_mono - freeze_since,
+                            )
                         video_capture = self._reopen_with_backoff(
                             video_capture, device_id, "ISP freeze"
                         )
