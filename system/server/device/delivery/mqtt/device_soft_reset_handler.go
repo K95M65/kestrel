@@ -40,6 +40,8 @@ func (h *DeviceMQTTHandler) handleDeviceSoftReset(_ domain.MQTTDataCommand) erro
 	slog.Info("device.soft_reset: received — wiping config + restarting", "component", "mqtt")
 
 	go func() {
+		// Best-effort maintainer alert BEFORE we tear down networking + restart.
+		h.alertOps("♻️ device.soft_reset — wiping config + restarting", "")
 		if err := os.Remove(configPath); err != nil && !os.IsNotExist(err) {
 			slog.Error("device.soft_reset: remove config failed", "component", "mqtt", "path", configPath, "error", err)
 			// Continue to restart anyway — device may still enter AP mode if

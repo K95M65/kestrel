@@ -146,6 +146,7 @@ func (h *DeviceMQTTHandler) refreshExpiringTokens(ctx context.Context) {
 					slog.Error("oauth-refresh: mark revoked failed", "component", "mqtt", "provider", provider, "error", uerr)
 				}
 			}
+			h.alertOAuthStateChange(provider, "fail", err.Error())
 			continue
 		}
 
@@ -165,6 +166,7 @@ func (h *DeviceMQTTHandler) refreshExpiringTokens(ctx context.Context) {
 			continue
 		}
 		slog.Info("oauth-refresh: access token refreshed", "component", "mqtt", "provider", provider, "expires_at", updated.ExpiresAt)
+		h.alertOAuthStateChange(provider, "ok", "")
 	}
 }
 

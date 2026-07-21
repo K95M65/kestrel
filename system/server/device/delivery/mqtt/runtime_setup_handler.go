@@ -45,6 +45,7 @@ func (h *DeviceMQTTHandler) handleRuntimeSetup(env domain.MQTTDataCommand, runti
 
 	// Ack immediately so the worker knows the device received the command.
 	h.publishRuntimeSetupAck(kind, "starting", "", nil)
+	h.alertOps("🚀 Runtime setup "+kind+" — starting", "")
 
 	go func() {
 		switched, err := h.deviceService.UpdateAgentRuntime(req)
@@ -52,12 +53,14 @@ func (h *DeviceMQTTHandler) handleRuntimeSetup(env domain.MQTTDataCommand, runti
 			// switch-runtime already rolled back; report the real failure.
 			slog.Error("runtime setup: switch failed", "component", "mqtt", "kind", kind, "error", err)
 			h.publishRuntimeSetupAck(kind, "failure", err.Error(), &req)
+			h.alertOps("🔴 Runtime setup "+kind+" — FAILED", err.Error())
 			return
 		}
 		// Switch confirmed landed (or was a no-op). Ack success — it must reach the
 		// wire BEFORE the os-server restart below, which kills us.
 		slog.Info("runtime setup: switch confirmed", "component", "mqtt", "kind", kind, "runtime", runtime, "switched", switched)
 		h.publishRuntimeSetupAck(kind, "success", "", &req)
+		h.alertOps("🟢 Runtime setup "+kind+" — SUCCESS", "")
 
 		if switched {
 			// Restart os-server so factory.go re-resolves the gateway to the new
