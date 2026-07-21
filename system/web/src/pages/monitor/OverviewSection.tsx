@@ -57,6 +57,8 @@ export function OverviewSection({
   webVersion,
   halVersion,
   onSceneActivate,
+  onMicMutedChange,
+  onSpeakerMutedChange,
 }: {
   sys: SystemInfo | null;
   net: NetworkInfo | null;
@@ -76,6 +78,11 @@ export function OverviewSection({
   webVersion: string;
   halVersion: string | null;
   onSceneActivate: (scene: string) => void;
+  // Mute toggles live in the parent (same as onSceneActivate): it owns the
+  // voice/speakerMuted state, so it can commit the new value the moment HAL
+  // acks the POST instead of leaving the button frozen until the next 5s poll.
+  onMicMutedChange: (muted: boolean) => void;
+  onSpeakerMutedChange: (muted: boolean) => void;
 }) {
   const { emotions: ALL_EMOTIONS, colors: EMOTION_COLOR } = useEmotionPresets();
   const emotion = oc?.emotion ?? "";
@@ -251,7 +258,7 @@ export function OverviewSection({
                   active={!voice.mic_muted}
                   disabled={voice.hw_mic_switch_muted === true}
                   label={voice.mic_muted ? "Unmute" : "Mute"}
-                  onClick={() => fetch(`${HW}/voice/${voice.mic_muted ? "unmute" : "mute"}`, { method: "POST" }).catch(() => {})}
+                  onClick={() => onMicMutedChange(!voice.mic_muted)}
                 />
               </div>
               {voice.hw_mic_switch_muted === true && (
@@ -288,7 +295,7 @@ export function OverviewSection({
                   )}
                 </div>
                 <ToggleButton active={!speakerMuted} label={speakerMuted ? "Unmute" : "Mute"}
-                  onClick={() => fetch(`${HW}/speaker/${speakerMuted ? "unmute" : "mute"}`, { method: "POST" }).catch(() => {})} />
+                  onClick={() => onSpeakerMutedChange(!speakerMuted)} />
               </div>
 
               {/* Volume slider */}

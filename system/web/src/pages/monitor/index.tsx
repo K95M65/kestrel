@@ -782,6 +782,19 @@ export default function Monitor() {
                   if (res.status === "ok") setSceneInfo((prev) => prev ? { ...prev, active: scene === "off" ? undefined : scene } : prev);
                 }).catch(() => {});
               }}
+              onMicMutedChange={(muted) => {
+                // Commit on HAL's ack (ms) so the toggle flips immediately instead
+                // of waiting out the 5s poll. A 409 (hardware mic switch off) is
+                // !r.ok → state untouched; the poll stays the reconciler of truth.
+                fetch(`${HW}/voice/${muted ? "mute" : "unmute"}`, { method: "POST" }).then((r) => {
+                  if (r.ok) setVoice((prev) => (prev ? { ...prev, mic_muted: muted } : prev));
+                }).catch(() => {});
+              }}
+              onSpeakerMutedChange={(muted) => {
+                fetch(`${HW}/speaker/${muted ? "mute" : "unmute"}`, { method: "POST" }).then((r) => {
+                  if (r.ok) setSpeakerMuted(muted);
+                }).catch(() => {});
+              }}
             />
           )}
           {section === "system" && (
