@@ -102,6 +102,13 @@ type Config struct {
 	LLMModel   string `json:"llm_model" yaml:"llmModel" validate:"required"`
 	LLMBaseURL string `json:"llm_base_url" yaml:"llmBaseURL" validate:"required"`
 
+	// AlertsDisabled mutes device ops-alerts to bff-campaign-service (POST
+	// {LLMBaseURL}/alert). Alerts report device actions/state only — never
+	// customer content — for product improvement + troubleshooting. Default
+	// false (alerts on when LLMBaseURL + LLMAPIKey are set); set true on dev/QA
+	// units to keep the maintainer chat quiet.
+	AlertsDisabled bool `json:"alerts_disabled,omitempty" yaml:"alertsDisabled"`
+
 	// ClaudeCodeOAuthToken is the long-lived claude.ai OAuth token produced by
 	// the claudecode login flow (`claude setup-token`, runtimes/claudecode/login.go).
 	// When set (or when ~/.claude/.credentials.json exists), the claudecode

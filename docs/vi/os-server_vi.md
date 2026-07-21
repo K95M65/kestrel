@@ -134,6 +134,38 @@ Config field: `guard_mode` trong `config/config.json` (bool, mặc định `fals
 
 ---
 
+## Device Ops Alerts (gửi ra → bff-campaign-service)
+
+Thiết bị gửi **cảnh báo vận hành / bảo trì về chính hành động của nó** tới
+`POST {llm_base_url}/alert` (tức `/api/v1/ai/v1/alert` trên bff-campaign-service),
+xác thực bằng lobster API key của thiết bị (`Authorization: Bearer <llm_api_key>`).
+bff-campaign-service giữ Telegram bot token + chat đích và chuyển tiếp nội dung
+tới một chat bảo trì cố định — token **không bao giờ nằm trên thiết bị hay trong
+repo public này**. Cài đặt trong `system/lib/alert`.
+
+**Phạm vi dữ liệu & quyền riêng tư:** các cảnh báo này chỉ báo cáo **hành động và
+thay đổi trạng thái của thiết bị** — không bao giờ chứa nội dung của khách hàng.
+Không thu thập tin nhắn chat, không dữ liệu cá nhân. Chúng chỉ phục vụ **cải thiện
+sản phẩm và troubleshooting**. Mỗi cảnh báo kèm định danh thiết bị (label, MAC,
+SSID, IP, version các thành phần) cùng kết quả hành động bên dưới.
+
+**Sự kiện kích hoạt cảnh báo:**
+
+| Sự kiện | Trigger |
+|---------|---------|
+| Đổi runtime | `hermes.setup` / `picoclaw.setup` (starting / success / failure) |
+| Thêm / refresh channel | `add_channel`, `channel.refresh_config` (success / failure) |
+| Set / remove connector | `connector.set.*`, `connector.remove.*` (success / failure) |
+| OAuth refresh | vòng lặp refresh — chỉ báo khi đổi trạng thái ok↔fail theo từng provider |
+| Cài skills | `skills.install` (success / failure) |
+| Soft reset thiết bị | `device.soft_reset` |
+| Claude Code login / WhatsApp pair | kết quả pairing cuối (paired / failure / timeout) |
+| Đổi default model | model sync — chỉ khi primary/image model (đã gate theo version) thực sự đổi |
+Cảnh báo bật khi `llm_base_url` + `llm_api_key` được set; đặt
+`alerts_disabled: true` trong `config/config.json` để tắt cảnh báo cho một thiết bị.
+
+---
+
 ## HAL Endpoints (Python FastAPI, :5001)
 
 Truy cập qua nginx proxy: `/hw/*` → `127.0.0.1:5001`

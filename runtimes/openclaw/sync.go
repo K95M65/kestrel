@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"go.autonomous.ai/os/system/domain"
+	"go.autonomous.ai/os/system/lib/alert"
 	"go.autonomous.ai/os/system/server/config"
 )
 
@@ -257,6 +258,21 @@ func (s *OpenclawService) applyModelsToConfig(configPath string, configData map[
 		"version", resp.Version,
 		"fetched", len(fetched),
 	)
+
+	// Ops alert: version-gated default-model swap only (primary/image), not the
+	// routine catalog reconcile. Device metadata only — no customer data.
+	if primaryChanged || imageChanged {
+		var changed []string
+		if primaryChanged {
+			changed = append(changed, "primary="+extractPrimaryModel(configData))
+		}
+		if imageChanged {
+			changed = append(changed, "image_model updated")
+		}
+		alert.Notifyf(context.Background(), s.config,
+			fmt.Sprintf("🔄 Default model updated (catalog v%d)", resp.Version),
+			strings.Join(changed, " · "))
+	}
 
 	if err := restartOpenclawGateway(); err != nil {
 		slog.Warn("[modelsync] restart openclaw gateway", "err", err)
