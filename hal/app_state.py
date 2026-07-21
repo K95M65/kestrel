@@ -552,6 +552,20 @@ def _dismiss_mic_muted_led(source: str):
     logger.info("Mic-muted LED indicator dismissed by %s (mic stays muted)", source)
 
 
+def _has_internet() -> bool:
+    """Fast liveness check: 1s TCP connect to public DNS (IP literal, no DNS
+    lookup so a broken resolver can't stall us). Returns True iff we can reach
+    the internet from this device right now. Used by _flash_backend_error to
+    suppress the amber cue when a TTS failure is really just "no network"."""
+    import socket
+
+    try:
+        with socket.create_connection(("8.8.8.8", 53), timeout=1.0):
+            return True
+    except OSError:
+        return False
+
+
 def _flash_backend_error():
     """3x amber flashes signalling a TTS/backend failure. Called from the
     TTS service when a speak() returns 0 samples (Cloudflare 524, upstream
@@ -562,10 +576,30 @@ def _flash_backend_error():
     the strip back via _restore_user_led / mic-muted repaint, so it never
     leaves the strip stuck at the last flash frame. Skips silently when
     the mic-muted privacy indicator owns the strip — a hardware kill-switch
-    red must survive any error signal."""
+    red must survive any error signal. Also skips when:
+    - Device hasn't finished setup (set_up_completed=false): the TTS
+      backend URL is unconfigured / in AP mode, failures are expected,
+      and statusled's "setup" white already owns the strip.
+    - No internet is reachable at all: statusled fires the "connectivity"
+      orange breathing for that; layering an amber flash on top is
+      redundant noise for a failure the user already sees a cue for."""
     if not rgb_service:
         return
     if _mic_muted_led_owns_strip():
+        return
+    try:
+        from hal.config import _os_cfg_get
+
+        if not _os_cfg_get("set_up_completed"):
+            logger.info("backend-error flash skipped -- device not set up")
+            return
+    except Exception:
+        # Missing config = not set up; err on the side of skipping so the
+        # cue never fires on a half-provisioned device.
+        logger.info("backend-error flash skipped -- config unreadable")
+        return
+    if not _has_internet():
+        logger.info("backend-error flash skipped -- no internet (statusled connectivity cue owns feedback)")
         return
 
     def _run_then_settle():
