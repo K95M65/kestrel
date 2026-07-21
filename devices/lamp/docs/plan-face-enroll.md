@@ -3,7 +3,7 @@
 **Status: IMPLEMENTED** (2026-04)
 
 ## Context
-Lamp's FaceRecognizer (`facerecognizer.py`) has `train()` and `reset_enrolled()` but they're never called — all faces are classified as strangers. We need a way for users to send a selfie via Telegram + tag someone → enroll that face for recognition.
+Lamp's FaceRecognizer (`faceid/perception.py`) has `train()` and `reset_enrolled()` but they're never called — all faces are classified as strangers. We need a way for users to send a selfie via Telegram + tag someone → enroll that face for recognition.
 
 Inspired by doggi-sdk's approach: save original JPEG photos per person, re-train from photos on startup.
 
@@ -23,7 +23,7 @@ User sends photo + @mention via Telegram
 - Keep named `self._face_recognizer` reference (currently anonymous in `_perceptions` list)
 - On init after creating FaceRecognizer, call `self._face_recognizer.load_from_disk()` to re-train from saved photos
 
-### 2. `hal/drivers/sensing/perceptions/facerecognizer.py`
+### 2. `hal/drivers/sensing/perceptions/processors/faceid/perception.py`
 - Add constant `ENROLLED_PHOTOS_DIR = Path(os.environ.get("HAL_DATA_DIR", "/root/lelamp/data")) / "enrolled_photos"`
 - Add `save_photo(image_bytes: bytes, label: str) -> str`:
   - Create dir `{ENROLLED_PHOTOS_DIR}/{label}/`
@@ -62,7 +62,7 @@ User sends photo + @mention via Telegram
 - Add `"face-enroll"` to the skills download list (~line 38-50)
 
 ## File list
-- `hal/drivers/sensing/perceptions/facerecognizer.py` — persistence + photo storage
+- `hal/drivers/sensing/perceptions/processors/faceid/perception.py` — persistence + photo storage
 - `hal/drivers/sensing/sensing_service.py` — named reference + load on init
 - `hal/server.py` — HTTP endpoints
 - `lamp/resources/openclaw-skills/face-enroll/SKILL.md` — new skill (new file)

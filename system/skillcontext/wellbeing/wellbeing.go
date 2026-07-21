@@ -93,7 +93,7 @@ func cleanOldLogs() {
 }
 
 // NormalizeUser lowercases, replaces non [a-z0-9_-] with _, strips _,
-// caps at 64 chars. Mirrors the Python facerecognizer.normalize_label
+// caps at 64 chars. Mirrors the Python faceid/perception.py normalize_label
 // so Go-written paths match Python-written paths.
 func NormalizeUser(name string) string {
 	s := strings.ToLower(strings.TrimSpace(name))
@@ -117,7 +117,7 @@ func NormalizeUser(name string) string {
 // never changed.
 //
 // Friends do NOT need this guard: hal's per-friend session tracking
-// (_owners_last_seen + FACE_OWNER_FORGET_S) at facerecognizer.py already
+// (_owners_last_seen + FACE_OWNER_FORGET_S) at faceid/perception already
 // fires enter only on a genuinely new session, so os-server should trust each
 // friend's enter/leave and just record it. Deduping friends here causes
 // the opposite failure: if hal restarts between a friend's last
