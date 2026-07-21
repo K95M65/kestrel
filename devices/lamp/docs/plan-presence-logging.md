@@ -8,7 +8,7 @@ Status: **Partially implemented** (2026-04-22). Bugs A+B fixed, Bug C still pend
 
 **B. `current_user()` wrong winner** — ✅ FIXED. Now sorts by `session_start` (not `last_seen`). Chloe 18:00 + An 18:30 → An wins (newer session_start).
 
-**C. Stranger `leave` never fires** — ❌ PENDING. `_send_leave_event` for strangers still commented out at `facerecognizer.py:621`.
+**C. Stranger `leave` never fires** — ❌ PENDING. `_send_leave_event` for strangers still commented out at `faceid/perception.py`.
 
 ## Principle
 
@@ -16,7 +16,7 @@ Status: **Partially implemented** (2026-04-22). Bugs A+B fixed, Bug C still pend
 
 ## Changes
 
-### HAL — `facerecognizer.py`
+### HAL — `faceid/perception.py`
 
 1. Add `_owners_session_start`, `_strangers_session_start` — set on first-seen-after-gap, clear on leave.
 2. `current_user()`: among friends with live session_start, pick max session_start. No friend → `"unknown"` if any stranger live. Else `""`.
@@ -68,7 +68,7 @@ No logic changes. Benefits indirectly from stable `current_user`.
 ## Next steps (when implementing)
 
 1. Read `hal/drivers/sensing/perceptions/motion.py` — locate the 5-min dedup boundary and the `motion.activity` fire point.
-2. Read `hal/drivers/sensing/perceptions/facerecognizer.py` in detail — map out the full state machine for session_start + effective_user transitions.
+2. Read `hal/drivers/sensing/perceptions/processors/faceid/perception.py` in detail — map out the full state machine for session_start + effective_user transitions.
 3. Draft patches and list diffs before applying. Confirm with user before editing.
 
 ## Related
