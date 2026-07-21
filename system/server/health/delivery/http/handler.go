@@ -213,6 +213,7 @@ func (h *HealthHandler) NetworkInfo(c *gin.Context) {
 		"signal":      0,
 		"linkRate":    0,
 		"internet":    false,
+		"pingMs":      0,
 		"mac":         device.GetDeviceMac(),
 	}
 
@@ -228,9 +229,12 @@ func (h *HealthHandler) NetworkInfo(c *gin.Context) {
 
 	info["tailscaleIp"] = getTailscaleIP()
 
-	// Quick internet check (non-blocking, use cached result if possible)
-	if ok, _ := h.networkService.CheckInternet(); ok {
+	// Quick internet check (non-blocking, use cached result if possible).
+	// The probe's round-trip time rides along as pingMs (0 = unmeasured) so
+	// the web can show internet latency, not just a reachable/unreachable bit.
+	if ok, rtt := h.networkService.CheckInternetRTT(); ok {
 		info["internet"] = true
+		info["pingMs"] = int(rtt + 0.5)
 		info["publicIp"] = getPublicIP()
 	}
 

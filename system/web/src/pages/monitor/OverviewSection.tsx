@@ -213,7 +213,7 @@ export function OverviewSection({
               <StatRow label="SSID" value={net.ssid || "—"} />
               <StatRow label="IP" value={net.ip} color="var(--lm-teal)" />
               {net.tailscaleIp && <StatRow label="Tailscale" value={net.tailscaleIp} color="var(--lm-teal)" />}
-              <StatRow label="Internet" value={net.internet ? "Connected" : "No"} color={net.internet ? "var(--lm-green)" : "var(--lm-red)"} />
+              <StatRow label="Internet" value={net.internet ? `Connected${net.pingMs ? ` · ${net.pingMs} ms` : ""}` : "No"} color={net.internet ? "var(--lm-green)" : "var(--lm-red)"} />
               <StatRow label="Speed" value={
                 <span style={{ display: "flex", alignItems: "center", gap: 6 }} title={`Signal ${net.signal} dBm`}>
                   <SignalBars value={net.signal} />
