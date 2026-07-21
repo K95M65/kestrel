@@ -43,6 +43,9 @@ rsync -az --delete \
 # Device profile
 rsync -az --delete "$ROOT_DIR/devices/reachy-mini/" "$REACHY_HOST:$REMOTE_BASE/devices/reachy-mini/"
 
+# Rootfs overlay (device .env) — only if .env doesn't exist yet (don't clobber tuned values)
+ssh "$REACHY_HOST" "[ -f $REMOTE_BASE/hal/.env ] || cp $REMOTE_BASE/devices/reachy-mini/rootfs/opt/hal/.env $REMOTE_BASE/hal/.env"
+
 # Web dist
 rsync -az --delete "$ROOT_DIR/system/web/dist/" "$REACHY_HOST:$REMOTE_BASE/web/"
 

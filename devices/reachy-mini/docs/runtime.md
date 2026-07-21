@@ -43,6 +43,29 @@ array, speaker, compute, IMU, Wi-Fi, battery, and animated antennas, but not a
 device-addressable LED ring or screen. If a future hardware revision exposes
 those, add the capability only with a matching HAL driver and safety behavior.
 
+## Deployment: Install On Top, Never Flash
+
+Reachy Mini ships with **Pollen's OS** (Debian custom) on its onboard Pi. The OS
+includes a daemon that owns the serial bus, runs the 100 Hz control loop,
+computes inverse kinematics for the Stewart platform, and enforces hardware
+safety clamps. **Flashing a golden image wipes the daemon and bricks the robot.**
+
+Autonomous OS is always **installed on top** of Pollen's OS:
+
+- **Spike/dev**: `REACHY_HOST=pi@<IP> bash devices/reachy-mini/spike.sh` — builds
+  on Mac, rsync to Pi, starts HAL + os-server in tmux.
+- **Production**: `DEVICE_TYPE=reachy-mini bash <(curl -fsSL .../install.sh)` —
+  runs `setup.sh` on the existing OS, adds systemd units, nginx, WiFi AP, OTA.
+
+Two stacks run side by side on the same Pi:
+
+| Layer | Owner | How |
+|-------|-------|-----|
+| Motion (head 6-DOF, body 360°, antennas) | Pollen daemon `:8000` | HAL calls SDK → daemon owns hardware I/O |
+| Audio (mic, speaker, TTS) | HAL directly | ALSA/PulseAudio, `media_backend="no_media"` |
+| Camera | HAL directly | V4L2/OpenCV |
+| Agent brain, setup, OTA | os-server + OpenClaw | Independent of Pollen |
+
 ## Motion Driver
 
 Reachy selects the HAL motion backend through:
@@ -82,6 +105,28 @@ Supported through shared `/servo` endpoints:
 - recovery/modes: `/servo/zero`, `/servo/hold`, `/servo/release`, `/servo/resume`
 - expression moves: `/servo/play` when Reachy's recorded-move library is available
 
+### Emotion → HF Move Mapping
+
+HAL emotion names (CSV stems on Lamp) are mapped to Pollen's HF moves in
+`_MOVE_MAP` (reachy\_service.py). The map uses preset constants from
+`hal/presets.py` and targets moves from
+[pollen-robotics/reachy-mini-emotions-library](https://huggingface.co/datasets/pollen-robotics/reachy-mini-emotions-library)
+(81 moves). Examples:
+
+| HAL emotion | HF move |
+|-------------|---------|
+| `curious` | `curious1` |
+| `happy_wiggle` | `cheerful1` |
+| `sad` | `sad1` |
+| `greeting` | `welcoming1` |
+| `nod` | `yes1` |
+| `headshake` | `no1` |
+| `music_groove` | `dance1` |
+
+Unmapped names are tried verbatim (callers can send HF names directly).
+Music grooves rotate through `dance1`/`dance2`/`dance3`. Tests guard full
+preset coverage and validate all map values against the HF library.
+
 Known deltas from Lamp:
 
 - CSV upload is a Feetech/Lamp animation concept; Reachy's `add_recording` is a
@@ -116,21 +161,36 @@ profile is measured.
    python3 -m unittest devices.contract.cts.test_compatibility
    ```
 
-2. Install Reachy dependencies on the robot only:
+2. **Quick deploy (recommended for first spike):**
 
    ```bash
-   cd hal
-   uv sync --extra reachy
+   REACHY_HOST=pi@<IP> bash devices/reachy-mini/spike.sh
    ```
 
-   Keep `reachy` separate from the generic `hardware` extra. The Reachy SDK
-   pulls Linux GUI/media dependencies such as pygobject/pycairo that should not
-   be forced onto Lamp images.
+   This builds on Mac, rsync to Pi, installs all deps (including system libs
+   for pygobject/pycairo), and starts HAL + os-server in a tmux session.
+   Subsequent runs only sync changed files.
 
-3. Boot HAL with the Reachy profile:
+3. **Manual install** (if not using spike.sh):
 
    ```bash
-   DEVICE_TYPE=reachy-mini DEVICES_DIR=/opt/devices uv run uvicorn hal.server:app --host 0.0.0.0 --port 5001
+   # System libs for pygobject/pycairo (reachy SDK transitive deps)
+   apt install -y libcairo2-dev libgirepository1.0-dev pkg-config
+
+   cd /opt/hal
+   uv sync --python 3.12 --extra hardware --extra reachy
+   ```
+
+   Keep `reachy` separate from `hardware` in `pyproject.toml`. The Reachy SDK
+   pulls pygobject/pycairo which build from source and need system libs absent
+   on Lamp images. `pyproject.toml` declares `[[tool.uv.dependency-metadata]]`
+   for both so that `uv lock` resolves without building their sdists.
+
+4. Boot HAL with the Reachy profile:
+
+   ```bash
+   DEVICE_TYPE=reachy-mini DEVICES_DIR=/opt/devices \
+     .venv/bin/uvicorn hal.server:app --host 0.0.0.0 --port 5001
    ```
 
 4. Confirm mounted routes:

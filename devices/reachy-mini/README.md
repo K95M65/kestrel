@@ -42,22 +42,36 @@ camera, microphone array, speaker, onboard compute, IMU, Wi-Fi, and battery for
 the Wireless model, but not a device-addressable LED ring or screen. Reachy's
 expression is therefore movement, antenna posture, gaze, and voice.
 
+## Deployment
+
+Reachy Mini ships with Pollen's OS on its Pi. **Never flash a golden image** —
+it would wipe the Pollen daemon that owns the hardware. Autonomous is always
+installed on top.
+
+| Method | Use case |
+|--------|----------|
+| `REACHY_HOST=pi@<IP> bash devices/reachy-mini/spike.sh` | Dev spike: build on Mac, rsync, tmux |
+| `DEVICE_TYPE=reachy-mini install.sh` | Production: full setup.sh with systemd, nginx, OTA |
+
+See [docs/runtime.md](docs/runtime.md) for architecture details and bring-up checklist.
+
 ## Status
 
-Prepared before hardware arrival:
+Code complete (pre-hardware):
 
 - device declaration and safety profile
 - Reachy persona
-- motion driver selector (`reachy_sdk`)
-- draft Reachy motion driver
-- static tests for driver selection and protocol conformance
+- motion driver selector (`reachy_sdk`) + factory
+- draft Reachy motion driver with emotion→HF move mapping (28 entries)
+- pyproject.toml `reachy` extra with dependency-metadata fix
+- 12 static tests (factory, protocol conformance, move map coverage)
+- dev deploy script (`spike.sh`)
 
 Still needs a real-device spike:
 
 - verify motion sign conventions and tune aim poses
-- verify Reachy daemon startup and `REACHY_DAEMON_HOST` / `REACHY_DAEMON_PORT`
+- verify Pollen daemon startup and `REACHY_DAEMON_HOST` / `REACHY_DAEMON_PORT`
 - verify camera and microphone device names on the shipped OS
 - verify whether first-use recorded moves need network access to Hugging Face
+- verify pygobject/pycairo build on Pollen's OS
 - decide whether Reachy needs device-specific presets
-
-See [docs/runtime.md](docs/runtime.md) for the bring-up checklist.
