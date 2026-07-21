@@ -161,6 +161,14 @@ nothing is blocked:
   brings the red back on the next restore). Scene mic-unmute paths (`/scene` with
   `mic:"on"`, `/scene/off`) also clear it.
 - `_user_led_state` is never touched — unmute restores the user's saved look.
+- While the indicator owns the strip, transient overlay writes are skipped (`POST /led/effect`
+  with `transient:true`) and so is **every** `POST /led/effect/stop`: no transient overlay can
+  be running (its start was skipped), so any stop arriving while muted is a stale caller.
+  Ambient's Go breathingLoop tracks its "running" flag locally and still fires StopEffect on
+  pause/lock even though its start was skipped — before this guard covered all threads, that
+  stop passed while an emotion effect held the strip (e.g. thinking's purple pulse) and killed
+  it after ~one cycle, freezing the strip on the last ripple frame. Emotion effects settle
+  back onto the red via their scheduled restore.
 
 ### Setup-needed solid (lamp)
 

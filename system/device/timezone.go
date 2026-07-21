@@ -207,7 +207,7 @@ func (s *Service) SetTimezone(tz string) error {
 	// Re-point THIS process's cached local zone. Go reads /etc/localtime once at
 	// startup and caches time.Local for the process lifetime, so os-server's own
 	// local-date logic (the daily JSONL buckets in flow/history/analytics and
-	// lib/posture|music|mood|wellbeing, all keyed by time.Now().Format("2006-01-02"))
+	// skillcontext/posture|music|mood|wellbeing, all keyed by time.Now().Format("2006-01-02"))
 	// would keep using the OLD zone until restart. Updating time.Local here makes
 	// the change live in-process, so changing the timezone needs NO os-server
 	// restart — matching HAL, which reads /etc/timezone fresh per call.

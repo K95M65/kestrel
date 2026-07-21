@@ -105,10 +105,12 @@ def build_emotion_perception() -> EmotionPerception:
     if (
         settings.fer.confidence_threshold is not None
         or settings.fer.frame_interval is not None
+        or settings.fer.label_thresholds is not None
     ):
         default_config = EmotionPerceptionSessionConfig(
             confidence_threshold=settings.fer.confidence_threshold or 0.5,
             frame_interval=settings.fer.frame_interval or 1.0,
+            label_thresholds=settings.fer.label_thresholds,
         )
 
     return EmotionPerception(
@@ -226,6 +228,7 @@ def build_audio_embedder() -> AudioEmbedder:
     proc = settings.audio_embedder.processor
     processor_factory = AudioProcessorFactory(
         target_sample_rate=proc.target_sample_rate,
+        enable_mono=proc.enable_mono,
         enable_resample=proc.enable_resample,
         enable_high_pass=proc.enable_high_pass,
         high_pass_cutoff_hz=proc.high_pass_cutoff_hz,

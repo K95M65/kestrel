@@ -225,7 +225,7 @@ Observations: Bỏ qua hydration đầu tiên, phản hồi tốt từ lần 2.
 | File | Vai trò |
 |------|---------|
 | `system/server/openclaw/delivery/sse/handler.go` | Xử lý lifecycle end: fire HW calls (emotion), broadcast qua Telegram, suppress TTS nếu cần |
-| `system/lib/mood/mood.go` | Log `wellbeing.hydration`, `wellbeing.break` events. `IsMoodEvent()` whitelist cả 2 type |
+| `system/skillcontext/mood/mood.go` | Log `wellbeing.hydration`, `wellbeing.break` events. `IsMoodEvent()` whitelist cả 2 type |
 
 ### OpenClaw Skills
 

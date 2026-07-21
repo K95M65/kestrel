@@ -9,8 +9,8 @@ environment / `.env`. Nested settings use a `__` delimiter
 | Env var | Default | Meaning |
 |---------|---------|---------|
 | `DL_API_KEY` | _(required)_ | Shared API key; `dlserver` raises at startup if unset |
-| `CACHE_DIR` | `~/.cache/dlbackend` | Root cache dir |
-| `MODEL_CACHE_DIR` | `~/.cache/dlbackend/models` | Downloaded model weights |
+| `CACHE_DIR` | `~/.cache/perception-service` | Root cache dir |
+| `MODEL_CACHE_DIR` | `~/.cache/perception-service/models` | Downloaded model weights |
 | `CDN_BASE` | `https://storage.googleapis.com/autonomous-models` | Public bucket weights are fetched from (see [Model downloading](#model-downloading)) |
 
 ## Model downloading
@@ -22,7 +22,7 @@ checkout pulls only the models it actually uses.
 How it works (`src/core/utils/files.py`, `ensure_downloaded`):
 
 1. The predictor resolves a local path under `MODEL_CACHE_DIR`
-   (default `~/.cache/dlbackend/models/<filename>`).
+   (default `~/.cache/perception-service/models/<filename>`).
 2. If the file already exists → use it, no network.
 3. If missing → download from the resolved `remote`:
    - an `http(s)` URL → direct download (atomic: `.part` temp → `replace`);
@@ -43,6 +43,7 @@ Base URL: `https://storage.googleapis.com/autonomous-models/`
 | POSTER V2 (FER) | `…/onnx_models/posterv2_7cls.onnx` |
 | EmoNet-8 (FER) | `…/onnx_models/emonet_8.onnx` |
 | EmoNet-5 (FER) | `…/onnx_models/emonet_5.onnx` ⚠️ |
+| Emo-AffectNet (FER) | `…/onnx_models/emoaffectnet_resnet50.onnx` ⚠️ |
 | emotion2vec (SER) | `…/onnx_models/emotion2vec.onnx` |
 | RTMPose-m (pose 2D) | `…/onnx_models/rtmpose-m.onnx` |
 | TCPFormer (pose 3D) | `…/onnx_models/tcpformer_h36m_243.onnx` |
@@ -59,11 +60,15 @@ Base URL: `https://storage.googleapis.com/autonomous-models/`
 (`…` = the base URL above. The mapping lives in `CDN_PATHS` in
 `src/core/utils/files.py` — keep this table in sync with it.)
 
-> ⚠️ **Availability (verified against the public bucket on 2026-06-16):** the four
-> rows marked ⚠️ are **not currently present** in the bucket (HTTP `404`) — including
-> the default action model **X3D** and the default audio embedder **WeSpeaker
-> ResNet34**, so a fresh out-of-the-box run will fail to download them. The other 11
-> files return `200`. Until the weights are uploaded (or `CDN_PATHS` in
+> ⚠️ **Availability:** the rows marked ⚠️ are **not present** in the bucket (HTTP
+> `404`). Four were verified absent against the public bucket on 2026-06-16 —
+> including the default action model **X3D** and the default audio embedder
+> **WeSpeaker ResNet34**, so a fresh out-of-the-box run will fail to download them.
+> The fifth, **Emo-AffectNet**, is newly added and must be exported and uploaded
+> before it resolves — see
+> [face-emotion/emoaffectnet-setup.md](../../docs/face-emotion/emoaffectnet-setup.md)
+> (until then use `FER__CKPT_PATH` to point at the locally exported ONNX). The
+> remaining files return `200`. Until the weights are uploaded (or `CDN_PATHS` in
 > `src/core/utils/files.py` is corrected to the real filenames — pending confirmation
 > from the maintainers), work around it by either selecting a model whose weights do
 > exist (e.g. `ACTION__MODEL=videomae`, `AUDIO_EMBEDDER__MODEL=ecapa-tdnn1024`) or
@@ -100,8 +105,9 @@ checkpoint override and threshold(s).
 | `ACTION__BATCH_SIZE` | `1` | Max items per GPU batch |
 | `ACTION__BATCH_TIMEOUT` | `0.1` | Seconds to wait for batch to fill |
 | `FER__ENABLED` | `true` | Enable facial emotion |
-| `FER__MODEL` | `posterv2` | `posterv2` \| `emonet_8` \| `emonet_5` |
+| `FER__MODEL` | `posterv2` | `posterv2` \| `emonet_8` \| `emonet_5` \| `emoaffectnet` |
 | `FER__CONFIDENCE_THRESHOLD`, `FER__FRAME_INTERVAL`, `FER__CKPT_PATH` | per-model | |
+| `FER__LABEL_THRESHOLDS` | _(default map)_ | JSON per-label min confidence, e.g. `{"happy":0.5,"sad":0.7}`. Argmax label below its bar → `Neutral`. Default: `happy 0.5, surprise 0.6, sad/anger/disgust/fear 0.7`. `{}` disables gating. |
 | `FER__BATCH_SIZE` | `1` | Max items per GPU batch |
 | `FER__BATCH_TIMEOUT` | `0.1` | Seconds to wait for batch to fill |
 | `SER__ENABLED` | `true` | Enable speech emotion |
@@ -180,7 +186,7 @@ where `<NAME>` ∈ `YOLO_WORLD`, `OWLV2`. All default to
 
 When `USE_ONNX=true` (the default), ONNX predictors resolve their model path and
 remote URL from `ModelEnum` entries and auto-download via `ensure_downloaded` on
-first use. Models are cached in `MODEL_CACHE_DIR` (`~/.cache/dlbackend/models/` by
+first use. Models are cached in `MODEL_CACHE_DIR` (`~/.cache/perception-service/models/` by
 default). No manual download step is needed.
 
 ### Audio processor (SER / embedder front-end)

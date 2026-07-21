@@ -83,7 +83,7 @@ gãy sau reset. Soát mọi stub: ghi `// no-op because <lý do>` hoặc
 `domain.ErrNotSupportedByRuntime`** (domain/agent.go), không bao giờ `nil` —
 `nil` khiến caller tưởng thay đổi đã được áp dụng trong khi không có gì xảy ra.
 Caller phân nhánh bằng `errors.Is`: đường save model/baseURL LLM
-(`system/device/service.go`) log dạng informational rồi fallback
+(`system/device/config_update.go`) log dạng informational rồi fallback
 `EnsureOnboarding` (presync đọc lại `llm_*` từ config.json), còn endpoint
 gw-config báo "no device-side config file" thay vì `{}`. Các stub hiện trả
 sentinel: `UpdatePrimaryModel`, `RefreshModelsConfig`, `CompactSession`
@@ -366,7 +366,7 @@ khi runtime đổi.
 ### `AddChannel` / `RefreshChannelConfig` nhận biết capability
 
 Kênh **được hỗ trợ** thì áp dụng; kênh **không hỗ trợ** thì gateway trả
-`domain.ErrChannelNotSupported`. Lớp device (`system/device/service.go`
+`domain.ErrChannelNotSupported`. Lớp device (`system/device/channels.go`
 `AddChannel`) giờ gate theo `SupportedChannels()` **TRƯỚC** khi persist
 credentials, nên một kênh không hỗ trợ không bao giờ để lại token chết trong
 `config.json`. Thứ tự là:

@@ -281,13 +281,39 @@ func ReadCurrentSSID() string {
 	return ""
 }
 
+// rePingTime extracts the round-trip time from ping's reply line
+// ("64 bytes from 8.8.8.8: icmp_seq=1 ttl=117 time=23.4 ms").
+var rePingTime = regexp.MustCompile(`time=([0-9.]+) ms`)
+
 // CheckInternet pings 8.8.8.8. Unchanged.
 func (s *Service) CheckInternet() (bool, error) {
-	pingCmd := exec.Command("ping", "-c", "1", "-W", "5", "8.8.8.8")
-	if err := pingCmd.Run(); err != nil {
+	if _, err := s.pingRTT(); err != nil {
 		return false, fmt.Errorf("connected but no internet: ping 8.8.8.8 failed: %w", err)
 	}
 	return true, nil
+}
+
+// CheckInternetRTT is CheckInternet plus the measured round-trip time in ms
+// (0 when the reply line couldn't be parsed). One ping serves both answers, so
+// callers that want latency don't pay a second probe.
+func (s *Service) CheckInternetRTT() (ok bool, rttMs float64) {
+	rtt, err := s.pingRTT()
+	return err == nil, rtt
+}
+
+// pingRTT runs the single-shot internet probe and parses the reply's time=
+// value. Returns rtt 0 with nil error when the ping succeeded but the output
+// didn't match (BusyBox/locale variants) — reachability still counts.
+func (s *Service) pingRTT() (float64, error) {
+	out, err := exec.Command("ping", "-c", "1", "-W", "5", "8.8.8.8").CombinedOutput()
+	if err != nil {
+		return 0, err
+	}
+	if m := rePingTime.FindSubmatch(out); len(m) > 1 {
+		f, _ := strconv.ParseFloat(string(m[1]), 64)
+		return f, nil
+	}
+	return 0, nil
 }
 
 // pingNetworkMonitor runs a short ping with networkMonitorPingTimeout. Used by network monitor only.

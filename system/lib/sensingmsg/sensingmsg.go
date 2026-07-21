@@ -9,7 +9,7 @@ import (
 
 	"go.autonomous.ai/os/system/domain"
 	"go.autonomous.ai/os/system/lib/i18n"
-	"go.autonomous.ai/os/system/lib/skillcontext"
+	"go.autonomous.ai/os/system/skillcontext"
 )
 
 // Build returns the message that should be forwarded to the agent for a

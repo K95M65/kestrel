@@ -13,10 +13,10 @@ from hal import app_state as hal_app_state
 from hal import config as hal_config
 from hal import presets
 from hal.clock import device_now
-from hal.drivers.realtime.config import gemini_needs_idle_workaround
-from hal.drivers.realtime.models import AudioOutput as RTAudioOutput
-from hal.drivers.realtime.models import TextOutput as RTTextOutput
-from hal.drivers.realtime.models.signal import DelegateSignal, LookReplaySignal
+from hal.realtime.config import gemini_needs_idle_workaround
+from hal.realtime.models import AudioOutput as RTAudioOutput
+from hal.realtime.models import TextOutput as RTTextOutput
+from hal.realtime.models.signal import DelegateSignal, LookReplaySignal
 from hal.drivers.voice._internal.cot_leak_filter import CoTLeakFilter, clean_transcript
 
 logger = logging.getLogger("hal.voice")
@@ -33,7 +33,7 @@ def _reply_language_name() -> str:
     prompt's `_load_language() or "English"` only when one is actually set.
     """
     from hal.config import _os_cfg_get
-    from hal.drivers.realtime.context_manager.base import ContextManagerBase
+    from hal.realtime.context_manager.base import ContextManagerBase
 
     code: str = (_os_cfg_get("stt_language", "") or "").strip()
     if not code:

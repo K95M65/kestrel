@@ -10,6 +10,7 @@ import logging
 from pathlib import Path
 
 from . import (
+    export_emoaffectnet,
     export_emonet,
     export_emotion2vec,
     export_owlv2,
@@ -67,6 +68,15 @@ def export_all(output_dir: Path | None = None, opset: int = 17):
         lambda: export_posterv2.export(
             output=_output(output_dir, "posterv2_7cls.onnx"), opset=opset,
         ),
+    )
+
+    # Emo-AffectNet (static ResNet-50) — optional: needs the HuggingFace .pt.
+    results["emoaffectnet"] = _run(
+        "emoaffectnet",
+        lambda: export_emoaffectnet.export(
+            output=_output(output_dir, "emoaffectnet_resnet50.onnx"), opset=opset,
+        ),
+        required=False,
     )
 
     # TCPFormer

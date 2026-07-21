@@ -15,10 +15,11 @@ class AudioProcessorFactory:
     def __init__(
         self,
         target_sample_rate: int = 16000,
+        enable_mono: bool = True,
         enable_resample: bool = True,
-        enable_high_pass: bool = True,
+        enable_high_pass: bool = False,
         high_pass_cutoff_hz: float = 80.0,
-        enable_noise_reduce: bool = True,
+        enable_noise_reduce: bool = False,
         noise_reduce_stationary: bool = False,
         enable_vad: bool = True,
         vad_min_duration_sec: float = 0.5,
@@ -27,6 +28,7 @@ class AudioProcessorFactory:
         rms_target: float = 0.1,
     ) -> None:
         self._target_sample_rate = target_sample_rate
+        self._enable_mono = enable_mono
         self._enable_resample = enable_resample
         self._enable_high_pass = enable_high_pass
         self._high_pass_cutoff_hz = high_pass_cutoff_hz
@@ -40,7 +42,8 @@ class AudioProcessorFactory:
 
     def create(self) -> CompositeAudioProcessor:
         processors = []
-        processors.append(MonoConverter())
+        if self._enable_mono:
+            processors.append(MonoConverter())
         if self._enable_resample:
             processors.append(Resampler(target_sample_rate=self._target_sample_rate))
         if self._enable_high_pass:

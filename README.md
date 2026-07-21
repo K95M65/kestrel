@@ -39,11 +39,6 @@ What the device does — 24 skills, each a `SKILL.md` the runtime invokes: apps 
 `servo-control`, `camera`, `music`, …). A skill is an *ability*; the device's *character* is
 its `SOUL.md`. First-party skills use the same public contract a third party gets. *(`skills/`)*
 
-### Tools
-
-How the runtime reaches beyond the device — **MCP** servers and the **CLI**. Skills are the
-device's own abilities (through the HAL); tools are external capabilities the runtime calls.
-
 ### System Managers
 
 The always-on Go daemon: `intent` (fast local commands), `network`, `sensing` routing,
@@ -56,7 +51,10 @@ with or without the runtime. OTA runs as its own worker (`bootstrap/`).
 **OpenClaw**, **Hermes**, **PicoClaw**, **OpenAI Codex**, **Claude Code**, or a custom
 runtime. Runs the skills, embodies the device's `SOUL.md`, and decides what to act on.
 Swappable at runtime (web Settings or MQTT) — and where Autonomous OS's differentiated value
-(the default brain, memory, character) lives.
+(the default brain, memory, character) lives. Its **tools** — how it reaches beyond the device —
+are **MCP connectors** (`runtimes/*/mcp.go`, synced across a switch by `system/agent`) and the
+**CLI** the LLM calls directly (`curl`, shell); skills are the device's own abilities through the
+HAL, tools are external capabilities the runtime calls.
 *(`runtimes/{openclaw,hermes,picoclaw,codex,claudecode}`; adding
 your own: `docs/agentic/adding-agent-runtime.md`)*
 
@@ -68,9 +66,17 @@ Skills call capabilities (`motion.move`), never hardware models — so one skill
 body that declares the capability. A device's `DEVICE.md` declares which it has; the runtime
 mounts only those. The HAL also hosts the **safety gate** (`hal/safety`): `SAFETY.md`
 bounds — e-stop, motion limits, brightness, quiet hours — **enforced deterministically below
-the brain, never by the LLM**. The realtime voice agent (`hal/drivers/realtime`) runs
-in-process here too — runtime-layer code hosted in the HAL, marked purple in the diagram.
+the brain, never by the LLM**.
 *(`devices/contract/` + `hal` — see [HAL](docs/architecture/hal.md))*
+
+### Agentic Middle
+
+The realtime voice agent (`hal/realtime`) — brain-tier code the HAL hosts in-process, so it sits
+between the runtime and the HAL. Voice turns land here first and it decides per turn: **answer
+directly** when the turn is simple (small talk, nothing that needs skills or tools), or **delegate
+up** to the main agentic runtime when the turn needs skills or complex tool calls. Runs on Gemini
+Live, OpenAI Realtime, or Qwen.
+*(`hal/realtime` — see [realtime-voice.md](docs/realtime-voice.md))*
 
 ### Linux Kernel
 

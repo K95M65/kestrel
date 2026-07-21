@@ -52,8 +52,8 @@ logger = logging.getLogger(__name__)
 LED_SHUTDOWN_WARN = (255, 0, 0)     # red (blinking)
 LED_FACTORY_RESET = (255, 0, 0)     # red (solid)
 LED_OFF = (0, 0, 0)
-# Blink: 0.5 s on + 0.5 s off = 1 Hz full cycle.
-LED_BLINK_HALF_PERIOD_S = 0.5
+# Blink: 0.25 s on + 0.25 s off = 2 Hz full cycle.
+LED_BLINK_HALF_PERIOD_S = 0.25
 
 # Per-board button wiring (chip / line / debounce_ns) lives in the board
 # platform layer — hal/board/board.py — the single source of truth
@@ -113,7 +113,7 @@ class GPIOButtonHandler:
             if held >= FACTORY_RESET_DURATION:
                 stage = 2  # red solid — armed for factory-reset
             elif held >= LONG_PRESS_DURATION:
-                stage = 1  # red blink 1 Hz — armed for shutdown
+                stage = 1  # red blink 2 Hz — armed for shutdown
             else:
                 stage = 0  # quiet — under shutdown threshold
 
@@ -124,7 +124,7 @@ class GPIOButtonHandler:
             last_stage = stage
 
             if stage == 1:
-                # Half-period toggle gives a 1 Hz blink (0.5 s on, 0.5 s off).
+                # Half-period toggle gives a 2 Hz blink (0.25 s on, 0.25 s off).
                 blink_on = not blink_on
                 self._dispatch_led(LED_SHUTDOWN_WARN if blink_on else LED_OFF)
                 wait = LED_BLINK_HALF_PERIOD_S

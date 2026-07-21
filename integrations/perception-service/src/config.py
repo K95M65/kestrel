@@ -49,6 +49,7 @@ class FERSetting(BaseModel):
     remote_url: str | None = None
     confidence_threshold: float | None = None
     frame_interval: float | None = None
+    label_thresholds: dict[str, float] | None = None
     batch_size: int | None = None
     batch_timeout: float | None = None
 
@@ -83,10 +84,11 @@ class SERSetting(BaseModel):
 
 class AudioProcessorSetting(BaseModel):
     target_sample_rate: int = 16000
+    enable_mono: bool = True
     enable_resample: bool = True
-    enable_high_pass: bool = True
+    enable_high_pass: bool = False
     high_pass_cutoff_hz: float = 80.0
-    enable_noise_reduce: bool = True
+    enable_noise_reduce: bool = False
     noise_reduce_stationary: bool = False
     enable_vad: bool = True
     vad_min_duration_sec: float = 0.5
@@ -107,7 +109,7 @@ class AudioEmbedderSetting(BaseModel):
 
 class CryptoSetting(BaseModel):
     enabled: bool = True
-    key_dir: Path = Path.home() / ".dlbackend" / "keys"
+    key_dir: Path = Path.home() / ".perception-service" / "keys"
     key_size: int = 2048
     require_encryption: bool = False  # reject plain payloads if True
 
@@ -159,8 +161,8 @@ class Settings(BaseSettings):
             raise ValueError("DL_API_KEY must be set — server refuses to start without auth")
         return v
 
-    cache_dir: Path = Path.home() / ".cache" / "dlbackend"
-    model_cache_dir: Path = Path.home() / ".cache" / "dlbackend" / "models"  # default: cache_dir / "models"
+    cache_dir: Path = Path.home() / ".cache" / "perception-service"
+    model_cache_dir: Path = Path.home() / ".cache" / "perception-service" / "models"  # default: cache_dir / "models"
     cdn_base: str = "https://storage.googleapis.com/autonomous-models"
 
     action: ActionSetting = ActionSetting()

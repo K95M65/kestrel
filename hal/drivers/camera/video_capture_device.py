@@ -164,12 +164,30 @@ class LocalVideoCaptureDevice(VideoCaptureDeviceBase):
         rate; the trade-off is a darker image in dim light, offset by gain /
         brightness, or a longer exposure (fewer fps).
 
-        Opt-in: only runs when auto_exposure == "manual" (default "auto" leaves
-        the camera untouched). V4L2/UVC CAP_PROP_AUTO_EXPOSURE: 1 = manual,
-        3 = aperture-priority (auto). CAP_PROP_EXPOSURE is exposure_absolute in
-        ×100µs units. Best-effort: unsupported controls are logged and skipped.
+        In "auto" mode (default) the auto-exposure control is actively set to
+        3 (aperture-priority) rather than left untouched: UVC cameras retain
+        manual exposure/gain across process restarts, so a leftover manual
+        state from an earlier configuration would otherwise survive an .env
+        switch to auto forever (green/posterized frames when the leftover gain
+        is high). Leftover manual gain is NOT reset — its default is
+        camera-specific and auto-exposure compensates for it; clear it once
+        with `v4l2-ctl --set-ctrl gain=<default>` if needed.
+
+        V4L2/UVC CAP_PROP_AUTO_EXPOSURE: 1 = manual, 3 = aperture-priority
+        (auto). CAP_PROP_EXPOSURE is exposure_absolute in ×100µs units.
+        Best-effort: unsupported controls are logged and skipped.
         """
         if (self._auto_exposure or "auto") != "manual":
+            try:
+                video_capture.set(cv2.CAP_PROP_AUTO_EXPOSURE, 3)
+                self._logger.info(
+                    "Camera exposure: auto (auto_exposure=%.0f)",
+                    video_capture.get(cv2.CAP_PROP_AUTO_EXPOSURE),
+                )
+            except Exception:
+                self._logger.exception(
+                    "Camera auto-exposure restore failed — continuing with camera state as-is"
+                )
             return
         try:
             video_capture.set(cv2.CAP_PROP_AUTO_EXPOSURE, 1)

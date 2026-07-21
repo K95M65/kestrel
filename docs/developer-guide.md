@@ -522,7 +522,7 @@ copy patterns from):
 |---|---|---|
 | Status-cue overlay service | `system/statusled/service.go:71` — `func (s *Service) Set(state State)` | Priority-stacked overlay: booting / ota / error / connectivity / hal_down / agent_down / hardware / wifi_connecting. Highest priority wins; on `Clear` the strip is restored. |
 | State constants (booting, wifi_connecting, agent_down, …) | `system/statusled/service.go:19-26` | The exact set of states you can pass to `/led/status`. |
-| Wi-Fi connecting blue-blink | `system/device/service.go:183` — `s.statusLED.Set(statusled.StateWifiConnecting)` | Fires the blue blink while the STA join is happening during setup. |
+| Wi-Fi connecting blue-blink | `system/device/setup.go:80` — `s.statusLED.Set(statusled.StateWifiConnecting)` | Fires the blue blink while the STA join is happening during setup. |
 | HAL health watchdog | `system/healthwatch/service.go:94,107,136` | Sets `StateHALDown` / `StateHardware` when HAL or a driver stops responding. |
 | Agent-runtime health | `runtimes/openclaw/service_ws.go:43`, `runtimes/claudecode/client.go:57`, `runtimes/codex/client.go:60`, `runtimes/picoclaw/client.go:50`, `runtimes/hermes/health.go:126` | Every agent runtime sets `StateAgentDown` when its socket drops so the user sees the LED go red without having to check logs. |
 | Ambient "breathing" idle behaviour | `system/ambient/service.go` | Drives soft colour drift + breathing while there's no interaction. Uses `/led/effect` with `transient=true` so it doesn't clobber the user's saved state. |

@@ -47,6 +47,48 @@ _LOCAL_TOPS = {
     if e.endswith(".py") or os.path.isdir(os.path.join(HAL, e))
 }
 
+_REPO = os.path.dirname(HAL)  # parent of hal/ — where the `hal.` package roots
+_STDLIB = getattr(sys, "stdlib_module_names", frozenset())  # never a moved-local import
+
+
+def _build_module_index():
+    """basename (e.g. video_capture_device) -> [hal.-dotted paths that provide it].
+
+    Lets us recognise a bare `from devices.x import Y` as a *moved* local module
+    (now `hal.drivers.camera.x`) even after the old dir was deleted — the case the
+    hal/-prefix and _LOCAL_TOPS checks miss because a gone dir reads as third-party.
+    """
+    idx = {}
+    for root, dirs, files in os.walk(HAL):
+        if ".venv" in root or "__pycache__" in root:
+            continue
+        for f in files:
+            if f.endswith(".py") and f != "__init__.py":
+                base = f[:-3]
+                dotted = os.path.relpath(os.path.join(root, base), _REPO).replace(os.sep, ".")
+                idx.setdefault(base, []).append(dotted)
+    return idx
+
+
+_HAL_MODULES = _build_module_index()
+
+
+def _defined_names(path):
+    """Top-level names a module exports (class/def/assign/import), for FP-safe matching."""
+    try:
+        tree = ast.parse(open(path).read(), path)
+    except (SyntaxError, OSError):
+        return set()
+    names = set()
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names.add(node.name)
+        elif isinstance(node, ast.Assign):
+            names.update(t.id for t in node.targets if isinstance(t, ast.Name))
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            names.update(a.asname or a.name.split(".")[0] for a in node.names)
+    return names
+
 
 def check_imports(files):
     bad = []
@@ -71,6 +113,18 @@ def check_imports(files):
                     bad.append(f"{path}:{n.lineno}: from {n.module} -> not found under hal")
                 elif parts[0] in _LOCAL_TOPS and not _mod_exists(HAL, parts):
                     bad.append(f"{path}:{n.lineno}: from {n.module} -> not found under hal")
+                elif parts[0] not in ("hal", *_LOCAL_TOPS) and parts[0] not in _STDLIB:
+                    # Looks third-party, but may be a moved local module imported by
+                    # its old bare path (e.g. `from devices.x` after devices/ was
+                    # deleted). Flag only when a hal module of the same basename
+                    # actually defines every imported name — avoids third-party FPs.
+                    # Stdlib is excluded so a local `typing.py` can't shadow `from typing`.
+                    imported = {a.name for a in n.names}
+                    for dotted in _HAL_MODULES.get(parts[-1], []):
+                        cand = os.path.join(_REPO, *dotted.split(".")) + ".py"
+                        if imported and imported <= _defined_names(cand):
+                            bad.append(f"{path}:{n.lineno}: from {n.module} -> stale/moved local import; use {dotted}")
+                            break
     return bad
 
 

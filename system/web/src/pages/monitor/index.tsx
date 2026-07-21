@@ -782,6 +782,52 @@ export default function Monitor() {
                   if (res.status === "ok") setSceneInfo((prev) => prev ? { ...prev, active: scene === "off" ? undefined : scene } : prev);
                 }).catch(() => {});
               }}
+              onMicMutedChange={(muted) => {
+                // Commit on HAL's ack (ms) so the toggle flips immediately instead
+                // of waiting out the 5s poll. A 409 (hardware mic switch off) is
+                // !r.ok → state untouched; the poll stays the reconciler of truth.
+                fetch(`${HW}/voice/${muted ? "mute" : "unmute"}`, { method: "POST" }).then((r) => {
+                  if (r.ok) setVoice((prev) => (prev ? { ...prev, mic_muted: muted } : prev));
+                }).catch(() => {});
+              }}
+              onSpeakerMutedChange={(muted) => {
+                fetch(`${HW}/speaker/${muted ? "mute" : "unmute"}`, { method: "POST" }).then((r) => {
+                  if (r.ok) setSpeakerMuted(muted);
+                }).catch(() => {});
+              }}
+              onTTSStop={() => {
+                fetch(`${API}/agent/tts/stop`, { method: "POST" }).then((r) => {
+                  if (r.ok) {
+                    setVoice((prev) => (prev ? { ...prev, tts_speaking: false } : prev));
+                    setMusicPlaying(false);
+                  }
+                }).catch(() => {});
+              }}
+              onEmotionPick={(e) => {
+                // Optimistic pill highlight: oc.emotion refreshes on the 10s
+                // sidebar poll, which reconciles if the agent moves on.
+                fetch(`${HW}/emotion`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ emotion: e, intensity: 1.0 }),
+                }).then((r) => {
+                  if (r.ok) setOc((prev) => (prev ? { ...prev, emotion: e } : prev));
+                }).catch(() => {});
+              }}
+              onServoPlay={(p) => {
+                fetch(`${HW}/servo/play`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ recording: p }),
+                }).then((r) => {
+                  if (r.ok) setServo((prev) => (prev ? { ...prev, current: p } : prev));
+                }).catch(() => {});
+              }}
+              onServoRelease={() => {
+                fetch(`${HW}/servo/release`, { method: "POST", headers: { accept: "application/json" } }).then((r) => {
+                  if (r.ok) setServo((prev) => (prev ? { ...prev, current: null } : prev));
+                }).catch(() => {});
+              }}
             />
           )}
           {section === "system" && (

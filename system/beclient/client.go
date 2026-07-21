@@ -172,7 +172,7 @@ func (c *Client) Ping(token string, payload PingPayload) (*PingResponse, error) 
 type PingPayload struct {
 	Status         string `json:"status,omitempty"`
 	SetupCompleted bool   `json:"setup_completed,omitempty"`
-	Mac            string `json:"mac,omitempty"`     // Hardware ID (Lamp-XXXX from Pi serial)
+	Mac            string `json:"mac,omitempty"`     // Hardware ID (<device_type>-XXXX from Pi serial)
 	Version        string `json:"version,omitempty"` // App version for OTA comparison
 	// SlackTeamID is the Slack workspace this device's bot is installed in,
 	// resolved on-device via slack.auth.test against the stored bot_token

@@ -73,7 +73,7 @@ Thread watcher poll thời lượng giữ và đẩy LED RGB ở priority HIGH (
 | Thời gian giữ | LED | Ý nghĩa |
 |---|---|---|
 | < 5 s | giữ nguyên | dưới ngưỡng shutdown — nhả ra là 1 tap |
-| 5–10 s | đỏ, nháy 1 Hz | đã arm shutdown — nhả bây giờ là tắt máy |
+| 5–10 s | đỏ, nháy 2 Hz | đã arm shutdown — nhả bây giờ là tắt máy |
 | 10 s+ | đỏ, đứng | đã arm factory-reset — nhả bây giờ là wipe + reboot |
 
 Cùng màu đỏ cho cả hai mức arm; nháy vs đứng là cái phân biệt. LED là no-op im lặng khi RGB service không có (máy dev) — nút vẫn hoạt động.

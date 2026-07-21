@@ -50,6 +50,7 @@ export interface NetworkInfo {
   signal: number;      // dBm; 0 = unknown
   linkRate: number;    // current PHY link rate in Mbps; 0 = unknown
   internet: boolean;
+  pingMs?: number;     // internet probe round-trip in ms; 0/absent = unmeasured
   mac: string;
 }
 export interface HWHealth {
