@@ -423,7 +423,7 @@ the new channel up:
   `SetupRequest`** (unlike OpenClaw, whose `SetupAgent` writes `openclaw.json`
   straight from the request — hence OpenClaw needs *two* distinct functions, Hermes
   *one*). The device setup flow saves `config.json` **before** calling `SetupAgent`
-  (`system/device/service.go` — the call was deliberately ordered after
+  (`system/device/setup.go` — the call was deliberately ordered after
   `config.Save()`), so presync materializes `config.yaml`/`.env` from the
   freshly-entered keys immediately instead of waiting for the next boot.
 
@@ -543,7 +543,7 @@ and bounce the gateway.
   (upserts the `.env` channel vars) → the `config.yaml`+`.env` hash-diff →
   `restartHermesGateway()`. Both reduce to "re-sync `.env` + restart-if-changed", so
   they share one code path.
-- **Persist-then-apply.** The device layer (`system/device/service.go`
+- **Persist-then-apply.** The device layer (`system/device/channels.go`
   `AddChannel`) capability-gates first, then persists the channel creds to
   `config.json` **before** calling the gateway's `AddChannel`, so the presync run
   re-reads `config.json` and sees the new tokens. A transient apply failure leaves

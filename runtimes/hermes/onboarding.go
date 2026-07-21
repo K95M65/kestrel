@@ -41,7 +41,7 @@ const (
 
 // SetupAgent materializes the Hermes device config from config.json by running the
 // same presync EnsureOnboarding runs. The device setup flow calls this AFTER it
-// persists config.json (system/device/service.go), so presync picks up the
+// persists config.json (system/device/setup.go), so presync picks up the
 // freshly-entered llm_api_key/base_url + channel tokens right away instead of
 // waiting for the next os-server boot. The SetupRequest is unused — config.json
 // (just saved) is the source of truth presync reads.

@@ -84,7 +84,7 @@ bare empty body.
 return `domain.ErrNotSupportedByRuntime`** (domain/agent.go), never `nil` —
 `nil` tells the caller the change was applied when nothing happened. Callers
 branch on `errors.Is`: the LLM model/baseURL save path
-(`system/device/service.go`) logs it as informational and falls back to
+(`system/device/config_update.go`) logs it as informational and falls back to
 `EnsureOnboarding` (whose presync re-reads `llm_*` from config.json), and the
 gw-config endpoint reports "no device-side config file" instead of `{}`.
 Current sentinel-returning stubs: `UpdatePrimaryModel`, `RefreshModelsConfig`,
@@ -380,7 +380,7 @@ runtime changes.
 
 A **supported** channel is applied; an **unsupported** one returns
 `domain.ErrChannelNotSupported` from the gateway. The device layer
-(`system/device/service.go` `AddChannel`) now gates on `SupportedChannels()`
+(`system/device/channels.go` `AddChannel`) now gates on `SupportedChannels()`
 **before** persisting credentials, so an unsupported channel never leaves a dead
 token in `config.json`. The order is:
 

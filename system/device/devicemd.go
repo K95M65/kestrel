@@ -28,14 +28,11 @@ var (
 // control — for any device that hasn't opted into a per-device level.
 const DefaultStartupVolume = 100
 
-// Capabilities returns the set of capability keys declared in the
-// `capabilities:` block of devices/<deviceType>/DEVICE.md (e.g. audio, vision,
-// motion, light, display, …), or nil if absent/unreadable. Dependency-free
-// front-matter parse, mirroring SoulRef/GatewayDefault. The capability keys are
-// what gate which hardware/body skills a device loads (see openclaw onboarding):
-// a skill that declares `capability: motion` is only shipped to a device whose
-// DEVICE.md declares `motion`.
-func Capabilities(deviceType string) map[string]bool {
+// readFrontMatter returns the front-matter block of
+// devices/<deviceType>/DEVICE.md, or nil when the file or the block is
+// absent/unreadable. Dependency-free parse (no YAML lib), mirroring
+// hal/board/device.py — every DEVICE.md field accessor below goes through it.
+func readFrontMatter(deviceType string) []byte {
 	b, err := os.ReadFile(filepath.Join(DevicesDir(), deviceType, "DEVICE.md"))
 	if err != nil {
 		return nil
@@ -44,7 +41,21 @@ func Capabilities(deviceType string) map[string]bool {
 	if fm == nil {
 		return nil
 	}
-	blk := reCapBlock.FindSubmatch(fm[1])
+	return fm[1]
+}
+
+// Capabilities returns the set of capability keys declared in the
+// `capabilities:` block of devices/<deviceType>/DEVICE.md (e.g. audio, vision,
+// motion, light, display, …), or nil if absent/unreadable. The capability keys are
+// what gate which hardware/body skills a device loads (see openclaw onboarding):
+// a skill that declares `capability: motion` is only shipped to a device whose
+// DEVICE.md declares `motion`.
+func Capabilities(deviceType string) map[string]bool {
+	fm := readFrontMatter(deviceType)
+	if fm == nil {
+		return nil
+	}
+	blk := reCapBlock.FindSubmatch(fm)
 	if blk == nil {
 		return nil
 	}
@@ -131,17 +142,12 @@ func Has(deviceType, capability string) bool {
 // SoulRef returns the `soul_ref` declared in devices/<deviceType>/DEVICE.md, or
 // "" if absent/unreadable. The value is either a path (read relative to the
 // device dir) or an http(s) URL (downloaded) — see openclaw.deviceSoulCore.
-// Dependency-free front-matter parse, mirroring GatewayDefault.
 func SoulRef(deviceType string) string {
-	b, err := os.ReadFile(filepath.Join(DevicesDir(), deviceType, "DEVICE.md"))
-	if err != nil {
-		return ""
-	}
-	fm := reFrontMatter.FindSubmatch(b)
+	fm := readFrontMatter(deviceType)
 	if fm == nil {
 		return ""
 	}
-	m := reSoulRef.FindSubmatch(fm[1])
+	m := reSoulRef.FindSubmatch(fm)
 	if m == nil {
 		return ""
 	}
@@ -152,18 +158,14 @@ func SoulRef(deviceType string) string {
 // devices/<deviceType>/DEVICE.md, or DefaultStartupVolume (100) when the field
 // is absent/unreadable/out of range. os-server applies this once at startup so
 // the boot speaker level is a per-device body property, not a hardcoded max —
-// e.g. a device with a loud speaker can boot quieter. Dependency-free
-// front-matter parse, mirroring SoulRef. Fail-safe to max, never to silent.
+// e.g. a device with a loud speaker can boot quieter. Fail-safe to max, never
+// to silent.
 func StartupVolume(deviceType string) int {
-	b, err := os.ReadFile(filepath.Join(DevicesDir(), deviceType, "DEVICE.md"))
-	if err != nil {
-		return DefaultStartupVolume
-	}
-	fm := reFrontMatter.FindSubmatch(b)
+	fm := readFrontMatter(deviceType)
 	if fm == nil {
 		return DefaultStartupVolume
 	}
-	m := reStartupVolume.FindSubmatch(fm[1])
+	m := reStartupVolume.FindSubmatch(fm)
 	if m == nil {
 		return DefaultStartupVolume
 	}
@@ -184,22 +186,24 @@ func DevicesDir() string {
 }
 
 // gatewayField extracts one sub-field (matched by re) from the `gateway:` block
-// of devices/<deviceType>/DEVICE.md, or "" if absent/unreadable. Dependency-free
-// front-matter parse (no YAML lib), mirroring hal/board/device.py.
+// of devices/<deviceType>/DEVICE.md, or "" if absent/unreadable.
 func gatewayField(deviceType string, re *regexp.Regexp) string {
-	b, err := os.ReadFile(filepath.Join(DevicesDir(), deviceType, "DEVICE.md"))
-	if err != nil {
-		return ""
-	}
-	fm := reFrontMatter.FindSubmatch(b)
+	return blockField(deviceType, reGatewayBlock, re)
+}
+
+// blockField extracts one sub-field (matched by fieldRe) from a top-level
+// front-matter block (matched by blockRe) of devices/<deviceType>/DEVICE.md,
+// or "" if absent/unreadable. Shared by the gateway: and voice: accessors.
+func blockField(deviceType string, blockRe, fieldRe *regexp.Regexp) string {
+	fm := readFrontMatter(deviceType)
 	if fm == nil {
 		return ""
 	}
-	blk := reGatewayBlock.FindSubmatch(fm[1])
+	blk := blockRe.FindSubmatch(fm)
 	if blk == nil {
 		return ""
 	}
-	m := re.FindSubmatch(blk[1])
+	m := fieldRe.FindSubmatch(blk[1])
 	if m == nil {
 		return ""
 	}
@@ -221,26 +225,9 @@ func GatewayProtocol(deviceType string) string {
 }
 
 // voiceField extracts one sub-field (matched by re) from the `voice:` block of
-// devices/<deviceType>/DEVICE.md, or "" if absent/unreadable. Dependency-free
-// front-matter parse (no YAML lib), mirroring gatewayField.
+// devices/<deviceType>/DEVICE.md, or "" if absent/unreadable.
 func voiceField(deviceType string, re *regexp.Regexp) string {
-	b, err := os.ReadFile(filepath.Join(DevicesDir(), deviceType, "DEVICE.md"))
-	if err != nil {
-		return ""
-	}
-	fm := reFrontMatter.FindSubmatch(b)
-	if fm == nil {
-		return ""
-	}
-	blk := reVoiceBlock.FindSubmatch(fm[1])
-	if blk == nil {
-		return ""
-	}
-	m := re.FindSubmatch(blk[1])
-	if m == nil {
-		return ""
-	}
-	return strings.TrimSpace(string(m[1]))
+	return blockField(deviceType, reVoiceBlock, re)
 }
 
 // TTSProvider returns the `voice.tts_provider` declared in
