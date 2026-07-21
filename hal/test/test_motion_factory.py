@@ -144,13 +144,14 @@ class TestReachyMoveMap(unittest.TestCase):
             source = f.read()
         # Evaluate _MOVE_MAP with hal.presets constants available.
         tree = ast.parse(source)
-        # Find the _MOVE_MAP assignment node.
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Assign):
-                for target in node.targets:
-                    if isinstance(target, ast.Name) and target.id == "_MOVE_MAP":
-                        code = compile(ast.Expression(body=node.value), path, "eval")
-                        return eval(code, {"P": presets})
+        # _MOVE_MAP is a module-level assignment; walk all nodes.
+        for node in ast.iter_child_nodes(tree):
+            if not isinstance(node, ast.Assign):
+                continue
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == "_MOVE_MAP":
+                    code = compile(ast.Expression(body=node.value), path, "eval")
+                    return eval(code, {"P": presets})
         self.fail("_MOVE_MAP not found in reachy_service.py")
 
     def test_all_servo_presets_mapped(self):
