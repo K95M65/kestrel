@@ -215,6 +215,8 @@ Default áp dụng kể cả khi `.env` không có entry nào. Muốn ghim frame
 
 `_apply_camera_controls()` (`drivers/camera/video_capture_device.py`) chạy sau khi set độ phân giải lúc open **và mỗi lần reopen device** — open mới reset camera về default, nếu không áp lại thì manual exposure sẽ âm thầm mất và FPS throttle quay lại. Map sang V4L2/UVC controls qua OpenCV: `CAP_PROP_AUTO_EXPOSURE` (1=manual, 3=auto), `CAP_PROP_EXPOSURE`, `CAP_PROP_GAIN`, `CAP_PROP_BRIGHTNESS`.
 
+Ở mode `auto`, control được chủ động set về 3 (aperture-priority) mỗi lần open, chứ không bỏ mặc: camera UVC giữ nguyên manual exposure/gain qua các lần restart HAL, nên trạng thái manual sót lại từ cấu hình cũ sẽ sống dai qua cả việc đổi `.env` sang `auto`. **Gain** manual sót lại thì không bị reset (default tùy camera, auto-exposure tự bù); nếu đổi sang auto rồi mà màu vẫn sai, xóa một lần bằng `v4l2-ctl -d /dev/video0 --set-ctrl gain=<default>`. Lưu ý đổi `.env` chỉ có hiệu lực sau `systemctl restart hal` — process đang chạy vẫn giữ env lúc nó start.
+
 ### Trade-off
 
 Frame rate vs độ sáng là trade-off vật lý cứng trong phòng tối: exposure tối đa vẫn giữ được 30fps là ~33ms (`HAL_CAMERA_EXPOSURE=330`); ảnh sáng hơn cần exposure dài hơn (ít fps) hoặc gain cao hơn (nhiễu hơn, và trên ~144 rủi ro loạn màu). Stream endpoint bị cap riêng bởi `HAL_CAMERA_STREAM_FPS` (default 10), nên live view trên monitor không phản ánh tốc độ capture thật.
