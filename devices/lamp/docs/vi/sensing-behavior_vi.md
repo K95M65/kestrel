@@ -582,7 +582,7 @@ Tùy chọn thay thế cho `MotionPerception` — chạy nhận diện hành đ�
 Lamp nhận diện trạng thái cảm xúc **của người dùng** qua ba kênh:
 
 1. **Biểu cảm khuôn mặt** (chính) — event `emotion.detected` từ `hal/drivers/sensing/perceptions/emotion.py`. Dùng emotion classifier chuyên dụng chạy trên perception-service tự host qua WebSocket. Nhận diện 7 cảm xúc: Angry, Disgust, Fear, Happy, Sad, Surprise, Neutral. Ngưỡng confidence cấu hình được (`EMOTION_CONFIDENCE_THRESHOLD`).
-2. **Cảm xúc giọng nói** (phụ) — event `speech_emotion.detected` từ `hal/drivers/voice/speech_emotion/`. Chạy ở cuối mỗi phiên STT đã nhận diện được speaker, cùng WAV bytes đã dùng cho speaker recognition. Dùng `emotion2vec_plus_large` trên perception-service qua HTTP. Xem [Speech Emotion Recognition](../speech-emotion.md) cho pipeline đầy đủ.
+2. **Cảm xúc giọng nói** (phụ) — event `speech_emotion.detected` từ `hal/drivers/voice/speech_emotion/`. Chạy ở cuối mỗi phiên STT đã nhận diện được speaker, cùng WAV bytes đã dùng cho speaker recognition. Dùng `emotion2vec_plus_large` trên perception-service qua HTTP. Xem [Speech Emotion Recognition](../../../../docs/speech-emotion.md) cho pipeline đầy đủ.
 3. **Body action** (cấp 3) — emotional X3D actions từ action recognition **cố ý bị loại** khỏi `motion.activity` (giờ thuần vật lý: sedentary/drink/break). Một event type `motion.emotional` riêng đang được lên kế hoạch.
 
 > **Đừng nhầm lẫn với Emotion Expression** (`emotion/SKILL.md`) — cái đó điều khiển cảm xúc đầu ra của Lamp (servo + LED + eyes). Emotion Detection là cảm nhận *user* đang cảm thấy gì; Emotion Expression là cách *Lamp* thể hiện cảm xúc của chính nó.
@@ -667,7 +667,7 @@ Payload event gửi kèm `current_user` rõ ràng nên sensing handler Lamp khô
 
 Hedge `(weak voice cue; ...)` trong message là tín hiệu cho model nghiêng về Comfort/Invite ở nhánh checkin thay vì Ask khi voice-only negative read, vì emotion2vec trên utterance ngắn nhiễu hơn face FER. Xem `user-emotion-detection/SKILL.md` cho rules đầy đủ.
 
-Xem [Speech Emotion Recognition](../speech-emotion.md) cho kiến trúc đầy đủ, threading model, configuration, và failure mode.
+Xem [Speech Emotion Recognition](../../../../docs/speech-emotion.md) cho kiến trúc đầy đủ, threading model, configuration, và failure mode.
 
 ---
 

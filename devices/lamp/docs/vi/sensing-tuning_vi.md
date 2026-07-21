@@ -1,7 +1,7 @@
 # Tuning Sensing — Phần SER (Nhận Diện Cảm Xúc Giọng Nói)
 
 > Tài liệu tuning đầy đủ (motion, face, sound, …) bằng tiếng Anh: [sensing-tuning.md](../sensing-tuning.md).  
-> Kiến trúc SER: [speech-emotion_vi.md](speech-emotion_vi.md).
+> Kiến trúc SER: [speech-emotion_vi.md](../../../../docs/vi/speech-emotion_vi.md).
 
 ---
 
@@ -63,7 +63,7 @@ Dòng `flushing` hiển thị danh sách label thô — đó là mode trên các
 
 ### Áp dụng thay đổi
 
-Sau khi sửa `hal/config.py` hoặc `voice_service.py` trên Pi: restart service HAL (xem [os-server_vi.md](os-server_vi.md)).
+Sau khi sửa `hal/config.py` hoặc `voice_service.py` trên Pi: restart service HAL (xem [os-server_vi.md](../../../../docs/vi/os-server_vi.md)).
 
 ---
 

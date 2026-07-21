@@ -19,7 +19,7 @@ A compliant device:
 5. for every **declared `required` capability**, brings the driver up at boot or **fails loud**
    (no silent half-boot);
 6. for any **safety-class capability** it declares (`motion`, `light`), ships a
-   [`SAFETY.md`](../devices/lamp/SAFETY.md) and exposes an **immediate, deterministic stop**
+   [`SAFETY.md`](../lamp/SAFETY.md) and exposes an **immediate, deterministic stop**
    that does **not** route through the agentic runtime;
 7. returns the standard API envelope — `{"status":1,"data":…,"message":null}` on success,
    `{"status":0,"data":null,"message":…}` on failure;
@@ -29,7 +29,7 @@ A compliant device:
 
 9. support **OTA** update + rollback;
 10. process sensing **locally first**, forwarding to the runtime only on cooldown;
-11. ship a [`SOUL.md`](../devices/lamp/SOUL.md) (a default character);
+11. ship a [`SOUL.md`](../lamp/SOUL.md) (a default character);
 12. **degrade gracefully** — a skill that lists a capability as optional must run without it.
 
 ## MAY

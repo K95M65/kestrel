@@ -38,7 +38,7 @@ Build order for one lamp. Skeleton — fill in photos and torque values as we bu
     - Confirm fan spins.
     - SSH in, run `aplay -D plug:device_speaker /home/orangepi/tiger.wav` (or similar).
     - LED ring should breathe boot animation.
-11. **Calibrate** — see [`calibration.md`](calibration.md).
+11. **Calibrate** — see [`calibration.md`](../../../hal/calibration/calibration.md).
 12. **Close enclosure**.
 
 ## Screw / fastener spec

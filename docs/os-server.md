@@ -92,7 +92,7 @@ Config field: `guard_mode` in `config/config.json` (bool, default `false`). The 
 | POST | `/api/mood/log` | Log user mood (called by agent via Mood skill) |
 | POST | `/api/monitor/event` | Push an event directly to the monitor bus (used by HAL for sound tracker state) |
 
-> **Note:** Stranger visit tracking (stats, persistence) is handled by **HAL** (port 5001) at `GET /face/stranger-stats`. See [sensing-behavior.md](sensing-behavior.md#stranger-visit-tracking) for details.
+> **Note:** Stranger visit tracking (stats, persistence) is handled by **HAL** (port 5001) at `GET /face/stranger-stats`. See [sensing-behavior.md](../devices/lamp/docs/sensing-behavior.md#stranger-visit-tracking) for details.
 
 **Request body:**
 ```json
@@ -150,7 +150,7 @@ Accessed via nginx proxy: `/hw/*` → `127.0.0.1:5001`
 | GET | `/servo/aim` | List aim directions |
 | POST | `/servo/aim` | Aim device head (center, desk, wall, left, right, up, down, user) |
 | GET | `/servo/track/targets` | List suggested target names for YOLOWorld detection |
-| POST | `/servo/track` | Start tracking — `{"target":"cup"}` (auto-detect) or `{"bbox":[x,y,w,h]}`. See [vision-tracking.md](vision-tracking.md) |
+| POST | `/servo/track` | Start tracking — `{"target":"cup"}` (auto-detect) or `{"bbox":[x,y,w,h]}`. See [vision-tracking.md](../devices/lamp/docs/vision-tracking.md) |
 | POST | `/servo/track/stop` | Stop current tracking session |
 | GET | `/servo/track` | Get tracking status (active, target, bbox, confidence) |
 | POST | `/servo/track/update` | Re-initialize tracker with new bounding box |

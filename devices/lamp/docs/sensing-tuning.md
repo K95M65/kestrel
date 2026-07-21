@@ -209,7 +209,7 @@ Per-face motion opens a separate WS session per detected face and runs action re
 
 ## Speech Emotion Recognition (SER)
 
-**Files:** `hal/config.py`, `hal/drivers/voice/voice_service.py` (`_submit_speech_emotion_from_session`, `_identify_and_decorate`, `_session_wav_for_ser`) — see also [Speech Emotion Recognition](speech-emotion.md) for the full architecture. **Vietnamese:** [docs/vi/sensing-tuning_vi.md](vi/sensing-tuning_vi.md) (SER section), [speech-emotion_vi.md](vi/speech-emotion_vi.md).
+**Files:** `hal/config.py`, `hal/drivers/voice/voice_service.py` (`_submit_speech_emotion_from_session`, `_identify_and_decorate`, `_session_wav_for_ser`) — see also [Speech Emotion Recognition](../../../docs/speech-emotion.md) for the full architecture. **Vietnamese:** [docs/vi/sensing-tuning_vi.md](vi/sensing-tuning_vi.md) (SER section), [speech-emotion_vi.md](../../../docs/vi/speech-emotion_vi.md).
 
 **Voice integration (session end, transcript-independent):** in the `finally` block of every mic session (VAD trigger → ~2.5 s silence), `_stream_session` runs `_identify_and_decorate(final_text, audio_buffer)` **once** to resolve both `final_msg` (for the Lamp POST when STT had text) and `user_name` (for the SER submit). The result is passed to `_submit_speech_emotion_from_session(audio_buffer, user=...)`, which builds the WAV and calls `SpeechEmotionService.submit`. Unknown / no-match speakers still enqueue SER under the shared `unknown` dedup key when audio is long enough.
 

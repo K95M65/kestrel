@@ -624,7 +624,7 @@ Includes the `face_id` in parentheses so the agent knows which person the activi
 Lamp detects the **user's** emotional state via three channels:
 
 1. **Facial expression** (primary) — `emotion.detected` event from `hal/drivers/sensing/perceptions/emotion.py`. Uses a dedicated emotion classifier running on self-hosted perception-service via WebSocket. Detects 7 emotions: Angry, Disgust, Fear, Happy, Sad, Surprise, Neutral. Configurable confidence threshold (`EMOTION_CONFIDENCE_THRESHOLD`).
-2. **Speech emotion** (secondary) — `speech_emotion.detected` event from `hal/drivers/voice/speech_emotion/`. Runs at the end of every speaker-identified STT session against the same WAV used for speaker recognition. Uses `emotion2vec_plus_large` on perception-service via HTTP. See [Speech Emotion Recognition](speech-emotion.md) for the full pipeline.
+2. **Speech emotion** (secondary) — `speech_emotion.detected` event from `hal/drivers/voice/speech_emotion/`. Runs at the end of every speaker-identified STT session against the same WAV used for speaker recognition. Uses `emotion2vec_plus_large` on perception-service via HTTP. See [Speech Emotion Recognition](../../../docs/speech-emotion.md) for the full pipeline.
 3. **Body action** (tertiary) — emotional X3D actions from action recognition are **intentionally dropped** from `motion.activity` (which is purely physical: sedentary/drink/break). A dedicated `motion.emotional` event type is planned for these.
 
 > **Not to be confused with Emotion Expression** (`emotion/SKILL.md`) — which controls Lamp's own emotional output (servo + LED + eyes). Emotion Detection is about sensing what the *user* feels; Emotion Expression is how *Lamp* shows its feelings.
@@ -709,7 +709,7 @@ The event payload carries `current_user` explicitly so the Lamp sensing handler 
 
 The hedge `(weak voice cue; ...)` in the message is the model's signal to prefer Comfort/Invite checkin phrasing over Ask on voice-only negative reads, since short-utterance emotion2vec is noisier than face FER. See `user-emotion-detection/SKILL.md` for the full rules.
 
-See [Speech Emotion Recognition](speech-emotion.md) for the full architecture, threading model, configuration table, and failure modes.
+See [Speech Emotion Recognition](../../../docs/speech-emotion.md) for the full architecture, threading model, configuration table, and failure modes.
 
 ---
 

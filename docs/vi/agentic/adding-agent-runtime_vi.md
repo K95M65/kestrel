@@ -55,7 +55,7 @@ install, migration, skills, hooks, reset.
 
 ## 1. Hợp đồng — implement `domain.AgentGateway`
 
-Backend nằm ở `internal/<name>/`, `*Service` của nó phải thoả **toàn bộ**
+Backend nằm ở `runtimes/<name>/`, `*Service` của nó phải thoả **toàn bộ**
 interface `AgentGateway`. Các method chia nhóm:
 
 | Nhóm | Ví dụ | Lập trường backend mới |
@@ -96,7 +96,7 @@ thật). Cùng khuôn với rule `ErrChannelNotSupported` ở §9.
 
 1. `domain/device.go`: thêm const `AgentRuntime<Name>` + entry trong `AgentRuntimes`.
 2. `system/agent/factory.go`: thêm `case` trong `ProvideGateway`.
-3. **Installer nhúng**: `internal/<name>/install.sh` + `install.go`
+3. **Installer nhúng**: `runtimes/<name>/install.sh` + `install.go`
    (`//go:embed install.sh` → `runtimereg.Register(name, InstallScript)`).
 4. `switch_runtime.sh` **generic** — không biết tên backend. **Đừng** sửa nó,
    imager, hay switch core của os-server để thêm backend.
@@ -248,7 +248,7 @@ trong doc backend (vd `docs/agentic/hermes.md`), không phải đảm bảo chun
 - **Skill watcher** (auto-update từ CDN, gate theo capability): plumbing generic
   fetch/extract/hash share ở `system/skills/skillzip.go`
   (`FetchSkillVersions`/`DownloadToTempFile`/`FolderHash`/`ExtractSkillZip`). Thêm
-  `internal/<name>/skill_watcher.go` mỏng song song với
+  `runtimes/<name>/skill_watcher.go` mỏng song song với
   `runtimes/openclaw/skill_watcher.go` — chỉ khác **thư mục đích** và **đường
   notify**. Gate bằng `skills.Supported(device.Capabilities(...))`. Notify agent
   bằng `SendSystemChatMessage`.
@@ -304,7 +304,7 @@ parity. Chỉ làm khi xuất hiện nguồn turn như vậy.
 
 ## 7. Factory reset
 
-- Implement wipe của backend **trong `ResetAgent()`** (`internal/<name>/reset.go`).
+- Implement wipe của backend **trong `ResetAgent()`** (`runtimes/<name>/reset.go`).
   `server/system/factoryreset.go` resolve **gateway đang active** rồi gọi
   `gw.ResetAgent()` — **không có `switch` per-backend** để đồng bộ (thêm backend =
   implement `ResetAgent`, không đụng `server/system`). Backend mà state do bên
@@ -426,7 +426,7 @@ là no-op idempotent.
 
 ## Checklist cho backend mới
 
-- [ ] Package `internal/<name>/`; `*Service` implement **toàn bộ** `AgentGateway`.
+- [ ] Package `runtimes/<name>/`; `*Service` implement **toàn bộ** `AgentGateway`.
 - [ ] Mọi stub đều `// no-op because …` hoặc `// TODO(<name>-…)` — không thân rỗng.
 - [ ] Stub N/A có trả error thì trả `domain.ErrNotSupportedByRuntime`,
       không bao giờ `nil` (§4 "Không thành công giả").
@@ -446,7 +446,7 @@ là no-op idempotent.
 - [ ] Hooks: native-backend hoặc OS-side — đã quyết & ghi (không thiếu âm thầm).
       Nếu reimplement OS-side bằng Go (không liên kết compile-time với hook TS),
       thêm comment chéo trong cả hai file để sửa cái này cảnh báo cái kia.
-- [ ] `ResetAgent()` trong `internal/<name>/reset.go` (factory-reset gọi
+- [ ] `ResetAgent()` trong `runtimes/<name>/reset.go` (factory-reset gọi
       `gw.ResetAgent()` trên gateway active — không có switch ở `factoryreset.go`); **`agent_state.json` wipe cùng
       `config.json`**.
 - [ ] Gate capability qua `skills.Supported` / `SupportedHooks`.
