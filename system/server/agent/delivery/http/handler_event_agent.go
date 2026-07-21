@@ -385,8 +385,11 @@ func (h *AgentHandler) handleAgentStreamEvent(evt domain.WSEvent) error {
 							continue
 						}
 						if histPayload == nil {
-							slog.Warn("chat.history usage fetch returned empty payload — retrying", "component", "agent", "run_id", capturedFlowRunID, "attempt", attempt)
-							continue
+							// nil-with-no-error is the deliberate stub signal from
+							// runtimes without walkable history (codex, claudecode):
+							// no usage to attribute — bail quietly, don't retry.
+							slog.Debug("chat.history not supported by this runtime — skipping usage attribution", "component", "agent", "run_id", capturedFlowRunID)
+							return
 						}
 						// Content is RawMessage, NOT []histContent: chat.history mixes
 						// shapes per message (plain string for system/user texts,
