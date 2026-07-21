@@ -136,7 +136,7 @@ system/network/         — WiFi AP/STA
 runtimes/openclaw/        — Cấu hình OpenClaw & WebSocket
 system/beclient/        — Backend client, báo cáo trạng thái
 system/device/          — Setup, xử lý lệnh MQTT, báo cáo trạng thái
-system/ambient/         — Hành vi idle "sinh vật sống" (breathing LED, servo micro-movements, TTS mumbles). Gọi HAL HTTP API. Pause khi có tương tác, resume sau 60s yên lặng. Xem sensing-behavior_vi.md → "Hành vi Ambient khi idle".
+system/ambient/         — Hành vi idle "sinh vật sống" (breathing LED, servo micro-movements, TTS mumbles). Opt-in theo device qua capability `lifelike`. Gọi HAL HTTP API. Pause khi có tương tác, resume sau 60s yên lặng. Xem sensing-behavior_vi.md → "Hành vi Ambient khi idle".
 lib/mqtt/                 — MQTT client, tự kết nối lại
 bootstrap/                — OTA, kiểm tra version
 domain/                   — Struct dùng chung (device, network, OTA, OpenClaw)

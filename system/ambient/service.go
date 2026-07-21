@@ -1,7 +1,9 @@
 // Package ambient provides idle "living creature" behaviors: when no
 // interaction is happening, it drives a breathing LED, servo micro-movements,
-// and occasional self-talk via TTS — each loop gated by the device's declared
-// capabilities. All hardware control goes through HAL HTTP API (port 5001).
+// and occasional self-talk via TTS. The whole suite is opt-in via the
+// `lifelike` capability in DEVICE.md; each loop is additionally gated by the
+// matching hardware capability. All hardware control goes through HAL HTTP
+// API (port 5001).
 package ambient
 
 import (
@@ -53,6 +55,18 @@ func ProvideService(bus *monitor.Bus, cfg *config.Config) *Service {
 
 // Start begins the ambient behavior loop. Blocks until ctx is cancelled.
 func (s *Service) Start(ctx context.Context) {
+	// Master switch: the `lifelike` capability declares that this body opts
+	// into the idle living-creature suite at all. A device that declares
+	// capabilities without `lifelike` (e.g. intern-v2) stays a quiet tool when
+	// idle — no breathing, no micro-movements, no self-talk. Fail-open like
+	// every capability gate: nil caps → full legacy Lamp behavior.
+	devType := s.cfg.DeviceTypeOrDefault()
+	if !device.Has(devType, device.CapLifelike) {
+		slog.Info("ambient life disabled — device does not declare the lifelike capability",
+			"component", "ambient", "device_type", devType)
+		return
+	}
+
 	slog.Info("starting ambient life service", "component", "ambient")
 
 	// Subscribe to monitor bus to detect real interactions
@@ -69,10 +83,9 @@ func (s *Service) Start(ctx context.Context) {
 	// Run behavior loops concurrently — but only the ones this device's body
 	// can actually perform. Each loop drives one peripheral, so gate it by the
 	// matching capability: breathing→light, micro-movement→motion (servo),
-	// mumble→audio. A device that lacks a peripheral (e.g. intern-v2 has no
-	// servo) must not run its loop, else it spams HAL with calls it can't serve.
+	// mumble→audio. A device that lacks a peripheral must not run its loop,
+	// else it spams HAL with calls it can't serve.
 	// Fail-open (nil caps → all loops run, matching legacy Lamp behavior).
-	devType := s.cfg.DeviceTypeOrDefault()
 	var wg sync.WaitGroup
 	start := func(loop func(context.Context)) {
 		wg.Add(1)

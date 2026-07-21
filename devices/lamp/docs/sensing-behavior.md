@@ -756,7 +756,7 @@ When nothing is happening, `system/ambient/` (Go, part of os-server) makes the d
 
 ### Behavior loops (capability-gated)
 
-Each loop drives one peripheral and only runs if the device type declares the matching capability in the `capabilities:` block of `devices/<type>/DEVICE.md`; a device with no declared capabilities runs all loops (fail-open, legacy Lamp behavior).
+The whole suite is opt-in per device: the routeless `lifelike` capability (declared in the `capabilities:` block of `devices/<type>/DEVICE.md`, see `devices/contract/capabilities.md`) is the master switch — a device that declares capabilities without `lifelike` runs no idle behaviors at all (e.g. intern-v2 stays a quiet tool). Each loop additionally drives one peripheral and only runs if the device declares the matching hardware capability. A device with no declared capabilities at all runs everything (fail-open, legacy Lamp behavior).
 
 | Loop | Capability | Cadence | What it does |
 |------|-----------|---------|--------------|

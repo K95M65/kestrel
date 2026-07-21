@@ -22,6 +22,10 @@ capabilities:
   # framebuffer-only mode: a render loop drawing eyes nobody sees, plus an
   # "Unknown expression" warning on every emotion.
   expression:   { routes: [emotion], required: true }
+  # lifelike: routeless — opts into the os-server idle "living creature" suite
+  # (breathing LED, servo micro-movements, TTS self-talk). Omit it to keep a
+  # device silent when idle (e.g. intern-v2 declares audio+light but not this).
+  lifelike:     { required: false }
   media:        { routes: [music], required: true }
   connectivity: { routes: [bluetooth], required: true }
   companion:    { routes: [buddy], required: false }

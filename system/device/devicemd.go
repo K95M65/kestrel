@@ -74,7 +74,14 @@ const (
 	// capability declared when the device has a screen, LED, or servo to express
 	// through; the route degrades to whatever output is present. Distinct from the
 	// perception capabilities (vision/sensing/presence). See devices/contract/capabilities.md.
-	CapExpression   = "expression"
+	CapExpression = "expression"
+	// CapLifelike — the body opts into the idle "living creature" suite
+	// (breathing LED, servo micro-movements, TTS self-talk) run by
+	// system/ambient. Routeless (the OUT-side mirror of routeless presence):
+	// it is a personality opt-in, not a route. Each idle loop additionally
+	// requires the matching hardware capability (light/motion/audio); a body
+	// that declares the hardware but not lifelike stays quiet when idle.
+	CapLifelike     = "lifelike"
 	CapMedia        = "media"
 	CapConnectivity = "connectivity"
 	CapCompanion    = "companion"
