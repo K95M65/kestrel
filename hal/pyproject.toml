@@ -70,3 +70,11 @@ hardware = [
     "rpi-ws281x",
     "spidev",
 ]
+# Reachy Mini body only (devices/reachy-mini) — Pollen's SDK client.
+# NOT merged into `hardware`: reachy-mini pulls pygobject/pycairo which build
+# from source and need cairo/gobject system libs (present on Pollen's OS,
+# absent on lamp images — merging would break lamp OTA).
+# Install on-device with: uv sync --extra reachy
+reachy = [
+    "reachy-mini>=1.9",
+]
