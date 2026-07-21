@@ -711,6 +711,8 @@ Khi không có gì diễn ra, `system/ambient/` (Go, thuộc os-server) làm thi
 - **Sleep mode**: khi event `hw_emotion` mang emotion `sleepy`, toàn bộ hành vi ambient bị suppress cho tới khi có tương tác thật tiếp theo (chat, wake word, sensing) đánh thức thiết bị.
 - Chuyển trạng thái pause/resume được log vào Flow Monitor dưới dạng `ambient_pause` / `ambient_resume`.
 
+**Hai đồng hồ, hai tầng** — 60 giây resume là *điều kiện đủ tư cách* ("ambient được phép hoạt động lại"), còn mỗi loop bên dưới có đồng hồ *nhịp riêng* chạy độc lập, không bị reset khi có tương tác; nếu đồng hồ của loop điểm giờ đúng lúc ambient đang paused thì lượt đó bị bỏ qua, không xếp hàng chờ. Ví dụ timeline: user ngừng nói chuyện → 60 giây sau ambient resume, LED bắt đầu thở gần như ngay (tick 2 giây) — còn câu tự lẩm bẩm kế tiếp rơi vào lúc đồng hồ 5–15 phút của mumble loop điểm giờ, có thể ngay sau đó hoặc nhiều phút sau.
+
 ### Các behavior loop (gate theo capability)
 
 Toàn bộ suite là opt-in theo từng device: capability routeless `lifelike` (khai trong block `capabilities:` của `devices/<type>/DEVICE.md`, xem `devices/contract/capabilities.md`) là công tắc tổng — device có khai capabilities nhưng không khai `lifelike` thì không chạy hành vi idle nào cả (ví dụ intern-v2 là công cụ im lặng). Mỗi loop còn điều khiển một peripheral và chỉ chạy khi device khai capability phần cứng tương ứng. Device không khai capability nào hết thì chạy tất cả (fail-open, giữ hành vi Lamp cũ).
