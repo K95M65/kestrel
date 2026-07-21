@@ -62,6 +62,7 @@ func (h *DeviceMQTTHandler) handleChannelRefreshConfig(env domain.MQTTDataComman
 				errCode = "channel_not_supported"
 			}
 			slog.Error("channel.refresh_config: failed", "component", "mqtt", "channel", req.Channel, "code", errCode, "runtime", runtimeStr, "error", err)
+			h.alertOps("❌ refresh_channel "+req.Channel+" — FAILED", errCode)
 			_ = h.publishDataResult(env.Kind, "failure", errCode, domain.MQTTChannelRefreshConfigResultData{
 				Channel: req.Channel,
 				Runtime: runtimeStr,
@@ -69,6 +70,7 @@ func (h *DeviceMQTTHandler) handleChannelRefreshConfig(env domain.MQTTDataComman
 			return
 		}
 		slog.Info("channel.refresh_config: success", "component", "mqtt", "channel", req.Channel, "runtime", runtimeStr)
+		h.alertOps("✅ refresh_channel "+req.Channel+" — OK", "runtime="+runtimeStr)
 		_ = h.publishDataResult(env.Kind, "success", "", domain.MQTTChannelRefreshConfigResultData{
 			Channel: req.Channel,
 			Runtime: runtimeStr,

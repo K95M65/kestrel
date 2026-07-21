@@ -40,6 +40,7 @@ func (h *DeviceMQTTHandler) handleWhatsappPair(_ domain.MQTTMessage) error {
 		if err := h.publishWhatsappPairResult(status, evt.Error, &evt); err != nil {
 			slog.Error("whatsapp_pair: publish event failed", "component", "mqtt", "status", status, "error", err)
 		}
+		h.alertPairingTerminal("whatsapp pair", evt)
 	}
 	slog.Info("whatsapp_pair: stream closed", "component", "mqtt")
 	return nil

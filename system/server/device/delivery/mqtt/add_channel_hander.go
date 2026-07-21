@@ -67,11 +67,13 @@ func (h *DeviceMQTTHandler) handleAddChannel(cmd domain.MQTTMessage) error {
 			errMsg = "channel_not_supported"
 		}
 		slog.Error("add_channel: failed", "component", "mqtt", "channel", req.Channel, "code", errMsg, "error", err)
+		h.alertOps("❌ add_channel "+req.Channel+" — FAILED", errMsg)
 		return h.publishAddChannelResult(req.Channel, "failure", errMsg, nil)
 	}
 
 	if events == nil {
 		slog.Info("add_channel: success", "component", "mqtt", "channel", req.Channel)
+		h.alertOps("✅ add_channel "+req.Channel+" — OK", "")
 		return h.publishAddChannelResult(req.Channel, "success", "", nil)
 	}
 
@@ -82,6 +84,7 @@ func (h *DeviceMQTTHandler) handleAddChannel(cmd domain.MQTTMessage) error {
 			slog.Error("add_channel: publish event failed", "component", "mqtt", "status", status, "error", pubErr)
 			// Keep draining so the goroutine in PairWhatsapp can exit cleanly.
 		}
+		h.alertPairingTerminal("add_channel "+req.Channel, evt)
 	}
 	slog.Info("add_channel: pairing stream closed", "component", "mqtt", "channel", req.Channel)
 	return nil

@@ -85,12 +85,14 @@ func (h *DeviceMQTTHandler) runConnectorSet(env domain.MQTTDataCommand) {
 	defer cancel()
 	if err := writer.Write(ctx, creds); err != nil {
 		slog.Error("connector.set: write failed", "component", "mqtt", "kind", env.Kind, "connector", req.Connector, "error", err)
+		h.alertOps("❌ connector.set "+req.Connector+" — FAILED", err.Error())
 		_ = h.publishDataResult(env.Kind, "failure", err.Error(), map[string]interface{}{
 			"connector": req.Connector,
 		})
 		return
 	}
 	slog.Info("connector.set: applied", "component", "mqtt", "connector", req.Connector, "auth_type", req.AuthType, "refresh", req.Refresh)
+	h.alertOps("✅ Connector "+req.Connector+" connected (auth_type="+req.AuthType+")", "")
 	_ = h.publishDataResult(env.Kind, "success", "", map[string]interface{}{
 		"connector": req.Connector,
 	})
@@ -135,12 +137,14 @@ func (h *DeviceMQTTHandler) runConnectorRemove(env domain.MQTTDataCommand) {
 	removed, err := writer.Remove(ctx, req.Connector)
 	if err != nil {
 		slog.Error("connector.remove: remove failed", "component", "mqtt", "kind", env.Kind, "connector", req.Connector, "error", err)
+		h.alertOps("❌ connector.remove "+req.Connector+" — FAILED", err.Error())
 		_ = h.publishDataResult(env.Kind, "failure", err.Error(), map[string]interface{}{
 			"connector": req.Connector,
 		})
 		return
 	}
 	slog.Info("connector.remove: done", "component", "mqtt", "connector", req.Connector, "removed", removed)
+	h.alertOps("✅ connector.remove "+req.Connector+" — OK", "")
 	_ = h.publishDataResult(env.Kind, "success", "", map[string]interface{}{
 		"connector": req.Connector,
 		"removed":   removed,

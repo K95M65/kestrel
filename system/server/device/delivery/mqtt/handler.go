@@ -35,6 +35,11 @@ type DeviceMQTTHandler struct {
 	// MCP server that drops a Node wrapper on disk. A code with no special writer
 	// and no mcp_url falls through to connectorWriter. Built once at startup.
 	specialConnectorWriters map[string]ConnectorWriter
+	// oauthAlertStatus tracks the last-alerted refresh outcome per provider
+	// ("ok"/"fail") so the OAuth refresh loop pings the maintainer chat only on
+	// state changes, not every tick. Mutated only from the single refresh-loop
+	// goroutine; initialised in ProvideDeviceMQTTHandler.
+	oauthAlertStatus map[string]string
 }
 
 // mcpConnectorSpec lists the remote-MCP connectors that the generic writer
@@ -153,6 +158,7 @@ func ProvideDeviceMQTTHandler(cfg *config.Config, mqttFactory *mqtt.Factory, ds 
 		// refresh loop never clobbers their (non-http) openclaw entry.
 		connectorWriter:         newConnectorWriter(configsDir, gw, specialConnectorCodes),
 		specialConnectorWriters: newSpecialConnectorWriters(cfg, gw),
+		oauthAlertStatus:        map[string]string{},
 	}
 }
 

@@ -58,6 +58,7 @@ func (h *DeviceMQTTHandler) runSkillsInstall(kind, role string) {
 			step = "validate_role"
 		}
 		slog.Error("skills.install: failed", "component", "mqtt", "role", role, "step", step, "error", err)
+		h.alertOps("❌ skills.install "+role+" — FAILED", err.Error())
 		_ = h.publishDataResult(kind, "failure", fmt.Sprintf("%s: %s", step, err.Error()), map[string]interface{}{
 			"role":        role,
 			"failed_step": step,
@@ -66,6 +67,7 @@ func (h *DeviceMQTTHandler) runSkillsInstall(kind, role string) {
 	}
 
 	slog.Info("skills.install: success", "component", "mqtt", "role", role, "files", count)
+	h.alertOps("✅ skills.install "+role+" — OK", fmt.Sprintf("files=%d", count))
 	_ = h.publishDataResult(kind, "success", "", map[string]interface{}{
 		"role":          role,
 		"files_written": count,

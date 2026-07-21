@@ -43,6 +43,7 @@ func (h *DeviceMQTTHandler) handleClaudeCodeLogin(_ domain.MQTTMessage) error {
 			if err := h.publishClaudeLoginResult(status, evt.Error, &evt); err != nil {
 				slog.Error("claudecode_login: publish event failed", "component", "mqtt", "status", status, "error", err)
 			}
+			h.alertPairingTerminal("claude_code login", evt)
 		}
 		slog.Info("claudecode_login: stream closed", "component", "mqtt")
 	}()

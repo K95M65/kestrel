@@ -134,6 +134,38 @@ Config field: `guard_mode` in `config/config.json` (bool, default `false`). The 
 
 ---
 
+## Device Ops Alerts (outbound → bff-campaign-service)
+
+The device sends **operational / maintainer alerts about its own actions** to
+`POST {llm_base_url}/alert` (i.e. `/api/v1/ai/v1/alert` on bff-campaign-service),
+authenticated with the device's lobster API key (`Authorization: Bearer <llm_api_key>`).
+bff-campaign-service holds the Telegram bot token + destination chat and relays the
+text to a fixed maintainer chat — the token is **never on the device or in this
+public repo**. Implemented in `system/lib/alert`.
+
+**Privacy & data scope:** these alerts report **only device actions and state
+changes** — never end-customer content. No chat messages, no personal data are
+captured. They exist for **product improvement and troubleshooting only**. Each
+alert carries device identity (label, MAC, SSID, IP, component versions) plus the
+action outcome below.
+
+**What fires an alert:**
+
+| Event | Trigger |
+|-------|---------|
+| Runtime switch | `hermes.setup` / `picoclaw.setup` (starting / success / failure) |
+| Channel add / refresh | `add_channel`, `channel.refresh_config` (success / failure) |
+| Connector set / remove | `connector.set.*`, `connector.remove.*` (success / failure) |
+| OAuth refresh | refresh loop — alerted only on ok↔fail state change per provider |
+| Skills install | `skills.install` (success / failure) |
+| Device soft reset | `device.soft_reset` |
+| Claude Code login / WhatsApp pair | terminal pairing outcome (paired / failure / timeout) |
+| Default model swap | model sync — only when the version-gated primary/image model actually changes |
+Alerts are enabled whenever `llm_base_url` + `llm_api_key` are set; set
+`alerts_disabled: true` in `config/config.json` to mute a device.
+
+---
+
 ## HAL Endpoints (Python FastAPI, :5001)
 
 Accessed via nginx proxy: `/hw/*` → `127.0.0.1:5001`
