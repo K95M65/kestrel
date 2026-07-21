@@ -156,7 +156,7 @@ Monitor poll API system/HW mỗi **3 giây**. Flow dùng hybrid theo file: REST 
 | `POST /hw/servo/upload` | Upload recording CSV (`timestamp` + cột `<joint>.pos`) để thêm/replace animation |
 | `GET /hw/display` | mode, hardware, available_expressions |
 | `GET /hw/audio/volume` | control, volume (0–100) |
-| `GET /hw/voice/mic-level` | SSE stream (~10Hz): level (RMS mic nói, thang int16), threshold (VAD), active, muted, sensing_level / sensing_age_s / sensing_threshold (mic tiếng ồn — mẫu SoundPerception gần nhất, null khi sensing tắt) |
+| `GET /hw/voice/mic-level` | SSE stream (~10Hz): level (RMS mic nói, thang int16), threshold (VAD), active, muted, sensing_level / sensing_age_s / sensing_threshold (mic tiếng ồn — mẫu SoundPerception gần nhất, null khi sensing tắt), tts_speaking / music_playing (trạng thái phát live — audio card tắt "Speaking…/Playing music" theo stream thay vì đợi poll status 5s) |
 | `GET /hw/led/color` | led_count, color [R,G,B], hex (#rrggbb) |
 
 ---
