@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Satellite, Globe, Eye, Volume2, Cpu, Drama, Clapperboard, Bot, Tag, Wifi, LayoutDashboard } from "lucide-react";
 import { S } from "./styles";
-import { API, HW } from "./types";
+import { HW } from "./types";
 
 const EMOTION_EMOJI: Record<string, string> = {
   happy: "😊", curious: "🤔", thinking: "💭", sad: "😢", excited: "🤩",
@@ -59,6 +59,10 @@ export function OverviewSection({
   onSceneActivate,
   onMicMutedChange,
   onSpeakerMutedChange,
+  onTTSStop,
+  onEmotionPick,
+  onServoPlay,
+  onServoRelease,
 }: {
   sys: SystemInfo | null;
   net: NetworkInfo | null;
@@ -78,11 +82,15 @@ export function OverviewSection({
   webVersion: string;
   halVersion: string | null;
   onSceneActivate: (scene: string) => void;
-  // Mute toggles live in the parent (same as onSceneActivate): it owns the
-  // voice/speakerMuted state, so it can commit the new value the moment HAL
-  // acks the POST instead of leaving the button frozen until the next 5s poll.
+  // Action callbacks live in the parent (same as onSceneActivate): it owns the
+  // polled state, so it can commit the new value the moment HAL/os-server acks
+  // the POST instead of leaving the control frozen until the next poll tick.
   onMicMutedChange: (muted: boolean) => void;
   onSpeakerMutedChange: (muted: boolean) => void;
+  onTTSStop: () => void;
+  onEmotionPick: (emotion: string) => void;
+  onServoPlay: (recording: string) => void;
+  onServoRelease: () => void;
 }) {
   const { emotions: ALL_EMOTIONS, colors: EMOTION_COLOR } = useEmotionPresets();
   const emotion = oc?.emotion ?? "";
@@ -280,8 +288,7 @@ export function OverviewSection({
                   )}
                 </div>
                 {(voice.tts_speaking || musicPlaying) && (
-                  <ToggleButton active={false} label="Stop"
-                    onClick={() => fetch(`${API}/agent/tts/stop`, { method: "POST" }).catch(() => {})} />
+                  <ToggleButton active={false} label="Stop" onClick={onTTSStop} />
                 )}
               </div>
 
@@ -388,13 +395,7 @@ export function OverviewSection({
                 active={emotion}
                 label={(e) => <>{EMOTION_EMOJI[e]} {e}</>}
                 accent={(e) => EMOTION_COLOR[e] ?? "#fff"}
-                onPick={(e) => {
-                  fetch(`${HW}/emotion`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ emotion: e, intensity: 1.0 }),
-                  }).catch(() => {});
-                }}
+                onPick={onEmotionPick}
                 title={(e) => `Test emotion: ${e}`}
               />
             </div>
@@ -421,9 +422,7 @@ export function OverviewSection({
                     </span>
                   )}
                 </div>
-                <button className="lm-u-btn" onClick={() => {
-                  fetch(`${HW}/servo/release`, { method: "POST", headers: { accept: "application/json" } }).catch(() => {});
-                }} style={{
+                <button className="lm-u-btn" onClick={onServoRelease} style={{
                   fontSize: 10, padding: "3px 9px", borderRadius: 6,
                   color: "var(--lm-text-dim)", alignSelf: "flex-start",
                 }}>Release</button>
@@ -434,13 +433,7 @@ export function OverviewSection({
                   active={servo.current ?? ""}
                   label={(p) => p}
                   accent={() => "var(--lm-amber)"}
-                  onPick={(p) => {
-                    fetch(`${HW}/servo/play`, {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ recording: p }),
-                    }).catch(() => {});
-                  }}
+                  onPick={onServoPlay}
                 />
               </div>
             </div>

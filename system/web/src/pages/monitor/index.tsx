@@ -795,6 +795,39 @@ export default function Monitor() {
                   if (r.ok) setSpeakerMuted(muted);
                 }).catch(() => {});
               }}
+              onTTSStop={() => {
+                fetch(`${API}/agent/tts/stop`, { method: "POST" }).then((r) => {
+                  if (r.ok) {
+                    setVoice((prev) => (prev ? { ...prev, tts_speaking: false } : prev));
+                    setMusicPlaying(false);
+                  }
+                }).catch(() => {});
+              }}
+              onEmotionPick={(e) => {
+                // Optimistic pill highlight: oc.emotion refreshes on the 10s
+                // sidebar poll, which reconciles if the agent moves on.
+                fetch(`${HW}/emotion`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ emotion: e, intensity: 1.0 }),
+                }).then((r) => {
+                  if (r.ok) setOc((prev) => (prev ? { ...prev, emotion: e } : prev));
+                }).catch(() => {});
+              }}
+              onServoPlay={(p) => {
+                fetch(`${HW}/servo/play`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ recording: p }),
+                }).then((r) => {
+                  if (r.ok) setServo((prev) => (prev ? { ...prev, current: p } : prev));
+                }).catch(() => {});
+              }}
+              onServoRelease={() => {
+                fetch(`${HW}/servo/release`, { method: "POST", headers: { accept: "application/json" } }).then((r) => {
+                  if (r.ok) setServo((prev) => (prev ? { ...prev, current: null } : prev));
+                }).catch(() => {});
+              }}
             />
           )}
           {section === "system" && (
