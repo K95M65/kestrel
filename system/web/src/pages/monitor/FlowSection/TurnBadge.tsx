@@ -427,6 +427,19 @@ export function TurnBadge({ turn, pairTint, userPhotos, onViewPipeline }: {
                 <span style={{ color: "var(--lm-teal)", fontWeight: 700 }}>↓{fmtToken(tokenStats.inTok)}</span>
                 {" "}
                 <span style={{ color: "var(--lm-amber)", fontWeight: 700 }}>↑{fmtToken(tokenStats.outTok)}</span>
+                {/* Cache read shown inline (not tooltip-only): it IS the bulk of
+                    the context the LLM ingested each turn — hiding it made a
+                    ~55k-context turn read as "2k tokens" and confused users
+                    comparing against provider billing. R = cache read (~0.1×
+                    price); ≈billed = in + cacheWrite + 0.1×cacheRead + out. */}
+                {(tokenStats.cacheRead > 0 || tokenStats.cacheWrite > 0) && (
+                  <>
+                    {" "}
+                    <span style={{ color: "var(--lm-text-muted)", fontWeight: 600 }}>R{fmtToken(tokenStats.cacheRead)}</span>
+                    {" "}
+                    <span style={{ color: "var(--lm-text-muted)" }}>≈{fmtToken(billed)} billed</span>
+                  </>
+                )}
                 {" "}
                 <span style={{ color: "var(--lm-text-muted)" }}>tokens</span>
               </span>
