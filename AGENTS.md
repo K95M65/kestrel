@@ -112,7 +112,7 @@ Autonomous is an open-source OS for physical AI agents. The Go backend
 channel setup), OTA updates, and agent gateway integration. The brain is a
 swappable agentic runtime (OpenClaw, Hermes, or any LLM + skills + memory).
 
-**Go module (`system`):** `go.autonomous.ai/os` | **Go 1.24** | **Target:** Linux ARM64
+**Go module:** `go.autonomous.ai/os` (rooted at repo root — covers `system/` and `runtimes/`) | **Go 1.24** | **Target:** Linux ARM64
 
 ## Build & Development Commands
 
@@ -124,11 +124,11 @@ make os-build                # Builds os-server binary
 make os-build-bootstrap      # Builds bootstrap-server binary
 
 # Code generation (Google Wire DI)
-make os-generate             # Runs: cd system && GOFLAGS=-mod=mod go generate ./...
+make os-generate             # Runs from repo root: GOFLAGS=-mod=mod go generate ./...
 
 # Lint + tests (Go)
-make os-lint                 # cd system && golangci-lint run
-make os-test                 # cd system && go test ./...
+make os-lint                 # golangci-lint run (repo root, covers runtimes/)
+make os-test                 # go test ./... (repo root, covers runtimes/)
 
 # HAL (Python hardware runtime, hal)
 make hal-dev                 # Install deps + run HAL locally
@@ -247,6 +247,6 @@ handler level before passing data to services.
 ### Naming (paths under `system/`)
 
 - Handlers: `server/<domain>/delivery/http/handler.go`
-- Services: `internal/<domain>/service.go`
+- Services: `<domain>/service.go` (system managers live at `system/<domain>/`, e.g. `ambient/service.go`)
 - Wire providers: `server/wire.go`, `bootstrap/wire.go`
 - Domain types: `domain/<type>.go`

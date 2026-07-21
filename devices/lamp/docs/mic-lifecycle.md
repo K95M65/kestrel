@@ -7,7 +7,7 @@ Mic mute for privacy — meetings, calls, or just don't want Lamp listening.
 - Voice pipeline (`VoiceService`) runs always-on: mic → VAD → wake word → STT → OpenClaw
 - Sound perception (`SoundPerception`) in sensing loop: mic → RMS → sound events
 - Speaker recognition (`SpeakerRecognizer`): at end of every STT session, forwards the buffered WAV to `perception-service /audio-recognizer/embed` to identify the speaker
-- Speech emotion recognition (`SpeechEmotionService`): when speaker ID succeeds, the **same WAV bytes** are forwarded to `perception-service /api/dl/ser/recognize` on a separate worker thread; results are bucketed and dedup'd per user before firing `speech_emotion.detected` sensing events. See [Speech Emotion Recognition](speech-emotion.md).
+- Speech emotion recognition (`SpeechEmotionService`): when speaker ID succeeds, the **same WAV bytes** are forwarded to `perception-service /api/dl/ser/recognize` on a separate worker thread; results are bucketed and dedup'd per user before firing `speech_emotion.detected` sensing events. See [Speech Emotion Recognition](../../../docs/speech-emotion.md).
 - Wake word detection runs inside VoiceService
 - ✅ `POST /voice/mute` / `POST /voice/unmute` — stop/restart VoiceService
 - ✅ `GET /voice/status` includes `mic_muted` field

@@ -143,7 +143,7 @@ func (h *SensingHandler) PostEvent(c *gin.Context) {
 	// Wellbeing enter/leave rows are written by HAL directly (per
 	// friend on their own timeline, stranger collapsed to "unknown"
 	// timeline) — the handler no longer writes them here. See
-	// facerecognizer._post_wellbeing.
+	// faceid/perception.py _post_wellbeing.
 	if req.CurrentUser != "" {
 		mood.SetCurrentUser(req.CurrentUser)
 	} else if req.Type == "presence.leave" || req.Type == "presence.away" {

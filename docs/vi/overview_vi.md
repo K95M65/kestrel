@@ -50,7 +50,8 @@ hal/
 │   │   ├── presence_service.py   — State machine tự bật/tắt đèn theo presence
 │   │   └── perceptions/          — Các detector có thể plug in
 │   │       ├── motion.py         — Phát hiện chuyển động (frame diff)
-│   │       ├── facerecognizer.py — Nhận diện friend/stranger (InsightFace)
+│   │       ├── facerecognizer.py — Nhận diện friend/stranger (InsightFace) (legacy, không dùng)
+│   │       ├── faceid/           — Nhận diện friend/stranger đang dùng (SCRFD + EdgeFace ONNX; model tải về lần đầu)
 │   │       └── light_level.py    — Phát hiện thay đổi độ sáng môi trường
 │   └── display/                  — GC9A01 LCD eyes + info
 └── pyproject.toml                — Python dependencies (opencv-python, insightface)

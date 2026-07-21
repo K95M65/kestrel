@@ -78,7 +78,7 @@ _ENROLL_CONSISTENCY_THRESHOLD = config.SPEAKER_ENROLL_CONSISTENCY_THRESHOLD
 # Assigns a stable "voiceprint_hash" (voice_<N> label) to every unknown voice
 # so callers can track "same unknown speaker seen multiple times" without
 # needing voiceprint_hash support from the embedding backend. Mirrors the
-# face stranger tracker in facerecognizer.py.
+# face stranger tracker in faceid/perception.py.
 _VOICE_STRANGERS_DIR = Path(
     os.environ.get("HAL_VOICE_STRANGERS_DIR", "/root/local/voice_strangers")
 )

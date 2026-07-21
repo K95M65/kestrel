@@ -54,7 +54,7 @@ Track which features have been manually tested on the Raspberry Pi 4.
 | EX-03 | Guard mode motion broadcast | Bật guard mode → tạo chuyển động lớn trước camera → kiểm tra Telegram nhận cảnh báo motion | ✅ | Same broadcast path as EX-02 |
 | EX-04 | Guard manual alert | `curl -X POST http://pi:5000/api/guard/alert -d '{"message":"Test alert"}'` → tất cả chat session nhận message | ✅ | `PostGuardAlert` → `Broadcast()` |
 | EX-05 | Guard mode via voice | Nói: **"bật chế độ canh gác"** hoặc **"enable guard mode"** → guard mode bật. Nói: **"tắt canh gác"** → guard mode tắt | ✅ | OpenClaw `guard` skill with enable/disable API + camera auto-enable |
-| EX-06 | Stranger stats tracking | Để stranger xuất hiện trước camera nhiều lần → `curl http://pi:5001/face/stranger-stats` → thấy count tăng, first_seen/last_seen đúng | ✅ | HAL `facerecognizer.py` tracks visit counts per stranger ID |
+| EX-06 | Stranger stats tracking | Để stranger xuất hiện trước camera nhiều lần → `curl http://pi:5001/face/stranger-stats` → thấy count tăng, first_seen/last_seen đúng | ✅ | HAL `faceid/perception.py` tracks visit counts per stranger ID |
 | EX-07 | Stranger enrollment suggestion | Để stranger xuất hiện 3+ lần → agent gợi ý đăng ký khuôn mặt | ⚠️ | Sensing skill has context but no explicit visit-count trigger yet |
 | EX-08 | Stranger stats persistence | Restart HAL → `curl http://pi:5001/face/stranger-stats` → stats vẫn còn (lưu trong HAL data dir) | ✅ | Persisted to `.stranger_stats.json` |
 

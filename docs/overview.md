@@ -49,7 +49,8 @@ hal/
 │   │   ├── presence_service.py   — Auto light on/off state machine
 │   │   └── perceptions/          — Pluggable detectors
 │   │       ├── motion.py         — Frame differencing motion detector
-│   │       ├── facerecognizer.py — InsightFace friend/stranger recognizer
+│   │       ├── facerecognizer.py — InsightFace friend/stranger recognizer (legacy, unused)
+│   │       ├── faceid/           — Active friend/stranger recognizer (SCRFD + EdgeFace ONNX; weights fetched on first use)
 │   │       └── light_level.py    — Ambient brightness detector
 │   └── display/                  — GC9A01 LCD eyes + info
 └── pyproject.toml                — Python dependencies (opencv-python, insightface)

@@ -55,7 +55,7 @@ wire the switch, install, migration, skills, hooks, and reset.
 
 ## 1. The contract — implement `domain.AgentGateway`
 
-Your backend lives in `internal/<name>/` and its `*Service` must satisfy the
+Your backend lives in `runtimes/<name>/` and its `*Service` must satisfy the
 **whole** `AgentGateway` interface. The methods fall into groups:
 
 | Group | Examples | New-backend stance |
@@ -97,7 +97,7 @@ has a real config.json). Mirrors the `ErrChannelNotSupported` rule in §9.
 
 1. `domain/device.go`: add `AgentRuntime<Name>` const + the entry in `AgentRuntimes`.
 2. `system/agent/factory.go`: add the `case` in `ProvideGateway`.
-3. **Embedded installer**: `internal/<name>/install.sh` + `install.go`
+3. **Embedded installer**: `runtimes/<name>/install.sh` + `install.go`
    (`//go:embed install.sh` → `runtimereg.Register(name, InstallScript)`).
 4. `switch_runtime.sh` is **generic** — it knows no backend names. Do **not** edit
    it, the imager, or os-server's switch core to add a backend.
@@ -256,7 +256,7 @@ in its backend doc (e.g. `docs/agentic/hermes.md`), not a blanket guarantee here
 - **Skill watcher** (auto-update from CDN, capability-gated): the generic
   fetch/extract/hash plumbing is shared in `system/skills/skillzip.go`
   (`FetchSkillVersions`/`DownloadToTempFile`/`FolderHash`/`ExtractSkillZip`). Add a
-  thin `internal/<name>/skill_watcher.go` parallel to `runtimes/openclaw/skill_watcher.go`
+  thin `runtimes/<name>/skill_watcher.go` parallel to `runtimes/openclaw/skill_watcher.go`
   — only the **target dir** and the **notify path** differ. Gate with
   `skills.Supported(device.Capabilities(...))`. Notify the agent with
   `SendSystemChatMessage`.
@@ -317,7 +317,7 @@ when such a turn source appears.
 
 ## 7. Factory reset
 
-- Implement the backend wipe **in `ResetAgent()`** (`internal/<name>/reset.go`).
+- Implement the backend wipe **in `ResetAgent()`** (`runtimes/<name>/reset.go`).
   `server/system/factoryreset.go` resolves the **active gateway** and calls
   `gw.ResetAgent()` — there is **no per-backend `switch`** to keep in sync (adding
   a backend = implement `ResetAgent`, nothing in `server/system`). A backend whose
@@ -439,7 +439,7 @@ re-syncs `.env` before the gateway starts, so the re-apply is an idempotent no-o
 
 ## Checklist for a new backend
 
-- [ ] `internal/<name>/` package; `*Service` implements **all** of `AgentGateway`.
+- [ ] `runtimes/<name>/` package; `*Service` implements **all** of `AgentGateway`.
 - [ ] Every stub is `// no-op because …` or `// TODO(<name>-…)` — no bare bodies.
 - [ ] N/A stubs that return an error return `domain.ErrNotSupportedByRuntime`,
       never `nil` (§4 "No fake success").
@@ -459,7 +459,7 @@ re-syncs `.env` before the gateway starts, so the re-apply is an idempotent no-o
 - [ ] Hooks: backend-native or OS-side — decided & documented (not silently absent).
       If reimplemented OS-side in Go (no compile-time link to the TS hook), add
       cross-reference comments in both files so a change to one flags the other.
-- [ ] `ResetAgent()` in `internal/<name>/reset.go` (factory-reset calls
+- [ ] `ResetAgent()` in `runtimes/<name>/reset.go` (factory-reset calls
       `gw.ResetAgent()` on the active gateway — no `factoryreset.go` switch); **`agent_state.json` wiped with
       `config.json`**.
 - [ ] Capability gating via `skills.Supported` / `SupportedHooks`.

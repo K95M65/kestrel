@@ -30,7 +30,7 @@ What remains open:
 
 - `hal/drivers/sensing/perceptions/processors/emotion.py`
 - `hal/drivers/sensing/perceptions/processors/motion.py`
-- `hal/drivers/sensing/perceptions/processors/facerecognizer.py`
+- `hal/drivers/sensing/perceptions/processors/faceid/` (face recognizer; `facerecognizer.py` is the legacy InsightFace version, unused)
 - `hal/drivers/sensing/sensing_service.py`
 - `hal/config.py`
 

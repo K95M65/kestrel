@@ -2,7 +2,7 @@
 
 HAL phân tích cảm xúc từ giọng nói **sau mỗi phiên mic** (VAD trigger → im lặng ~2.5 s đóng phiên), độc lập với việc STT có trả transcript hay không. Nhờ vậy, tiếng cười, thở dài, "ờ ờ" và các tín hiệu phi-lời nói (vốn để lại transcript rỗng) vẫn được phân loại. Kết quả được gom theo người dùng, lọc trùng theo bucket cảm xúc, rồi gửi sự kiện `speech_emotion.detected` tới OS server để OpenClaw phản ứng. Speaker recognition vẫn được gọi nội bộ để xác định trường `user` (rơi về `unknown` khi không nhận diện được); nó **không còn là cổng chặn** trước SER.
 
-**Tài liệu liên quan:** [Tuning sensing (SER)](../sensing-tuning.md#speech-emotion-recognition-ser) · [perception-service](../perception-service.md) · [Sensing behavior](sensing-behavior_vi.md)
+**Tài liệu liên quan:** [Tuning sensing (SER)](../../devices/lamp/docs/sensing-tuning.md#speech-emotion-recognition-ser) · [perception-service](../perception-service.md) · [Sensing behavior](../../devices/lamp/docs/vi/sensing-behavior_vi.md)
 
 ---
 
@@ -127,7 +127,7 @@ POST http://127.0.0.1:5000/api/sensing/event
 
 Trường `audio` là field **riêng, tùy chọn** — đường dẫn trên đĩa tới clip WAV sinh ra event này. Nó **không** nằm trong `message` và **không bao giờ** được gửi tới LLM (xem [Lưu Audio Để Gỡ Lỗi](#lưu-audio-để-gỡ-lỗi) bên dưới). Rỗng khi persistence bị tắt hoặc ghi file thất bại.
 
-OpenClaw / sensing pipeline xử lý như sự kiện sensing khác (xem [sensing-behavior_vi.md](sensing-behavior_vi.md)).
+OpenClaw / sensing pipeline xử lý như sự kiện sensing khác (xem [sensing-behavior_vi.md](../../devices/lamp/docs/vi/sensing-behavior_vi.md)).
 
 ---
 
@@ -187,7 +187,7 @@ DEFAULT_CONFIDENCE_THRESHOLD: float = 0.5  # fallback cho label không nằm tro
 
 Negative emotion siết chặt hơn để tránh false positive gây alarm. Worker lookup qua `utils.threshold_for(label)`; muốn tune → sửa trực tiếp `constants.py`, không có env override.
 
-Chi tiết tuning / log: [sensing-tuning_vi.md](sensing-tuning_vi.md).
+Chi tiết tuning / log: [sensing-tuning_vi.md](../../devices/lamp/docs/vi/sensing-tuning_vi.md).
 
 ---
 

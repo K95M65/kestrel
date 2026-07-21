@@ -300,7 +300,7 @@ reconcile(key, target):
 
 ### OTA LED Feedback
 
-Bootstrap dùng `lib/hal` để báo trạng thái update qua LED. Xem chi tiết: [status-led_vi.md](status-led_vi.md).
+Bootstrap dùng `lib/hal` để báo trạng thái update qua LED. Xem chi tiết: [status-led_vi.md](../../devices/lamp/docs/vi/status-led_vi.md).
 
 | Giai đoạn | LED |
 |----------|-----|
@@ -563,8 +563,8 @@ Guards trong script: từ chối nếu tag đã tồn tại local hoặc trên r
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 
 # Go symbol giữ config.LampVersion (nội bộ, không thuộc deploy identity).
-LDFLAGS_BOOT := -X go.autonomous.ai/os/bootstrap/config.BootstrapVersion=$(VERSION)
-LDFLAGS_OS   := -X go.autonomous.ai/os/server/config.LampVersion=$(VERSION)
+LDFLAGS_OS   := -X go.autonomous.ai/os/system/server/config.OSVersion=$(VERSION)
+LDFLAGS_BOOT := -X go.autonomous.ai/os/system/bootstrap/config.BootstrapVersion=$(VERSION)
 
 os-build-bootstrap:
 	GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS_BOOT)" -o bootstrap-server ./cmd/bootstrap

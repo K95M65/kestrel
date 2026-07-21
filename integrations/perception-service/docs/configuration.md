@@ -65,9 +65,7 @@ Base URL: `https://storage.googleapis.com/autonomous-models/`
 > including the default action model **X3D** and the default audio embedder
 > **WeSpeaker ResNet34**, so a fresh out-of-the-box run will fail to download them.
 > The fifth, **Emo-AffectNet**, is newly added and must be exported and uploaded
-> before it resolves — see
-> [face-emotion/emoaffectnet-setup.md](../../docs/face-emotion/emoaffectnet-setup.md)
-> (until then use `FER__CKPT_PATH` to point at the locally exported ONNX). The
+> before it resolves (until then use `FER__CKPT_PATH` to point at the locally exported ONNX). The
 > remaining files return `200`. Until the weights are uploaded (or `CDN_PATHS` in
 > `src/core/utils/files.py` is corrected to the real filenames — pending confirmation
 > from the maintainers), work around it by either selecting a model whose weights do

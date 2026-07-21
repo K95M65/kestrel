@@ -881,4 +881,4 @@ The Lamp server is forked from openclaw-lobster. Approximately 70-80% of Layer 1
 
 ---
 
-*This document defines what AI Lamp is. For architecture decisions, see [architecture-decision.md](architecture-decision.md). For detailed use case specifications, see [usecases.md](usecases.md).*
+*This document defines what AI Lamp is. For architecture decisions, see [architecture-decision.md](architecture-decision.md).*
