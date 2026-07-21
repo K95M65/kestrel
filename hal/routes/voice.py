@@ -414,7 +414,8 @@ async def mic_level_stream(request: Request):
     """Stream live mic input levels as Server-Sent Events (~10Hz).
 
     Each event: `data: {"level", "threshold", "active", "muted",
-    "sensing_level", "sensing_age_s", "sensing_threshold"}`.
+    "sensing_level", "sensing_age_s", "sensing_threshold",
+    "tts_speaking", "music_playing"}`.
 
     - `level` — voice-pipeline mic (STT), latest capture-frame RMS on int16
       scale (0..32768, computed anyway by the VAD loop — zero added DSP
@@ -426,6 +427,9 @@ async def mic_level_stream(request: Request):
       during/after TTS), NOT continuous — the web bar steps rather than
       pumps. null when sensing/sound perception isn't running.
       `sensing_threshold` is the loud-noise threshold.
+    - `tts_speaking` / `music_playing` — live playback state, piggybacked so
+      the web audio card flips "Speaking…/Playing music" the moment playback
+      ends instead of waiting out its 5s `/voice/status` poll.
 
     Consumed by the web Overview audio card (VU meters) via the os-server
     `/api/hardware` proxy — httputil.ReverseProxy streams event-stream
@@ -464,6 +468,12 @@ async def mic_level_stream(request: Request):
                     "sensing_level": sensing_level,
                     "sensing_age_s": sensing_age_s,
                     "sensing_threshold": sound_threshold,
+                    "tts_speaking": state._tts_speaking,
+                    # Same source as GET /audio/status "playing" (music flag,
+                    # not the stricter MusicService.streaming).
+                    "music_playing": bool(state.music_service.playing)
+                    if state.music_service
+                    else False,
                 }
             )
             yield f"data: {payload}\n\n"

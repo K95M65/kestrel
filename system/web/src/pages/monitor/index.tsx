@@ -803,6 +803,14 @@ export default function Monitor() {
                   }
                 }).catch(() => {});
               }}
+              onPlaybackLive={(tts, music) => {
+                // Fired by the mic-level SSE stream only on CHANGE — commits
+                // playback state the moment HAL flips it, so "Speaking…" clears
+                // in ~100ms instead of waiting out the 5s poll (which stays on
+                // as the reconciler when the stream is closed/hidden).
+                setVoice((prev) => (prev && prev.tts_speaking !== tts ? { ...prev, tts_speaking: tts } : prev));
+                setMusicPlaying((prev) => (prev === music ? prev : music));
+              }}
               onEmotionPick={(e) => {
                 // Optimistic pill highlight: oc.emotion refreshes on the 10s
                 // sidebar poll, which reconciles if the agent moves on.

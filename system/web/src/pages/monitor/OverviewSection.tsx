@@ -60,6 +60,7 @@ export function OverviewSection({
   onMicMutedChange,
   onSpeakerMutedChange,
   onTTSStop,
+  onPlaybackLive,
   onEmotionPick,
   onServoPlay,
   onServoRelease,
@@ -88,6 +89,10 @@ export function OverviewSection({
   onMicMutedChange: (muted: boolean) => void;
   onSpeakerMutedChange: (muted: boolean) => void;
   onTTSStop: () => void;
+  // Live playback state off the mic-level SSE stream (~10Hz) — lets the parent
+  // flip tts_speaking/musicPlaying the moment playback ends instead of waiting
+  // out the 5s /voice/status poll.
+  onPlaybackLive?: (tts: boolean, music: boolean) => void;
   onEmotionPick: (emotion: string) => void;
   onServoPlay: (recording: string) => void;
   onServoRelease: () => void;
@@ -337,7 +342,7 @@ export function OverviewSection({
               </div>
 
               {/* Live mic input VU meter */}
-              <MicLevelBar muted={voice.mic_muted ?? false} />
+              <MicLevelBar muted={voice.mic_muted ?? false} onPlayback={onPlaybackLive} />
             </div>
           ) : <AudioSkeleton />}
         </div>
@@ -678,7 +683,7 @@ const NOISE_STALE_S = 60;
 // re-render the Audio card; amber ticks mark each pipeline's trigger
 // threshold (VAD wake / loud-noise). The stream stays open while the voice
 // mic is muted — the sensing mic is independent of the mute switch.
-function MicLevelBar({ muted }: { muted: boolean }) {
+function MicLevelBar({ muted, onPlayback }: { muted: boolean; onPlayback?: (tts: boolean, music: boolean) => void }) {
   const fillRef = useRef<HTMLDivElement>(null);
   const noiseFillRef = useRef<HTMLDivElement>(null);
   // Numeric readouts (raw RMS) mutated via refs like the fills — no re-render.
@@ -687,6 +692,12 @@ function MicLevelBar({ muted }: { muted: boolean }) {
   const [threshold, setThreshold] = useState<number | null>(null);
   const [noiseThreshold, setNoiseThreshold] = useState<number | null>(null);
   const [hasNoiseMic, setHasNoiseMic] = useState(false);
+  // Playback state piggybacked on the stream: forward to the parent only on
+  // CHANGE (ref-compared) so 10Hz frames never re-render the Audio card. Ref
+  // for the callback keeps the once-mounted SSE effect free of stale closures.
+  const onPlaybackRef = useRef(onPlayback);
+  onPlaybackRef.current = onPlayback;
+  const lastPlaybackRef = useRef<string>("");
 
   useEffect(() => {
     let es: EventSource | null = null;
@@ -698,7 +709,15 @@ function MicLevelBar({ muted }: { muted: boolean }) {
           const d = JSON.parse(e.data) as {
             level: number; threshold: number; sensing_present?: boolean;
             sensing_level: number | null; sensing_age_s: number | null; sensing_threshold: number;
+            tts_speaking?: boolean; music_playing?: boolean;
           };
+          if (d.tts_speaking !== undefined || d.music_playing !== undefined) {
+            const key = `${d.tts_speaking}|${d.music_playing}`;
+            if (key !== lastPlaybackRef.current) {
+              lastPlaybackRef.current = key;
+              onPlaybackRef.current?.(d.tts_speaking ?? false, d.music_playing ?? false);
+            }
+          }
           if (fillRef.current) fillRef.current.style.width = `${micRmsToPct(d.level)}%`;
           if (levelTextRef.current) levelTextRef.current.textContent = String(Math.round(d.level));
           setThreshold((t) => (t === d.threshold ? t : d.threshold));
