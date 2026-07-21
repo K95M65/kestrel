@@ -754,6 +754,8 @@ When nothing is happening, `system/ambient/` (Go, part of os-server) makes the d
 - **Sleep mode**: when a `hw_emotion` event carries `sleepy`, all ambient behaviors are suppressed until the next real interaction (chat, wake word, sensing) wakes the device.
 - Pause/resume transitions are logged to the Flow Monitor as `ambient_pause` / `ambient_resume`.
 
+**Two timers, two layers** — the 60 s resume delay is *eligibility* ("ambient may act again"), while each loop below keeps its own *cadence* clock that ticks independently and is never reset by interactions; when a loop's clock fires while ambient is paused, that round is skipped, not queued. Example timeline: the user stops talking → 60 s later ambient resumes, so the LED starts breathing almost immediately (2 s tick) — but the next self-talk line lands whenever the mumble loop's 5–15 min clock happens to fire next, which may be right away or many minutes later.
+
 ### Behavior loops (capability-gated)
 
 The whole suite is opt-in per device: the routeless `lifelike` capability (declared in the `capabilities:` block of `devices/<type>/DEVICE.md`, see `devices/contract/capabilities.md`) is the master switch — a device that declares capabilities without `lifelike` runs no idle behaviors at all (e.g. intern-v2 stays a quiet tool). Each loop additionally drives one peripheral and only runs if the device declares the matching hardware capability. A device with no declared capabilities at all runs everything (fail-open, legacy Lamp behavior).
