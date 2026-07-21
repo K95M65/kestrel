@@ -425,10 +425,11 @@ export function TurnBadge({ turn, pairTint, userPhotos, onViewPipeline }: {
       }}>
         <span style={{ fontWeight: 600 }}>{turn.events.length} events</span>
         {tokenStats && (() => {
-          const title = `Tokens — in ${fmtToken(tokenStats.inTok)} / out ${fmtToken(tokenStats.outTok)} · total ${fmtToken(tokenStats.total)}`
+          const title = `LLM tokens — in ${fmtToken(tokenStats.inTok)} / out ${fmtToken(tokenStats.outTok)} · total ${fmtToken(tokenStats.total)}`
             + ((tokenStats.cacheRead || tokenStats.cacheWrite)
               ? `\nCache read ${fmtToken(tokenStats.cacheRead)} / write ${fmtToken(tokenStats.cacheWrite)} (billed at full price)`
-              : "");
+              : "")
+            + "\nText-agent LLM only — realtime voice (Gemini) and TTS are billed separately";
           return (
             <span title={title} style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
               <span style={{ opacity: 0.4 }}>·</span>
@@ -452,7 +453,10 @@ export function TurnBadge({ turn, pairTint, userPhotos, onViewPipeline }: {
                   </>
                 )}
                 {" "}
-                <span style={{ color: "var(--lm-text-muted)" }}>tokens</span>
+                {/* "LLM tokens", not just "tokens": the Autonomous billing UI
+                    counts realtime voice (Gemini) + TTS tokens in the same
+                    bucket — this footer covers the text-agent LLM only. */}
+                <span style={{ color: "var(--lm-text-muted)" }}>LLM tokens</span>
               </span>
             </span>
           );
