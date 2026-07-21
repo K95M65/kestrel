@@ -56,20 +56,6 @@ JOINT_KEYS: Set[str] = {*_HEAD_KEYS, *_ANTENNA_KEYS, _BODY_KEY}
 # are documented here for reference): head pitch/roll ±40°, head yaw ±180°,
 # body yaw ±160°, head-vs-body yaw delta ≤ 65°.
 
-# Aim table — same direction vocabulary as hal/presets AIM_PRESETS, values are
-# Reachy head kinematics. Convention: +yaw = left, +pitch = up (ROS-style).
-# TODO(spike): verify sign convention and tune angles on the real robot.
-_AIM_TARGETS: Dict[str, Dict[str, float]] = {
-    "center": {"head_yaw.pos": 0.0, "head_pitch.pos": 0.0, "head_z.pos": 0.0},
-    "desk":   {"head_yaw.pos": 0.0, "head_pitch.pos": -30.0, "head_z.pos": 0.0},
-    "wall":   {"head_yaw.pos": 0.0, "head_pitch.pos": 20.0, "head_z.pos": 0.0},
-    "left":   {"head_yaw.pos": 40.0},
-    "right":  {"head_yaw.pos": -40.0},
-    "up":     {"head_pitch.pos": 30.0},
-    "down":   {"head_pitch.pos": -35.0},
-    "user":   {"head_yaw.pos": 0.0, "head_pitch.pos": 15.0},
-}
-
 # Default HF move library preloaded by the daemon.
 _EMOTES_DATASET = "pollen-robotics/reachy-mini-emotions-library"
 
@@ -77,6 +63,20 @@ _EMOTES_DATASET = "pollen-robotics/reachy-mini-emotions-library"
 # Keys use preset constants from hal.presets; unmatched names are tried verbatim
 # (in case the caller already uses HF names).
 import hal.presets as P
+
+# Aim table — same direction vocabulary as hal/presets AIM_PRESETS, values are
+# Reachy head kinematics. Convention: +yaw = left, +pitch = up (ROS-style).
+# TODO(spike): verify sign convention and tune angles on the real robot.
+_AIM_TARGETS: Dict[str, Dict[str, float]] = {
+    P.AIM_CENTER: {"head_yaw.pos": 0.0, "head_pitch.pos": 0.0, "head_z.pos": 0.0},
+    P.AIM_DESK:   {"head_yaw.pos": 0.0, "head_pitch.pos": -30.0, "head_z.pos": 0.0},
+    P.AIM_WALL:   {"head_yaw.pos": 0.0, "head_pitch.pos": 20.0, "head_z.pos": 0.0},
+    P.AIM_LEFT:   {"head_yaw.pos": 40.0},
+    P.AIM_RIGHT:  {"head_yaw.pos": -40.0},
+    P.AIM_UP:     {"head_pitch.pos": 30.0},
+    P.AIM_DOWN:   {"head_pitch.pos": -35.0},
+    P.AIM_USER:   {"head_yaw.pos": 0.0, "head_pitch.pos": 15.0},
+}
 
 _MOVE_MAP: Dict[str, str] = {
     # emotions
