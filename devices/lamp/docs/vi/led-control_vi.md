@@ -159,6 +159,13 @@ không chặn gì cả:
   ở lần restore kế). Các đường scene unmute mic (`/scene` với `mic:"on"`, `/scene/off`)
   cũng clear indicator.
 - `_user_led_state` không bao giờ bị đụng — unmute là về lại đúng state user đã lưu.
+- Khi indicator đang giữ strip, transient overlay bị skip (`POST /led/effect` với
+  `transient:true`) và **mọi** `POST /led/effect/stop` cũng bị skip: không thể có transient
+  overlay nào đang chạy (start của nó đã bị skip), nên stop nào tới lúc mute đều là caller
+  cũ/lạc hậu. breathingLoop ambient bên Go giữ flag "running" cục bộ nên vẫn bắn StopEffect
+  khi pause/lock dù start đã bị skip — trước khi guard phủ hết mọi thread, stop đó lọt qua
+  lúc emotion effect đang giữ strip (vd pulse tím của thinking) và giết nó sau ~1 vòng,
+  strip đứng hình ở frame ripple cuối. Emotion effect tự lắng về đỏ qua restore đã hẹn giờ.
 
 ### Setup-needed solid (lamp)
 

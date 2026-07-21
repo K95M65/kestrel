@@ -225,6 +225,8 @@ The defaults apply even with no `.env` entries. To pin the frame rate on a devic
 
 `_apply_camera_controls()` (`drivers/camera/video_capture_device.py`) runs after the resolution is set on open **and on every device reopen** — a fresh open resets the camera to defaults, which would otherwise silently drop manual exposure and re-introduce the FPS throttle. It maps to V4L2/UVC controls via OpenCV: `CAP_PROP_AUTO_EXPOSURE` (1=manual, 3=auto), `CAP_PROP_EXPOSURE`, `CAP_PROP_GAIN`, `CAP_PROP_BRIGHTNESS`.
 
+In `auto` mode the control is actively set to 3 (aperture-priority) on every open, not left untouched: UVC cameras retain manual exposure/gain across HAL restarts, so a leftover manual state from an earlier configuration would otherwise survive an `.env` switch to `auto`. Leftover manual **gain** is not reset (its default is camera-specific and auto-exposure compensates); clear it once with `v4l2-ctl -d /dev/video0 --set-ctrl gain=<default>` if colors stay off after switching to auto. Note `.env` changes only take effect after `systemctl restart hal` — the running process keeps the env it started with.
+
 ### Trade-off
 
 Frame rate vs brightness is a hard physical trade-off in a dark room: the max exposure that still holds 30fps is ~33ms (`HAL_CAMERA_EXPOSURE=330`); a brighter image needs a longer exposure (fewer fps) or more gain (noisier). The stream endpoint is separately capped at `HAL_CAMERA_STREAM_FPS` (default 10), so the monitor's live view does not reflect the capture rate.

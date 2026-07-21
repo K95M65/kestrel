@@ -325,7 +325,7 @@ Wellbeing hoạt động **event-driven**. **KHÔNG còn cron wellbeing** nào. 
 - Stranger khác nhau (`stranger_46` → `stranger_54`) đều collapse về `"unknown"` qua `FaceRecognizer.current_user()` → đổi stranger không phá dedup.
 - Sau 5 phút cùng state, event tiếp theo vẫn pass — để Lamp agent "thức dậy" định kỳ chạy threshold check.
 
-*Presence dedup (safety net tại log).* `system/lib/wellbeing/wellbeing.go::LogForUser` scan file JSONL của user từ dưới lên để tìm **presence row** gần nhất (enter/leave, bỏ qua activity rows xen giữa). `enter` khi presence cuối đã là `enter` → drop; `leave` khi chưa có session mở → drop. Vì HAL đã fire 1 enter / 1 session thật (per-friend + unknown gộp), layer này chỉ là safety net cho restart / out-of-order edge case, không load-bearing.
+*Presence dedup (safety net tại log).* `system/skillcontext/wellbeing/wellbeing.go::LogForUser` scan file JSONL của user từ dưới lên để tìm **presence row** gần nhất (enter/leave, bỏ qua activity rows xen giữa). `enter` khi presence cuối đã là `enter` → drop; `leave` khi chưa có session mở → drop. Vì HAL đã fire 1 enter / 1 session thật (per-friend + unknown gộp), layer này chỉ là safety net cho restart / out-of-order edge case, không load-bearing.
 
 **Retention:** 30 ngày. Goroutine trong `wellbeing.Init()` xoá file cũ hàng ngày.
 
@@ -386,7 +386,7 @@ Caller ngoài (web UI, skill) có thể query cùng giá trị qua `GET http://1
 
 Các skill Wellbeing, Mood, Music đều bắt buộc dùng đúng giá trị này cho field `user` trong API call — **cấm** suy luận từ memory, KNOWLEDGE.md, chat history, hay `senderLabel`.
 
-Cùng với `[context: current_user=X]`, handler còn inject thêm `[user_info: {"name","is_friend","telegram_id","telegram_username"}]` (build bởi `system/lib/skillcontext/BuildUserContext`, fetch từ lelamp `/user/info`). Skill phải đọc `telegram_id` từ block này — **cấm** `curl /user/info`. Block bị bỏ khi fetch fail hoặc `current_user` là `unknown`; SKILL.md vẫn giữ fallback path.
+Cùng với `[context: current_user=X]`, handler còn inject thêm `[user_info: {"name","is_friend","telegram_id","telegram_username"}]` (build bởi `system/skillcontext/BuildUserContext`, fetch từ lelamp `/user/info`). Skill phải đọc `telegram_id` từ block này — **cấm** `curl /user/info`. Block bị bỏ khi fetch fail hoặc `current_user` là `unknown`; SKILL.md vẫn giữ fallback path.
 
 ### Marker presence do HAL tự ghi
 
@@ -696,3 +696,40 @@ Các hằng số cấu hình nằm trong `hal/config.py`:
 - Prefix `[sensing:type]` trong message là cách agent biết đây là ambient event, không phải message từ người dùng.
 - **Pre-turn `thinking` emotion**: Hook `emotion-acknowledge` tự fire `POST /emotion {thinking, 0.7}` server-side ở event `message:preprocessed` cho mọi non-sensing message — agent không cần gọi. Hook skip sensing events vì mỗi type đã có emotion đầu tiên riêng.
 - **Image pruning echo**: OpenClaw strip image payload cũ khỏi conversation history để tiết kiệm token. Model nhỏ (Haiku) có thể echo marker dưới dạng `[image description removed]` trong response. `SOUL.md` hướng dẫn agent không được echo các marker này.
+
+---
+
+## Hành vi Ambient khi idle
+
+Khi không có gì diễn ra, `system/ambient/` (Go, thuộc os-server) làm thiết bị có cảm giác "đang sống": LED thở, thỉnh thoảng cựa mình, và tự lẩm bẩm khe khẽ. Mọi điều khiển phần cứng đi qua HAL HTTP API (:5001). Cơ chế này tách biệt với sensing event — không tạo agent turn, không tốn token.
+
+### Vòng đời pause / resume
+
+- Service khởi động ở trạng thái **paused**, resume sau 5 giây kể từ khi os-server boot.
+- Bất kỳ tương tác thật nào cũng pause ngay lập tức. Trigger pause (event trên monitor bus): `sensing_input`, `chat_response`, `intent_match`, `tts`, `chat_send`, `hw_emotion`.
+- Tự resume sau **60 giây** không có tương tác (`resumeDelay`, kiểm tra mỗi 2 giây).
+- **Sleep mode**: khi event `hw_emotion` mang emotion `sleepy`, toàn bộ hành vi ambient bị suppress cho tới khi có tương tác thật tiếp theo (chat, wake word, sensing) đánh thức thiết bị.
+- Chuyển trạng thái pause/resume được log vào Flow Monitor dưới dạng `ambient_pause` / `ambient_resume`.
+
+**Hai đồng hồ, hai tầng** — 60 giây resume là *điều kiện đủ tư cách* ("ambient được phép hoạt động lại"), còn mỗi loop bên dưới có đồng hồ *nhịp riêng* chạy độc lập, không bị reset khi có tương tác; nếu đồng hồ của loop điểm giờ đúng lúc ambient đang paused thì lượt đó bị bỏ qua, không xếp hàng chờ. Ví dụ timeline: user ngừng nói chuyện → 60 giây sau ambient resume, LED bắt đầu thở gần như ngay (tick 2 giây) — còn câu tự lẩm bẩm kế tiếp rơi vào lúc đồng hồ 5–15 phút của mumble loop điểm giờ, có thể ngay sau đó hoặc nhiều phút sau.
+
+### Các behavior loop (gate theo capability)
+
+Toàn bộ suite là opt-in theo từng device: capability routeless `lifelike` (khai trong block `capabilities:` của `devices/<type>/DEVICE.md`, xem `devices/contract/capabilities.md`) là công tắc tổng — device có khai capabilities nhưng không khai `lifelike` thì không chạy hành vi idle nào cả (ví dụ intern-v2 là công cụ im lặng). Mỗi loop còn điều khiển một peripheral và chỉ chạy khi device khai capability phần cứng tương ứng. Device không khai capability nào hết thì chạy tất cả (fail-open, giữ hành vi Lamp cũ).
+
+| Loop | Capability | Nhịp | Hoạt động |
+|------|-----------|------|-----------|
+| Breathing LED | `light` | liên tục (tick 2 giây) | Bật effect `breathing` có sẵn của HAL qua `/led/effect` (speed 0.3) với màu LED hiện tại đọc từ HAL; fallback trắng ấm `(255, 200, 140)` khi LED đang tắt (đen). Dừng effect khi paused hoặc LED đang bị lock. |
+| Micro-movements | `motion` | ngẫu nhiên 45–120 giây | Phát một servo recording an toàn trong bộ `idle`, `curious`, `nod`. Chỉ servo — không đụng vào LED. |
+| Mumble (tự lẩm bẩm) | `audio` | ngẫu nhiên 5–15 phút | Nói một câu ngẫu nhiên từ pool `PhraseMumble` (`system/lib/i18n/phrases.go`, EN/VI/zh-CN/zh-TW, có audio tag như `[sigh]`/`[whisper]`/`[chuckle]`). Dùng `hal.SpeakCached` — lần render đầu của mỗi câu mới gọi TTS provider, các lần sau phát lại từ WAV cache của HAL, nên lẩm bẩm lúc idle không tốn API. |
+
+### LED lock
+
+Khi user hoặc agent chủ động set màu/scene cho LED, breathing không được đè lên:
+
+- Event `led_set` trên monitor bus lock LED; `led_off` unlock (breathing được phép chạy lại khi idle).
+- LED set từ Web UI đi qua proxy `/api/hardware` và không phát các event trên, nên proxy gọi thẳng `LockLED()` / `UnlockLED()` trên ambient service.
+
+### Đừng nhầm với dead-air filler
+
+Mumble loop nói khi thiết bị **idle**. Một cơ chế khác — dead-air filler (`system/lib/i18n/fillers.go`, điều khiển bởi `server/sensing/delivery/http/deadair_filler.go`) — nói các câu đệm ngắn kiểu "Vẫn đang nghĩ" **giữa turn** khi agent đang bận xử lý, có override theo tool (ví dụ "Để mình tìm chút" khi đang `web_search`). Khác trigger, khác pool câu.

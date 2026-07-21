@@ -326,15 +326,16 @@ def stop_led_effect():
         state.logger.info("LED effect/stop skipped -- TTS speaking_wave active")
         return {"status": "ok"}
     # Same reasoning as /led/effect: don't let a transient overlay's cleanup
-    # pull the mic-muted red down. Ambient's breathingLoop calls StopEffect
-    # on pause/lock; without this the red vanishes the moment ambient stops
-    # its own effect. Detect via effect thread name — the mic-muted effect
-    # runs under "led-mic-muted", and stopping any OTHER effect while
-    # mic-muted owns the strip is a stale caller (the mic-muted effect kept
-    # running under it).
-    if state._mic_muted_led_owns_strip() and (
-        state._effect_thread is None or state._effect_thread.name == "led-mic-muted"
-    ):
+    # pull the mic-muted red down. While the indicator owns the strip no
+    # transient overlay can be RUNNING (its start was skipped above), so any
+    # stop arriving here is a stale caller: ambient's breathingLoop tracks
+    # "running" locally and still calls StopEffect on pause/lock even though
+    # its start was skipped. That stop used to pass when an EMOTION effect
+    # held the strip (e.g. thinking's purple pulse) and killed it after ~one
+    # cycle, freezing the strip on the last ripple frame — ambient's
+    # follow-up breathing is also skipped while muted, so nothing repainted.
+    # Emotion effects settle back onto the red via their scheduled restore.
+    if state._mic_muted_led_owns_strip():
         state.logger.info("LED effect/stop skipped -- mic-muted indicator owns strip")
         return {"status": "ok"}
     state._stop_current_effect()

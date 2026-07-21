@@ -20,6 +20,7 @@ LLM). **Skills and agents address capabilities, never routes or hardware models.
 | `light` | `light.paint`, `light.effect` | led, scene | — | bright-output |
 | `display` | `display.render` | display | — | — |
 | `expression` | `expression.emote` | emotion | — | — |
+| `lifelike` | `lifelike.idle` | — (routeless; os-server idle behavior loops; see below) | — | — |
 | `media` | `media.play` | music | — | loud-output |
 | `connectivity` | `connectivity.bluetooth` | bluetooth | — | — |
 | `companion` | `companion.control` | buddy (os-server) | computer | — |
@@ -51,6 +52,14 @@ asking: does it take the world **IN**, or does it drive the body **OUT**?
     (lighting + mic/speaker mute + camera/servo policy), not an emotion; it lives with
     `light` because the HAL route **requires an LED** (returns 503 without one) and degrades
     the rest. `display` and `motion` own their own routes.
+  - **`lifelike`** is the personality opt-in: the body behaves like a living creature when
+    idle — breathing LED, servo micro-movements, occasional TTS self-talk between
+    interactions (the `system/ambient` suite in the os-server). Routeless on purpose (the
+    OUT-side mirror of routeless `presence`): it is not a route the agent calls — declaring
+    it switches the idle suite on. Each idle loop still requires the matching hardware
+    capability (`light`, `motion`, `audio`); a body that declares the hardware but not
+    `lifelike` stays a quiet tool when idle. See `devices/lamp/docs/sensing-behavior.md`
+    § Ambient Idle Behaviors.
 
 > Historical note: `emotion` and `scene` were originally both mis-filed under `presence`,
 > conflating expression (out) with perception (in). Corrected: `emotion` → its own

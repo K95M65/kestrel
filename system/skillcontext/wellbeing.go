@@ -19,9 +19,9 @@ import (
 	"strings"
 	"time"
 
-	"go.autonomous.ai/os/system/lib/posture"
 	"go.autonomous.ai/os/system/lib/usercanon"
-	"go.autonomous.ai/os/system/lib/wellbeing"
+	"go.autonomous.ai/os/system/skillcontext/posture"
+	"go.autonomous.ai/os/system/skillcontext/wellbeing"
 )
 
 const (

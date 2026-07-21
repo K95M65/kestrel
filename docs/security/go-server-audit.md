@@ -688,7 +688,7 @@ func maskSecret(v string) string {
 }
 ```
 
-#### File: `system/device/service.go`
+#### File: `system/device/config_update.go`
 
 Change `GetConfig()` to return sanitized response for remote UI. If a full config is needed internally, expose a separate internal method not bound to HTTP.
 
@@ -746,10 +746,10 @@ It can trigger:
 s.networkService.SetupNetwork(ssid, password)
 s.agentGateway.RefreshModelsConfig()
 s.agentGateway.NewSession(key)
-s.RePushVoiceConfig()
+s.restartHAL("voice config change")
 ```
 
-`RePushVoiceConfig` restarts service:
+`restartHAL` restarts service:
 
 ```go
 exec.Command("systemctl", "restart", "hal").CombinedOutput()
@@ -1557,7 +1557,7 @@ Expected: `401`/`403` without auth; redacted with auth.
   - Replace `ConfigResponse` for HTTP with redacted/sanitized response.
   - Keep internal config struct separate from API response.
 
-- `system/device/service.go`
+- `system/device/config_update.go`
   - Update `GetConfig()` to return sanitized data for HTTP.
   - Add validation to `UpdateConfig()` for base URLs and high-risk fields.
   - Debounce/rate-limit service restarts triggered by config updates.

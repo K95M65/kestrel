@@ -12,7 +12,7 @@
 //     /api/posture/log when the wellbeing skill decides to coach or
 //     acknowledge a fix. Notes carry the spoken line.
 //
-// Mirrors lib/mood structure (newer pattern than lib/wellbeing). Daily
+// Mirrors skillcontext/mood structure (newer pattern than skillcontext/wellbeing). Daily
 // JSONL files with 60-day retention.
 //
 // Usage:
@@ -55,7 +55,7 @@ type Event struct {
 	// Nudge-row fields (Action == ActionNudge).
 	NudgeLevel int `json:"nudge_level,omitempty"` // 2..5
 
-	// Free-text — for nudge/praise, this is the line Lamp spoke.
+	// Free-text — for nudge/praise, this is the line the device spoke.
 	Notes string `json:"notes,omitempty"`
 }
 
@@ -96,7 +96,7 @@ func Init() {
 	go cleanOldLogs()
 }
 
-// AlertExtras carries the hal event payload Lamp persists when an event
+// AlertExtras carries the hal event payload os-server persists when an event
 // arrives. The skill is the caller — typically right when the event reaches
 // it (before any nudge decision), so the timeline anchors each episode.
 type AlertExtras struct {

@@ -51,7 +51,7 @@ retentionDays = 7
 
 ### 4. `patterns_now` hardcoded `nil` — pre-emptive posture route unreachable
 
-`system/lib/skillcontext/posture.go:175-178`:
+`system/skillcontext/posture.go:175-178`:
 
 ```go
 // PatternsNow stays nil until habit Flow A starts emitting
@@ -100,7 +100,7 @@ All thresholds now live either in SKILL.md prose or in lelamp's config — none 
 
 ### `mapped_mood` vocabulary mismatch
 
-`system/lib/skillcontext/emotion.go:105-112` `suggestionWorthyMoods` includes `tired` and `bored`, but the FER/voice → mood map (`emotion.go:92-103`) never produces them — only `happy`, `sad`, `stressed`, `excited`.
+`system/skillcontext/emotion.go:105-112` `suggestionWorthyMoods` includes `tired` and `bored`, but the FER/voice → mood map (`emotion.go:92-103`) never produces them — only `happy`, `sad`, `stressed`, `excited`.
 
 `music-suggestion/SKILL.md:126-127` example "Mood: tired (known user)" cannot trigger from `emotion.detected` today. Only Telegram/conversation paths through `mood/SKILL.md` can reach `tired/bored`.
 
@@ -129,7 +129,7 @@ Violates `feedback_skill_files_english_only` (skill-files must be English; agent
 
 ### `usercanon.Resolve` vs `wellbeing.NormalizeUser` still parallel
 
-`lib/wellbeing/wellbeing.go:143` runs its own `NormalizeUser`. Memory `project_usercanon_refactor` flagged this; same regex today, but no test pins them together.
+`skillcontext/wellbeing/wellbeing.go:143` runs its own `NormalizeUser`. Memory `project_usercanon_refactor` flagged this; same regex today, but no test pins them together.
 
 ---
 
@@ -257,8 +257,8 @@ Disk cost for Option B is negligible (under 5 MB per user for everything). Risk 
 - `system/server/openclaw/delivery/sse/handler_events.go` — `/broadcast`, `/speak`, `/dm` lifecycle handling
 - `runtimes/openclaw/service_events.go` — `busyTTL`, queue drain, `guardTag` loss
 - `system/lib/flow/flow.go` — `retentionDays`
-- `system/lib/skillcontext/{wellbeing,posture,emotion}.go` — pre-fetched context blocks
+- `system/skillcontext/{wellbeing,posture,emotion}.go` — pre-fetched context blocks
 - `system/lib/sensingmsg/sensingmsg.go` — context injection
-- `system/lib/wellbeing/wellbeing.go` — parallel `NormalizeUser`
+- `system/skillcontext/wellbeing/wellbeing.go` — parallel `NormalizeUser`
 - `hal/drivers/sensing/perceptions/processors/motion.py` — `motion.activity` emitter, wellbeing log poster
 - `lamp/resources/openclaw-skills/{guard,sensing,sensing-track,wellbeing,posture,habit,mood,emotion,user-emotion-detection,music-suggestion}/SKILL.md`

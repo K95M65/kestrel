@@ -407,7 +407,7 @@ mới:
   Được vì **Hermes provision từ `config.json`, không từ `SetupRequest`** (khác
   OpenClaw, `SetupAgent` của nó viết `openclaw.json` thẳng từ request — nên OpenClaw
   cần *hai* hàm riêng, Hermes *một*). Device setup flow lưu `config.json` **trước**
-  khi gọi `SetupAgent` (`system/device/service.go` — call được cố ý đặt sau
+  khi gọi `SetupAgent` (`system/device/setup.go` — call được cố ý đặt sau
   `config.Save()`), nên presync materialize `config.yaml`/`.env` từ key vừa nhập ngay
   lập tức thay vì chờ boot kế.
 
@@ -523,7 +523,7 @@ riêng mình; việc duy nhất của nó là đặt creds vào `.env` rồi bou
   chế: `syncChannelsEnv()` → `EnsureOnboarding()` → `runPresync()` (upsert các biến
   kênh trong `.env`) → hash-diff `config.yaml`+`.env` → `restartHermesGateway()`. Cả
   hai đều quy về "re-sync `.env` + restart-if-changed" nên dùng chung một code path.
-- **Persist-then-apply.** Lớp device (`system/device/service.go` `AddChannel`)
+- **Persist-then-apply.** Lớp device (`system/device/channels.go` `AddChannel`)
   gate capability trước, rồi persist creds kênh vào `config.json` **trước khi** gọi
   `AddChannel` của gateway, để presync đọc lại `config.json` và thấy token mới. Một
   apply fail tạm thời để creds đã persist (chiều phục hồi được — presync lúc boot /

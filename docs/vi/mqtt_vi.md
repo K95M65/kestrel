@@ -465,7 +465,7 @@ Xử lý bởi bootstrap worker, không qua MQTT handler trực tiếp.
 | `system/server/device/delivery/mqtt/channel_refresh_handler.go` | Handle `data` kind `channel.refresh_config` (re-apply block config của channel, bất đồng bộ) |
 | `system/server/device/delivery/mqtt/timezone_set_handler.go` | Handle `data` kind `timezone.set` (áp dụng múi giờ IANA của device, bất đồng bộ) |
 | `system/device/timezone.go` | `SetTimezone`/`CurrentTimezone`: validate zone, ghi lại `/etc/localtime` + `/etc/timezone`, `timedatectl` best-effort, lưu config |
-| `system/device/service.go` | `RefreshChannelConfig` (dựng request per-channel + capability gate) |
+| `system/device/channels.go` | `RefreshChannelConfig` (dựng request per-channel + capability gate) |
 | `system/agent/channel_reconcile.go` | `ChannelReconcile`: áp dụng lại channel sau khi chuyển runtime, ghi `channels_unsupported` |
 | `system/server/device/delivery/mqtt/whatsapp_pair_handler.go` | Handle `whatsapp_pair` re-pair command |
 | `system/server/device/delivery/mqtt/claudecode_login_handler.go` | Handle `claudecode_login` / `claudecode_login_code` (claude.ai OAuth login) |

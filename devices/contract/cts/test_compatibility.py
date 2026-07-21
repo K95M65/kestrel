@@ -18,7 +18,8 @@ DEVICES_DIR = os.path.join(ROOT, "devices")
 # The frozen capability vocabulary (devices/contract/capabilities.md).
 KNOWN_CAPABILITIES = {
     "audio", "vision", "sensing", "presence", "motion",
-    "light", "display", "expression", "media", "connectivity", "companion", "system",
+    "light", "display", "expression", "lifelike", "media", "connectivity", "companion",
+    "system",
 }
 # Capabilities that can move, heat, or emit — they require a SAFETY.md.
 SAFETY_CLASS = {"motion", "light"}

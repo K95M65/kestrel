@@ -73,7 +73,7 @@ The watcher thread polls the hold duration and drives the RGB LED at HIGH priori
 | Hold elapsed | LED | Meaning |
 |---|---|---|
 | < 5 s | unchanged | below shutdown threshold — releasing is a tap |
-| 5–10 s | red, blinking 1 Hz | shutdown armed — releasing now shuts down |
+| 5–10 s | red, blinking 2 Hz | shutdown armed — releasing now shuts down |
 | 10 s+ | red, solid | factory-reset armed — releasing now wipes + reboots |
 
 Same red colour for both armed tiers; blink vs solid is the differentiator. The LED is a silent no-op when the RGB service is unavailable (dev machines) — the button still works.

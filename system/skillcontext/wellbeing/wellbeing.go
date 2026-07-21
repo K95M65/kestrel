@@ -113,12 +113,12 @@ func NormalizeUser(name string) string {
 // dedup that specific case (hal only dedups motion.activity — presence
 // events bypass it). Without the dedup, stranger_74 → stranger_75 produces
 // two "enter" entries in the unknown timeline and resets the wellbeing
-// delta twice even though, from Lamp's perspective, the "user" (unknown)
+// delta twice even though, from the device's perspective, the "user" (unknown)
 // never changed.
 //
 // Friends do NOT need this guard: hal's per-friend session tracking
-// (_owners_last_seen + FACE_OWNER_FORGET_S) at faceid/perception.py already
-// fires enter only on a genuinely new session, so Lamp should trust each
+// (_owners_last_seen + FACE_OWNER_FORGET_S) at faceid/perception already
+// fires enter only on a genuinely new session, so os-server should trust each
 // friend's enter/leave and just record it. Deduping friends here causes
 // the opposite failure: if hal restarts between a friend's last
 // detection and the forget-timeout, leave is never fired, the file gets

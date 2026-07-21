@@ -135,7 +135,7 @@ Monitor polls system/HW APIs every **3 seconds**. Flow uses file-backed hybrid m
 | Endpoint | Data |
 |----------|------|
 | `GET /api/system/info` | CPU load, RAM (KB), temperature, uptime, goroutines, version, deviceId, capabilities (declared capability names — both the Monitor and the Edit/Settings page gate hardware tabs on these; see the shared `useCapabilities` hook) |
-| `GET /api/system/network` | SSID, IP, public IP, Tailscale IP, signal (dBm), internet (bool) |
+| `GET /api/system/network` | SSID, IP, public IP, Tailscale IP, signal (dBm), internet (bool), pingMs (internet probe RTT, 0 = unmeasured) |
 | `GET /api/openclaw/status` | name, connected (bool), sessionKey (bool), version, emotion, uptime (OS server WS uptime, secs), agentUptime (OpenClaw process uptime from hello-ok `server.uptimeMs`, secs — survives OS server restarts) |
 | `GET /api/openclaw/recent` | Latest flow events from today's JSONL file (`local/flow_events_<date>.jsonl`) |
 | `GET /api/openclaw/flow-events?date=YYYY-MM-DD&last=500` | File-backed flow events API used for Flow seed/history |

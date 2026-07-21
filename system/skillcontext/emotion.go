@@ -13,9 +13,9 @@ import (
 	"time"
 
 	"go.autonomous.ai/os/system/lib/hal"
-	"go.autonomous.ai/os/system/lib/mood"
-	"go.autonomous.ai/os/system/lib/musicsuggestion"
 	"go.autonomous.ai/os/system/lib/usercanon"
+	"go.autonomous.ai/os/system/skillcontext/mood"
+	"go.autonomous.ai/os/system/skillcontext/musicsuggestion"
 )
 
 // detectedEmotionRe pulls the label out of either an emotion.detected or
@@ -45,7 +45,7 @@ const (
 
 // emotionContext is the digest the agent reads on emotion.detected events.
 // Mapping (Sad → sad, Fear → stressed, …), staleness, audio state, and habit
-// pattern matching are all pre-computed in Lamp; the skills only apply
+// pattern matching are all pre-computed in os-server; the skills only apply
 // synthesis rules and pick phrasing.
 type emotionContext struct {
 	MappedMood           string               `json:"mapped_mood"`              // detected emotion → mood signal value (Sad → "sad", Fear → "stressed", ...)

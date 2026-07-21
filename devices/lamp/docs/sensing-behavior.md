@@ -325,7 +325,7 @@ Wellbeing is **event-driven**. There are NO wellbeing cron jobs. On every `motio
 - Different strangers (e.g. `stranger_46` → `stranger_54`) collapse to `"unknown"` via `FaceRecognizer.current_user()`, so swapping strangers alone doesn't break dedup.
 - After 5 min on the same state, the next event passes through even if nothing changed — this keeps the Lamp agent "woken up" periodically so the wellbeing threshold check still runs.
 
-*Presence dedup (at-log safety net).* `system/lib/wellbeing/wellbeing.go::LogForUser` scans the user's JSONL bottom-up for the most recent **presence** row (enter/leave, ignoring activity rows in between). `enter` while the last presence is already `enter` is dropped; `leave` with no matching open session is dropped. Since HAL already emits one enter per real session (per-friend + collapsed-unknown), this runs as a safety net for restarts or out-of-order edge cases rather than load-bearing dedup.
+*Presence dedup (at-log safety net).* `system/skillcontext/wellbeing/wellbeing.go::LogForUser` scans the user's JSONL bottom-up for the most recent **presence** row (enter/leave, ignoring activity rows in between). `enter` while the last presence is already `enter` is dropped; `leave` with no matching open session is dropped. Since HAL already emits one enter per real session (per-friend + collapsed-unknown), this runs as a safety net for restarts or out-of-order edge cases rather than load-bearing dedup.
 
 **Retention:** 30 days on the Lamp side. A goroutine started by `wellbeing.Init()` sweeps files older than the cutoff daily.
 
@@ -386,7 +386,7 @@ External callers (web UI, skills) can query the same value via `GET http://127.0
 
 The Wellbeing, Mood, and Music skills are all required to use this exact value for the `user` field in their API calls — never inferring from memory, KNOWLEDGE.md, chat history, or `senderLabel`.
 
-Alongside `[context: current_user=X]`, the handler also injects `[user_info: {"name","is_friend","telegram_id","telegram_username"}]` (built by `system/lib/skillcontext/BuildUserContext`, fetched from lelamp `/user/info`). Skills must read `telegram_id` from this block — never `curl /user/info`. Block is omitted on hard fetch failure or when `current_user` is `unknown`; SKILL.md fallback path stays.
+Alongside `[context: current_user=X]`, the handler also injects `[user_info: {"name","is_friend","telegram_id","telegram_username"}]` (built by `system/skillcontext/BuildUserContext`, fetched from lelamp `/user/info`). Skills must read `telegram_id` from this block — never `curl /user/info`. Block is omitted on hard fetch failure or when `current_user` is `unknown`; SKILL.md fallback path stays.
 
 ### Presence markers written by HAL
 
@@ -739,3 +739,40 @@ Configuration constants are in `hal/config.py`:
 - The `[sensing:type]` prefix in the message is how the agent knows it's an ambient event, not a user message.
 - **Pre-turn `thinking` emotion**: The `emotion-acknowledge` hook fires `POST /emotion {thinking, 0.7}` server-side at `message:preprocessed` for every non-sensing message — the agent does not need to call it. Sensing events are skipped by the hook because each type has its own defined first emotion.
 - **Image pruning echo**: OpenClaw strips old image payloads from conversation history to save tokens. Smaller models (Haiku) may echo the pruning markers as `[image description removed]` in their response text. `SOUL.md` instructs the agent to never echo these markers.
+
+---
+
+## Ambient Idle Behaviors
+
+When nothing is happening, `system/ambient/` (Go, part of os-server) makes the device feel alive: breathing LED, occasional micro-movements, and quiet self-talk. All hardware control goes through the HAL HTTP API (:5001). This is separate from sensing events — no agent turns are created and no tokens are spent.
+
+### Pause / resume lifecycle
+
+- The service starts **paused** and resumes 5 s after os-server boot.
+- Any real interaction pauses it immediately. Pause triggers (monitor bus events): `sensing_input`, `chat_response`, `intent_match`, `tts`, `chat_send`, `hw_emotion`.
+- It resumes automatically after **60 s** with no interaction (`resumeDelay`, checked every 2 s).
+- **Sleep mode**: when a `hw_emotion` event carries `sleepy`, all ambient behaviors are suppressed until the next real interaction (chat, wake word, sensing) wakes the device.
+- Pause/resume transitions are logged to the Flow Monitor as `ambient_pause` / `ambient_resume`.
+
+**Two timers, two layers** — the 60 s resume delay is *eligibility* ("ambient may act again"), while each loop below keeps its own *cadence* clock that ticks independently and is never reset by interactions; when a loop's clock fires while ambient is paused, that round is skipped, not queued. Example timeline: the user stops talking → 60 s later ambient resumes, so the LED starts breathing almost immediately (2 s tick) — but the next self-talk line lands whenever the mumble loop's 5–15 min clock happens to fire next, which may be right away or many minutes later.
+
+### Behavior loops (capability-gated)
+
+The whole suite is opt-in per device: the routeless `lifelike` capability (declared in the `capabilities:` block of `devices/<type>/DEVICE.md`, see `devices/contract/capabilities.md`) is the master switch — a device that declares capabilities without `lifelike` runs no idle behaviors at all (e.g. intern-v2 stays a quiet tool). Each loop additionally drives one peripheral and only runs if the device declares the matching hardware capability. A device with no declared capabilities at all runs everything (fail-open, legacy Lamp behavior).
+
+| Loop | Capability | Cadence | What it does |
+|------|-----------|---------|--------------|
+| Breathing LED | `light` | continuous (2 s tick) | Starts HAL's built-in `/led/effect` `breathing` (speed 0.3) using the current LED color read from HAL; falls back to warm white `(255, 200, 140)` when the LED is black. Stops the effect while paused or LED-locked. |
+| Micro-movements | `motion` | random 45–120 s | Plays one safe servo recording from `idle`, `curious`, `nod`. Servo only — never touches the LED. |
+| Mumble (self-talk) | `audio` | random 5–15 min | Speaks one random phrase from the `PhraseMumble` pool (`system/lib/i18n/phrases.go`, EN/VI/zh-CN/zh-TW, audio tags like `[sigh]`/`[whisper]`/`[chuckle]`). Uses `hal.SpeakCached` — the first render of each phrase hits the TTS provider, replays come from HAL's WAV cache, so idle mumbling costs no API calls. |
+
+### LED lock
+
+When a user or the agent explicitly sets an LED color/scene, breathing must not trample it:
+
+- Monitor bus event `led_set` locks the LED; `led_off` unlocks it (breathing may resume on idle).
+- Web-UI LED writes go through the `/api/hardware` proxy and never emit those events, so the proxy calls `LockLED()` / `UnlockLED()` on the ambient service directly.
+
+### Not to be confused with dead-air fillers
+
+The mumble loop speaks when the device is **idle**. A different mechanism — dead-air fillers (`system/lib/i18n/fillers.go`, driven by `server/sensing/delivery/http/deadair_filler.go`) — speaks short cues like "Still thinking" **mid-turn** while the agent is busy processing, with tool-aware overrides (e.g. "Let me look that up" during `web_search`). Different trigger, different phrase pools.

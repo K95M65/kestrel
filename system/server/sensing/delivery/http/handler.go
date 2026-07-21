@@ -24,15 +24,15 @@ import (
 	"go.autonomous.ai/os/system/lib/flow"
 	"go.autonomous.ai/os/system/lib/hal"
 	"go.autonomous.ai/os/system/lib/i18n"
-	"go.autonomous.ai/os/system/lib/mood"
-	"go.autonomous.ai/os/system/lib/musicsuggestion"
-	"go.autonomous.ai/os/system/lib/posture"
 	"go.autonomous.ai/os/system/lib/sensingmsg"
 	"go.autonomous.ai/os/system/lib/usercanon"
-	"go.autonomous.ai/os/system/lib/wellbeing"
 	"go.autonomous.ai/os/system/monitor"
 	"go.autonomous.ai/os/system/server/config"
 	"go.autonomous.ai/os/system/server/serializers"
+	"go.autonomous.ai/os/system/skillcontext/mood"
+	"go.autonomous.ai/os/system/skillcontext/musicsuggestion"
+	"go.autonomous.ai/os/system/skillcontext/posture"
+	"go.autonomous.ai/os/system/skillcontext/wellbeing"
 	"go.autonomous.ai/os/system/statusled"
 	"go.autonomous.ai/os/system/vision"
 )
@@ -871,7 +871,7 @@ func (h *SensingHandler) PostWellbeingLog(c *gin.Context) {
 // --- Posture History API ---
 
 // PostureLogRequest is the JSON body the agent / HW marker dispatcher sends to
-// /api/posture/log. `action` is one of the constants in lib/posture (alert,
+// /api/posture/log. `action` is one of the constants in skillcontext/posture (alert,
 // nudge, praise); only the fields relevant to that action are expected.
 type PostureLogRequest struct {
 	Action     string `json:"action" validate:"required"`
