@@ -47,15 +47,35 @@ class LocalVideoCaptureDevice(VideoCaptureDeviceBase):
     # so the read()-failure recovery never fires.
     _FREEZE_REOPEN_S: float = 10.0
 
-    # ISP deep-stuck escalation: when the freeze watchdog has to reopen this
-    # many times within _FREEZE_ESCALATE_WINDOW_S, a plain V4L2 reopen is
-    # clearly not resetting the camera firmware (frames come back posterized
-    # green/pink and freeze again even with correct v4l2 controls) — the only
-    # verified fix short of a reboot is power-cycling the USB port via the
-    # usb driver's unbind/bind sysfs interface. Read-failure reopens do NOT
-    # count toward escalation.
-    _FREEZE_ESCALATE_COUNT: int = 3
-    _FREEZE_ESCALATE_WINDOW_S: float = 600.0
+    # Color-corruption watchdog: the same wedged ISP can also keep delivering
+    # CHANGING frames whose colors are garbage — posterized flat regions of
+    # oversaturated green with complementary magenta patches (seen live on
+    # the SunplusIT UVC cam right after a close/open cycle, with every v4l2
+    # control correct), which the freeze watchdog cannot see. A frame is
+    # "corrupt" when extreme-saturation green AND magenta pixels each cover
+    # a minimum fraction of the subsampled frame and together a large one —
+    # natural scenes (and the lamp's own LED spill, which is single-hue)
+    # essentially never show both complementary extremes at once. Sustained
+    # corruption triggers the same recovery ladder as a freeze; a single
+    # clean frame resets the timer. Thresholds calibrated against a live
+    # corrupt specimen (green 0.19 / magenta 0.012 at sat>=100) vs clean
+    # office scenes (0.000 / 0.000) — the magenta patches of the corruption
+    # are pink-ish (moderate saturation), so the saturation floor must stay
+    # well below the green one's natural extreme.
+    _COLOR_CORRUPT_REOPEN_S: float = 30.0
+    _COLOR_SAT_MIN: int = 100  # HSV saturation floor for an "extreme" pixel
+    _COLOR_VAL_MIN: int = 60  # HSV value floor — ignore near-black pixels
+    _COLOR_GREEN_FRAC: float = 0.10  # min frame fraction of extreme green
+    _COLOR_MAGENTA_FRAC: float = 0.008  # min frame fraction of extreme magenta
+
+    # ISP deep-stuck escalation: when an ISP fault (freeze or color
+    # corruption) forces this many reopens within _ISP_FAULT_WINDOW_S, a
+    # plain V4L2 reopen is clearly not resetting the camera firmware — the
+    # only verified fix short of a reboot is power-cycling the USB port via
+    # the usb driver's unbind/bind sysfs interface. Read-failure reopens do
+    # NOT count toward escalation.
+    _ISP_FAULT_ESCALATE_COUNT: int = 3
+    _ISP_FAULT_WINDOW_S: float = 600.0
     # Never power-cycle more often than this — a physically dead camera must
     # not put the loop into an endless unbind/bind cycle.
     _USB_POWER_CYCLE_COOLDOWN_S: float = 600.0
@@ -99,9 +119,9 @@ class LocalVideoCaptureDevice(VideoCaptureDeviceBase):
         self.actual_fps: float | None = None
 
         # ISP deep-stuck escalation state: monotonic timestamps of recent
-        # freeze-triggered reopens (sliding window) and of the last USB
-        # power-cycle (None = never; cooldown gate).
-        self._freeze_reopen_times: list[float] = []
+        # ISP-fault reopens (freeze or color corruption, sliding window) and
+        # of the last USB power-cycle (None = never; cooldown gate).
+        self._isp_fault_times: list[float] = []
         self._last_usb_power_cycle: float | None = None
 
         self._logger: logging.Logger = logging.getLogger(self.__class__.__name__)
@@ -232,6 +252,64 @@ class LocalVideoCaptureDevice(VideoCaptureDeviceBase):
             self._logger.exception(
                 "Camera exposure control failed — continuing with camera defaults"
             )
+
+    @classmethod
+    def _looks_color_corrupt(cls, small: npt.NDArray[np.uint8]) -> bool:
+        """Heuristic ISP color-corruption check on a subsampled BGR frame.
+
+        Flags the wedged-ISP failure mode where frames keep changing but the
+        chroma is garbage: posterized oversaturated green regions plus
+        complementary magenta patches. Requiring BOTH hue families at extreme
+        saturation at once is what keeps false positives out — a green wall,
+        foliage, or the lamp's own LED spill are single-hue.
+        """
+        hsv = cv2.cvtColor(small, cv2.COLOR_BGR2HSV)
+        hue = hsv[..., 0]
+        extreme = (hsv[..., 1] >= cls._COLOR_SAT_MIN) & (
+            hsv[..., 2] >= cls._COLOR_VAL_MIN
+        )
+        # OpenCV hue is 0-179: green ~60, magenta/pink ~150.
+        green_frac = float((extreme & (hue >= 35) & (hue <= 85)).mean())
+        magenta_frac = float((extreme & (hue >= 130) & (hue <= 175)).mean())
+        return (
+            green_frac >= cls._COLOR_GREEN_FRAC
+            and magenta_frac >= cls._COLOR_MAGENTA_FRAC
+        )
+
+    def _recover_isp_fault(self, video_capture, device_id, now_mono, reason: str):
+        """Recover from an ISP fault (freeze / color corruption).
+
+        Counts fault-triggered reopens (read-failure reopens are NOT
+        counted) in a sliding window. Repeated faults shortly after a reopen
+        mean the ISP is deep-stuck and a V4L2 reopen alone won't unwedge it
+        — escalate to a USB power-cycle (cooldown-gated) before the reopen.
+        Returns the reopened capture (None only when stop() was requested).
+        """
+        self._isp_fault_times = [
+            t for t in self._isp_fault_times if now_mono - t < self._ISP_FAULT_WINDOW_S
+        ]
+        self._isp_fault_times.append(now_mono)
+        n_faults = len(self._isp_fault_times)
+        cooldown_ok = (
+            self._last_usb_power_cycle is None
+            or now_mono - self._last_usb_power_cycle >= self._USB_POWER_CYCLE_COOLDOWN_S
+        )
+        if n_faults >= self._ISP_FAULT_ESCALATE_COUNT and cooldown_ok:
+            self._logger.warning(
+                "Camera USB power-cycle (ISP deep-stuck: %d ISP-fault reopens in %.0fs)",
+                n_faults,
+                self._ISP_FAULT_WINDOW_S,
+            )
+            # Release before unbind so the driver detaches cleanly;
+            # _reopen_with_backoff's release below is then a no-op.
+            try:
+                video_capture.release()
+            except Exception:
+                self._logger.exception("Camera release failed before USB power-cycle")
+            if self._usb_power_cycle(device_id):
+                self._last_usb_power_cycle = time.monotonic()
+                self._isp_fault_times.clear()
+        return self._reopen_with_backoff(video_capture, device_id, reason)
 
     @staticmethod
     def _video_dev_node(device_id) -> str | None:
@@ -435,6 +513,10 @@ class LocalVideoCaptureDevice(VideoCaptureDeviceBase):
         freeze_sig: bytes | None = None
         freeze_since: float = 0.0
 
+        # Color-corruption watchdog state (see _COLOR_CORRUPT_REOPEN_S).
+        corrupt_since: float = 0.0
+        last_color_check: float = 0.0
+
         self._logger.info("Starting video capture device loop")
         try:
             while not self._stopped.is_set():
@@ -478,61 +560,57 @@ class LocalVideoCaptureDevice(VideoCaptureDeviceBase):
                 # tracking, snapshot) silently works on a stale scene while
                 # last_frame_ts stays fresh. Byte-identical subsampled frames
                 # over _FREEZE_REOPEN_S can't come from a live sensor — reopen.
-                sig: bytes = frame[::32, ::32].tobytes()
+                # Contiguous copy of the subsampled frame — shared by the
+                # freeze signature and the color-corruption check (cvtColor
+                # rejects strided views).
+                small = np.ascontiguousarray(frame[::32, ::32])
+                sig: bytes = small.tobytes()
                 now_mono = time.monotonic()
                 if sig == freeze_sig:
                     if now_mono - freeze_since >= self._FREEZE_REOPEN_S:
-                        # Track freeze-triggered reopens in a sliding window;
-                        # repeated freezes shortly after a reopen mean the ISP
-                        # is deep-stuck and a V4L2 reopen alone won't unwedge
-                        # it — escalate to a USB power-cycle (cooldown-gated).
-                        self._freeze_reopen_times = [
-                            t
-                            for t in self._freeze_reopen_times
-                            if now_mono - t < self._FREEZE_ESCALATE_WINDOW_S
-                        ]
-                        self._freeze_reopen_times.append(now_mono)
-                        n_freezes = len(self._freeze_reopen_times)
-                        cooldown_ok = (
-                            self._last_usb_power_cycle is None
-                            or now_mono - self._last_usb_power_cycle
-                            >= self._USB_POWER_CYCLE_COOLDOWN_S
+                        self._logger.warning(
+                            "Camera frozen — identical frames for %.0fs, reopening device",
+                            now_mono - freeze_since,
                         )
-                        if n_freezes >= self._FREEZE_ESCALATE_COUNT and cooldown_ok:
-                            self._logger.warning(
-                                "Camera USB power-cycle (ISP deep-stuck: "
-                                "%d freeze-reopens in %.0fs)",
-                                n_freezes,
-                                self._FREEZE_ESCALATE_WINDOW_S,
-                            )
-                            # Release before unbind so the driver detaches
-                            # cleanly; _reopen_with_backoff's release below
-                            # is then a no-op.
-                            try:
-                                video_capture.release()
-                            except Exception:
-                                self._logger.exception(
-                                    "Camera release failed before USB power-cycle"
-                                )
-                            if self._usb_power_cycle(device_id):
-                                self._last_usb_power_cycle = time.monotonic()
-                                self._freeze_reopen_times.clear()
-                        else:
-                            self._logger.warning(
-                                "Camera frozen — identical frames for %.0fs, reopening device",
-                                now_mono - freeze_since,
-                            )
-                        video_capture = self._reopen_with_backoff(
-                            video_capture, device_id, "ISP freeze"
+                        video_capture = self._recover_isp_fault(
+                            video_capture, device_id, now_mono, "ISP freeze"
                         )
                         if video_capture is None:
                             break
                         freeze_sig = None
                         freeze_since = 0.0
+                        corrupt_since = 0.0
                         continue
                 else:
                     freeze_sig = sig
                     freeze_since = now_mono
+
+                # Color-corruption watchdog (see _COLOR_CORRUPT_REOPEN_S):
+                # throttled to ~1 check/s; requires uninterrupted corruption
+                # — a single clean frame resets, so LED animations or a
+                # briefly-held colorful object never accumulate 30s.
+                if now_mono - last_color_check >= 1.0:
+                    last_color_check = now_mono
+                    if self._looks_color_corrupt(small):
+                        if corrupt_since == 0.0:
+                            corrupt_since = now_mono
+                        elif now_mono - corrupt_since >= self._COLOR_CORRUPT_REOPEN_S:
+                            self._logger.warning(
+                                "Camera color corruption — posterized green/magenta "
+                                "frames for %.0fs, reopening device",
+                                now_mono - corrupt_since,
+                            )
+                            video_capture = self._recover_isp_fault(
+                                video_capture, device_id, now_mono, "color corruption"
+                            )
+                            if video_capture is None:
+                                break
+                            freeze_sig = None
+                            freeze_since = 0.0
+                            corrupt_since = 0.0
+                            continue
+                    else:
+                        corrupt_since = 0.0
 
                 frame_ts = time.time()
 

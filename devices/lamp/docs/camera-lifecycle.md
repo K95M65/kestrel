@@ -237,18 +237,19 @@ The capture loop (`drivers/camera/video_capture_device.py`) recovers from two di
 
 - **`read()` failure** — USB autosuspend or a transient V4L2 error makes `read()` return `ret=False`. One 1s retry, then reopen.
 - **ISP freeze** — the camera keeps delivering the **same buffer** with `ret=True` (seen on the UVC cam with manual exposure/gain), so the `read()`-failure path never fires while every consumer (realtime look, sensing, tracking, snapshot) silently works on a stale scene. A watchdog compares a subsampled signature of each frame; byte-identical frames for 10s (`_FREEZE_REOPEN_S`) cannot come from a live sensor and trigger a reopen. Log line: `Camera frozen — identical frames for Ns, reopening device`.
+- **ISP color corruption** — the same wedged ISP can instead keep delivering **changing** frames whose chroma is garbage: posterized oversaturated green regions plus complementary magenta/pink patches, with every v4l2 control correct (seen live on the SunplusIT cam right after a close/open cycle). The freeze watchdog cannot see this, so a second watchdog checks the subsampled frame in HSV (throttled to ~1 check/s): a frame is corrupt when extreme-saturation green covers ≥10% (`_COLOR_GREEN_FRAC`) **and** magenta ≥0.8% (`_COLOR_MAGENTA_FRAC`) at saturation ≥100 (`_COLOR_SAT_MIN`, value ≥60). Requiring both complementary hue families at once is the false-positive guard — a green wall, foliage, or the lamp's own LED spill are single-hue. Corruption must be uninterrupted for 30s (`_COLOR_CORRUPT_REOPEN_S`; one clean frame resets) before triggering the same recovery as a freeze. Thresholds were calibrated against a live corrupt capture (green 0.19 / magenta 0.012) vs clean scenes (0.000 / 0.000). Log line: `Camera color corruption — posterized green/magenta frames for Ns, reopening device`.
 
 ### ISP deep-stuck → USB power-cycle escalation
 
 Sometimes the ISP wedges **deeper** than a V4L2 reopen can fix: frames come back posterized green/pink or freeze again right after the reopen, even though every v4l2 control is correct (auto_exposure=3, sane gain). Observed on the SunplusIT UVC cam (`1bcf:28cc`); the only verified fix short of a reboot is power-cycling the USB port.
 
-The freeze watchdog escalates automatically:
+Both ISP watchdogs (freeze and color corruption) share one escalation ladder via `_recover_isp_fault()`:
 
-- **Trigger** — ≥3 freeze-triggered reopens (`_FREEZE_ESCALATE_COUNT`) within a 10-minute sliding window (`_FREEZE_ESCALATE_WINDOW_S`, 600s). `read()`-failure reopens do **not** count.
+- **Trigger** — ≥3 ISP-fault reopens (`_ISP_FAULT_ESCALATE_COUNT`) within a 10-minute sliding window (`_ISP_FAULT_WINDOW_S`, 600s). `read()`-failure reopens do **not** count.
 - **USB path resolution** — dynamic, never hardcoded: walk up the sysfs parent chain from `/sys/class/video4linux/video<N>/device` until the node carrying `idVendor` (the USB device), take its basename (e.g. `1-1`). If the camera is not USB-backed (e.g. a CSI sensor), escalation is skipped with a log line and the plain reopen path is kept.
 - **Power-cycle** — write the bus path to `/sys/bus/usb/drivers/usb/unbind`, wait ~3s (`_USB_REBIND_DELAY_S`), write it to `.../bind` (HAL runs as root), then wait up to 15s (`_USB_DEVNODE_TIMEOUT_S`) for `/dev/video<N>` to re-enumerate before handing control back to `_reopen_with_backoff()`. Best-effort: any sysfs failure logs and falls back to the plain reopen.
-- **Cooldown** — at most one power-cycle per 10 minutes (`_USB_POWER_CYCLE_COOLDOWN_S`); a physically dead camera must not loop unbind/bind forever. While in cooldown, freezes keep taking the plain reopen path.
-- **Log line** — `Camera USB power-cycle (ISP deep-stuck: N freeze-reopens in Ws)`.
+- **Cooldown** — at most one power-cycle per 10 minutes (`_USB_POWER_CYCLE_COOLDOWN_S`); a physically dead camera must not loop unbind/bind forever. While in cooldown, faults keep taking the plain reopen path.
+- **Log line** — `Camera USB power-cycle (ISP deep-stuck: N ISP-fault reopens in Ws)`.
 
 ## Edge Cases
 

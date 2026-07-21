@@ -227,14 +227,15 @@ Capture loop (`drivers/camera/video_capture_device.py`) tự khôi phục 2 dạ
 
 - **`read()` fail** — USB autosuspend hoặc lỗi V4L2 thoáng qua làm `read()` trả `ret=False`. Retry 1 lần sau 1s, rồi reopen.
 - **ISP đóng băng** — camera cứ nhả lại **cùng một buffer** với `ret=True` (đã gặp trên UVC cam khi dùng manual exposure/gain), nên nhánh recovery `read()`-fail không bao giờ kích hoạt trong khi mọi consumer (realtime look, sensing, tracking, snapshot) âm thầm xử lý cảnh cũ. Watchdog so sánh chữ ký frame đã subsample; frame byte-identical liên tục 10s (`_FREEZE_REOPEN_S`) không thể đến từ sensor thật → reopen. Log: `Camera frozen — identical frames for Ns, reopening device`.
+- **ISP loạn màu (color corruption)** — cùng bệnh ISP kẹt nhưng frame vẫn **thay đổi**, chỉ có chroma là rác: vùng xanh lá bão hoà cực đại posterize + mảng magenta/hồng bổ túc, trong khi mọi v4l2 control đều đúng (đã bắt được mẫu sống trên cam SunplusIT ngay sau một chu kỳ close/open). Freeze watchdog mù với mode này, nên có watchdog thứ hai check frame subsample trong HSV (throttle ~1 lần/giây): frame bị coi là corrupt khi xanh lá bão hoà cao phủ ≥10% (`_COLOR_GREEN_FRAC`) **và** magenta ≥0.8% (`_COLOR_MAGENTA_FRAC`) ở saturation ≥100 (`_COLOR_SAT_MIN`, value ≥60). Đòi cả hai họ hue bổ túc xuất hiện cùng lúc chính là chốt chặn false-positive — tường xanh, cây cối, hay LED của chính lamp hắt màu chỉ có 1 hue. Corruption phải liên tục 30s (`_COLOR_CORRUPT_REOPEN_S`; 1 frame sạch là reset) mới kích recovery như freeze. Ngưỡng calibrate từ ảnh corrupt thật (green 0.19 / magenta 0.012) vs cảnh sạch (0.000 / 0.000). Log: `Camera color corruption — posterized green/magenta frames for Ns, reopening device`.
 
 ### ISP kẹt sâu → leo thang USB power-cycle
 
 Đôi khi ISP kẹt **sâu** hơn mức reopen V4L2 chữa được: frame trở lại vẫn posterize xanh/hồng hoặc freeze lại ngay sau reopen, dù mọi v4l2 control đều đúng (auto_exposure=3, gain hợp lý). Đã quan sát trên UVC cam SunplusIT (`1bcf:28cc`); cách chữa duy nhất đã verify (không cần reboot) là power-cycle cổng USB.
 
-Freeze watchdog tự leo thang:
+Cả hai watchdog ISP (freeze và loạn màu) dùng chung một thang leo qua `_recover_isp_fault()`:
 
-- **Trigger** — ≥3 lần reopen do freeze (`_FREEZE_ESCALATE_COUNT`) trong cửa sổ trượt 10 phút (`_FREEZE_ESCALATE_WINDOW_S`, 600s). Reopen do `read()`-fail **không** được tính.
+- **Trigger** — ≥3 lần reopen do ISP fault (`_ISP_FAULT_ESCALATE_COUNT`) trong cửa sổ trượt 10 phút (`_ISP_FAULT_WINDOW_S`, 600s). Reopen do `read()`-fail **không** được tính.
 - **Resolve USB path** — động, không hardcode: đi ngược chuỗi parent sysfs từ `/sys/class/video4linux/video<N>/device` tới node có `idVendor` (chính là USB device), lấy basename (ví dụ `1-1`). Nếu camera không phải USB (ví dụ sensor CSI) → bỏ qua leo thang, log lý do và giữ nguyên đường reopen thường.
 - **Power-cycle** — ghi bus path vào `/sys/bus/usb/drivers/usb/unbind`, đợi ~3s (`_USB_REBIND_DELAY_S`), ghi vào `.../bind` (HAL chạy root), rồi đợi tối đa 15s (`_USB_DEVNODE_TIMEOUT_S`) cho `/dev/video<N>` enumerate lại trước khi trả quyền cho `_reopen_with_backoff()`. Best-effort: lỗi sysfs nào cũng chỉ log rồi fallback về reopen thường.
 - **Cooldown** — tối đa 1 lần power-cycle mỗi 10 phút (`_USB_POWER_CYCLE_COOLDOWN_S`); camera chết hẳn không được kéo loop unbind/bind vô hạn. Trong thời gian cooldown, freeze vẫn đi đường reopen thường.
