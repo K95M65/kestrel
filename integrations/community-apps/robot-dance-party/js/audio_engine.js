@@ -34,7 +34,7 @@ export class AudioEngine extends EventTarget {
 
     // Beat detection state (energy-based onset)
     this._prevEnergy = 0;
-    this._energyHistory = new Float32Array(43); // ~1s at 43fps
+    this._energyHistory = new Float32Array(30); // ~0.5s window — shorter = average stays lower = more sensitive
     this._historyIdx = 0;
     this._lastBeatTime = 0;
 
@@ -43,6 +43,10 @@ export class AudioEngine extends EventTarget {
 
     // BPM value (updated by analyzer or fallback)
     this.bpm = 0;
+
+    // Beat sensitivity: fraction above rolling average to trigger beat
+    // Slider maps [20..90] → [0.20..0.02], default 55 → 0.08
+    this.sensitivity = 0.08;
 
     // Band energies (exposed for dance engine)
     this.bass = 0;
@@ -63,7 +67,7 @@ export class AudioEngine extends EventTarget {
     this.ctx.resume();
     this.analyser = this.ctx.createAnalyser();
     this.analyser.fftSize = 1024;
-    this.analyser.smoothingTimeConstant = 0.75;
+    this.analyser.smoothingTimeConstant = 0.3; // Low = sharp transients, aggressive beat detection
     this.freqData = new Uint8Array(this.analyser.frequencyBinCount);
     this.timeData = new Uint8Array(this.analyser.fftSize);
 
@@ -279,10 +283,8 @@ export class AudioEngine extends EventTarget {
     // Weighted total (bass-heavy)
     this.energy = (this.bass * 2.5 + this.mid * 1.0 + this.high * 0.5) / 4;
 
-    // --- Beat detection (energy-based onset) ---
-    const energyDelta = this.energy - this._prevEnergy;
-
-    // Rolling average for adaptive threshold
+    // --- Beat detection ---
+    // Rolling average as baseline
     this._energyHistory[this._historyIdx % this._energyHistory.length] = this.energy;
     this._historyIdx++;
     let avgEnergy = 0;
@@ -290,14 +292,11 @@ export class AudioEngine extends EventTarget {
     for (let i = 0; i < filled; i++) avgEnergy += this._energyHistory[i];
     avgEnergy /= filled;
 
-    // Beat = energy spike above rolling average + minimum energy + cooldown
-    const minInterval = 220; // ~270 BPM max
-    const isBeat = energyDelta > (avgEnergy * 0.45)
-      && this.energy > 50
+    // Beat = current energy exceeds rolling average by sensitivity fraction + cooldown
+    const minInterval = 200; // ~300 BPM max
+    const isBeat = this.energy > avgEnergy * (1 + this.sensitivity)
+      && this.energy > 15
       && (timestamp - this._lastBeatTime) > minInterval;
-
-    // Smooth energy tracking (EMA)
-    this._prevEnergy = this.energy * 0.6 + this._prevEnergy * 0.4;
 
     if (isBeat) {
       this._lastBeatTime = timestamp;

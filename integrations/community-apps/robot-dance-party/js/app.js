@@ -311,8 +311,9 @@ $('sl-servo-rate').addEventListener('input', e => {
 
 $('sl-sensitivity').addEventListener('input', e => {
   $('val-sensitivity').textContent = e.target.value;
-  // Sensitivity affects beat detection threshold in audio_engine
-  // Higher = more sensitive (more beats detected)
+  // Map slider [20..90] → threshold [0.20..0.02] (higher slider = lower threshold = more beats)
+  const v = parseInt(e.target.value);
+  audio.sensitivity = 0.20 - (v - 20) * (0.18 / 70);
 });
 
 // ============================
