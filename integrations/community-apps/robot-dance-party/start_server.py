@@ -20,8 +20,7 @@ except ImportError:
     ])
     import yt_dlp
 
-import tempfile
-DOWNLOADS = Path(tempfile.gettempdir()) / "robot-dance-party"
+DOWNLOADS = Path(__file__).resolve().parent / "downloads"
 DOWNLOADS.mkdir(exist_ok=True)
 
 
