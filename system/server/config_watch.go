@@ -187,6 +187,10 @@ func (s *Server) handleSetUpCompleteChange(setupCompleted bool) {
 			// unchanged; gated by config.MCPAppliedRuntime. Non-blocking.
 			s.mcpReconcile.Reconcile()
 
+			// Sync user-configured MCP tools (HF Spaces, public endpoints) from
+			// config.json into openclaw.json so they survive gateway restarts.
+			s.deviceService.SyncMCPTools()
+
 			// Seed SOUL.md + IDENTITY.md into workspace (factory defaults, once only)
 			if err := s.agentGateway.EnsureOnboarding(); err != nil {
 				slog.Error("onboarding seed failed", "component", "server", "error", err)
