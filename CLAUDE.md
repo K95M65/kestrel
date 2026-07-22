@@ -49,6 +49,7 @@ This repo is developed in both **Cursor** and **Claude Code**. The following rul
    | Bring-up, motion driver, deploy, safety delta | `devices/reachy-mini/docs/runtime.md` | `devices/reachy-mini/docs/vi/runtime_vi.md` |
    | Recovery (Pollen OS), SSH, WiFi impact | `devices/reachy-mini/docs/recovery.md` | `devices/reachy-mini/docs/vi/recovery_vi.md` |
    | First-boot recon plan, setup.sh design, smoke tests | `devices/reachy-mini/docs/first-boot-plan.md` | `devices/reachy-mini/docs/vi/first-boot-plan_vi.md` |
+   | Pollen ecosystem reference (voice, tool registry, app distribution) | `devices/reachy-mini/docs/pollen-ecosystem-analysis.md` | `devices/reachy-mini/docs/vi/pollen-ecosystem-analysis_vi.md` |
 
 2. **Comments in English** — Project standard.
 3. **Code is the single source of truth** — Docs reflect code, not the other way around.

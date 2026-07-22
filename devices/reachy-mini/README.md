@@ -14,9 +14,11 @@ OS image and runtime contract as the other devices, with the body selected by
 | `docs/runtime.md` | English bring-up and runtime notes |
 | `docs/recovery.md` | English recovery, SSH access, and WiFi impact notes |
 | `docs/first-boot-plan.md` | English first-boot recon plan, setup.sh design, smoke tests |
+| `docs/pollen-ecosystem-analysis.md` | Pollen ecosystem reference: voice, tool registry, app distribution |
 | `docs/vi/runtime_vi.md` | Vietnamese bring-up and runtime notes |
 | `docs/vi/recovery_vi.md` | Vietnamese recovery, SSH access, and WiFi impact notes |
 | `docs/vi/first-boot-plan_vi.md` | Vietnamese first-boot recon plan |
+| `docs/vi/pollen-ecosystem-analysis_vi.md` | Vietnamese Pollen ecosystem reference |
 
 ## Shared References
 
