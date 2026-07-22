@@ -47,8 +47,8 @@ var configPath = "config/config.json"
 var OSVersion = "dev"
 
 // MCPTool is a remote MCP tool endpoint the agent can call over HTTPS.
-// Public tools need only Name+URL; authenticated tools also carry an APIKey
-// that is sent as a Bearer token in the Authorization header.
+// Public tools need only Name+URL; authenticated tools carry custom headers
+// (e.g. Authorization, X-API-Key).
 type MCPTool struct {
 	// Name is the short identifier used as the mcp.servers.<name> key in
 	// openclaw.json (e.g. "search", "weather"). Must be unique.
@@ -56,9 +56,9 @@ type MCPTool struct {
 	// URL is the remote MCP endpoint (e.g.
 	// "https://owner-space.hf.space/gradio_api/mcp/").
 	URL string `json:"url" yaml:"url"`
-	// APIKey is an optional Bearer token for authenticated MCP servers.
-	// When non-empty, the entry is written with Authorization: Bearer <key>.
-	APIKey string `json:"api_key,omitempty" yaml:"api_key,omitempty"`
+	// Headers are optional HTTP headers sent with every MCP request.
+	// Common uses: {"Authorization": "Bearer sk-..."} or {"X-API-Key": "..."}.
+	Headers map[string]string `json:"headers,omitempty" yaml:"headers,omitempty"`
 }
 
 type Config struct {

@@ -154,6 +154,9 @@ SSH/firmware required) enables community contributions. Worth considering how
 Autonomous OS can lower its own barrier for external contributors — whether
 through HF Spaces, a web-based skill editor, or a simpler local plugin format.
 
+See `docs/plugin-system.md` for the plugin system design (future work inspired
+by Pollen's `reachy_mini_python_app` model).
+
 ## Profile System
 
 Each Reachy Mini can have multiple "profiles" — a profile is a personality

@@ -4,19 +4,22 @@ import { C, SectionCard, LABEL_STYLE, INPUT_STYLE } from "@/components/setup/sha
 import { listMCPTools, addMCPTool, removeMCPTool } from "@/lib/api";
 import type { MCPTool } from "@/lib/api";
 
-// MCP Tools section — manages public remote MCP tool endpoints (HF Spaces,
-// community tools). Not part of the main form Save flow; each add/remove
-// hits its own API endpoint and takes effect immediately (gateway restart).
-// OAuth-authenticated connectors (Notion, GitHub, …) are managed separately
-// via the MQTT connector.set flow.
+// MCP Tools section — manages remote MCP tool endpoints (HF Spaces,
+// community tools, authenticated services). Not part of the main form Save
+// flow; each add/remove hits its own API endpoint and takes effect immediately
+// (gateway restart). OAuth-authenticated connectors (Notion, GitHub, …) are
+// managed separately via the MQTT connector.set flow.
+
+type HeaderRow = { key: string; value: string };
 
 export function MCPToolsSection({ active }: { active: boolean }) {
   const [tools, setTools] = useState<MCPTool[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
+  const [removing, setRemoving] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
-  const [apiKey, setApiKey] = useState("");
+  const [headers, setHeaders] = useState<HeaderRow[]>([]);
 
   useEffect(() => {
     listMCPTools()
@@ -25,18 +28,34 @@ export function MCPToolsSection({ active }: { active: boolean }) {
       .finally(() => setLoading(false));
   }, []);
 
+  function addHeaderRow() { setHeaders((prev) => [...prev, { key: "", value: "" }]); }
+  function removeHeaderRow(i: number) { setHeaders((prev) => prev.filter((_, idx) => idx !== i)); }
+  function updateHeader(i: number, field: "key" | "value", val: string) {
+    setHeaders((prev) => prev.map((h, idx) => idx === i ? { ...h, [field]: val } : h));
+  }
+
+  function buildHeaders(): Record<string, string> | undefined {
+    const h: Record<string, string> = {};
+    for (const r of headers) {
+      const k = r.key.trim();
+      const v = r.value.trim();
+      if (k && v) h[k] = v;
+    }
+    return Object.keys(h).length > 0 ? h : undefined;
+  }
+
   async function handleAdd() {
     const n = name.trim();
     const u = url.trim();
     if (!n || !u) { toast.error("Name and URL are required."); return; }
     setAdding(true);
-    const key = apiKey.trim() || undefined;
+    const hdrs = buildHeaders();
     try {
-      await addMCPTool({ name: n, url: u, api_key: key });
-      setTools((prev) => [...prev, { name: n, url: u, api_key: key }]);
+      await addMCPTool({ name: n, url: u, headers: hdrs });
+      setTools((prev) => [...prev, { name: n, url: u, headers: hdrs }]);
       setName("");
       setUrl("");
-      setApiKey("");
+      setHeaders([]);
       toast.success(`Added MCP tool "${n}".`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to add tool.");
@@ -46,14 +65,19 @@ export function MCPToolsSection({ active }: { active: boolean }) {
   }
 
   async function handleRemove(toolName: string) {
+    setRemoving(toolName);
     try {
       await removeMCPTool(toolName);
       setTools((prev) => prev.filter((t) => t.name !== toolName));
       toast.success(`Removed "${toolName}".`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to remove tool.");
+    } finally {
+      setRemoving(null);
     }
   }
+
+  const headerCount = (t: MCPTool) => t.headers ? Object.keys(t.headers).length : 0;
 
   const BTN: React.CSSProperties = {
     padding: "6px 14px", borderRadius: 8, fontSize: 13, fontWeight: 500,
@@ -61,11 +85,17 @@ export function MCPToolsSection({ active }: { active: boolean }) {
     color: C.text,
   };
 
+  const SMALL_BTN: React.CSSProperties = {
+    padding: "3px 8px", borderRadius: 6, fontSize: 11, fontWeight: 500,
+    cursor: "pointer", border: `1px solid ${C.border}`, background: C.surface,
+    color: C.textDim,
+  };
+
   return (
     <SectionCard id="mcp" title="MCP Tools" active={active}>
       <div style={{ fontSize: 12.5, color: C.textDim, marginBottom: 14, lineHeight: 1.6 }}>
         Remote MCP tool endpoints the agent can call over HTTPS. Add public
-        tools (HF Spaces, community servers) or authenticated tools (with API key).
+        tools (HF Spaces, community servers) or authenticated tools (with custom headers).
         Each tool is synced to the active runtime and takes effect immediately.
       </div>
 
@@ -88,8 +118,10 @@ export function MCPToolsSection({ active }: { active: boolean }) {
                   <div style={{ overflow: "hidden", minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: C.text, display: "flex", alignItems: "center", gap: 6 }}>
                       {t.name}
-                      {t.api_key && (
-                        <span style={{ fontSize: 10, color: C.amber, fontWeight: 400 }}>key</span>
+                      {headerCount(t) > 0 && (
+                        <span style={{ fontSize: 10, color: C.amber, fontWeight: 400 }}>
+                          {headerCount(t)} header{headerCount(t) > 1 ? "s" : ""}
+                        </span>
                       )}
                     </div>
                     <div style={{
@@ -102,9 +134,10 @@ export function MCPToolsSection({ active }: { active: boolean }) {
                   <button
                     type="button"
                     onClick={() => handleRemove(t.name)}
-                    style={{ ...BTN, color: "#ef4444", flexShrink: 0 }}
+                    disabled={removing === t.name}
+                    style={{ ...BTN, color: "#ef4444", flexShrink: 0, opacity: removing === t.name ? 0.5 : 1, cursor: removing === t.name ? "not-allowed" : "pointer" }}
                   >
-                    Remove
+                    {removing === t.name ? "Removing…" : "Remove"}
                   </button>
                 </div>
               ))}
@@ -140,17 +173,34 @@ export function MCPToolsSection({ active }: { active: boolean }) {
               style={INPUT_STYLE}
             />
           </div>
+
+          {/* Headers (key-value pairs) */}
           <div style={{ marginBottom: 10 }}>
-            <label htmlFor="mcp-apikey" style={LABEL_STYLE}>API Key <span style={{ color: C.textMuted, fontWeight: 400 }}>(optional)</span></label>
-            <input
-              id="mcp-apikey"
-              type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="sk-..."
-              style={INPUT_STYLE}
-            />
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+              <span style={LABEL_STYLE}>Headers <span style={{ color: C.textMuted, fontWeight: 400 }}>(optional)</span></span>
+              <button type="button" onClick={addHeaderRow} style={SMALL_BTN}>+ Add</button>
+            </div>
+            {headers.map((h, i) => (
+              <div key={i} style={{ display: "flex", gap: 6, marginBottom: 4 }}>
+                <input
+                  type="text"
+                  value={h.key}
+                  onChange={(e) => updateHeader(i, "key", e.target.value)}
+                  placeholder="Authorization"
+                  style={{ ...INPUT_STYLE, flex: 1 }}
+                />
+                <input
+                  type="password"
+                  value={h.value}
+                  onChange={(e) => updateHeader(i, "value", e.target.value)}
+                  placeholder="Bearer sk-..."
+                  style={{ ...INPUT_STYLE, flex: 2 }}
+                />
+                <button type="button" onClick={() => removeHeaderRow(i)} style={{ ...SMALL_BTN, color: "#ef4444" }}>×</button>
+              </div>
+            ))}
           </div>
+
           <button
             type="button"
             onClick={handleAdd}

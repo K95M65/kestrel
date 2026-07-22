@@ -441,8 +441,8 @@ export async function login(password: string): Promise<boolean> {
 }
 
 // MCP Tools — remote MCP tool endpoints (HF Spaces, public MCP servers).
-// api_key is optional; when set, sent as Bearer token in Authorization header.
-export interface MCPTool { name: string; url: string; api_key?: string }
+// headers is optional; key-value pairs sent with every MCP request.
+export interface MCPTool { name: string; url: string; headers?: Record<string, string> }
 
 /** GET /api/device/mcp-tools */
 export async function listMCPTools(): Promise<MCPTool[]> {
