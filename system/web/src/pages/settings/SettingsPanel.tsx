@@ -17,12 +17,13 @@ import { TimezoneSection } from "@/pages/settings/TimezoneSection";
 import { STTSection, type SttProvider } from "@/pages/settings/STTSection";
 import { ChannelSection } from "@/pages/settings/ChannelSection";
 import { MqttSection } from "@/pages/settings/MqttSection";
+import { MCPToolsSection } from "@/pages/settings/MCPToolsSection";
 
 // The set of sections this panel can render. Controlled by the parent now (the
 // page shell owns the sidebar / active-section state). `stt` is the Language
 // section (rendered under id="stt"), matching the legacy /edit layout. `runtime`
 // is the agent-backend switch (its own Switch button, not part of Save).
-export type SettingsSectionId = "device" | "wifi" | "llm" | "runtime" | "voice" | "face" | "tts" | "realtime" | "stt" | "channel" | "mqtt" | "timezone";
+export type SettingsSectionId = "device" | "wifi" | "llm" | "runtime" | "voice" | "face" | "tts" | "realtime" | "stt" | "channel" | "mqtt" | "mcp" | "timezone";
 
 // Header-row label lookup. Kept local so the panel can render the active-section
 // title above the form without depending on the page's NAV_GROUPS config.
@@ -38,6 +39,7 @@ const SECTION_LABELS: Record<SettingsSectionId, string> = {
   stt: "Language",
   channel: "Channels",
   mqtt: "MQTT",
+  mcp: "MCP Tools",
   timezone: "Timezone",
 };
 
@@ -582,6 +584,8 @@ export function SettingsPanel({ activeSection }: { activeSection: SettingsSectio
               discordGuildId={discordGuildId} setDiscordGuildId={setDiscordGuildId}
               discordUserId={discordUserId} setDiscordUserId={setDiscordUserId}
             />
+
+            <MCPToolsSection active={activeSection === "mcp"} />
 
             <MqttSection
               active={activeSection === "mqtt"}

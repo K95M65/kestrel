@@ -467,3 +467,32 @@ func mergeMissingFromConfig(req *domain.SetupRequest, cfg *config.Config) {
 		req.FDChannel = cfg.FDChannel
 	}
 }
+
+// ListMCPTools returns the configured remote MCP tools.
+func (h *DeviceHandler) ListMCPTools(c *gin.Context) {
+	c.JSON(http.StatusOK, serializers.ResponseSuccess(h.service.ListMCPTools()))
+}
+
+// AddMCPTool adds a remote MCP tool endpoint.
+func (h *DeviceHandler) AddMCPTool(c *gin.Context) {
+	var req config.MCPTool
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, serializers.ResponseError(err.Error()))
+		return
+	}
+	if err := h.service.AddMCPTool(req); err != nil {
+		c.JSON(http.StatusBadRequest, serializers.ResponseError(err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, serializers.ResponseSuccess(true))
+}
+
+// RemoveMCPTool removes a remote MCP tool by name.
+func (h *DeviceHandler) RemoveMCPTool(c *gin.Context) {
+	name := c.Param("name")
+	if err := h.service.RemoveMCPTool(name); err != nil {
+		c.JSON(http.StatusBadRequest, serializers.ResponseError(err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, serializers.ResponseSuccess(true))
+}

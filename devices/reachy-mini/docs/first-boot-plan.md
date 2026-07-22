@@ -364,6 +364,88 @@ After everything works, update:
 - [ ] `devices/reachy-mini/rootfs/etc/asound.conf` — actual ALSA names
 - [ ] `CLAUDE.md` — if new docs are created
 
+## Phase 5: Golden Base Image (Capture from Device) & build-reachy.sh
+
+The Reachy image build follows the **same pattern lamp/intern-v2 already use**:
+the imager does not build on a stock vendor image — it builds on a base image
+**captured from a known-good device**. See `scripts/imager/README.md`
+("Base image — per device type"). The Pollen GitHub release image
+(`recovery.md` Level D) is a **recovery fallback only**, not the build base.
+
+### 5.1 Capture the base image FROM the device
+
+Do this **before running `setup.sh`**, while the eMMC is still pristine Pollen OS
+(Phase 1 recon is read-only, so it's fine to recon first, then capture). The CM4
+eMMC has no SD slot, so capture goes through the same rpiboot USB path as a
+reflash (`recovery.md` Level D) — but **reading** instead of writing:
+
+```bash
+# 1. shutdown robot → switch SW1 to DOWNLOAD → connect USB2 → start rpiboot → power on
+sudo ./rpiboot -d mass-storage-gadget64          # eMMC appears as /dev/diskX (macOS) or /dev/sdX (Linux)
+
+# 2. unmount the auto-mounted partitions first
+sudo diskutil unmountDisk /dev/diskX             # macOS
+# sudo umount /media/$USER/bootfs /media/$USER/rootfs   # Linux
+
+# 3. raw-read the WHOLE disk (partition table included) and compress on the fly
+sudo dd if=/dev/rdiskX bs=8m | xz -T0 -c > reachy-mini-base-v<pollen-ver>.img.xz    # macOS (note rdiskX)
+# sudo dd if=/dev/sdX bs=8M | xz -T0 -c > reachy-mini-base-v<pollen-ver>.img.xz     # Linux
+```
+
+Store it as the imager base, following the lamp/intern layout:
+`scripts/imager/input/reachy-mini/golden-reachy-dev.img.xz`. Optionally mirror it
+to the Autonomous CDN like the other bases:
+`gs://s3-autonomous-upgrade-3/os/imager/base/golden-reachy-dev.img.xz`.
+
+### 5.2 Recover the device FROM the captured base
+
+Same rpiboot USB path as 5.1, writing the captured image back. Two options:
+
+```bash
+# --- Option A: dd (simplest — the capture was a dd, so dd restores it verbatim) ---
+# shutdown → SW1 DOWNLOAD → USB2 → rpiboot → power on → unmount (as in 5.1)
+xz -dc reachy-mini-base-v<pollen-ver>.img.xz | sudo dd of=/dev/rdiskX bs=8m    # macOS
+# xz -dc reachy-mini-base-v<pollen-ver>.img.xz | sudo dd of=/dev/sdX bs=8M     # Linux
+
+# --- Option B: bmaptool (faster, sparse — generate a .bmap once, then flash) ---
+xz -dc reachy-mini-base-v<pollen-ver>.img.xz > reachy-base.img
+bmaptool create -o reachy-base.bmap reachy-base.img
+sudo bmaptool copy reachy-base.img --bmap reachy-base.bmap /dev/rdiskX
+```
+
+Then restore normal boot: power off → switch back to **DEBUG** → disconnect USB →
+power on. Verify with `reachyminios_check` (should print `Image validation PASSED`)
+and confirm the robot actually moves correctly (calibration check, see 5.3).
+
+### 5.3 Why capture, not download the Pollen release
+
+- The shipped eMMC may carry drivers, config, or first-boot state the generic
+  release lacks — capturing guarantees the base matches the exact hardware and
+  daemon the unit runs.
+- Same rationale lamp/intern-v2 use the hardware team's image over the stock `.7z`.
+- **Caveat — per-unit state**: a dump of one unit's eMMC may include per-robot
+  calibration (servo/IMU offsets) or identity. Restoring onto the **same** unit
+  is always safe. Before reusing a captured image as the base for **other** units,
+  verify what is per-unit and strip/regenerate it — recon question: does
+  `reachyminios_check` pass **and** does the robot move correctly after flashing a
+  captured image onto a *different* unit?
+
+### 5.4 build-reachy.sh (future imager target — not yet written)
+
+Would mirror `build-orangepi.sh` phases, adapted:
+
+| build-orangepi.sh | build-reachy.sh delta |
+|---|---|
+| Phase 0 base: `gdown` stock `.7z` | decompress `input/reachy-mini/golden-reachy-dev.img.xz` (captured in 5.1) |
+| Phase 2 chroot apt: hostapd/dnsmasq/dhcpcd | **gated on recon 1.2** — NetworkManager vs dhcpcd decides the network packages |
+| Phase 2: bake full OS stack | **install on top — never wipe the Pollen daemon** |
+| Flash: SD card via Imager | **rpiboot + bmaptool to eMMC** — no SD slot |
+| Phase 3 OTA bake | same: os-server, bootstrap, HAL, device profile overlay |
+
+Blocked on: recon 1.2 (network stack) and the per-unit-state question (5.3). Only
+worth building when shipping multiple Reachy units; for a single dev unit,
+`spike.sh` + `setup.sh`-on-top is enough.
+
 ## References
 
 - [Pollen OS build system](https://github.com/pollen-robotics/reachy-mini-os)

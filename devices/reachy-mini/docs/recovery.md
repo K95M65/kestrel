@@ -79,7 +79,7 @@ onboard eMMC (no SD card slot). Flashing requires USB boot mode.
 
 | Item | Source |
 |------|--------|
-| OS image (`.img.xz`) + `.bmap` file | [reachy-mini-os releases](https://github.com/pollen-robotics/reachy-mini-os/releases) |
+| OS image (`.zip`, contains the `.img`) + matching `.bmap` | [reachy-mini-os releases](https://github.com/pollen-robotics/reachy-mini-os/releases) (latest: v0.2.7) |
 | `rpiboot` tool | [raspberrypi/usbboot](https://github.com/raspberrypi/usbboot) |
 | `bmaptool` (Linux/macOS) or Raspberry Pi Imager (Windows) | Package manager or [rpi-imager](https://www.raspberrypi.com/software/) |
 | USB cable | To the USB2 port on the head PCB |
@@ -96,10 +96,14 @@ onboard eMMC (no SD card slot). Flashing requires USB boot mode.
 6. **Unmount** auto-mounted partitions:
    - macOS: `diskutil unmountDisk /dev/diskX`
    - Linux: `sudo umount /media/$USER/bootfs /media/$USER/rootfs`
-7. **Flash** the image:
-   - macOS: `sudo bmaptool copy <image>.xz --bmap <image>.bmap /dev/rdiskX`
-   - Linux: `sudo bmaptool copy <image>.xz --bmap <image>.bmap /dev/sdX`
-   - Windows: Raspberry Pi Imager → device "Raspberry Pi 4" → "Use custom" → select image
+7. **Flash** the image — `bmaptool` reads the `.zip` directly, no unzip needed:
+   - macOS: `sudo bmaptool copy <image>.zip --bmap <image>.bmap /dev/rdiskX` (note the `r` in `rdiskX` — raw device is mandatory)
+   - Linux: `sudo bmaptool copy <image>.zip --bmap <image>.bmap /dev/sdX`
+   - Windows: Raspberry Pi Imager → device "Raspberry Pi 4" → "Use custom" → select the `.zip`
+
+   Example (v0.2.7): `sudo bmaptool copy image_2026-06-17-reachyminios-v0.2.7.zip --bmap 2026-06-17-reachyminios-v0.2.7.bmap /dev/rdisk4`
+
+   Install `bmaptool` (macOS/Linux): `python3 -m pip install --user "git+https://github.com/yoctoproject/bmaptool.git"` — or `apt install bmap-tools` on Debian/Ubuntu.
 8. **Restore normal boot**: power off, switch back to DEBUG, disconnect USB, power on.
 9. **Verify**: connect to WiFi `reachy-mini-ap` (password `reachy-mini`), then:
    ```bash

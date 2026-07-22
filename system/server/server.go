@@ -308,6 +308,9 @@ func (s *Server) Serve(closeFn func()) error {
 	device.POST("agent-runtime", adminAuthMiddleware(s.config), s.deviceHandler.SetAgentRuntime)
 	device.GET("timezone", adminAuthMiddleware(s.config), s.deviceHandler.GetTimezone)
 	device.POST("timezone", adminAuthMiddleware(s.config), s.deviceHandler.SetTimezone)
+	device.GET("mcp-tools", adminAuthMiddleware(s.config), s.deviceHandler.ListMCPTools)
+	device.POST("mcp-tools", adminAuthMiddleware(s.config), s.deviceHandler.AddMCPTool)
+	device.DELETE("mcp-tools/:name", adminAuthMiddleware(s.config), s.deviceHandler.RemoveMCPTool)
 
 	network := api.Group("network")
 	network.GET("", s.networkHandler.GetNetworks)

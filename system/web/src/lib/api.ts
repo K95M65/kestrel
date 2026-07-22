@@ -440,6 +440,31 @@ export async function login(password: string): Promise<boolean> {
   });
 }
 
+// MCP Tools — remote MCP tool endpoints (HF Spaces, public MCP servers).
+// api_key is optional; when set, sent as Bearer token in Authorization header.
+export interface MCPTool { name: string; url: string; api_key?: string }
+
+/** GET /api/device/mcp-tools */
+export async function listMCPTools(): Promise<MCPTool[]> {
+  return apiRequest<MCPTool[]>(`${API_BASE}/api/device/mcp-tools`);
+}
+
+/** POST /api/device/mcp-tools */
+export async function addMCPTool(tool: MCPTool): Promise<boolean> {
+  return apiRequest<boolean>(`${API_BASE}/api/device/mcp-tools`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(tool),
+  });
+}
+
+/** DELETE /api/device/mcp-tools/:name */
+export async function removeMCPTool(name: string): Promise<boolean> {
+  return apiRequest<boolean>(`${API_BASE}/api/device/mcp-tools/${encodeURIComponent(name)}`, {
+    method: "DELETE",
+  });
+}
+
 export async function logout(): Promise<boolean> {
   setApiToken("");
   return apiRequest<boolean>(`${API_BASE}/api/logout`, { method: "POST" });
