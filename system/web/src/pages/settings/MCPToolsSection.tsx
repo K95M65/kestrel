@@ -14,6 +14,7 @@ export function MCPToolsSection({ active }: { active: boolean }) {
   const [tools, setTools] = useState<MCPTool[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
+  const [removing, setRemoving] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
@@ -46,12 +47,15 @@ export function MCPToolsSection({ active }: { active: boolean }) {
   }
 
   async function handleRemove(toolName: string) {
+    setRemoving(toolName);
     try {
       await removeMCPTool(toolName);
       setTools((prev) => prev.filter((t) => t.name !== toolName));
       toast.success(`Removed "${toolName}".`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to remove tool.");
+    } finally {
+      setRemoving(null);
     }
   }
 
@@ -102,9 +106,10 @@ export function MCPToolsSection({ active }: { active: boolean }) {
                   <button
                     type="button"
                     onClick={() => handleRemove(t.name)}
-                    style={{ ...BTN, color: "#ef4444", flexShrink: 0 }}
+                    disabled={removing === t.name}
+                    style={{ ...BTN, color: "#ef4444", flexShrink: 0, opacity: removing === t.name ? 0.5 : 1, cursor: removing === t.name ? "not-allowed" : "pointer" }}
                   >
-                    Remove
+                    {removing === t.name ? "Removing…" : "Remove"}
                   </button>
                 </div>
               ))}
