@@ -79,7 +79,7 @@ trên bo (không có khe SD card). Flash cần chế độ USB boot.
 
 | Vật phẩm | Nguồn |
 |----------|-------|
-| Image OS (`.img.xz`) + file `.bmap` | [reachy-mini-os releases](https://github.com/pollen-robotics/reachy-mini-os/releases) |
+| Image OS (`.zip`, chứa file `.img`) + file `.bmap` khớp | [reachy-mini-os releases](https://github.com/pollen-robotics/reachy-mini-os/releases) (mới nhất: v0.2.7) |
 | Tool `rpiboot` | [raspberrypi/usbboot](https://github.com/raspberrypi/usbboot) |
 | `bmaptool` (Linux/macOS) hoặc Raspberry Pi Imager (Windows) | Package manager hoặc [rpi-imager](https://www.raspberrypi.com/software/) |
 | Cáp USB | Cắm vào cổng USB2 trên bo mạch đầu |
@@ -96,10 +96,14 @@ trên bo (không có khe SD card). Flash cần chế độ USB boot.
 6. **Unmount** các phân vùng tự động mount:
    - macOS: `diskutil unmountDisk /dev/diskX`
    - Linux: `sudo umount /media/$USER/bootfs /media/$USER/rootfs`
-7. **Flash** image:
-   - macOS: `sudo bmaptool copy <image>.xz --bmap <image>.bmap /dev/rdiskX`
-   - Linux: `sudo bmaptool copy <image>.xz --bmap <image>.bmap /dev/sdX`
-   - Windows: Raspberry Pi Imager → thiết bị "Raspberry Pi 4" → "Use custom" → chọn image
+7. **Flash** image — `bmaptool` đọc thẳng `.zip`, không cần giải nén:
+   - macOS: `sudo bmaptool copy <image>.zip --bmap <image>.bmap /dev/rdiskX` (chú ý chữ `r` trong `rdiskX` — bắt buộc dùng raw device)
+   - Linux: `sudo bmaptool copy <image>.zip --bmap <image>.bmap /dev/sdX`
+   - Windows: Raspberry Pi Imager → thiết bị "Raspberry Pi 4" → "Use custom" → chọn file `.zip`
+
+   Ví dụ (v0.2.7): `sudo bmaptool copy image_2026-06-17-reachyminios-v0.2.7.zip --bmap 2026-06-17-reachyminios-v0.2.7.bmap /dev/rdisk4`
+
+   Cài `bmaptool` (macOS/Linux): `python3 -m pip install --user "git+https://github.com/yoctoproject/bmaptool.git"` — hoặc `apt install bmap-tools` trên Debian/Ubuntu.
 8. **Khôi phục boot bình thường**: tắt nguồn, gạt switch về DEBUG, rút USB, bật lại.
 9. **Kiểm tra**: kết nối WiFi `reachy-mini-ap` (mật khẩu `reachy-mini`), rồi:
    ```bash

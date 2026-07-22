@@ -365,6 +365,85 @@ Sau khi mọi thứ hoạt động, cập nhật:
 - [ ] `devices/reachy-mini/rootfs/etc/asound.conf` — tên ALSA thật
 - [ ] `CLAUDE.md` — nếu tạo thêm docs mới
 
+## Giai Đoạn 5: Golden Base Image (Chụp Từ Device) & build-reachy.sh
+
+Việc build image Reachy theo **đúng pattern lamp/intern-v2 đang dùng**: imager
+không build trên stock vendor image — mà build trên base image **chụp từ một
+device đã biết chạy tốt**. Xem `scripts/imager/README.md` ("Base image — per
+device type"). Pollen GitHub release image (`recovery.md` Cấp D) chỉ là **phao
+recovery**, KHÔNG phải build base.
+
+### 5.1 Chụp base image TỪ device
+
+Làm việc này **trước khi chạy `setup.sh`**, lúc eMMC còn là Pollen OS nguyên bản
+(Phase 1 recon chỉ đọc nên recon trước rồi chụp cũng được). eMMC của CM4 không có
+khe SD, nên việc chụp đi qua cùng đường rpiboot USB như khi reflash (`recovery.md`
+Cấp D) — nhưng **đọc** thay vì ghi:
+
+```bash
+# 1. tắt robot → gạt SW1 sang DOWNLOAD → nối USB2 → chạy rpiboot → bật nguồn
+sudo ./rpiboot -d mass-storage-gadget64          # eMMC hiện thành /dev/diskX (macOS) hoặc /dev/sdX (Linux)
+
+# 2. unmount các phân vùng tự mount trước
+sudo diskutil unmountDisk /dev/diskX             # macOS
+# sudo umount /media/$USER/bootfs /media/$USER/rootfs   # Linux
+
+# 3. đọc raw NGUYÊN đĩa (kèm bảng phân vùng) và nén luôn
+sudo dd if=/dev/rdiskX bs=8m | xz -T0 -c > reachy-mini-base-v<pollen-ver>.img.xz    # macOS (chú ý rdiskX)
+# sudo dd if=/dev/sdX bs=8M | xz -T0 -c > reachy-mini-base-v<pollen-ver>.img.xz     # Linux
+```
+
+Lưu thành base của imager theo layout lamp/intern:
+`scripts/imager/input/reachy-mini/golden-reachy-dev.img.xz`. Tuỳ chọn mirror lên
+CDN Autonomous như các base khác:
+`gs://s3-autonomous-upgrade-3/os/imager/base/golden-reachy-dev.img.xz`.
+
+### 5.2 Recover device TỪ base đã chụp
+
+Cùng đường rpiboot USB như 5.1, ghi image đã chụp ngược lại. Hai cách:
+
+```bash
+# --- Cách A: dd (đơn giản nhất — chụp bằng dd thì restore bằng dd y hệt) ---
+# tắt → SW1 DOWNLOAD → USB2 → rpiboot → bật nguồn → unmount (như 5.1)
+xz -dc reachy-mini-base-v<pollen-ver>.img.xz | sudo dd of=/dev/rdiskX bs=8m    # macOS
+# xz -dc reachy-mini-base-v<pollen-ver>.img.xz | sudo dd of=/dev/sdX bs=8M     # Linux
+
+# --- Cách B: bmaptool (nhanh hơn, sparse — tạo .bmap 1 lần rồi flash) ---
+xz -dc reachy-mini-base-v<pollen-ver>.img.xz > reachy-base.img
+bmaptool create -o reachy-base.bmap reachy-base.img
+sudo bmaptool copy reachy-base.img --bmap reachy-base.bmap /dev/rdiskX
+```
+
+Rồi khôi phục boot bình thường: tắt nguồn → gạt switch về **DEBUG** → rút USB →
+bật nguồn. Kiểm tra bằng `reachyminios_check` (phải in `Image validation PASSED`)
+và xác nhận robot cử động đúng (check calibration, xem 5.3).
+
+### 5.3 Vì sao chụp, không tải Pollen release
+
+- eMMC lúc ship có thể chứa driver, config, hoặc first-boot state mà release
+  generic thiếu — chụp đảm bảo base khớp đúng phần cứng + daemon con máy đang chạy.
+- Cùng lý do lamp/intern-v2 dùng image của hardware team thay vì stock `.7z`.
+- **Cảnh báo — per-unit state**: dump eMMC của 1 con có thể chứa calibration riêng
+  (servo/IMU offset) hoặc identity. Restore về **chính con đó** thì luôn an toàn.
+  Trước khi tái sử dụng image đã chụp làm base cho **con khác**, phải verify cái gì
+  là per-unit rồi strip/tạo lại — câu hỏi recon: sau khi flash image đã chụp sang
+  một con *khác*, `reachyminios_check` có PASS **và** robot có cử động đúng không?
+
+### 5.4 build-reachy.sh (imager target tương lai — chưa viết)
+
+Sẽ mirror các phase của `build-orangepi.sh`, chỉnh lại:
+
+| build-orangepi.sh | build-reachy.sh khác biệt |
+|---|---|
+| Phase 0 base: `gdown` stock `.7z` | giải nén `input/reachy-mini/golden-reachy-dev.img.xz` (chụp ở 5.1) |
+| Phase 2 chroot apt: hostapd/dnsmasq/dhcpcd | **gated vào recon 1.2** — NetworkManager vs dhcpcd quyết package mạng |
+| Phase 2: bake nguyên stack OS | **cài chồng — không bao giờ xoá Pollen daemon** |
+| Flash: SD card qua Imager | **rpiboot + bmaptool vào eMMC** — không có khe SD |
+| Phase 3 OTA bake | như cũ: os-server, bootstrap, HAL, device profile overlay |
+
+Chờ: recon 1.2 (network stack) + câu hỏi per-unit-state (5.3). Chỉ đáng build khi
+ship NHIỀU con Reachy; với 1 con dev, `spike.sh` + `setup.sh`-cài-chồng là đủ.
+
 ## Tài Liệu Tham Khảo
 
 - [Pollen OS build system](https://github.com/pollen-robotics/reachy-mini-os)
