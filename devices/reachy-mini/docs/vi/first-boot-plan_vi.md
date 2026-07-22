@@ -12,6 +12,17 @@ SSH vào và thu thập thông tin hệ thống. **Chưa thay đổi gì.**
 ssh pollen@reachy-mini.local   # mật khẩu: root
 ```
 
+**Lối tắt:** [`../recon.sh`](../recon.sh) chạy toàn bộ lệnh trong giai đoạn này
+một phát và in ra bảng tóm tắt để điền. Ưu tiên dùng nó thay vì gõ tay từng mục:
+
+```bash
+scp devices/reachy-mini/recon.sh pollen@reachy-mini.local:/tmp/
+ssh pollen@reachy-mini.local 'bash /tmp/recon.sh' | tee reachy-recon.txt
+# thêm --audio-test để chạy luôn loopback mic->loa 3s (bước duy nhất phát ra tiếng)
+```
+
+Các mục thủ công bên dưới ghi lại từng probe kiểm tra gì và tại sao.
+
 ### 1.1 OS & Kernel
 
 ```bash
