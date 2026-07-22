@@ -11,6 +11,17 @@ SSH in and collect system info. **Do not change anything yet.**
 ssh pollen@reachy-mini.local   # password: root
 ```
 
+**Shortcut:** [`../recon.sh`](../recon.sh) runs every command in this phase in one
+shot and prints a fill-in summary. Prefer it over typing the sections by hand:
+
+```bash
+scp devices/reachy-mini/recon.sh pollen@reachy-mini.local:/tmp/
+ssh pollen@reachy-mini.local 'bash /tmp/recon.sh' | tee reachy-recon.txt
+# add --audio-test to also run the 3s mic->speaker loopback (the only step that makes sound)
+```
+
+The manual sections below document what each probe checks and why.
+
 ### 1.1 OS & Kernel
 
 ```bash

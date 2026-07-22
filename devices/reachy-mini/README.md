@@ -8,6 +8,7 @@ OS image and runtime contract as the other devices, with the body selected by
 
 | File | Purpose |
 |------|---------|
+| `recon.sh` | Read-only first-boot probe — runs all of `first-boot-plan.md` Phase 1 in one shot |
 | `DEVICE.md` | Runtime contract: identity, board gate, gateway default, and declared capabilities |
 | `SAFETY.md` | Deterministic safety bounds for motion and fail-safe behavior |
 | `SOUL.md` | Reachy's default persona, adapted from Lamp but mapped to head/body/antenna expression |
