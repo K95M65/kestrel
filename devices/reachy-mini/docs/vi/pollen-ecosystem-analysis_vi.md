@@ -154,6 +154,9 @@ SSH/firmware) giúp community đóng góp. Đáng cân nhắc cách Autonomous O
 hạ rào cản cho contributors bên ngoài — qua HF Spaces, web-based skill editor,
 hoặc plugin format local đơn giản hơn.
 
+Xem `docs/plugin-system.md` cho thiết kế plugin system (future work lấy cảm
+hứng từ mô hình `reachy_mini_python_app` của Pollen).
+
 ## Profile System
 
 Mỗi Reachy Mini có thể có nhiều "profiles" — profile là cấu hình personality:
