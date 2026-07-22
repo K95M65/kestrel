@@ -26,9 +26,29 @@ Key properties:
 ### Takeaway
 
 A single pipeline with full tool access per turn is architecturally simpler than
-splitting fast-but-limited vs slow-but-smart paths. Worth prototyping on Reachy
-(greenfield, no legacy voice path) to evaluate latency and quality trade-offs
-before deciding on backport.
+splitting fast-but-limited vs slow-but-smart paths.
+
+**Decision (July 2026): keep the OS 2-pipeline on Reachy, do not adopt the
+Pollen single-pipeline.** The OS realtime path (Gemini Live / OpenAI Realtime /
+Qwen Omni) already provides native speech-to-speech with sub-second chit-chat
+latency, while Pollen's cascaded STT→LLM→TTS adds 2-4 s. The handle/delegate
+split gives full tool access on delegate turns without sacrificing latency on
+casual turns. Rewriting to single-pipeline would trade proven S2S quality and
+latency for architectural simplicity the codebase already handles.
+
+Post-spike optimizations to consider:
+
+1. **Expose Reachy motion tools in the realtime model** — register
+   `move_head`, `dance`, `play_emotion` as direct realtime tools (like
+   `express_emotion` today) so simple motion commands skip delegation.
+2. **MCP client in agent gateway** — consume HF Space tools (search, weather,
+   time) alongside local `SKILL.md` skills.
+3. **CPU/thermal tuning (Reachy-only)** — unlike Lamp where the OS owns the
+   board, Reachy runs the OS alongside the Pollen daemon (100 Hz servo control
+   loop) on a shared CM4 (4 cores). Spike data is needed to decide thread
+   counts (`OMP_NUM_THREADS`), camera resolution, and which sensing features
+   (emotion, motion, pose) can run without starving the daemon. Config lives
+   in the `.env` plan at `first-boot-plan.md` §2.4.
 
 ## Tool Registry
 

@@ -27,9 +27,29 @@ Mic → Silero VAD → Parakeet STT → LLM (có tools qua MCP) → Qwen3 TTS �
 ### Bài Học
 
 Một pipeline duy nhất có full tool access mỗi turn thì kiến trúc đơn giản hơn
-so với chia đường nhanh-nhưng-hạn-chế vs chậm-nhưng-đầy-đủ. Đáng prototype
-trên Reachy (greenfield, chưa có voice path legacy) để đánh giá trade-off
-latency và chất lượng trước khi quyết định backport.
+so với chia đường nhanh-nhưng-hạn-chế vs chậm-nhưng-đầy-đủ.
+
+**Quyết định (tháng 7/2026): giữ 2-pipeline của OS trên Reachy, không chuyển
+sang single-pipeline của Pollen.** Realtime path của OS (Gemini Live / OpenAI
+Realtime / Qwen Omni) đã cung cấp native speech-to-speech với latency chit-chat
+dưới 1 giây, trong khi cascaded STT→LLM→TTS của Pollen mất 2-4 giây. Cơ chế
+handle/delegate cho phép full tool access khi delegate mà không hy sinh latency
+cho các turn bình thường. Viết lại sang single-pipeline sẽ đổi chất lượng S2S
+đã kiểm chứng lấy sự đơn giản kiến trúc mà codebase đã xử lý được.
+
+Tối ưu sau spike cần xem xét:
+
+1. **Expose Reachy motion tools trong realtime model** — đăng ký `move_head`,
+   `dance`, `play_emotion` làm realtime tools trực tiếp (như `express_emotion`
+   hiện tại) để motion commands đơn giản không cần delegate.
+2. **MCP client trong agent gateway** — consume HF Space tools (search, weather,
+   time) cùng local `SKILL.md`.
+3. **Tuning CPU/nhiệt (chỉ Reachy)** — khác với Lamp nơi OS sở hữu toàn bộ
+   board, Reachy chạy OS song song Pollen daemon (control loop servo 100 Hz)
+   trên cùng CM4 (4 cores). Cần data từ spike để quyết định thread count
+   (`OMP_NUM_THREADS`), camera resolution, và sensing features nào (emotion,
+   motion, pose) chạy được mà không starve daemon. Config nằm trong `.env`
+   plan tại `first-boot-plan.md` §2.4.
 
 ## Tool Registry
 
