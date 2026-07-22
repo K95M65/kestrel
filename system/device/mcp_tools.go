@@ -9,16 +9,16 @@ import (
 )
 
 // mcpToolEntry builds the mcp.servers entry for a remote MCP tool.
-// When apiKey is non-empty, the Authorization header carries a Bearer token.
-func mcpToolEntry(url, apiKey string) map[string]any {
-	headers := map[string]any{}
-	if apiKey != "" {
-		headers["Authorization"] = "Bearer " + apiKey
+// Custom headers (Authorization, X-API-Key, …) are passed through as-is.
+func mcpToolEntry(url string, headers map[string]string) map[string]any {
+	h := map[string]any{}
+	for k, v := range headers {
+		h[k] = v
 	}
 	return map[string]any{
 		"type":    "http",
 		"url":     url,
-		"headers": headers,
+		"headers": h,
 	}
 }
 
@@ -52,7 +52,7 @@ func (s *Service) AddMCPTool(tool config.MCPTool) error {
 	}
 
 	// Write to runtime config → gateway restart.
-	if err := s.agentGateway.WriteMCPEntry(mcpToolServerName(tool.Name), mcpToolEntry(tool.URL, tool.APIKey)); err != nil {
+	if err := s.agentGateway.WriteMCPEntry(mcpToolServerName(tool.Name), mcpToolEntry(tool.URL, tool.Headers)); err != nil {
 		slog.Warn("[mcp-tools] write entry failed (config saved, gateway not updated)",
 			"component", "device", "tool", tool.Name, "err", err)
 		return fmt.Errorf("write mcp entry: %w", err)
@@ -108,7 +108,7 @@ func (s *Service) ListMCPTools() []config.MCPTool {
 // Called at startup so tools survive gateway restarts.
 func (s *Service) SyncMCPTools() {
 	for _, tool := range s.config.MCPTools {
-		if err := s.agentGateway.WriteMCPEntry(mcpToolServerName(tool.Name), mcpToolEntry(tool.URL, tool.APIKey)); err != nil {
+		if err := s.agentGateway.WriteMCPEntry(mcpToolServerName(tool.Name), mcpToolEntry(tool.URL, tool.Headers)); err != nil {
 			slog.Warn("[mcp-tools] startup sync failed",
 				"component", "device", "tool", tool.Name, "err", err)
 			continue
