@@ -219,6 +219,12 @@ func adminAuthMiddleware(cfg *config.Config) gin.HandlerFunc {
 			c.Next()
 			return
 		}
+		// Bearer as session token (cross-origin apps that got token from login).
+		bearer := strings.TrimSpace(strings.TrimPrefix(c.GetHeader("Authorization"), "Bearer "))
+		if bearer != "" && session.VerifyToken(bearer, cfg) {
+			c.Next()
+			return
+		}
 		expected := cfg.LLMAPIKey
 		if expected == "" {
 			// No bearer configured AND no valid session → can't admit anyone.
