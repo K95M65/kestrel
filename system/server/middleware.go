@@ -102,6 +102,15 @@ func isAllowedOrigin(origin, requestHost string) bool {
 	if siblingDeviceHost.MatchString(h) {
 		return true
 	}
+	// HuggingFace Spaces (community apps deployed as static JS apps).
+	if h == "huggingface.co" || strings.HasSuffix(h, ".huggingface.co") ||
+		strings.HasSuffix(h, ".hf.space") {
+		return true
+	}
+	// Localhost (dev / local community apps served via python -m http.server).
+	if h == "localhost" || h == "127.0.0.1" {
+		return true
+	}
 	return false
 }
 
