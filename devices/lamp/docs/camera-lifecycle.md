@@ -257,11 +257,11 @@ Sometimes the ISP wedges **deeper** than a V4L2 reopen can fix: frames come back
 
 Both ISP watchdogs (freeze and color corruption) share one escalation ladder via `_recover_isp_fault()`:
 
-- **Trigger** — ≥3 ISP-fault reopens (`_ISP_FAULT_ESCALATE_COUNT`) within a 10-minute sliding window (`_ISP_FAULT_WINDOW_S`, 600s). `read()`-failure reopens do **not** count.
+- **Trigger** — the **first** ISP fault (`_ISP_FAULT_ESCALATE_COUNT` = 1) escalates immediately. A plain V4L2 reopen does **not** reset the ISP — device-verified, reopening a wedged ISP re-triggers the exact green/posterized glitch, so the watchdog fires again seconds later and the loop hammers itself into a self-perpetuating churn. Going straight to a power-cycle avoids that; the 10-minute cooldown below (not a fault count) is what bounds how often an actually-dead camera gets cycled. `read()`-failure reopens do **not** count (those a plain reopen does fix). Faults are still tracked over a sliding window (`_ISP_FAULT_WINDOW_S`, 600s) for the cooldown accounting.
 - **USB path resolution** — dynamic, never hardcoded: walk up the sysfs parent chain from `/sys/class/video4linux/video<N>/device` until the node carrying `idVendor` (the USB device), take its basename (e.g. `1-1`). If the camera is not USB-backed (e.g. a CSI sensor), escalation is skipped with a log line and the plain reopen path is kept.
-- **Power-cycle** — write the bus path to `/sys/bus/usb/drivers/usb/unbind`, wait ~3s (`_USB_REBIND_DELAY_S`), write it to `.../bind` (HAL runs as root), then wait up to 15s (`_USB_DEVNODE_TIMEOUT_S`) for `/dev/video<N>` to re-enumerate before handing control back to `_reopen_with_backoff()`. Best-effort: any sysfs failure logs and falls back to the plain reopen.
+- **Power-cycle** — write the bus path to `/sys/bus/usb/drivers/usb/unbind`, wait ~3s (`_USB_REBIND_DELAY_S`), write it to `.../bind` (HAL runs as root), then wait up to 15s (`_USB_DEVNODE_TIMEOUT_S`) for `/dev/video<N>` to re-enumerate. **Once the node reappears, settle a further 5s (`_USB_SETTLE_AFTER_BIND_S`) before handing control back to `_reopen_with_backoff()`** — the node can reappear in <1s but the ISP firmware is still booting, and reopening mid-boot brings the frame back corrupt again; device-verified, a power-cycle + immediate reopen comes back green, the same cycle with the settle comes back clean. Best-effort: any sysfs failure logs and falls back to the plain reopen.
 - **Cooldown** — at most one power-cycle per 10 minutes (`_USB_POWER_CYCLE_COOLDOWN_S`); a physically dead camera must not loop unbind/bind forever. While in cooldown, faults keep taking the plain reopen path.
-- **Log line** — `Camera USB power-cycle (ISP deep-stuck: N ISP-fault reopens in Ws)`.
+- **Log line** — `Camera USB power-cycle (ISP fault — plain reopen won't clear an ISP wedge; N fault(s) in Ws)`, then `Camera USB power-cycled (1-1) — /dev/video0 is back, settling 5s`.
 
 ## Edge Cases
 
