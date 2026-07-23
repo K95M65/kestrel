@@ -13,7 +13,13 @@ func TestCameraSnapshotURL(t *testing.T) {
 			name:     "saved camera snapshot",
 			toolArgs: `{"command":"curl -s 'http://127.0.0.1:5001/camera/snapshot?save=true'"}`,
 			result:   `{"path":"/root/.openclaw/media/hal-snapshots/snap_1710000000000.jpg"}`,
-			want:     "/api/sensing/agent-snapshot/snap_1710000000000.jpg",
+			want:     "/api/sensing/agent-snapshot/openclaw/media-hal-snapshots/snap_1710000000000.jpg",
+		},
+		{
+			name:     "agent workspace JPEG",
+			toolArgs: `curl -s http://127.0.0.1:5001/camera/snapshot?save=true`,
+			result:   `{"path":"/root/.openclaw/workspace/cam_face3.jpg"}`,
+			want:     "/api/sensing/agent-snapshot/openclaw/workspace/cam_face3.jpg",
 		},
 		{
 			name:     "non camera result is not exposed",

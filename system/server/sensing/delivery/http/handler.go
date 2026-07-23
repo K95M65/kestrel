@@ -715,31 +715,35 @@ func (h *SensingHandler) GetSnapshot(c *gin.Context) {
 }
 
 // GetAgentSnapshot serves a saved GET /camera/snapshot image referenced by a
-// Flow Monitor tool result. Only HAL's fixed snap_<milliseconds>.jpg basenames
-// are accepted; agent-runtime paths are intentionally never exposed to the UI.
+// Flow Monitor tool result. Only JPEGs in an approved runtime workspace or
+// HAL snapshot directory are accepted; the raw filesystem path is never sent
+// to the UI.
 func (h *SensingHandler) GetAgentSnapshot(c *gin.Context) {
+	runtime := c.Param("runtime")
+	source := c.Param("source")
 	name := c.Param("name")
-	if !regexp.MustCompile(`^snap_[0-9]+\.jpg$`).MatchString(name) {
+	if !regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*\.(jpg|jpeg)$`).MatchString(name) {
 		c.Status(http.StatusNotFound)
 		return
 	}
-
-	dirs := []string{
-		"/root/.openclaw/media/hal-snapshots",
-		"/root/.hermes/media/hal-snapshots",
-		"/root/.picoclaw/media/hal-snapshots",
-		"/root/.codex/media/hal-snapshots",
-		"/root/.claudecode/media/hal-snapshots",
+	if runtime != "openclaw" && runtime != "hermes" && runtime != "picoclaw" && runtime != "codex" && runtime != "claudecode" {
+		c.Status(http.StatusNotFound)
+		return
 	}
-	if override := os.Getenv("HAL_SNAPSHOT_DIR"); override != "" {
-		dirs = append([]string{override}, dirs...)
+	var dir string
+	switch source {
+	case "workspace":
+		dir = filepath.Join("/root/."+runtime, "workspace")
+	case "media-hal-snapshots":
+		dir = filepath.Join("/root/."+runtime, "media", "hal-snapshots")
+	default:
+		c.Status(http.StatusNotFound)
+		return
 	}
-	for _, dir := range dirs {
-		path := filepath.Join(dir, name)
-		if info, err := os.Stat(path); err == nil && !info.IsDir() {
-			c.File(path)
-			return
-		}
+	path := filepath.Join(dir, name)
+	if info, err := os.Stat(path); err == nil && !info.IsDir() {
+		c.File(path)
+		return
 	}
 	c.Status(http.StatusNotFound)
 }

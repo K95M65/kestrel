@@ -158,7 +158,8 @@ Rendered by `FlowDiagram` in `system/web/src/pages/Monitor.tsx`. The diagram is 
     command/API call for the selected turn.
   - **CAM** (`hw_camera`) — `GET /camera/snapshot`; its saved result is
     rendered as a clickable thumbnail so operators can debug the exact frame
-    returned to the agent (not a newly captured preview).
+    returned to the agent (including an agent workspace image such as
+    `cam_face3.jpg`, not a newly captured preview).
   - **TTS** (`tts_speak`) — `/voice/speak`, text-to-speech output
 - These represent direct hardware calls from OpenClaw tools that bypass the OS server.
 

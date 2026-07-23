@@ -47,8 +47,18 @@ export function isCameraAPICommand(value: string): boolean {
   return /\/camera(?:[/?\s"']|$)/.test(value);
 }
 
+const AGENT_SNAPSHOT_PATH_RE = /\/root\/\.(openclaw|hermes|picoclaw|codex|claudecode)\/(workspace|media\/hal-snapshots)\/([A-Za-z0-9][A-Za-z0-9._-]*\.(?:jpg|jpeg))\b/g;
+
+function agentSnapshotURL(path: string): string | null {
+  const match = [...path.matchAll(AGENT_SNAPSHOT_PATH_RE)][0];
+  if (!match) return null;
+  const source = match[2] === "workspace" ? "workspace" : "media-hal-snapshots";
+  return `/api/sensing/agent-snapshot/${match[1]}/${source}/${match[3]}`;
+}
+
 // Extract UI-safe, server-served snapshot URLs from the camera tool result.
-// The backend emits these only after it validates HAL's generated filename.
+// The backend emits these after validating their runtime path. The fallback
+// also recognizes old in-memory events that still contain the raw result path.
 export function cameraSnapshotURLs(events: DisplayEvent[]): string[] {
   const urls = new Set<string>();
   for (const ev of events) {
@@ -56,7 +66,10 @@ export function cameraSnapshotURLs(events: DisplayEvent[]): string[] {
     const url = d?.snapshot_url ?? d?.data?.snapshot_url;
     if (typeof url === "string" && url.startsWith("/api/sensing/agent-snapshot/")) {
       urls.add(url);
+      continue;
     }
+    const legacyURL = agentSnapshotURL(`${ev.summary ?? ""}\n${JSON.stringify(d ?? {})}`);
+    if (legacyURL) urls.add(legacyURL);
   }
   return [...urls];
 }

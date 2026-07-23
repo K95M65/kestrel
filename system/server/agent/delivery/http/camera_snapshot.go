@@ -5,21 +5,25 @@ import (
 	"strings"
 )
 
-// cameraSnapshotNameRE accepts only the basename HAL creates for an explicit
-// GET /camera/snapshot?save=true request. The UI receives a server URL, never
-// the agent runtime's filesystem path.
-var cameraSnapshotNameRE = regexp.MustCompile(`\bsnap_[0-9]+\.jpg\b`)
+// cameraSnapshotPathRE accepts JPEGs only from the active agent runtime's
+// approved camera-output directories. The UI receives a server URL, never the
+// runtime's filesystem path.
+var cameraSnapshotPathRE = regexp.MustCompile(`/root/\.(openclaw|hermes|picoclaw|codex|claudecode)/(workspace|media/hal-snapshots)/([A-Za-z0-9][A-Za-z0-9._-]*\.(jpg|jpeg))\b`)
 
 // cameraSnapshotURL returns the UI-safe URL for a snapshot produced by a
 // camera tool call. Tool output is untrusted agent text, so both the camera
-// command and HAL's fixed filename shape must match before exposing anything.
+// command and an approved runtime path must match before exposing anything.
 func cameraSnapshotURL(toolArgs, result string) string {
 	if !strings.Contains(toolArgs, "/camera/snapshot") {
 		return ""
 	}
-	name := cameraSnapshotNameRE.FindString(result)
-	if name == "" {
+	matches := cameraSnapshotPathRE.FindStringSubmatch(result)
+	if len(matches) != 5 {
 		return ""
 	}
-	return "/api/sensing/agent-snapshot/" + name
+	source := matches[2]
+	if source == "media/hal-snapshots" {
+		source = "media-hal-snapshots"
+	}
+	return "/api/sensing/agent-snapshot/" + matches[1] + "/" + source + "/" + matches[3]
 }
