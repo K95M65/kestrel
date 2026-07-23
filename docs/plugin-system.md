@@ -66,8 +66,8 @@ import os, time, requests
 
 HAL = os.environ.get("HAL_URL", "http://localhost:5001")
 
-requests.post(f"{HAL}/led/set", json={"effect": "rainbow"})
-requests.post(f"{HAL}/audio/speak", json={"text": "Let's dance!"})
+requests.post(f"{HAL}/led/effect", json={"effect": "rainbow"})
+requests.post(f"{HAL}/voice/speak", json={"text": "Let's dance!"})
 time.sleep(30)
 requests.post(f"{HAL}/led/off")
 ```
@@ -95,6 +95,7 @@ POST /api/plugin/install {"url": "https://git.example.com/my-plugin.git"}
 All endpoints require admin authentication.
 
 ```
+GET    /api/plugin/browse        — discover community plugins (proxies HuggingFace Spaces API)
 POST   /api/plugin/install       — clone git repo, create venv, generate systemd unit
 GET    /api/plugin               — list installed plugins with status
 POST   /api/plugin/:name/start   — start plugin (systemctl start)
@@ -114,10 +115,12 @@ Each plugin runs as a systemd service (`os-plugin-<name>.service`):
 ### Web UI
 
 **Settings > Plugins** tab provides:
-- List of installed plugins with name, version, status (running/stopped/failed)
-- Start/Stop/Uninstall controls per plugin
-- Install form (paste git URL)
-- Refresh button to poll status
+- **Installed** — list of installed plugins with status (running/stopped/failed),
+  Start/Stop/Uninstall controls
+- **Browse** — discover community plugins from HuggingFace Spaces tagged
+  `autonomous-os-plugin`, one-click install. Backend proxies HF API to avoid
+  CORS (`GET /api/plugin/browse`)
+- **Install from URL** — paste any git URL for non-HF plugins (GitHub, GitLab, etc.)
 
 ## Roadmap
 
