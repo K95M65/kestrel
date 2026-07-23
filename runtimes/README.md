@@ -13,6 +13,7 @@ of which runtime is active — that is the point.
 | [`picoclaw/`](picoclaw/) | PicoClaw runtime | persistent WebSocket | [`docs/agentic/picoclaw.md`](../docs/agentic/picoclaw.md) |
 | [`codex/`](codex/) | OpenAI Codex CLI behind a local WS bridge | WebSocket (bridge: `os-server codex-gatewayd`) | [`docs/agentic/codex.md`](../docs/agentic/codex.md) |
 | [`claudecode/`](claudecode/) | Claude Code CLI behind a local WS bridge | WebSocket (bridge: `os-server claudecode-gatewayd`) | [`docs/agentic/claudecode.md`](../docs/agentic/claudecode.md) |
+| [`opencode/`](opencode/) | opencode CLI behind a local WS bridge | WebSocket (bridge: `os-server opencode-gatewayd`) | [`docs/agentic/opencode.md`](../docs/agentic/opencode.md) |
 
 ## How a runtime is selected
 
@@ -26,7 +27,7 @@ reconciled with an "applied-runtime" marker so a clean switch is a no-op.
 
 ## What every runtime folder contains
 
-The five backends deliberately mirror each other — learn one, read any:
+The six backends deliberately mirror each other — learn one, read any:
 
 - **Gateway client** (`service.go`, `client.go`, `chat.go`) — connection loop, `sendChat`
   (marks busy + fires the `thinking` face), run/session tracking, `ShouldRotateSession`.
@@ -38,19 +39,19 @@ The five backends deliberately mirror each other — learn one, read any:
 - **`skill_watcher.go`** — installs/updates the device's `SKILL.md` set (capability-filtered
   by `system/skills`) into the runtime's native skills location.
 - **Channels** (`telegram*.go`, `discord.go`, `slack*.go`) — device-owned chat channels,
-  mirrored 1:1 across codex/claudecode/hermes/picoclaw.
+  mirrored 1:1 across codex/claudecode/opencode/hermes/picoclaw.
 - **`emotion_ack.go`** — native mirror of OpenClaw's `emotion-acknowledge` hook (same skip
   rules, intensity, capability gate). OpenClaw itself runs the TS original in
-  [`openclaw/hooks/`](openclaw/hooks/). ⚠️ Keep all five in lockstep.
+  [`openclaw/hooks/`](openclaw/hooks/). ⚠️ Keep all six in lockstep.
 - **`identity.go`** — watches `SOUL.md` for wake words / identity changes.
 - **`reset.go`** — the backend's share of factory reset (workspace wipe).
 - **`PROGRESS.md` / `resources/KNOWLEDGE.md`** — per-runtime state of the port and the
   knowledge file seeded into its workspace.
 
-`codex/` and `claudecode/` additionally ship a `gatewayd/` — a WS bridge compiled into
-os-server and run as a systemd unit via the `os-server codex-gatewayd` /
-`os-server claudecode-gatewayd` subcommands, so the CLI-based brains speak the same
-persistent-socket protocol as the rest.
+`codex/`, `claudecode/` and `opencode/` additionally ship a `gatewayd/` — a WS bridge
+compiled into os-server and run as a systemd unit via the `os-server codex-gatewayd` /
+`os-server claudecode-gatewayd` / `os-server opencode-gatewayd` subcommands, so the
+CLI-based brains speak the same persistent-socket protocol as the rest.
 
 ## Adding your own
 

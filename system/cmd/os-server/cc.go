@@ -55,9 +55,12 @@ func ccMain(args []string) int {
 	}
 
 	if rt := ccAgentRuntime(ccConfigJSON); rt != "" && rt != "claudecode" {
-		if rt == "codex" {
+		switch rt {
+		case "codex":
 			fmt.Println("Active runtime is codex — its own picker already lists every thread (including Telegram ones): run `codex resume`.")
-		} else {
+		case "opencode":
+			fmt.Println("Active runtime is opencode — list sessions with `opencode session list` and resume with `opencode --continue` (last) or `opencode --session <id>`.")
+		default:
 			fmt.Printf("Active runtime is %s — claude-sessions only picks claude sessions (runtime claudecode).\n", rt)
 		}
 		return 0

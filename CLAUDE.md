@@ -26,6 +26,7 @@ This repo is developed in both **Cursor** and **Claude Code**. The following rul
    | PicoClaw agent backend (`agent_runtime`, runtimes/picoclaw, WebSocket) | `docs/agentic/picoclaw.md` | `docs/vi/agentic/picoclaw_vi.md` |
    | Codex agent backend (`agent_runtime`, runtimes/codex, WS bridge) | `docs/agentic/codex.md` | `docs/vi/agentic/codex_vi.md` |
    | Claude Code agent backend (`agent_runtime`, runtimes/claudecode, bridge WebSocket, native Telegram channel plugin) | `docs/agentic/claudecode.md` | `docs/vi/agentic/claudecode_vi.md` |
+   | OpenCode agent backend (`agent_runtime`, runtimes/opencode, bridge WebSocket, `opencode run --format json` per turn) | `docs/agentic/opencode.md` | `docs/vi/agentic/opencode_vi.md` |
    | Adding/changing an agentic backend (AgentGateway contract, switch, install/presync, migration, skills, hooks, reset) | `docs/agentic/adding-agent-runtime.md` | `docs/vi/agentic/adding-agent-runtime_vi.md` |
    | Safety engine (SAFETY.md bounds, deterministic enforcement gate) | `docs/safety.md` | `docs/vi/safety_vi.md` |
 

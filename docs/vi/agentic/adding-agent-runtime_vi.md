@@ -176,7 +176,7 @@ write[to]` (`RunMigration(from, to, opts)`). Nên thêm runtime = **đúng 1 fil
 adapter**, tự động chạy với mọi runtime sẵn có, cả 2 chiều — số file **tuyến tính
 (2/runtime)**, không phải N×(N-1) như per-pair. Đăng ký adapter vào map `adapters`
 trong `migrator.go`; không cần `Direction` enum mới. openclaw, hermes, picoclaw,
-codex, và claudecode đều có adapter, nên mọi cặp migrate được cả 2 chiều. Runtime không có adapter bị
+codex, claudecode, và opencode đều có adapter, nên mọi cặp migrate được cả 2 chiều. Runtime không có adapter bị
 `CanMigrate` bỏ qua — bộ reconcile lúc boot không migrate tới/từ nó.
 
 Adapter của PicoClaw (`runtime_picoclaw.go`) mirror layout openclaw nhưng đọc/ghi
@@ -287,7 +287,7 @@ vào là đồ chết dưới Hermes).
 
 > ⚠️ **Coupling bảo trì — không có liên kết compile-time.** `runtimes/openclaw/hooks/emotion-acknowledge/
 > handler.ts` (OpenClaw) và các file `emotion_ack.go` trong
-> `runtimes/{hermes,picoclaw,codex,claudecode}` là các bản cài đặt
+> `runtimes/{hermes,picoclaw,codex,claudecode,opencode}` là các bản cài đặt
 > độc lập của cùng một hành vi. **Sửa một cái phải sửa tất cả** — skip rules,
 > tên/intensity emotion, và cap-gate phải y hệt, nếu không các backend lệch
 > nhau trong im lặng. Giữ comment chéo trong mọi file.
@@ -350,6 +350,8 @@ khi runtime đổi.
     — tất cả do device sở hữu, mirror codex: loop getUpdates
     `telegram_poll.go`, session discordgo `discord.go`, bridge MQTT `slack.go`;
     channel plugin native của Claude Code cố ý không dùng)
+  - opencode → `[telegram, slack, discord]` (`runtimes/opencode/channels.go`
+    — tất cả do device sở hữu, mirror codex/claudecode)
 - Helper `domain.ChannelSupported(gw, channel) bool` (`domain/channel.go`) — chỗ
   duy nhất caller kiểm tra thành viên.
 - Sentinel dùng chung trong package `domain` (`domain/channel.go`):

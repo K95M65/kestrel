@@ -336,6 +336,7 @@ const (
 	KindDeviceSoftReset = "device.soft_reset"
 
 	// KindHermesSetup / KindPicoclawSetup / KindClaudecodeSetup / KindOpenclawSetup
+	// / KindCodexSetup / KindOpenCodeSetup
 	// switch the active agentic backend. The kind itself names the target runtime —
 	// the worker (stand-to-earn-worker's steoauthkind.HermesSetup / PicoclawSetup /
 	// OpenclawSetup) publishes the backend-specific kind instead of a generic
@@ -351,17 +352,18 @@ const (
 	KindClaudecodeSetup = "claudecode.setup"
 	KindOpenclawSetup   = "openclaw.setup"
 	KindCodexSetup      = "codex.setup"
+	KindOpenCodeSetup   = "opencode.setup"
 
 	// AgentRuntimeOpenClaw / AgentRuntimeHermes / AgentRuntimePicoclaw /
-	// AgentRuntimeCodex are the swappable agentic backends. Source of truth
-	// AgentRuntimeClaudeCode are the swappable agentic backends. Source of truth
-	// mirrored by system/agent/factory.go's resolver and
-	// /usr/local/bin/switch-runtime.
+	// AgentRuntimeCodex / AgentRuntimeClaudeCode / AgentRuntimeOpenCode are the
+	// swappable agentic backends. Source of truth mirrored by
+	// system/agent/factory.go's resolver and /usr/local/bin/switch-runtime.
 	AgentRuntimeOpenClaw   = "openclaw"
 	AgentRuntimeHermes     = "hermes"
 	AgentRuntimePicoclaw   = "picoclaw"
 	AgentRuntimeCodex      = "codex"
 	AgentRuntimeClaudeCode = "claudecode"
+	AgentRuntimeOpenCode   = "opencode"
 
 	KindSystemInfo    = "system.info"    // aggregate: versions + network + host
 	KindSystemVersion = "system.version" // lamp + bootstrap + hal + openclaw versions
@@ -558,8 +560,11 @@ type MQTTInfoResponse struct {
 	// ClaudeCodeVersion mirrors codex_version for the Claude Code backend: the
 	// installed Claude Code CLI version (e.g. "2.1.83"), empty when not installed.
 	ClaudeCodeVersion string `json:"claudecode_version,omitempty"`
-	AgentRuntime      string `json:"agent_runtime,omitempty"`
-	LocalIP           string `json:"local_ip,omitempty"`
+	// OpenCodeVersion mirrors codex_version for the OpenCode backend: the
+	// installed opencode CLI version, empty when opencode isn't installed.
+	OpenCodeVersion string `json:"opencode_version,omitempty"`
+	AgentRuntime    string `json:"agent_runtime,omitempty"`
+	LocalIP         string `json:"local_ip,omitempty"`
 	// UnsupportedChannels lists channels configured in config.json that the active
 	// runtime cannot run (populated by ChannelReconcile after a runtime switch — e.g.
 	// slack/discord become unsupported after switching to picoclaw). Empty/omitted
@@ -903,7 +908,7 @@ type AgentRuntimeSetData struct {
 
 // AgentRuntimes is the valid set, surfaced to the web settings dropdown via
 // GET /api/device/agent-runtime so the UI never hardcodes the list.
-var AgentRuntimes = []string{AgentRuntimeOpenClaw, AgentRuntimeHermes, AgentRuntimePicoclaw, AgentRuntimeCodex, AgentRuntimeClaudeCode}
+var AgentRuntimes = []string{AgentRuntimeOpenClaw, AgentRuntimeHermes, AgentRuntimePicoclaw, AgentRuntimeCodex, AgentRuntimeClaudeCode, AgentRuntimeOpenCode}
 
 // IsValidAgentRuntime reports whether r is a switchable backend (case-insensitive,
 // trimmed). Used to validate hermes.setup / picoclaw.setup and the HTTP runtime
