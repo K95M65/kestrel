@@ -45,6 +45,16 @@ def test_corrupt_red_plus_magenta_detected():
     assert LocalVideoCaptureDevice._looks_color_corrupt(frame)
 
 
+def test_corrupt_red_with_sparse_magenta_detected():
+    # The first live failure under continuous streaming had red=0.258 and
+    # magenta=0.016. It must not be missed while waiting for the later,
+    # stronger magenta palette to form.
+    frame = _frame((120, 128, 125))
+    frame[0:6, :] = _bgr_from_hsv(2, 220, 180)  # red ~26%
+    frame[7, 0:15] = _bgr_from_hsv(150, 180, 180)  # magenta ~1.6%
+    assert LocalVideoCaptureDevice._looks_color_corrupt(frame)
+
+
 def test_corrupt_magenta_deep_magenta_palette_detected():
     # The live blue-LED specimen was magenta=0.24 / deep-magenta=0.16, with
     # almost no canonical red or green. Mirror that two-part palette.

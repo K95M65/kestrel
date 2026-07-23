@@ -140,13 +140,13 @@ class LocalVideoCaptureDevice(VideoCaptureDeviceBase):
     # calibrated from three live corrupt specimens: green 0.19 / magenta 0.012,
     # red 0.23-0.42 / magenta 0.10-0.35, and magenta 0.24 / deep-magenta
     # 0.16 (sat>=100).
-    _COLOR_CORRUPT_REOPEN_S: float = 30.0
+    _COLOR_CORRUPT_REOPEN_S: float = 12.0
     _COLOR_SAT_MIN: int = 100  # HSV saturation floor for an "extreme" pixel
     _COLOR_VAL_MIN: int = 60  # HSV value floor — ignore near-black pixels
     _COLOR_GREEN_FRAC: float = 0.10  # min frame fraction of extreme green
     _COLOR_MAGENTA_FRAC: float = 0.008  # min frame fraction of extreme magenta
     _COLOR_RED_FRAC: float = 0.15  # min frame fraction of extreme red
-    _COLOR_RED_MAGENTA_FRAC: float = 0.05  # companion magenta floor for red palette
+    _COLOR_RED_MAGENTA_FRAC: float = 0.01  # companion magenta floor for red palette
     _COLOR_MAGENTA_DOMINANT_FRAC: float = 0.15  # broad magenta palette floor
     _COLOR_DEEP_MAGENTA_FRAC: float = 0.10  # companion violet-red palette floor
 
