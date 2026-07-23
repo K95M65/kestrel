@@ -669,16 +669,21 @@ func (h *AgentHandler) handleAgentStreamEvent(evt domain.WSEvent) error {
 				summary += ": " + result
 			}
 		}
-		flow.Log("tool_call", map[string]any{"tool": toolName, "phase": payload.Data.Phase, "run_id": flowRunID}, flowRunID)
+		toolFlowData := map[string]any{"tool": toolName, "phase": payload.Data.Phase, "run_id": flowRunID, "args": toolArgs}
+		if snapshotURL := cameraSnapshotURL(toolArgs, payload.ResultText()); snapshotURL != "" {
+			toolFlowData["snapshot_url"] = snapshotURL
+		}
+		flow.Log("tool_call", toolFlowData, flowRunID)
+		toolDetail := map[string]string{"tool": toolName, "args": toolArgs}
+		if snapshotURL, ok := toolFlowData["snapshot_url"].(string); ok {
+			toolDetail["snapshot_url"] = snapshotURL
+		}
 		h.monitorBus.Push(domain.MonitorEvent{
 			Type:    "tool_call",
 			Summary: summary,
 			RunID:   flowRunID,
 			Phase:   payload.Data.Phase,
-			Detail: map[string]string{
-				"tool": toolName,
-				"args": toolArgs,
-			},
+			Detail:  toolDetail,
 		})
 
 	case "thinking":

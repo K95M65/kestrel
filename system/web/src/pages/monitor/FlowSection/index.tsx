@@ -9,7 +9,7 @@ import type { DisplayEvent, FaceOwnersDetail } from "../types";
 import type { FlowStage } from "./types";
 import { usePolling } from "../../../hooks/usePolling";
 import { FLOW_NODES } from "./types";
-import { deriveActiveStage, groupIntoTurns, turnIO, turnBilledTokens, turnDurationMs, extractSensingType, hasSensingPrefix } from "./helpers";
+import { deriveActiveStage, groupIntoTurns, turnIO, turnBilledTokens, turnDurationMs, extractSensingType, hasSensingPrefix, isCameraAPICommand } from "./helpers";
 import { FlowDiagram } from "./FlowDiagram";
 import { TurnBadge } from "./TurnBadge";
 import { CanvasModal } from "./CanvasModal";
@@ -405,6 +405,12 @@ export function FlowSection({
     }
     if (ev.type === "flow_event" && (node === "lifecycle_start" || node === "lifecycle_end")) {
       visitedStages.add("tool_exec");
+    }
+    const isToolCall = ev.type === "tool_call" || (ev.type === "flow_event" && node === "tool_call");
+    if (isToolCall) {
+      const d = ev.detail as Record<string, any> | undefined;
+      const args = d?.args ?? d?.data?.args ?? "";
+      if (isCameraAPICommand(String(args))) visitedStages.add("hw_camera");
     }
   }
   for (const ev of turnEvents) {

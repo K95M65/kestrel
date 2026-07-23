@@ -40,6 +40,27 @@ export function containsSensingPrefix(msg: string): boolean {
   return SENSING_PREFIX_ANYWHERE_RE.test(msg);
 }
 
+// True when a tool command addresses one of HAL's camera endpoints. This is
+// deliberately narrower than a plain "camera" text match so prose in an agent
+// command cannot light up the hardware node.
+export function isCameraAPICommand(value: string): boolean {
+  return /\/camera(?:[/?\s"']|$)/.test(value);
+}
+
+// Extract UI-safe, server-served snapshot URLs from the camera tool result.
+// The backend emits these only after it validates HAL's generated filename.
+export function cameraSnapshotURLs(events: DisplayEvent[]): string[] {
+  const urls = new Set<string>();
+  for (const ev of events) {
+    const d = ev.detail as Record<string, any> | undefined;
+    const url = d?.snapshot_url ?? d?.data?.snapshot_url;
+    if (typeof url === "string" && url.startsWith("/api/sensing/agent-snapshot/")) {
+      urls.add(url);
+    }
+  }
+  return [...urls];
+}
+
 // PipelineRow describes one row in the OpenClaw event pipeline visualization.
 // Consecutive deltas of the same stream type are merged into a single row;
 // every tool call and every operational stream event (compaction/error/etc.)
@@ -748,7 +769,7 @@ export function extractNodeInfo(events: DisplayEvent[]): NodeInfoMap {
     mic_input: [], cam_input: [], button_input: [], channel_input: [], webchat_input: [], intent_check: [], local_match: [],
     agent_call: [], agent_thinking: [], tool_exec: [],
     agent_response: [], tts_speak: [], schedule_trigger: [],
-    os_gate: [], hw_led: [], hw_servo: [], hw_emotion: [], hw_audio: [], hw_wellbeing: [], hw_mood: [], hw_music_suggestion: [], hw_posture: [], tg_out: [], tg_alert: [],
+    os_gate: [], hw_camera: [], hw_led: [], hw_servo: [], hw_emotion: [], hw_audio: [], hw_wellbeing: [], hw_mood: [], hw_music_suggestion: [], hw_posture: [], tg_out: [], tg_alert: [],
     ambient: [],
   };
   const fmtToken = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`);
@@ -909,6 +930,7 @@ export function extractNodeInfo(events: DisplayEvent[]): NodeInfoMap {
         // Also surface emotion/led/servo tool calls in their HW nodes with LLM source label
         if (/\/emotion/.test(argsSummary)) pushUnique(info.hw_emotion, `🤖 LLM tool → ${argsSummary}`);
         else if (/\/led|\/scene/.test(argsSummary)) pushUnique(info.hw_led, `🤖 LLM tool → ${argsSummary}`);
+        else if (isCameraAPICommand(argsSummary)) pushUnique(info.hw_camera, `🤖 LLM tool → ${argsSummary}`);
         else if (/\/servo/.test(argsSummary)) pushUnique(info.hw_servo, `🤖 LLM tool → ${argsSummary}`);
         else if (/\/audio/.test(argsSummary)) pushUnique(info.hw_audio, `🤖 LLM tool → ${argsSummary}`);
       }

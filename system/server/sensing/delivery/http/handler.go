@@ -714,6 +714,36 @@ func (h *SensingHandler) GetSnapshot(c *gin.Context) {
 	c.Status(http.StatusNotFound)
 }
 
+// GetAgentSnapshot serves a saved GET /camera/snapshot image referenced by a
+// Flow Monitor tool result. Only HAL's fixed snap_<milliseconds>.jpg basenames
+// are accepted; agent-runtime paths are intentionally never exposed to the UI.
+func (h *SensingHandler) GetAgentSnapshot(c *gin.Context) {
+	name := c.Param("name")
+	if !regexp.MustCompile(`^snap_[0-9]+\.jpg$`).MatchString(name) {
+		c.Status(http.StatusNotFound)
+		return
+	}
+
+	dirs := []string{
+		"/root/.openclaw/media/hal-snapshots",
+		"/root/.hermes/media/hal-snapshots",
+		"/root/.picoclaw/media/hal-snapshots",
+		"/root/.codex/media/hal-snapshots",
+		"/root/.claudecode/media/hal-snapshots",
+	}
+	if override := os.Getenv("HAL_SNAPSHOT_DIR"); override != "" {
+		dirs = append([]string{override}, dirs...)
+	}
+	for _, dir := range dirs {
+		path := filepath.Join(dir, name)
+		if info, err := os.Stat(path); err == nil && !info.IsDir() {
+			c.File(path)
+			return
+		}
+	}
+	c.Status(http.StatusNotFound)
+}
+
 // speechEmotionAudioDirs are the on-Pi locations where the speech_emotion
 // service writes its debug WAV clips (mirrors HAL_SPEECH_EMOTION_AUDIO_DIR
 // default + a persistent fallback). GetAudio serves files by basename from
