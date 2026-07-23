@@ -33,6 +33,7 @@ import (
 	_deviceMQTTDeliver "go.autonomous.ai/os/system/server/device/delivery/mqtt"
 	_healthHttpDeliver "go.autonomous.ai/os/system/server/health/delivery/http"
 	_networkHttpDeliver "go.autonomous.ai/os/system/server/network/delivery/http"
+	_pluginHttpDeliver "go.autonomous.ai/os/system/server/plugin/delivery/http"
 	_sensingHttpDeliver "go.autonomous.ai/os/system/server/sensing/delivery/http"
 	systemshell "go.autonomous.ai/os/system/server/system"
 	"go.autonomous.ai/os/system/statusled"
@@ -50,6 +51,7 @@ type Server struct {
 	agentHandler      *_agentHttpDeliver.AgentHandler
 	sensingHandler    *_sensingHttpDeliver.SensingHandler
 	buddyHandler      _buddyHttpDeliver.BuddyHandler
+	pluginHandler     _pluginHttpDeliver.PluginHandler
 
 	agentGateway     domain.AgentGateway
 	personaMigration *agent.PersonaMigration
@@ -123,6 +125,7 @@ func ProvideServer(
 	agentH *_agentHttpDeliver.AgentHandler,
 	sensingH *_sensingHttpDeliver.SensingHandler,
 	buddyH _buddyHttpDeliver.BuddyHandler,
+	pluginH _pluginHttpDeliver.PluginHandler,
 	ds *device.Service,
 	agentGW domain.AgentGateway,
 	pm *agent.PersonaMigration,
@@ -144,6 +147,7 @@ func ProvideServer(
 		agentHandler:      agentH,
 		sensingHandler:    sensingH,
 		buddyHandler:      buddyH,
+		pluginHandler:     pluginH,
 		agentGateway:      agentGW,
 		personaMigration:  pm,
 		configMigration:   cm,
@@ -311,6 +315,13 @@ func (s *Server) Serve(closeFn func()) error {
 	device.GET("mcp-tools", adminAuthMiddleware(s.config), s.deviceHandler.ListMCPTools)
 	device.POST("mcp-tools", adminAuthMiddleware(s.config), s.deviceHandler.AddMCPTool)
 	device.DELETE("mcp-tools/:name", adminAuthMiddleware(s.config), s.deviceHandler.RemoveMCPTool)
+
+	pluginGroup := api.Group("plugin")
+	pluginGroup.POST("install", adminAuthMiddleware(s.config), s.pluginHandler.Install)
+	pluginGroup.GET("", adminAuthMiddleware(s.config), s.pluginHandler.List)
+	pluginGroup.POST(":name/start", adminAuthMiddleware(s.config), s.pluginHandler.Start)
+	pluginGroup.POST(":name/stop", adminAuthMiddleware(s.config), s.pluginHandler.Stop)
+	pluginGroup.DELETE(":name", adminAuthMiddleware(s.config), s.pluginHandler.Uninstall)
 
 	network := api.Group("network")
 	network.GET("", s.networkHandler.GetNetworks)

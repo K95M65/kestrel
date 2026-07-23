@@ -16,6 +16,7 @@ import (
 	"go.autonomous.ai/os/system/lib/mqtt"
 	"go.autonomous.ai/os/system/monitor"
 	"go.autonomous.ai/os/system/network"
+	"go.autonomous.ai/os/system/plugin"
 	http4 "go.autonomous.ai/os/system/server/agent/delivery/http"
 	http6 "go.autonomous.ai/os/system/server/buddy/delivery/http"
 	"go.autonomous.ai/os/system/server/config"
@@ -23,6 +24,7 @@ import (
 	"go.autonomous.ai/os/system/server/device/delivery/mqtt"
 	"go.autonomous.ai/os/system/server/health/delivery/http"
 	http2 "go.autonomous.ai/os/system/server/network/delivery/http"
+	http7 "go.autonomous.ai/os/system/server/plugin/delivery/http"
 	http5 "go.autonomous.ai/os/system/server/sensing/delivery/http"
 	"go.autonomous.ai/os/system/statusled"
 )
@@ -55,12 +57,14 @@ func InitializeServer() (*Server, error) {
 		return nil, err
 	}
 	buddyHandler := http6.ProvideBuddyHandler(configConfig, buddyService)
+	pluginService := plugin.ProvideService()
+	pluginHandler := http7.ProvidePluginHandler(pluginService)
 	personaMigration := agent.ProvidePersonaMigration(configConfig)
 	configMigration := agent.ProvideConfigMigration(configConfig, agentGateway)
 	channelReconcile := agent.ProvideChannelReconcile(configConfig, agentGateway)
 	mcpReconcile := agent.ProvideMCPReconcile(configConfig, agentGateway)
 	ambientService := ambient.ProvideService(bus, configConfig)
 	healthwatchService := healthwatch.ProvideService(bus, configConfig, statusledService)
-	server := ProvideServer(configConfig, healthHandler, networkHandler, deviceHandler, deviceMQTTHandler, agentHandler, sensingHandler, buddyHandler, deviceService, agentGateway, personaMigration, configMigration, channelReconcile, mcpReconcile, service, factory, ambientService, healthwatchService, statusledService)
+	server := ProvideServer(configConfig, healthHandler, networkHandler, deviceHandler, deviceMQTTHandler, agentHandler, sensingHandler, buddyHandler, pluginHandler, deviceService, agentGateway, personaMigration, configMigration, channelReconcile, mcpReconcile, service, factory, ambientService, healthwatchService, statusledService)
 	return server, nil
 }
