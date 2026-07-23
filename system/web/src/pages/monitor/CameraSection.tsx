@@ -19,6 +19,12 @@ export function CameraSection({
   const [snapTs, setSnapTs] = useState(Date.now());
   const [snapError, setSnapError] = useState(false);
   const [streamError, setStreamError] = useState(false);
+  // Bumped to force the MJPEG <img> to remount with a fresh connection —
+  // on enable and on transient-error retry. Without this, an error latched
+  // while the camera was starting up (HAL's capture loop takes ~1-2s to
+  // deliver the first frame after /camera/enable) would keep the "Stream
+  // unavailable" fallback up until a full page refresh.
+  const [streamEpoch, setStreamEpoch] = useState(0);
   const [cameraDisabled, setCameraDisabled] = useState(false);
   const [manualOverride, setManualOverride] = useState(false);
   const [toggling, setToggling] = useState(false);
@@ -37,6 +43,32 @@ export function CameraSection({
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
   }, []);
+
+  // When the camera transitions to enabled (via the toggle here or an
+  // auto-enable detected by polling), drop any stale error latch and remount
+  // the stream/snapshot with a fresh connection so live video comes back
+  // immediately — no page refresh needed.
+  useEffect(() => {
+    if (!cameraDisabled) {
+      setStreamError(false);
+      setSnapError(false);
+      setStreamEpoch((e) => e + 1);
+      setSnapTs(Date.now());
+    }
+  }, [cameraDisabled]);
+
+  // Auto-retry a transiently-failed stream while the camera is enabled: HAL
+  // may not have delivered the first frame yet right after enable, so a one-
+  // shot error must not stick. Remount the <img> on a short delay until it
+  // loads (onLoad clears streamError, stopping the loop).
+  useEffect(() => {
+    if (cameraDisabled || !streamError || !streamActive) return;
+    const t = setTimeout(() => {
+      setStreamError(false);
+      setStreamEpoch((e) => e + 1);
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [cameraDisabled, streamError, streamActive]);
 
   const fetchTrackStatus = useCallback(async () => {
     try {
@@ -220,7 +252,8 @@ export function CameraSection({
               highlight={track.tracking}
             >
               <img
-                src={hwUrl(`/camera/stream`)}
+                key={streamEpoch}
+                src={hwUrl(`/camera/stream?e=${streamEpoch}`)}
                 alt="camera"
                 style={mediaImgStyle(track.tracking)}
                 onError={() => setStreamError(true)}

@@ -307,6 +307,36 @@ func (h *AgentHandler) fireHWCall(c hwCall, flowRunID string, client *http.Clien
 	return hwOK
 }
 
+// ADDED 2026-07-23: fireEchoedHWMarkers rescues HW markers the agent wrapped
+// inside a shell tool call instead of emitting them as reply text — e.g.
+// `echo '[HW:/audio/play:{"query":"..."}]'` run through the exec/bash tool. A
+// shell `echo` only prints the marker to stdout inside the agent sandbox; it
+// never reaches the reply-text marker interceptor (extractHWCalls on the
+// assistant message), so the command silently no-ops. The flow node still lit
+// up because the tool args contain the marker string ("node sáng mà câm loa"),
+// while HAL received nothing and no music played.
+//
+// Detect any [HW:...] markers echoed in the tool args and fire them for real.
+// extractHWCalls matches ONLY the [HW:/path:{json}] grammar, so a legitimate
+// `curl .../audio/play` (no marker) is NOT caught here and still plays via its
+// own request — no double fire. Returns true when it fired, so the caller can
+// skip the cosmetic-only flow node emit (fireHWCall already emits the
+// authoritative hw_* events with the resolved path).
+func (h *AgentHandler) fireEchoedHWMarkers(toolName, toolArgs, flowRunID string) bool {
+	calls, _ := extractHWCalls(toolArgs)
+	if len(calls) == 0 {
+		return false
+	}
+	paths := make([]string, 0, len(calls))
+	for _, c := range calls {
+		paths = append(paths, c.path)
+	}
+	slog.Warn("agent echoed HW marker(s) inside a tool call instead of emitting them as reply text — firing to HAL so the action is not silently dropped",
+		"component", "agent-hw", "tool", toolName, "paths", paths, "run_id", flowRunID)
+	h.fireHWCalls(calls, flowRunID)
+	return true
+}
+
 // fireHWCalls fires hardware calls to HAL sequentially in a goroutine,
 // with full flow tracking, lastEmotion update, and monitorBus events.
 // Sequential order matters (e.g. emotion sequences must fire in order).

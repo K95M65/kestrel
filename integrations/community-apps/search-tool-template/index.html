@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Search Tool - Autonomous OS</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0a0a0a; color: #e5e5e5;
+      min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    }
+    .card {
+      max-width: 520px; width: 90%; padding: 40px;
+      background: #161616; border: 1px solid #2a2a2a; border-radius: 16px;
+      text-align: center;
+    }
+    .emoji { font-size: 48px; margin-bottom: 16px; }
+    h1 { font-size: 22px; font-weight: 600; margin-bottom: 6px; }
+    .subtitle { font-size: 14px; color: #888; margin-bottom: 24px; }
+    .code {
+      background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 10px;
+      padding: 16px; text-align: left; margin-bottom: 24px;
+      font-family: 'SF Mono', Monaco, Consolas, monospace; font-size: 13px;
+      line-height: 1.7; overflow-x: auto;
+    }
+    .code .comment { color: #555; }
+    .code .fn { color: #f59e0b; }
+    .code .str { color: #34d399; }
+    .steps {
+      text-align: left; margin-bottom: 24px; font-size: 13px; line-height: 2;
+    }
+    .steps li { list-style: none; padding-left: 24px; position: relative; }
+    .steps li::before {
+      content: attr(data-n); position: absolute; left: 0;
+      color: #f59e0b; font-weight: 600;
+    }
+    .footer { margin-top: 20px; font-size: 11px; color: #555; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="emoji">🔍</div>
+    <h1>Autonomous OS Search Tool</h1>
+    <p class="subtitle">MCP tool for real-time web search &mdash; DuckDuckGo powered</p>
+
+    <div class="code">
+      <span class="comment"># MCP tool endpoint</span><br>
+      <span class="fn">search_web</span>(<span class="str">"today's robotics news"</span>, max_results=<span class="str">5</span>)<br>
+      <span class="comment"># Returns: title, snippet, url for each result</span>
+    </div>
+
+    <ol class="steps">
+      <li data-n="1.">Point your MCP client at this Space URL</li>
+      <li data-n="2.">Call <code>search_web</code> from any MCP-compatible agent</li>
+      <li data-n="3.">Get structured search results in real time</li>
+    </ol>
+
+    <p class="footer">Autonomous OS</p>
+  </div>
+</body>
+</html>

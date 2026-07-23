@@ -216,6 +216,108 @@ early-poll lấy được `lan_ip`, link copy thủ công fallback về
   được ràng buộc, nhưng phần cứng đích chỉ có một sóng Wi-Fi — nên mô hình "biết
   IP trước khi AP chết, hoặc qua mDNS sau đó" là cố hữu.
 
+### Join thất bại (sai mật khẩu Wi-Fi)
+
+Sai mật khẩu Wi-Fi là lỗi setup phổ biến nhất, và nó phơi bày đúng ràng buộc
+một-radio ở chiều ngược lại: operator không bao giờ biết được lý do.
+
+**Vì sao kết luận của backend không ai nghe được.** `SetupNetwork` poll tối đa
+60s trước khi trả lỗi, nhưng AP đã tear down chỉ ~2s sau khi submit. Từ thời
+điểm đó phase poll không còn với tới `192.168.100.1` được nữa, và máy của
+operator thường đã tự nhảy về Wi-Fi nhà. Backend set `phase="failed"` ở t≈62s và
+`handler.Setup` gọi `SwitchToAPMode()`, khôi phục hotspot sau ~5-8s — nhưng lúc
+đó phía browser không còn ai lắng nghe. Trước khi có fix bên dưới, trang quay
+"joining Wi-Fi…" vĩnh viễn.
+
+Ba cơ chế hiện xử lý việc này:
+
+1. **Timeout phía client** (`useSetupStatusPolling.ts`, `JOIN_TIMEOUT_SEC = 80`).
+   Khi join vẫn đang `connecting`, AP đã mất liên lạc (`apLost`), và chưa từng
+   bắt được `lan_ip`, FE tự kết luận thất bại. Mốc 80s nằm sau timeout 60s của
+   backend cộng thời gian khôi phục AP, nên một lần join chỉ đơn thuần chậm sẽ
+   không bao giờ bị kết luận nhầm. Message được diễn đạt dè dặt ("không kết nối
+   được… thường do sai mật khẩu Wi-Fi, hoặc mạng chỉ có 5GHz") vì lý do thật
+   chưa bao giờ tới nơi — khẳng định một nguyên nhân cụ thể sẽ là đoán mò.
+
+2. **Nhận trạng thái failed lúc mount** (`useSetupController.ts`). `setupState`
+   nằm trong RAM của os-server và sống sót qua chu trình AP→STA→AP, còn
+   `GET /api/device/setup/status` là endpoint public (thiết bị setup thất bại
+   chưa từng ghi admin hash, nên endpoint có admin-gate sẽ không đọc được).
+   Controller đọc nó một lần lúc mount; nếu lần thử trước `failed`, nó vào thẳng
+   màn hình lỗi kèm message **thật** từ backend. Đây là thứ cứu được trường hợp
+   popup mở lại, tab bị đóng, hoặc user tự reload — trước đây tất cả đều mount ra
+   form Wi-Fi trống trơn, không hề báo là đã có gì thất bại. Chỉ nhận `failed`;
+   một `connecting` cũ sẽ chiếm quyền tab và đẩy nó vào màn hình progress mà nó
+   không thể điều khiển.
+
+   **Việc nhận trạng thái này cũng clear luôn state của lần thử thất bại.** Nối
+   lại AP của thiết bị sau khi lỗi sẽ cho operator một wizard thật sự sạch:
+   `ssid`, `password`, `adminPassword`, `error`, `stepError` và `setupLanIP` đều
+   được reset, và wizard quay về bước Wi-Fi. Lỗi Wi-Fi bail trước khi
+   `device.Setup` ghi bất kỳ config nào, nên không có gì trong số đó từng được
+   lưu phía thiết bị — giữ lại chỉ khiến operator submit lại đúng thông tin vừa
+   sai mà không nhận ra. Snapshot param đã lưu cũng bị xoá
+   (`clearStoredSetupParams()`): `sessionStorage` là per-tab nhưng **sống sót
+   qua F5**, nên operator để nguyên tab, nối lại AP rồi reload sẽ rehydrate lại
+   query string của lần thất bại vào một form trông sạch nhưng vẫn ngậm
+   `llm_api_key` cũ. Xoá ngay lúc mount (thay vì reload luôn) giữ cho document
+   hiện tại vẫn dùng được cho retry tại chỗ "Back to Wi-Fi", đồng thời đảm bảo
+   lần load **kế tiếp** bắt đầu từ con số không.
+
+   Trạng thái failed được nhận sẽ set cờ riêng `adoptedFailure` thay vì dùng lại
+   `setupWorking`. Hai thứ này mang ý nghĩa khác nhau: `setupWorking` nghĩa là
+   *tab này đang có một lần join chạy dở*, và nó khởi động phase poll 600ms, bộ
+   đếm elapsed, cùng các emit connecting/failed của bridge. Bật nó cho một lần
+   join mà ta chỉ đọc được sẽ khởi động lại poll trong khi backend vẫn báo
+   `phase="failed"` — không có gì reset `setupState` về `idle` — nên poll sẽ
+   khẳng định lại trạng thái lỗi mỗi 600ms và đá operator ra khỏi form Wi-Fi mỗi
+   lần họ bấm "Back to Wi-Fi". Màn hình render theo
+   `showProgressScreen = setupWorking || adoptedFailure`; hành động retry clear
+   cả hai.
+
+   **Chốt chặn verdict cũ trong poll.** `handler.Setup` trả `200` ngay nhưng
+   hoãn `device.Setup` 2s, và không có gì đưa `setupState` về `idle` trong
+   khoảng đó — nên trong ~2s sau khi submit lại, backend vẫn báo `phase="failed"`
+   của lần **trước**. Vì vậy poll bỏ qua mọi verdict cuối cho tới khi thấy
+   `phase="connecting"` xác nhận lần chạy hiện tại đã bắt đầu; không có chốt
+   này, lần poll đầu tiên sau khi retry sẽ ném operator thẳng về màn hình lỗi.
+
+3. **Retry thật sự validate được.** `mergeMissingFromConfig` không còn bị gate
+   bởi `SetUpCompleted`. Lỗi Wi-Fi bail trước khi `device.Setup` ghi bất kỳ
+   config nào, nên thiết bị vẫn ở `SetUpCompleted=false` — trong khi browser có
+   thể đã mất credential được đẩy vào (sessionStorage chết theo tab; popup mở lại
+   không kèm query string gốc thì rỗng). Cái gate đó khiến retry fail validation
+   ở `LLMAPIKey` và hiện *"Missing: AI Brain API key"* cho người chỉ gõ sai mật
+   khẩu Wi-Fi. Merge chỉ điền vào các ô đang rỗng, lấy từ chính config của thiết
+   bị, nên không thể ghi đè thứ operator gửi lên, cũng không lộ thêm gì mới.
+
+**UI khôi phục.** Màn hình lỗi nêu rõ tên hotspot cần nối lại
+(`<type>-<suffix>`, cùng chuỗi với mDNS host — `setup-ap.sh` suy ra cả hai từ
+hardware ID), vì join thất bại để lại operator trên mạng nhà và không nút nào
+với tới thiết bị được cho đến khi họ chuyển mạng lại. Hai hành động:
+
+- **Back to Wi-Fi** — retry tại chỗ. Xoá mật khẩu vừa sai (để không bị gửi lại y
+  nguyên) nhưng giữ SSID và giữ nguyên document hiện tại, gồm cả các param nó
+  được mở kèm. Đây là mặc định hợp lý cho lỗi gõ nhầm.
+- **Start over** — reset cứng (`resetSetupSession()`): xoá snapshot param trong
+  sessionStorage và **hard-reload** về `/setup` trơn, tạo ra đúng trạng thái của
+  lần đầu tiên vào AP. Việc reload là **bắt buộc**, không phải cho đẹp:
+  `useSetupUrlParams` snapshot `INITIAL_SEARCH` ở *module load*, nên chỉ reset
+  React state sẽ để lại `llm_api_key` / `device_id` cũ còn sống trong module đó
+  và form "sạch" vẫn submit chúng. Bắn `start_over_clicked` trước, để parent nào
+  muốn giữ config đã đẩy có thể mở lại popup bằng URL mới. Tuỳ chọn theme được
+  giữ lại có chủ ý — đó là lựa chọn của người dùng, không liên quan tới lần thử
+  này.
+
+**Chưa xử lý.** Lý do từ phía thiết bị vẫn còn thô: `SetupNetwork` chỉ poll
+`CheckInternet()` + so khớp SSID, nên sai mật khẩu, mạng chỉ có 5GHz, và router
+từ chối client đều hiện ra như nhau là
+`"no internet or SSID did not match within 60s"` sau trọn 60s.
+`wpa_supplicant` biết ngay sự khác nhau (`4WAY_HANDSHAKE_FAILED`, `WRONG_KEY`);
+đọc `wpa_cli status` trong vòng poll sẽ fail trong ~5s với nguyên nhân chính xác
+— lúc đó AP vẫn còn sống nên phase poll sẽ chuyển được nó về, và timeout ở trên
+sẽ trở thành fallback hiếm dùng thay vì con đường chính.
+
 ### Đánh dấu bước Wi-Fi đã xong sau khi reload
 
 Auto-redirect đưa trang vào một **full page reload trên origin LAN-IP mới**
@@ -327,6 +429,7 @@ Mỗi message là một JSON envelope phẳng:
 | `setup_connected` | Thiết bị online + reachable | `mdns_host`, `lan_ip` |
 | `setup_failed` | Join WiFi thất bại | `message` |
 | `retry_clicked` | Bấm "Back to Wi-Fi" sau khi lỗi | — |
+| `start_over_clicked` | Bấm "Start over" sau khi lỗi — popup sắp hard-reload và **bỏ toàn bộ param nó được mở kèm**; mở lại bằng URL mới nếu cần giữ config đã đẩy | — |
 | `continue_clicked` | Bấm "Continue setup →" | `mdns_host` |
 | `monitor_clicked` | Bấm "Go to monitor →" | — |
 

@@ -903,14 +903,17 @@ class AnimationService:
             current_positions: Dict[str, float],
             safety_policy: object) -> Dict[str, float]:
         """Aim to a named direction. Returns the final joint positions."""
-        from hal.presets import AIM_PRESETS, AIM_LEFT, AIM_RIGHT
+        from hal.presets import AIM_PRESETS, AIM_LEFT, AIM_RIGHT, AIM_CENTER
         from hal.safety.policy import min_move_duration
 
         preset = AIM_PRESETS.get(direction)
         if preset is None:
-            raise ValueError(
-                f"Unknown direction '{direction}'. Available: {list(AIM_PRESETS.keys())}"
-            )
+            # Unknown direction (the LLM reached for a word that isn't a preset,
+            # e.g. "front") — aim the neutral center pose instead of failing the
+            # whole HW node.
+            logger.warning("Unknown aim direction %r — defaulting to center", direction)
+            direction = AIM_CENTER
+            preset = AIM_PRESETS[AIM_CENTER]
 
         # Left/right only change yaw; other directions set all joints but
         # keep current yaw. This is the lamp's 5-DOF kinematic convention.

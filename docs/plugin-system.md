@@ -1,142 +1,185 @@
-# Plugin System (Future)
+# Plugin System
 
-Design notes for a community-contributed plugin system, inspired by Pollen
-Robotics' `reachy_mini_python_app` model. Plugins run **outside HAL** as
-independent processes that call HAL's HTTP API (`:5001`) for hardware access.
+Standalone Python apps that extend Autonomous OS device capabilities. Plugins
+run as independent processes managed by systemd, accessing hardware through
+HAL's HTTP API.
 
-Written July 2026. Status: **design only, not implemented.**
-
-## Problem
-
-Currently, adding a new behavior to Autonomous OS requires:
-
-1. PR into HAL (Python driver/route changes)
-2. PR into skills/ (SKILL.md for agent awareness)
-3. Code review + merge + OTA push
-
-This creates a high barrier for community contributors. Pollen solved this
-with a 1-click app install from HF Spaces — 200+ apps from 150+ creators,
-most with no robotics background.
+Written July 2026. Status: **v1 implemented.**
 
 ## Architecture
 
-HAL stays as-is. Plugins are standalone processes that use HAL as a service:
+HAL is the kernel — plugins are userspace. The OS mediates all hardware access:
 
 ```
 ┌─────────────────────────────────────────────┐
-│  Agent Runtime (OpenClaw / Hermes)           │
-│  ┌──────────┐  ┌──────────┐  ┌───────────┐  │
-│  │ Skills   │  │ MCP Tools│  │ Plugins   │  │
-│  │ (local)  │  │ (remote) │  │ (local)   │  │
-│  └──────────┘  └──────────┘  └─────┬─────┘  │
-└────────────────────────────────────┼────────┘
-                                     │ subprocess
-┌────────────────────────────────────▼────────┐
-│  Plugin Process                              │
-│  - Own Python venv                           │
-│  - Calls HAL API (localhost:5001)            │
-│  - Registers skills with agent               │
-└─────────────────────────┬───────────────────┘
-                          │ HTTP
-┌─────────────────────────▼───────────────────┐
-│  HAL (:5001)                                 │
-│  LED, servo, audio, camera, sensing          │
+│  Agent Runtime (brain, always running)      │
+├─────────────────────────────────────────────┤
+│  Plugin A    Plugin B    Plugin C           │  ← userspace apps
+│    ↓ HTTP      ↓ HTTP      ↓ HTTP          │
+├─────────────────────────────────────────────┤
+│  HAL :5001 (hardware service, always on)    │  ← kernel
+├─────────────────────────────────────────────┤
+│  LED  Servo  Audio  Camera  GPIO  Sensing   │
 └─────────────────────────────────────────────┘
 ```
 
-## Key Design Points
+Plugins coexist with HAL and the agent runtime. HAL serializes hardware access
+so multiple plugins can run without resource conflicts.
 
-### 1. Plugin Format
+## Plugin Format
 
-A plugin is a Python package with a standard entry point:
+A plugin is a directory (git repo) with:
 
-```python
-# plugin.json (metadata)
+```
+my-plugin/
+  plugin.json         # metadata (required)
+  main.py             # entry point (default)
+  requirements.txt    # pip dependencies (optional)
+  README.md           # description + demo
+```
+
+### plugin.json
+
+```json
 {
   "name": "dance-party",
   "version": "1.0.0",
-  "description": "Syncs robot dance to music beats",
-  "entry": "main.py",
-  "skills": ["dance_to_music", "stop_dance"],
-  "hal_endpoints": ["/servo/*", "/led/*", "/audio/*"]
+  "description": "LED dance synced to music beats",
+  "entry": "main.py"
 }
 ```
 
-### 2. HAL as SDK
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Unique identifier (used as directory name + systemd unit name) |
+| `version` | No | Semver string |
+| `description` | No | One-line summary |
+| `entry` | No | Python entry point, defaults to `main.py` |
 
-Plugins access hardware through HAL's existing HTTP API — no internal imports:
+### main.py
+
+Plugins access hardware through HAL's HTTP API. The `HAL_URL` environment
+variable is injected by the systemd unit (default `http://localhost:5001`):
 
 ```python
-import requests
+import os, time, requests
 
-# Move servo
-requests.post("http://localhost:5001/servo/move", json={"pan": 45, "tilt": 10})
+HAL = os.environ.get("HAL_URL", "http://localhost:5001")
 
-# Set LED
-requests.post("http://localhost:5001/led/set", json={"effect": "pulse", "color": "blue"})
-
-# Play audio
-requests.post("http://localhost:5001/audio/speak", json={"text": "Let's dance!"})
+requests.post(f"{HAL}/led/effect", json={"effect": "rainbow"})
+requests.post(f"{HAL}/voice/speak", json={"text": "Let's dance!"})
+time.sleep(30)
+requests.post(f"{HAL}/led/off")
 ```
 
-No new HAL code needed — the API already exists.
+## Installation & Lifecycle
 
-### 3. Skill Auto-Registration
+### Distribution
 
-When a plugin starts, it registers its skills with the agent runtime so the
-agent knows when to call it:
+Plugins install from any git URL — HuggingFace Spaces, GitHub, GitLab, Gitea,
+or self-hosted repos:
 
-```
-Plugin starts → POST /api/device/plugins/:name/skills
-  → agent runtime sees new tools available
-  → user says "play some dance music"
-  → agent calls plugin's skill endpoint
-```
+```bash
+# Install from HuggingFace
+POST /api/plugin/install {"url": "https://huggingface.co/spaces/user/my-plugin"}
 
-### 4. Lifecycle (OS Server manages)
+# Install from GitHub
+POST /api/plugin/install {"url": "https://github.com/user/my-plugin"}
 
-```
-POST   /api/device/plugins/install   — download from URL (HF Space / Git)
-GET    /api/device/plugins           — list installed plugins
-POST   /api/device/plugins/:name/start
-POST   /api/device/plugins/:name/stop
-DELETE /api/device/plugins/:name     — uninstall
+# Install from any git repo
+POST /api/plugin/install {"url": "https://git.example.com/my-plugin.git"}
 ```
 
-### 5. Isolation
+### API Endpoints
 
-- Each plugin runs in its own subprocess + Python venv
-- Crash in plugin does not affect HAL or agent
-- OS Server monitors plugin health, restarts on failure
-- Plugins only access HAL via HTTP — no filesystem access to HAL internals
+All endpoints require admin authentication.
 
-### 6. Distribution
+```
+GET    /api/plugin/browse        — discover community plugins (proxies HuggingFace Spaces API)
+POST   /api/plugin/install       — clone git repo, create venv, generate systemd unit
+GET    /api/plugin               — list installed plugins with status
+POST   /api/plugin/:name/start   — start plugin (systemctl start)
+POST   /api/plugin/:name/stop    — stop plugin (systemctl stop)
+DELETE /api/plugin/:name         — uninstall (stop + remove files + systemd unit)
+```
 
-Same model as Pollen:
-- Publish as HF Space (tagged for discovery)
-- Install by URL from web UI (Settings > Plugins)
-- Or from CLI: `POST /api/device/plugins/install {"url": "..."}`
+### Systemd Integration
 
-## Comparison with Existing Extension Points
+Each plugin runs as a systemd service (`os-plugin-<name>.service`):
 
-| Extension | Runs | Scope | Barrier |
-|-----------|------|-------|---------|
-| SKILL.md | Agent runtime | Prompt-based | Low (text file) |
-| MCP Tools | Cloud (HF Space) | Stateless function | Low (URL only) |
-| **Plugins** | Device (subprocess) | Full behavior | Medium (Python package) |
-| HAL code | Device (in-process) | Hardware driver | High (PR + review) |
+- `Restart=on-failure` — automatic crash recovery
+- `MemoryMax=256M` — resource limits on constrained devices
+- `WorkingDirectory` set to plugin dir
+- `HAL_URL` env var injected
 
-## Open Questions
+### Web UI
 
-- Should plugins have direct WebSocket access to the agent runtime, or only
-  through the skill registration API?
-- How to handle plugins that need persistent state (database, config files)?
-- Should there be a plugin marketplace/registry beyond HF Spaces?
-- Resource limits (CPU, memory) per plugin on constrained devices (CM4)?
+**Settings > Plugins** tab provides:
+- **Installed** — list of installed plugins with status (running/stopped/failed),
+  Start/Stop/Uninstall controls
+- **Browse** — discover community plugins from HuggingFace Spaces tagged
+  `autonomous-os-plugin`, one-click install. Backend proxies HF API to avoid
+  CORS (`GET /api/plugin/browse`)
+- **Install from URL** — paste any git URL for non-HF plugins (GitHub, GitLab, etc.)
+
+## Roadmap
+
+### v1 — Pipeline + Store (implemented)
+
+Git URL → venv → systemd unit → HAL HTTP. Full plugin lifecycle:
+- Install from any git URL (HuggingFace, GitHub, GitLab, etc.)
+- systemd lifecycle (start/stop/restart on crash)
+- Plugin store — browse community plugins from HuggingFace Spaces
+  (`autonomous-os-plugin` tag), one-click install
+- Manual URL install for non-HF plugins
+- Web UI management (Installed / Browse / Install from URL)
+- Plugin template on HuggingFace for community forking
+
+### v2 — SDK + Agent Integration
+
+- **`autonomous-sdk` Python package** — wraps HAL HTTP into a clean API:
+  ```python
+  from autonomous import Robot
+
+  class RadioPlayer(AutonomousApp):
+      async def play_radio(self, robot: Robot, genre: str = "lofi"):
+          """Play internet radio."""
+          await robot.audio.stream_url(STATIONS[genre])
+          robot.led.visualize_audio()
+  ```
+- **Auto MCP tool registration** — plugin methods with docstrings become
+  agent-callable tools via local MCP server. Agent can invoke plugins by voice.
+- **Cross-device capability routing** — `capabilities` in plugin.json gates
+  which devices can run a plugin (reuses `devices/contract/capabilities.md`
+  vocabulary).
+
+### v3 — Ecosystem
+
+- **Resource manager** — HAL audio mixer, camera multiplexing for true
+  multi-plugin coexistence
+- **Exclusive mode** — `"exclusive": true` in manifest parks HAL, gives plugin
+  full hardware control (power-user escape hatch)
+- **JS plugins** — browser-based plugins via WebRTC (zero-install, open URL
+  and go), inspired by Pollen's JS app model
+
+## Security
+
+- **Install is admin-gated** — all plugin API endpoints require authentication
+- **Trust model: local execution = full trust.** Installing a plugin means
+  trusting its author. Same model as Pollen's app ecosystem.
+- Plugins access HAL via HTTP — no direct filesystem access to HAL internals
+- systemd resource limits (`MemoryMax`, `CPUQuota`) prevent resource exhaustion
+- Future: container/seccomp sandboxing if ecosystem scales
+
+## Template
+
+Fork `integrations/plugin-template/` to start building. It contains a working
+hello-world plugin with LED + voice demo.
 
 ## References
 
-- Pollen's app model: `devices/reachy-mini/docs/pollen-ecosystem-analysis.md`
-  §App Distribution
-- [Make and Publish Reachy Mini Apps (HF Blog)](https://huggingface.co/blog/pollen-robotics/make-and-publish-your-reachy-mini-apps)
-- [Robot App Store (VentureBeat)](https://venturebeat.com/technology/the-app-store-for-robots-has-arrived-hugging-face-launches-open-source-reachy-mini-app-store-with-200-apps)
+- Pollen ecosystem analysis: `devices/reachy-mini/docs/pollen-ecosystem-analysis.md`
+- HAL API routes: `hal/routes/`
+- Device capabilities: `devices/contract/capabilities.md`
+- Plugin template: `integrations/community-apps/plugin-template/`
+- HuggingFace template: https://huggingface.co/spaces/autonomous-os/autonomous-os-hello-robot
