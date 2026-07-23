@@ -30,6 +30,17 @@ type turnResult struct {
 	stdoutTail    string   // bounded tail of non-JSON stdout (resume heuristics)
 	errText       string   // error text pulled from session.error/error JSON frames
 	heldFrames    [][]byte // terminal failure frames held back during a resumed attempt
+	// sessionID is the opencode session id seen in the streamed JSON frames of
+	// this run. Captured in-memory only — persisted to disk (session.json) ONLY
+	// by runTurn's success branch. Deferring persistence prevents a failed turn
+	// (auth error, LLM backend hiccup, opencode CLI crash) from stranding the
+	// operator on a corrupted session that opencode's SQLite state can no
+	// longer resume (observed 2026-07-23: initial install saw one auth-failed
+	// turn during LLM_API_KEY race, sessionID was persisted eagerly, every
+	// subsequent --session <id> resume returned "UnknownError - Unexpected
+	// server error" indefinitely with no error hint that resumeFailed could
+	// match).
+	sessionID string
 }
 
 // turnWorker drains the op queue one entry at a time (strict serialization).
@@ -103,13 +114,18 @@ func (s *Server) runTurn(ctx context.Context, payload turnPayload) {
 		}
 		s.sendError(errMsg)
 	default:
-		// Clean exit = turn complete. opencode run emits no single terminal event
-		// (device-verified), so synthesize the session.idle the translator maps to
-		// emitFinal — delivering the accumulated reply + usage exactly once.
-		s.mu.Lock()
-		sid := s.threadID
-		s.mu.Unlock()
-		s.sendJSON(map[string]any{"type": "session.idle", "sessionID": sid})
+		// Clean exit = turn complete. Persist the session id NOW (not eagerly
+		// from pumpStdout) so a failed turn's session id never lands on disk —
+		// that's the fix for the "corrupt session" bug where an initial
+		// auth-failed turn's sessionID would strand every subsequent resume on
+		// opencode's SQLite bad state. See turnResult.sessionID for context.
+		if res.sessionID != "" {
+			s.storeThreadID(res.sessionID)
+		}
+		// opencode run emits no single terminal event (device-verified), so
+		// synthesize the session.idle the translator maps to emitFinal —
+		// delivering the accumulated reply + usage exactly once.
+		s.sendJSON(map[string]any{"type": "session.idle", "sessionID": res.sessionID})
 	}
 
 	s.mu.Lock()
@@ -290,7 +306,11 @@ func (s *Server) pumpStdout(r io.Reader, res *turnResult, holdFailures bool) {
 		if json.Unmarshal([]byte(line), &evt) == nil {
 			if evt.SessionID != "" {
 				res.threadStarted = true
-				s.storeThreadID(evt.SessionID)
+				// Capture in-memory only. Persistence to session.json is
+				// deferred to runTurn's success branch — see the sessionID
+				// field comment on turnResult for why we no longer persist
+				// eagerly here.
+				res.sessionID = evt.SessionID
 			}
 			switch {
 			case evt.Type == "session.idle",

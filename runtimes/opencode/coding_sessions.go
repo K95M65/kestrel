@@ -1,8 +1,13 @@
 package opencode
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
+	"log/slog"
+	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -39,15 +44,90 @@ func (c codingSession) label() string {
 	return "(no description)"
 }
 
-// allCodingSessions returns every resumable opencode session, most-recent first.
-//
-// TODO(opencode-coding-sessions): opencode stores sessions under
-// ~/.local/share/opencode in an internal format and `opencode session list`
-// does not (confirmably) expose the working directory needed to resume in the
-// right folder; wire this up once verified on-device. Until then this returns
-// nil so the Telegram /resume list is honestly empty rather than misleading.
+// codingSessionListTimeout bounds the `opencode session list` call. The CLI
+// reads its SQLite session store locally (no network) so this is generous —
+// most invocations return in <100ms even on the OrangePi.
+const codingSessionListTimeout = 5 * time.Second
+
+// codingSessionExcludeDirs lists working-directory prefixes that DO NOT
+// represent a user-visible coding thread. These are opencode contexts owned by
+// the gatewayd (device chat) and the presync workspace default; surfacing them
+// under `/sessions` would confuse the operator ("I never made these threads").
+// User-created threads live in their own folders (e.g. /root/myapp, /root/src).
+var codingSessionExcludeDirs = []string{
+	"/root/.opencode/workspace", // device-chat runtime, owned by gatewayd
+}
+
+// allCodingSessions returns every resumable user coding session, most-recent
+// first. Implementation shells out to `opencode session list --format json`
+// (verified on device 2026-07-23: opencode 1.18.4 emits {id, title, updated,
+// directory, ...}) and filters out device-chat / gatewayd contexts so the
+// Telegram `/sessions` list shows only threads the user actually opened. On
+// any failure (CLI missing, timeout, JSON shape change) returns nil so the
+// list is empty-but-consistent rather than a stale/partial view.
 func (s *OpenCodeService) allCodingSessions() []codingSession {
-	return nil
+	ctx, cancel := context.WithTimeout(context.Background(), codingSessionListTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "opencode", "session", "list", "--format", "json")
+	cmd.Env = s.codingChildEnv()
+	out, err := cmd.Output()
+	if err != nil {
+		slog.Warn("opencode session list failed", "component", "opencode-coding", "error", err)
+		return nil
+	}
+
+	var raw []struct {
+		ID        string `json:"id"`
+		Title     string `json:"title"`
+		Updated   int64  `json:"updated"` // unix ms
+		Directory string `json:"directory"`
+	}
+	if err := json.Unmarshal(out, &raw); err != nil {
+		slog.Warn("opencode session list decode failed", "component", "opencode-coding", "error", err)
+		return nil
+	}
+
+	result := make([]codingSession, 0, len(raw))
+	for _, r := range raw {
+		if r.Directory == "" || r.ID == "" {
+			continue
+		}
+		if isExcludedCodingDir(r.Directory) {
+			continue
+		}
+		title := strings.TrimSpace(r.Title)
+		recent := []string(nil)
+		if title != "" {
+			recent = []string{oneLine(title)}
+		}
+		result = append(result, codingSession{
+			Folder:    r.Directory,
+			SessionID: r.ID,
+			Modified:  time.UnixMilli(r.Updated),
+			Recent:    recent,
+		})
+	}
+	// CLI already returns newest-first, but sort defensively so a future opencode
+	// release that changes ordering doesn't silently break /sessions.
+	sort.SliceStable(result, func(i, j int) bool {
+		return result[i].Modified.After(result[j].Modified)
+	})
+	return result
+}
+
+// isExcludedCodingDir reports whether a session's working directory belongs to
+// the device-chat / gatewayd territory and should be hidden from the Telegram
+// coding list. Uses prefix matching so subpaths under an excluded root (e.g.
+// /root/.opencode/workspace/tmp) are also filtered.
+func isExcludedCodingDir(dir string) bool {
+	clean := filepath.Clean(dir)
+	for _, prefix := range codingSessionExcludeDirs {
+		if clean == prefix || strings.HasPrefix(clean, prefix+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
 }
 
 // codingFolders returns the NEWEST session per folder, most-recent folder first
