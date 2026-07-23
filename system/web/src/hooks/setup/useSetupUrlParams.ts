@@ -125,10 +125,12 @@ export function clearStoredSetupParams(): void {
   }
 }
 
-// searchParams is no longer read inside the hook (kept in the signature so
-// the call site doesn't need to change), but the dep array intentionally
-// excludes it: the snapshot is fixed for the session.
-export function useSetupUrlParams(_searchParams: URLSearchParams): SetupUrlParams {
+// Takes no arguments: the params come from INITIAL_SEARCH, the module-load
+// snapshot taken before App's scrub strips secrets from the URL (see above).
+// Live `searchParams` would be the post-scrub value — empty for exactly the
+// fields callers need — so the hook deliberately ignores the router's copy and
+// the signature no longer accepts one.
+export function useSetupUrlParams(): SetupUrlParams {
   return useMemo(
     () => ({
       teleToken: INITIAL_PARAMS.get("tele_token") ?? "",

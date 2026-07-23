@@ -41,7 +41,7 @@ export function useSetupController(mode: SetupMode) {
     channelParam === "slack" || channelParam === "discord" ? (channelParam as ChannelType) : "telegram";
   const [channel, setChannel] = useState<ChannelType>(initialChannel);
 
-  const urlParams = useSetupUrlParams(searchParams);
+  const urlParams = useSetupUrlParams();
 
   // When the OS server (golang) pushes provisioning credentials via query params, the
   // operator only needs to pick a Wi-Fi — every other field is already filled.
