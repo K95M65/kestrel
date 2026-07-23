@@ -134,6 +134,20 @@ export function useSetupController(mode: SetupMode) {
     const dash = m.lastIndexOf("-");
     return dash > 0 ? m.slice(0, dash + 1) : "";
   }, [mac]);
+  // The device class itself ("lamp", "intern-v2", …) — deviceTypePrefix without
+  // its trailing dash. `mac` is "<device_type>-<4 hex>" (GetDeviceMac), and the
+  // class may itself contain dashes ("intern-v2-d94b"), which is why both derive
+  // from lastIndexOf("-") rather than splitting on the first one. Empty until
+  // the config resolves.
+  const deviceType = useMemo(
+    () => deviceTypePrefix.replace(/-$/, ""),
+    [deviceTypePrefix],
+  );
+  // Devices that skip the Wi-Fi failure screen entirely and drop the operator
+  // straight back on the form (equivalent to auto-pressing "Back to Wi-Fi").
+  // Product decision, per device class — every other device keeps the screen
+  // with its error text, checklist and rejoin hint.
+  const skipsFailureScreen = deviceType === "intern-v2";
   const [llmApiKey, setLlmApiKey] = useState(urlParams.llmApiKey || "");
   const [llmUrl, setLlmUrl] = useState(urlParams.llmUrl || "");
   const [llmModel, setLlmModel] = useState(urlParams.llmModel || "");
@@ -403,6 +417,12 @@ export function useSetupController(mode: SetupMode) {
     getSetupStatus().then((s) => {
       if (cancelled || s.phase !== "failed") return;
       failureAdoptedRef.current = true;
+      // Decide from THIS response's mac rather than the `mac` state, which is
+      // still empty on mount (useConfigPrefill fills it from a separate
+      // request). Waiting for that would let the failure screen paint for a
+      // beat on a device that is supposed to skip it.
+      const macType = (s.mac || "").trim().toLowerCase().replace(/-[0-9a-f]{4}$/, "");
+      const skipScreen = macType === "intern-v2";
       // Wipe every field the failed attempt left behind, so rejoining the AP
       // lands the operator on a genuinely clean wizard rather than one
       // pre-filled from an attempt that never provisioned anything. A Wi-Fi
@@ -428,6 +448,21 @@ export function useSetupController(mode: SetupMode) {
       // in-place "Back to Wi-Fi" retry while guaranteeing the NEXT load starts
       // from nothing. "Start over" remains the explicit full-reset path.
       clearStoredSetupParams();
+      // Devices that skip the failure screen stop here: the state above is
+      // already the clean Wi-Fi form we want them on, so we simply never raise
+      // the failure flags. Leaving setupPhase at "connecting" (its initial
+      // value) also keeps the auto-return effect below from firing for a
+      // failure this tab never displayed.
+      //
+      // The bridge emit is fired directly because the phase-transition effect
+      // that normally sends it is gated on setupWorking, which we deliberately
+      // never raise here. Without this the parent would get no signal at all
+      // that the previous join failed — the screen is hidden from the operator,
+      // not from the companion app.
+      if (skipScreen) {
+        setupBridge.failed(s.error || "Wi-Fi setup failed.");
+        return;
+      }
       setSetupErrorMsg(s.error || "Wi-Fi setup failed.");
       setSetupPhase("failed");
       // `adoptedFailure` — NOT setupWorking — is what shows the failure screen
@@ -640,7 +675,13 @@ export function useSetupController(mode: SetupMode) {
   // Whether the progress/failure screen replaces the form. Either this tab has
   // a join in flight (setupWorking), or it adopted a previous attempt's failure
   // on mount (adoptedFailure).
-  const showProgressScreen = setupWorking || adoptedFailure;
+  //
+  // On a device that skips the failure screen, the `failed` phase renders the
+  // form instead — the auto-return effect below then clears the underlying
+  // state. Suppressing it here as well as in that effect avoids a one-frame
+  // flash of the failure screen before the effect runs.
+  const showProgressScreen = (setupWorking || adoptedFailure) &&
+    !(skipsFailureScreen && setupPhase === "failed");
 
   // "Back to Wi-Fi" — return to the form after a failure. Clears BOTH paths
   // into the failure screen, otherwise an adopted failure would immediately
@@ -660,6 +701,29 @@ export function useSetupController(mode: SetupMode) {
     setActiveSection("wifi");
     setPassword("");
   }, []);
+
+  // Devices in `skipsFailureScreen`: a failed join sends the operator straight
+  // back to the Wi-Fi form instead of showing the failure screen — exactly as
+  // if they had pressed "Back to Wi-Fi" themselves. Covers both routes into a
+  // failure: this tab's own join timing out, and a previous attempt's verdict
+  // adopted on mount.
+  //
+  // retryFromFailure() is reused verbatim so the two paths can't drift: it
+  // clears setupWorking/adoptedFailure, resets the phase, drops the password
+  // that failed and returns to the Wi-Fi step. It also emits `retry_clicked`
+  // on the bridge — accurate, since the outcome is identical to the operator
+  // pressing the button; the parent still receives `setup_failed` first, so it
+  // can tell a join failed even though no screen was shown.
+  //
+  // Per product decision this leaves NO on-screen trace of the failure: the
+  // form's error banner is not populated, so the operator simply finds
+  // themselves back at Wi-Fi entry.
+  useEffect(() => {
+    if (!skipsFailureScreen) return;
+    if (setupPhase !== "failed") return;
+    if (!setupWorking && !adoptedFailure) return;
+    retryFromFailure();
+  }, [skipsFailureScreen, setupPhase, setupWorking, adoptedFailure, retryFromFailure]);
 
   // Elapsed-seconds ticker for the connecting screen. Runs only while we're in
   // the connecting phase; resets on entry so re-tries (failed → Back → submit)

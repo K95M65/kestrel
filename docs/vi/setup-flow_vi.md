@@ -309,6 +309,32 @@ với tới thiết bị được cho đến khi họ chuyển mạng lại. Hai
   giữ lại có chủ ý — đó là lựa chọn của người dùng, không liên quan tới lần thử
   này.
 
+**Theo từng device: bỏ qua màn hình lỗi.** `intern-v2` hoàn toàn không hiện màn
+hình lỗi. Join thất bại sẽ đưa operator thẳng về form Wi-Fi — đúng trạng thái
+cuối như khi bấm "Back to Wi-Fi" — không banner lỗi, không checklist, không gợi
+ý nối lại hotspot. Đây là quyết định sản phẩm cho riêng device class đó; `lamp`,
+`reachy-mini` và `unitree-go2w` giữ nguyên màn hình đầy đủ.
+
+Device class lấy từ `mac` (`"<device_type>-<4 hex>"`, ví dụ `intern-v2-d94b`),
+bỏ đi phần hex đuôi — **không** lấy từ URL param, vì browser của operator không
+được phép tác động vào giá trị này (xem `DeviceTypeOrDefault`, nơi coi
+`DEVICE_TYPE` là hardware identity bất biến). Cả hai đường dẫn tới trạng thái
+lỗi đều được xử lý:
+
+- **Timeout trong tab hiện tại** — `showProgressScreen` chặn màn hình, và một
+  effect gọi đúng `retryFromFailure()` mà nút vẫn dùng, nên hai đường không thể
+  lệch nhau.
+- **Nhận trạng thái lúc mount** — effect mount đọc device class từ **chính**
+  response `setup/status` mang verdict đó, thay vì chờ state `mac` (được điền
+  bởi một request khác) — nếu chờ thì màn hình lỗi sẽ kịp hiện một frame rồi mới
+  bị chặn. Nó vẫn clear state của lần thử như thường lệ nhưng không bao giờ bật
+  cờ failure.
+
+Cả hai đường vẫn bắn `setup_failed` qua bridge. Màn hình chỉ bị ẩn với
+**operator**, không ẩn với companion app — đường adoption bắn emit trực tiếp, vì
+effect thường gửi nó bị gate bởi `setupWorking`, thứ mà đường này cố tình không
+bật.
+
 **Chưa xử lý.** Lý do từ phía thiết bị vẫn còn thô: `SetupNetwork` chỉ poll
 `CheckInternet()` + so khớp SSID, nên sai mật khẩu, mạng chỉ có 5GHz, và router
 từ chối client đều hiện ra như nhau là

@@ -325,6 +325,32 @@ actions:
   can reopen the popup with a fresh URL. The theme preference is deliberately
   kept — it's a user choice unrelated to the attempt.
 
+**Per-device: skipping the failure screen.** `intern-v2` does not show the
+failure screen at all. A failed join drops the operator straight back on the
+Wi-Fi form — the same end state as pressing "Back to Wi-Fi" — with no error
+banner, checklist or rejoin hint. This is a deliberate product decision for that
+device class; `lamp`, `reachy-mini` and `unitree-go2w` keep the full screen.
+
+The class comes from `mac` (`"<device_type>-<4 hex>"`, e.g. `intern-v2-d94b`),
+stripped of its hex suffix — never from a URL param, which the operator's
+browser must not be able to influence (see `DeviceTypeOrDefault`, which treats
+`DEVICE_TYPE` as immutable hardware identity). Both routes into a failure are
+covered:
+
+- **Timeout in this tab** — `showProgressScreen` suppresses the screen and an
+  effect calls the same `retryFromFailure()` the button uses, so the two paths
+  cannot drift.
+- **Adoption on mount** — the mount effect reads the class from the *same*
+  `setup/status` response that carried the verdict, rather than waiting on the
+  `mac` state (filled by a separate request), which would otherwise let the
+  screen paint for a frame before being suppressed. It clears the attempt's
+  state as usual but never raises the failure flags.
+
+Both still emit `setup_failed` on the bridge. The screen is hidden from the
+*operator*, not from the companion app — the adoption path fires the emit
+directly, since the effect that normally sends it is gated on `setupWorking`,
+which that path deliberately never raises.
+
 **Not covered.** The device's own reason is still coarse: `SetupNetwork` only
 polls `CheckInternet()` + SSID match, so a wrong password, a 5GHz-only network,
 and a router rejecting the client all surface as
