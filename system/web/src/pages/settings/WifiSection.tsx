@@ -137,18 +137,18 @@ export function WifiSection({
                 type="button"
                 onClick={runScan}
                 disabled={loadingList}
+                aria-label={loadingList ? "Scanning Wi-Fi networks" : "Refresh Wi-Fi networks"}
                 style={{
-                  display: "inline-flex", alignItems: "center", gap: 4,
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
                   background: "none", border: `1px solid ${C.border}`,
-                  padding: "0 10px", height: 40, borderRadius: 10,
+                  width: 40, height: 40, borderRadius: 10,
                   color: loadingList ? C.textMuted : C.amber,
-                  fontSize: 12, cursor: loadingList ? "not-allowed" : "pointer",
-                  whiteSpace: "nowrap", flexShrink: 0,
+                  cursor: loadingList ? "not-allowed" : "pointer",
+                  flexShrink: 0,
                 }}
-                title="Re-scan Wi-Fi networks"
+                title={loadingList ? "Scanning…" : "Re-scan Wi-Fi networks"}
               >
-                <RefreshCw size={12} />
-                <span>{loadingList ? "Scanning…" : "Refresh"}</span>
+                <RefreshCw size={14} className={loadingList ? "lm-spin-ico" : undefined} />
               </button>
               {wifiLoaded.ssid && (
                 <button
