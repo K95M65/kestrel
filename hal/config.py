@@ -717,10 +717,11 @@ REALTIME_QWEN_SAMPLE_RATE: int = 16000
 # --- Realtime: Context manager ---
 OPENCLAW_WORKSPACE_DIR: str = os.environ.get("HAL_OPENCLAW_WORKSPACE_DIR", "/root/.openclaw/workspace")
 HERMES_WORKSPACE_DIR: str = os.environ.get("HAL_HERMES_WORKSPACE_DIR", "/root/.hermes")
-# PicoClaw/Codex/Claude Code workspaces mirror OpenClaw's layout (see orchestrator.py maps).
+# PicoClaw/Codex/Claude Code/OpenCode workspaces mirror OpenClaw's layout (see orchestrator.py maps).
 PICOCLAW_WORKSPACE_DIR: str = os.environ.get("HAL_PICOCLAW_WORKSPACE_DIR", "/root/.picoclaw/workspace")
 CODEX_WORKSPACE_DIR: str = os.environ.get("HAL_CODEX_WORKSPACE_DIR", "/root/.codex/workspace")
 CLAUDECODE_WORKSPACE_DIR: str = os.environ.get("HAL_CLAUDECODE_WORKSPACE_DIR", "/root/.claudecode/workspace")
+OPENCODE_WORKSPACE_DIR: str = os.environ.get("HAL_OPENCODE_WORKSPACE_DIR", "/root/.opencode/workspace")
 
 # ACTIVE_AGENT_WORKSPACE_DIR is the ACTIVE runtime's workspace (follows
 # AGENT_GATEWAY, like SNAPSHOT_DIR below). Persona files (IDENTITY.md /
@@ -735,6 +736,7 @@ _AGENT_WORKSPACE_DIRS: dict[str, str] = {
     "picoclaw": PICOCLAW_WORKSPACE_DIR,
     "codex": CODEX_WORKSPACE_DIR,
     "claudecode": CLAUDECODE_WORKSPACE_DIR,
+    "opencode": OPENCODE_WORKSPACE_DIR,
 }
 ACTIVE_AGENT_WORKSPACE_DIR: str = _AGENT_WORKSPACE_DIRS.get(
     AGENT_GATEWAY, OPENCLAW_WORKSPACE_DIR
@@ -752,6 +754,7 @@ _AGENT_CONFIG_DIRS: dict[str, str] = {
     "picoclaw": "/root/.picoclaw",
     "codex": "/root/.codex",
     "claudecode": "/root/.claudecode",
+    "opencode": "/root/.opencode",
 }
 SNAPSHOT_DIR: str = os.environ.get("HAL_SNAPSHOT_DIR") or (
     _AGENT_CONFIG_DIRS.get(AGENT_GATEWAY, _AGENT_CONFIG_DIRS["openclaw"])

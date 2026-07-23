@@ -335,6 +335,7 @@ assembled per agent gateway (`HAL_AGENT_GATEWAY`):
 | `picoclaw` | `OpenClawContextManager` (same layout) | `HAL_PICOCLAW_WORKSPACE_DIR` (`/root/.picoclaw/workspace`) |
 | `codex` | `OpenClawContextManager` (same layout) | `HAL_CODEX_WORKSPACE_DIR` (`/root/.codex/workspace`) |
 | `claudecode` | `context_manager/claudecode.py` `ClaudeCodeContextManager` — OpenClaw layout except skills, read from `.claude/skills/` (native claude CLI dir) | `HAL_CLAUDECODE_WORKSPACE_DIR` (`/root/.claudecode/workspace`) |
+| `opencode` | `OpenClawContextManager` (same layout; like codex its skills live in a non-workspace dir `~/.config/opencode/skills`, so the workspace skills catalog is empty — identity + memory load correctly) | `HAL_OPENCODE_WORKSPACE_DIR` (`/root/.opencode/workspace`) |
 
 `ContextManagerBase` (`context_manager/base.py`) handles prompt assembly
 (`build_instructions`), turn persistence (`add_turn`), memory loading/trimming,
