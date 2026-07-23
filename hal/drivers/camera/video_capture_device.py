@@ -149,13 +149,18 @@ class LocalVideoCaptureDevice(VideoCaptureDeviceBase):
     _COLOR_GREEN_FRAC: float = 0.10  # min frame fraction of extreme green
     _COLOR_MAGENTA_FRAC: float = 0.008  # min frame fraction of extreme magenta
 
-    # ISP deep-stuck escalation: when an ISP fault (freeze or color
-    # corruption) forces this many reopens within _ISP_FAULT_WINDOW_S, a
-    # plain V4L2 reopen is clearly not resetting the camera firmware — the
-    # only verified fix short of a reboot is power-cycling the USB port via
-    # the usb driver's unbind/bind sysfs interface. Read-failure reopens do
-    # NOT count toward escalation.
-    _ISP_FAULT_ESCALATE_COUNT: int = 3
+    # ISP fault escalation: a plain V4L2 reopen does NOT reset the camera
+    # firmware — device-verified on the SunplusIT UVC cam, where reopening a
+    # wedged ISP re-triggers the exact green/posterized glitch, so the freeze
+    # watchdog fires again seconds later and the loop hammers itself into a
+    # self-perpetuating churn. The only verified fix short of a reboot is
+    # power-cycling the USB port via the usb driver's unbind/bind sysfs
+    # interface, WITH a settle delay so the reopen lands on a fully-booted ISP
+    # (see _USB_SETTLE_AFTER_BIND_S). So escalate on the FIRST ISP fault
+    # rather than wasting cycles on futile plain reopens; the cooldown below
+    # still bounds how often an actually-dead camera gets cycled. Read-failure
+    # reopens do NOT count toward escalation (those a plain reopen does fix).
+    _ISP_FAULT_ESCALATE_COUNT: int = 1
     _ISP_FAULT_WINDOW_S: float = 600.0
     # Never power-cycle more often than this — a physically dead camera must
     # not put the loop into an endless unbind/bind cycle.
@@ -164,6 +169,12 @@ class LocalVideoCaptureDevice(VideoCaptureDeviceBase):
     _USB_REBIND_DELAY_S: float = 3.0
     # How long to wait for /dev/video<N> to reappear after the bind.
     _USB_DEVNODE_TIMEOUT_S: float = 15.0
+    # After the node re-enumerates, the ISP firmware still needs a few seconds
+    # to finish booting. Reopening the instant the /dev node appears (which
+    # can be <1s) catches the ISP mid-boot and re-triggers the green/posterized
+    # glitch — device-verified: a power-cycle followed by an immediate reopen
+    # comes back corrupt, the same cycle with this settle comes back clean.
+    _USB_SETTLE_AFTER_BIND_S: float = 5.0
 
     def __init__(
         self,
@@ -377,7 +388,8 @@ class LocalVideoCaptureDevice(VideoCaptureDeviceBase):
         )
         if n_faults >= self._ISP_FAULT_ESCALATE_COUNT and cooldown_ok:
             self._logger.warning(
-                "Camera USB power-cycle (ISP deep-stuck: %d ISP-fault reopens in %.0fs)",
+                "Camera USB power-cycle (ISP fault — plain reopen won't clear "
+                "an ISP wedge; %d fault(s) in %.0fs)",
                 n_faults,
                 self._ISP_FAULT_WINDOW_S,
             )
@@ -473,9 +485,14 @@ class LocalVideoCaptureDevice(VideoCaptureDeviceBase):
         deadline = time.monotonic() + self._USB_DEVNODE_TIMEOUT_S
         while not self._stopped.is_set() and time.monotonic() < deadline:
             if node and os.path.exists(node):
+                # Node is back, but the ISP is still booting — settle before
+                # handing control to the reopen, or the fresh open catches it
+                # mid-boot and re-triggers the green/posterized glitch.
                 self._logger.info(
-                    "Camera USB power-cycled (%s) — %s is back", usb_path, node
+                    "Camera USB power-cycled (%s) — %s is back, settling %.0fs",
+                    usb_path, node, self._USB_SETTLE_AFTER_BIND_S,
                 )
+                self._stopped.wait(self._USB_SETTLE_AFTER_BIND_S)
                 return True
             self._stopped.wait(0.5)
         self._logger.warning(
