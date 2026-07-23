@@ -211,3 +211,10 @@ Agent gọi `tts` built-in tool của OpenClaw thay vì trả assistant text. Op
 - **Ảnh hưởng**: node `TOOL` có thể không sáng dù nhìn như đã có action.
 - **Trạng thái hiện tại**: đã bật raw dump full-stream (`source: "openclaw_raw"`), nhưng vẫn có run không thấy payload `stream:"tool"`.
 - **Chưa chốt**: có thể OpenClaw chạy nhánh nội bộ không emit tool stream, hoặc action chỉ được suy ra từ assistant text mà không có tool invocation tường minh.
+
+### Node HW sáng nhưng không phát — marker bị "echo" trong tool (2026-07-23)
+Marker `[HW:...]` chỉ tới HAL khi agent xuất nó ra **text trả lời** (Go chạy `extractHWCalls` trên assistant message). Thỉnh thoảng agent lại bọc marker trong một lệnh shell — ví dụ `echo '[HW:/audio/play:{...}]'` — lệnh này chỉ in ra stdout trong sandbox, **không bao giờ fire**, nhưng vì tool args có chứa chuỗi marker nên node HW (ví dụ `hw_audio`) vẫn sáng: nhìn như đã phát mà loa im.
+
+- **Ảnh hưởng**: "node sáng mà câm loa" — hay gặp nhất với nhạc (Music skill).
+- **Fix**: `fireEchoedHWMarkers` (`handler_hw.go`, gọi từ cả nhánh `tool` device-chat trong `handler_event_agent.go` lẫn nhánh `session.tool`) phát hiện marker `[HW:...]` trong tool args rồi fire thật sang HAL, kèm log WARN. Nó chỉ khớp đúng ngữ pháp `[HW:/path:{json}]`, nên `curl .../audio/play` hợp lệ (không có marker) không bị đụng và vẫn phát qua request riêng. Khi rescue chạy thì bỏ qua phần emit node cosmetic để không nhân đôi node.
+- **Chống tận gốc**: `skills/music/SKILL.md` đã cấm rõ echo/exec/bash bọc marker — marker phải là text trả lời, không "chạy" nó.

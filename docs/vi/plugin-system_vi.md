@@ -1,142 +1,173 @@
-# Hệ Thống Plugin (Tương Lai)
+# Hệ Thống Plugin
 
-Ghi chú thiết kế cho hệ thống plugin do cộng đồng đóng góp, lấy cảm hứng từ mô hình
-`reachy_mini_python_app` của Pollen Robotics. Các plugin chạy **bên ngoài HAL** như
-các tiến trình độc lập và gọi HTTP API của HAL (`:5001`) để truy cập phần cứng.
+Các ứng dụng Python độc lập mở rộng khả năng thiết bị Autonomous OS. Plugin
+chạy như process riêng biệt, được quản lý bởi systemd, truy cập phần cứng
+thông qua HTTP API của HAL.
 
-Viết tháng 7 năm 2026. Trạng thái: **chỉ là thiết kế, chưa được triển khai.**
-
-## Vấn Đề
-
-Hiện tại, để thêm một hành vi mới vào Autonomous OS cần:
-
-1. PR vào HAL (thay đổi driver/route Python)
-2. PR vào skills/ (SKILL.md để agent nhận biết)
-3. Xem xét code + merge + đẩy OTA
-
-Điều này tạo ra rào cản cao cho các cộng tác viên cộng đồng. Pollen đã giải quyết
-vấn đề này bằng cách cài đặt ứng dụng 1 nhấp từ HF Spaces — hơn 200 ứng dụng từ
-hơn 150 người tạo, phần lớn không có nền tảng về robot học.
+Viết tháng 7/2026. Trạng thái: **v1 đã triển khai.**
 
 ## Kiến Trúc
 
-HAL giữ nguyên như cũ. Các plugin là các tiến trình độc lập sử dụng HAL như một dịch vụ:
+HAL là kernel — plugin là userspace. OS điều phối mọi truy cập phần cứng:
 
 ```
 ┌─────────────────────────────────────────────┐
-│  Agent Runtime (OpenClaw / Hermes)           │
-│  ┌──────────┐  ┌──────────┐  ┌───────────┐  │
-│  │ Skills   │  │ MCP Tools│  │ Plugins   │  │
-│  │ (local)  │  │ (remote) │  │ (local)   │  │
-│  └──────────┘  └──────────┘  └─────┬─────┘  │
-└────────────────────────────────────┼────────┘
-                                     │ subprocess
-┌────────────────────────────────────▼────────┐
-│  Plugin Process                              │
-│  - Own Python venv                           │
-│  - Calls HAL API (localhost:5001)            │
-│  - Registers skills with agent               │
-└─────────────────────────┬───────────────────┘
-                          │ HTTP
-┌─────────────────────────▼───────────────────┐
-│  HAL (:5001)                                 │
-│  LED, servo, audio, camera, sensing          │
+│  Agent Runtime (brain, luôn chạy)           │
+├─────────────────────────────────────────────┤
+│  Plugin A    Plugin B    Plugin C           │  ← ứng dụng userspace
+│    ↓ HTTP      ↓ HTTP      ↓ HTTP          │
+├─────────────────────────────────────────────┤
+│  HAL :5001 (dịch vụ phần cứng, luôn bật)   │  ← kernel
+├─────────────────────────────────────────────┤
+│  LED  Servo  Audio  Camera  GPIO  Sensing   │
 └─────────────────────────────────────────────┘
 ```
 
-## Các Điểm Thiết Kế Chính
+Plugin cùng tồn tại với HAL và agent runtime. HAL tuần tự hóa truy cập phần
+cứng nên nhiều plugin có thể chạy đồng thời mà không xung đột tài nguyên.
 
-### 1. Định Dạng Plugin
+## Định Dạng Plugin
 
-Một plugin là một gói Python với điểm vào tiêu chuẩn:
+Plugin là một thư mục (git repo) chứa:
 
-```python
-# plugin.json (metadata)
+```
+my-plugin/
+  plugin.json         # metadata (bắt buộc)
+  main.py             # điểm vào (mặc định)
+  requirements.txt    # phụ thuộc pip (tùy chọn)
+  README.md           # mô tả + video demo
+```
+
+### plugin.json
+
+```json
 {
   "name": "dance-party",
   "version": "1.0.0",
-  "description": "Syncs robot dance to music beats",
-  "entry": "main.py",
-  "skills": ["dance_to_music", "stop_dance"],
-  "hal_endpoints": ["/servo/*", "/led/*", "/audio/*"]
+  "description": "LED nhảy theo nhịp nhạc",
+  "entry": "main.py"
 }
 ```
 
-### 2. HAL Như SDK
+| Trường | Bắt buộc | Mô tả |
+|--------|----------|-------|
+| `name` | Có | Tên định danh (dùng làm tên thư mục + tên systemd unit) |
+| `version` | Không | Chuỗi semver |
+| `description` | Không | Mô tả ngắn |
+| `entry` | Không | Điểm vào Python, mặc định là `main.py` |
 
-Các plugin truy cập phần cứng thông qua HTTP API hiện có của HAL — không import nội bộ:
+### main.py
+
+Plugin truy cập phần cứng qua HTTP API của HAL. Biến môi trường `HAL_URL`
+được inject bởi systemd unit (mặc định `http://localhost:5001`):
 
 ```python
-import requests
+import os, time, requests
 
-# Move servo
-requests.post("http://localhost:5001/servo/move", json={"pan": 45, "tilt": 10})
+HAL = os.environ.get("HAL_URL", "http://localhost:5001")
 
-# Set LED
-requests.post("http://localhost:5001/led/set", json={"effect": "pulse", "color": "blue"})
-
-# Play audio
-requests.post("http://localhost:5001/audio/speak", json={"text": "Let's dance!"})
+requests.post(f"{HAL}/led/set", json={"effect": "rainbow"})
+requests.post(f"{HAL}/audio/speak", json={"text": "Xin chào!"})
+time.sleep(30)
+requests.post(f"{HAL}/led/off")
 ```
 
-Không cần code HAL mới — API đã tồn tại sẵn.
+## Cài Đặt & Vòng Đời
 
-### 3. Tự Động Đăng Ký Skill
+### Phân Phối
 
-Khi một plugin khởi động, nó đăng ký các skill của mình với agent runtime để
-agent biết khi nào cần gọi nó:
+Plugin cài từ bất kỳ URL git nào — HuggingFace Spaces, GitHub, GitLab, Gitea,
+hoặc repo tự host:
 
-```
-Plugin starts → POST /api/device/plugins/:name/skills
-  → agent runtime sees new tools available
-  → user says "play some dance music"
-  → agent calls plugin's skill endpoint
-```
+```bash
+# Cài từ HuggingFace
+POST /api/plugin/install {"url": "https://huggingface.co/spaces/user/my-plugin"}
 
-### 4. Vòng Đời (OS Server quản lý)
-
-```
-POST   /api/device/plugins/install   — download from URL (HF Space / Git)
-GET    /api/device/plugins           — list installed plugins
-POST   /api/device/plugins/:name/start
-POST   /api/device/plugins/:name/stop
-DELETE /api/device/plugins/:name     — uninstall
+# Cài từ GitHub
+POST /api/plugin/install {"url": "https://github.com/user/my-plugin"}
 ```
 
-### 5. Cô Lập
+### API Endpoints
 
-- Mỗi plugin chạy trong subprocess + Python venv riêng của nó
-- Lỗi trong plugin không ảnh hưởng đến HAL hoặc agent
-- OS Server theo dõi tình trạng plugin, khởi động lại khi có lỗi
-- Các plugin chỉ truy cập HAL qua HTTP — không có quyền truy cập filesystem vào nội bộ HAL
+Tất cả endpoint yêu cầu xác thực admin.
 
-### 6. Phân Phối
+```
+POST   /api/plugin/install       — clone git repo, tạo venv, tạo systemd unit
+GET    /api/plugin               — danh sách plugin đã cài với trạng thái
+POST   /api/plugin/:name/start   — khởi động plugin
+POST   /api/plugin/:name/stop    — dừng plugin
+DELETE /api/plugin/:name         — gỡ cài đặt (dừng + xóa file + systemd unit)
+```
 
-Cùng mô hình với Pollen:
-- Xuất bản dưới dạng HF Space (được gắn thẻ để khám phá)
-- Cài đặt bằng URL từ web UI (Settings > Plugins)
-- Hoặc từ CLI: `POST /api/device/plugins/install {"url": "..."}`
+### Tích Hợp Systemd
 
-## So Sánh Với Các Điểm Mở Rộng Hiện Có
+Mỗi plugin chạy như systemd service (`os-plugin-<name>.service`):
 
-| Mở rộng | Chạy ở | Phạm vi | Rào cản |
-|---------|--------|---------|---------|
-| SKILL.md | Agent runtime | Dựa trên prompt | Thấp (tệp văn bản) |
-| MCP Tools | Cloud (HF Space) | Hàm không trạng thái | Thấp (chỉ URL) |
-| **Plugins** | Thiết bị (subprocess) | Hành vi đầy đủ | Trung bình (gói Python) |
-| HAL code | Thiết bị (in-process) | Driver phần cứng | Cao (PR + xem xét) |
+- `Restart=on-failure` — tự phục hồi khi crash
+- `MemoryMax=256M` — giới hạn tài nguyên trên thiết bị constrained
+- `WorkingDirectory` trỏ đến thư mục plugin
+- Biến `HAL_URL` được inject
 
-## Câu Hỏi Mở
+### Giao Diện Web
 
-- Các plugin có nên có quyền truy cập WebSocket trực tiếp vào agent runtime, hay chỉ
-  thông qua API đăng ký skill?
-- Cách xử lý các plugin cần trạng thái liên tục (cơ sở dữ liệu, tệp cấu hình)?
-- Có nên có một marketplace/registry plugin ngoài HF Spaces không?
-- Giới hạn tài nguyên (CPU, bộ nhớ) mỗi plugin trên các thiết bị bị hạn chế (CM4)?
+Tab **Settings > Plugins** cung cấp:
+- Danh sách plugin đã cài với tên, phiên bản, trạng thái (running/stopped/failed)
+- Nút Start/Stop/Uninstall cho mỗi plugin
+- Form cài đặt (dán URL git)
+- Nút Refresh để cập nhật trạng thái
 
-## Tài Liệu Tham Khảo
+## Lộ Trình
 
-- Mô hình ứng dụng của Pollen: `devices/reachy-mini/docs/pollen-ecosystem-analysis.md`
-  §App Distribution
-- [Make and Publish Reachy Mini Apps (HF Blog)](https://huggingface.co/blog/pollen-robotics/make-and-publish-your-reachy-mini-apps)
-- [Robot App Store (VentureBeat)](https://venturebeat.com/technology/the-app-store-for-robots-has-arrived-hugging-face-launches-open-source-reachy-mini-app-store-with-200-apps)
+### v1 — Pipeline (đã triển khai)
+
+Git URL → venv → systemd unit → HAL HTTP. Hệ thống plugin tối giản:
+- Cài từ bất kỳ URL git nào
+- Quản lý vòng đời bằng systemd (start/stop/restart khi crash)
+- Quản lý qua giao diện web
+- Template plugin để community fork
+
+### v2 — SDK + Tích Hợp Agent
+
+- **Package `autonomous-sdk`** — bọc HAL HTTP thành API sạch:
+  ```python
+  from autonomous import Robot
+
+  class RadioPlayer(AutonomousApp):
+      async def play_radio(self, robot: Robot, genre: str = "lofi"):
+          """Phát radio internet."""
+          await robot.audio.stream_url(STATIONS[genre])
+          robot.led.visualize_audio()
+  ```
+- **Tự đăng ký MCP tool** — method có docstring tự thành tool agent gọi được
+  qua local MCP server. Agent có thể gọi plugin bằng giọng nói.
+- **Định tuyến capability xuyên thiết bị** — `capabilities` trong plugin.json
+  xác định thiết bị nào chạy được plugin.
+
+### v3 — Hệ Sinh Thái
+
+- **Plugin store UI** — duyệt plugin theo tag, cài một click
+  (khám phá qua HuggingFace với tag `autonomous-os-plugin`)
+- **Quản lý tài nguyên** — HAL audio mixer, camera multiplexing
+- **Chế độ exclusive** — `"exclusive": true` park HAL, plugin chiếm phần cứng
+- **Plugin JS** — plugin chạy trong trình duyệt qua WebRTC (không cài đặt)
+
+## Bảo Mật
+
+- **Cài đặt yêu cầu admin** — mọi API plugin đều cần xác thực
+- **Mô hình tin cậy: chạy cục bộ = tin tưởng hoàn toàn.** Cài plugin nghĩa là
+  tin tưởng tác giả. Giống mô hình app của Pollen.
+- Plugin truy cập HAL qua HTTP — không truy cập filesystem nội bộ HAL
+- Giới hạn tài nguyên systemd ngăn cạn kiệt tài nguyên
+- Tương lai: sandbox container/seccomp nếu hệ sinh thái mở rộng
+
+## Template
+
+Fork `integrations/plugin-template/` để bắt đầu. Chứa plugin hello-world
+với demo LED + giọng nói.
+
+## Tham Khảo
+
+- Phân tích hệ sinh thái Pollen: `devices/reachy-mini/docs/pollen-ecosystem-analysis.md`
+- API routes của HAL: `hal/routes/`
+- Capability thiết bị: `devices/contract/capabilities.md`
+- Template plugin: `integrations/plugin-template/`
