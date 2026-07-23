@@ -29,12 +29,12 @@ import os, requests
 HAL = os.environ.get("HAL_URL", "http://localhost:5001")
 
 # LED
-requests.post(f"{HAL}/led/set", json={"effect": "rainbow"})
-requests.post(f"{HAL}/led/set", json={"effect": "pulse", "color": "blue"})
+requests.post(f"{HAL}/led/effect", json={"effect": "rainbow"})
+requests.post(f"{HAL}/led/effect", json={"effect": "pulse", "color": "blue"})
 requests.post(f"{HAL}/led/off")
 
-# Audio
-requests.post(f"{HAL}/audio/speak", json={"text": "Hello!"})
+# Voice
+requests.post(f"{HAL}/voice/speak", json={"text": "Hello!"})
 
 # Servo (devices with motion capability)
 requests.post(f"{HAL}/servo/move", json={"pan": 45, "tilt": 10})
