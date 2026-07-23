@@ -271,10 +271,15 @@ class LocalVideoCaptureDevice(VideoCaptureDeviceBase):
 
     @override
     def start(self) -> None:
-        if self._thread is not None:
+        if self._thread is not None and self._thread.is_alive():
             self._logger.info(f"{self.__class__.__name__} has already started")
             return
 
+        # A previous loop thread that died — the camera vanished from USB and the
+        # open path raised, or an unhandled error escaped — leaves a stale,
+        # non-None _thread. Allow a fresh start to revive it (e.g. via
+        # /camera/enable once the device is physically back) instead of refusing
+        # forever with "already started" until a full HAL restart.
         self._stopped.clear()
         self._thread = threading.Thread(
             target=self._video_capture_loop,
@@ -753,7 +758,14 @@ class LocalVideoCaptureDevice(VideoCaptureDeviceBase):
 
                 self.last_response = response
         finally:
-            video_capture.release()
+            # video_capture is None when a reopen path (read-failure or ISP-fault
+            # recovery) returned None because stop() was requested mid-retry — the
+            # loop then breaks straight here. Guard so shutdown doesn't die with
+            # `AttributeError: 'NoneType' has no attribute 'release'`, which would
+            # leave `_thread` referencing a crashed thread that start() then
+            # refuses to revive ("already started") until a full HAL restart.
+            if video_capture is not None:
+                video_capture.release()
 
     def acquire_consumer(self):
         """Register an active consumer (e.g. MJPEG stream) for full-FPS capture."""
