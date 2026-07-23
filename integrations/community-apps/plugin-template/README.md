@@ -1,3 +1,14 @@
+---
+title: Hello Robot
+emoji: 🤖
+colorFrom: blue
+colorTo: green
+sdk: static
+pinned: false
+tags:
+  - autonomous-os-plugin
+---
+
 # Hello World Plugin
 
 A minimal Autonomous OS plugin that pulses LEDs and speaks a greeting.
