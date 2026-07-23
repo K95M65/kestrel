@@ -66,8 +66,8 @@ import os, time, requests
 
 HAL = os.environ.get("HAL_URL", "http://localhost:5001")
 
-requests.post(f"{HAL}/led/set", json={"effect": "rainbow"})
-requests.post(f"{HAL}/audio/speak", json={"text": "Xin chào!"})
+requests.post(f"{HAL}/led/effect", json={"effect": "rainbow"})
+requests.post(f"{HAL}/voice/speak", json={"text": "Xin chào!"})
 time.sleep(30)
 requests.post(f"{HAL}/led/off")
 ```
@@ -92,6 +92,7 @@ POST /api/plugin/install {"url": "https://github.com/user/my-plugin"}
 Tất cả endpoint yêu cầu xác thực admin.
 
 ```
+GET    /api/plugin/browse        — khám phá plugin cộng đồng (proxy HuggingFace Spaces API)
 POST   /api/plugin/install       — clone git repo, tạo venv, tạo systemd unit
 GET    /api/plugin               — danh sách plugin đã cài với trạng thái
 POST   /api/plugin/:name/start   — khởi động plugin
@@ -111,20 +112,25 @@ Mỗi plugin chạy như systemd service (`os-plugin-<name>.service`):
 ### Giao Diện Web
 
 Tab **Settings > Plugins** cung cấp:
-- Danh sách plugin đã cài với tên, phiên bản, trạng thái (running/stopped/failed)
-- Nút Start/Stop/Uninstall cho mỗi plugin
-- Form cài đặt (dán URL git)
-- Nút Refresh để cập nhật trạng thái
+- **Installed** — danh sách plugin đã cài với trạng thái (running/stopped/failed),
+  nút Start/Stop/Uninstall
+- **Browse** — khám phá plugin cộng đồng từ HuggingFace Spaces với tag
+  `autonomous-os-plugin`, cài một click. Backend proxy HF API để tránh CORS
+  (`GET /api/plugin/browse`)
+- **Install from URL** — dán URL git cho plugin không phải HF (GitHub, GitLab, v.v.)
 
 ## Lộ Trình
 
-### v1 — Pipeline (đã triển khai)
+### v1 — Pipeline + Store (đã triển khai)
 
-Git URL → venv → systemd unit → HAL HTTP. Hệ thống plugin tối giản:
-- Cài từ bất kỳ URL git nào
+Git URL → venv → systemd unit → HAL HTTP. Hệ thống plugin đầy đủ:
+- Cài từ bất kỳ URL git nào (HuggingFace, GitHub, GitLab, v.v.)
 - Quản lý vòng đời bằng systemd (start/stop/restart khi crash)
-- Quản lý qua giao diện web
-- Template plugin để community fork
+- Plugin store — duyệt plugin cộng đồng từ HuggingFace Spaces
+  (tag `autonomous-os-plugin`), cài một click
+- Cài thủ công bằng URL cho plugin không phải HF
+- Giao diện web (Installed / Browse / Install from URL)
+- Template plugin trên HuggingFace để community fork
 
 ### v2 — SDK + Tích Hợp Agent
 
@@ -145,8 +151,6 @@ Git URL → venv → systemd unit → HAL HTTP. Hệ thống plugin tối giản
 
 ### v3 — Hệ Sinh Thái
 
-- **Plugin store UI** — duyệt plugin theo tag, cài một click
-  (khám phá qua HuggingFace với tag `autonomous-os-plugin`)
 - **Quản lý tài nguyên** — HAL audio mixer, camera multiplexing
 - **Chế độ exclusive** — `"exclusive": true` park HAL, plugin chiếm phần cứng
 - **Plugin JS** — plugin chạy trong trình duyệt qua WebRTC (không cài đặt)
@@ -170,4 +174,5 @@ với demo LED + giọng nói.
 - Phân tích hệ sinh thái Pollen: `devices/reachy-mini/docs/pollen-ecosystem-analysis.md`
 - API routes của HAL: `hal/routes/`
 - Capability thiết bị: `devices/contract/capabilities.md`
-- Template plugin: `integrations/plugin-template/`
+- Template plugin: `integrations/community-apps/plugin-template/`
+- HuggingFace template: https://huggingface.co/spaces/autonomous-os/autonomous-os-hello-robot
