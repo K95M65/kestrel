@@ -129,25 +129,26 @@ class LocalVideoCaptureDevice(VideoCaptureDeviceBase):
     _FREEZE_REOPEN_S: float = 10.0
 
     # Color-corruption watchdog: the same wedged ISP can also keep delivering
-    # CHANGING frames whose colors are garbage — posterized flat regions of
-    # oversaturated green with complementary magenta patches (seen live on
-    # the SunplusIT UVC cam right after a close/open cycle, with every v4l2
-    # control correct), which the freeze watchdog cannot see. A frame is
-    # "corrupt" when extreme-saturation green AND magenta pixels each cover
-    # a minimum fraction of the subsampled frame and together a large one —
-    # natural scenes (and the lamp's own LED spill, which is single-hue)
-    # essentially never show both complementary extremes at once. Sustained
-    # corruption triggers the same recovery ladder as a freeze; a single
-    # clean frame resets the timer. Thresholds calibrated against a live
-    # corrupt specimen (green 0.19 / magenta 0.012 at sat>=100) vs clean
-    # office scenes (0.000 / 0.000) — the magenta patches of the corruption
-    # are pink-ish (moderate saturation), so the saturation floor must stay
-    # well below the green one's natural extreme.
+    # CHANGING frames whose colors are garbage — posterized flat regions with
+    # either green+magenta, red+magenta, or a magenta/deep-magenta palette
+    # (seen live on the SunplusIT UVC cam right after a close/open cycle, with
+    # every v4l2 control correct),
+    # which the freeze watchdog cannot see. A normal red LED spill is one hue;
+    # the red palette requires a substantial magenta companion before it can
+    # count as corrupt. Sustained corruption triggers the same recovery ladder
+    # as a freeze; a single clean frame resets the timer. Thresholds are
+    # calibrated from three live corrupt specimens: green 0.19 / magenta 0.012,
+    # red 0.23-0.42 / magenta 0.10-0.35, and magenta 0.24 / deep-magenta
+    # 0.16 (sat>=100).
     _COLOR_CORRUPT_REOPEN_S: float = 30.0
     _COLOR_SAT_MIN: int = 100  # HSV saturation floor for an "extreme" pixel
     _COLOR_VAL_MIN: int = 60  # HSV value floor — ignore near-black pixels
     _COLOR_GREEN_FRAC: float = 0.10  # min frame fraction of extreme green
     _COLOR_MAGENTA_FRAC: float = 0.008  # min frame fraction of extreme magenta
+    _COLOR_RED_FRAC: float = 0.15  # min frame fraction of extreme red
+    _COLOR_RED_MAGENTA_FRAC: float = 0.05  # companion magenta floor for red palette
+    _COLOR_MAGENTA_DOMINANT_FRAC: float = 0.15  # broad magenta palette floor
+    _COLOR_DEEP_MAGENTA_FRAC: float = 0.10  # companion violet-red palette floor
 
     # ISP fault escalation: a plain V4L2 reopen does NOT reset the camera
     # firmware — device-verified on the SunplusIT UVC cam, where reopening a
@@ -355,22 +356,40 @@ class LocalVideoCaptureDevice(VideoCaptureDeviceBase):
         """Heuristic ISP color-corruption check on a subsampled BGR frame.
 
         Flags the wedged-ISP failure mode where frames keep changing but the
-        chroma is garbage: posterized oversaturated green regions plus
-        complementary magenta patches. Requiring BOTH hue families at extreme
-        saturation at once is what keeps false positives out — a green wall,
-        foliage, or the lamp's own LED spill are single-hue.
+        chroma is garbage: posterized green+magenta, red+magenta, or a
+        broad magenta/deep-magenta palette.
+        Requiring both hue families keeps false positives out — a green wall,
+        foliage, or the lamp's own red LED spill are single-hue.
         """
         hsv = cv2.cvtColor(small, cv2.COLOR_BGR2HSV)
         hue = hsv[..., 0]
         extreme = (hsv[..., 1] >= cls._COLOR_SAT_MIN) & (
             hsv[..., 2] >= cls._COLOR_VAL_MIN
         )
-        # OpenCV hue is 0-179: green ~60, magenta/pink ~150.
+        # OpenCV hue is 0-179: red ~0/179, green ~60, magenta/pink ~150.
+        red_frac = float((extreme & ((hue <= 10) | (hue >= 170))).mean())
         green_frac = float((extreme & (hue >= 35) & (hue <= 85)).mean())
         magenta_frac = float((extreme & (hue >= 130) & (hue <= 175)).mean())
-        return (
+        deep_magenta_frac = float((extreme & (hue >= 155) & (hue <= 169)).mean())
+        green_magenta_corrupt = (
             green_frac >= cls._COLOR_GREEN_FRAC
             and magenta_frac >= cls._COLOR_MAGENTA_FRAC
+        )
+        red_magenta_corrupt = (
+            red_frac >= cls._COLOR_RED_FRAC
+            and magenta_frac >= cls._COLOR_RED_MAGENTA_FRAC
+        )
+        # The blue-LED specimen had negligible green and canonical red, but a
+        # frame-wide magenta palette with a large violet-red component. Keep
+        # the second threshold so a single ordinary pink hue does not trip it.
+        magenta_palette_corrupt = (
+            magenta_frac >= cls._COLOR_MAGENTA_DOMINANT_FRAC
+            and deep_magenta_frac >= cls._COLOR_DEEP_MAGENTA_FRAC
+        )
+        return (
+            green_magenta_corrupt
+            or red_magenta_corrupt
+            or magenta_palette_corrupt
         )
 
     def _recover_isp_fault(self, video_capture, device_id, now_mono, reason: str):
@@ -435,6 +454,17 @@ class LocalVideoCaptureDevice(VideoCaptureDeviceBase):
         None when the camera is not USB-backed (e.g. a CSI sensor) or the
         sysfs walk fails.
         """
+        sys_dev = self._resolve_usb_sysfs_dir(device_id)
+        return os.path.basename(sys_dev) if sys_dev is not None else None
+
+    def _resolve_usb_sysfs_dir(self, device_id) -> str | None:
+        """Return the USB device sysfs directory behind a video device.
+
+        The return value is the directory containing ``idVendor`` (for
+        example ``.../usb1/1-1``), or ``None`` for a non-USB camera / an
+        unavailable sysfs path. Keeping this separate from ``_resolve_usb_path``
+        lets runtime-PM handling use the same dynamic device resolution.
+        """
         node = self._video_dev_node(device_id)
         if node is None:
             return None
@@ -446,7 +476,7 @@ class LocalVideoCaptureDevice(VideoCaptureDeviceBase):
             # interface (e.g. .../1-1/1-1:1.0/video4linux/video0).
             for _ in range(10):
                 if os.path.isfile(os.path.join(sys_dev, "idVendor")):
-                    return os.path.basename(sys_dev)
+                    return sys_dev
                 parent = os.path.dirname(sys_dev)
                 if parent == sys_dev:
                     break
@@ -454,6 +484,32 @@ class LocalVideoCaptureDevice(VideoCaptureDeviceBase):
         except OSError:
             self._logger.exception("USB path resolve failed for %s", node)
         return None
+
+    def _disable_usb_autosuspend(self, device_id) -> None:
+        """Keep a USB camera powered while HAL owns it.
+
+        UVC webcams can be left in runtime autosuspend by the kernel after a
+        short idle period. Some cameras recover cleanly; this one can resume
+        with a wedged ISP. ``power/control=on`` is scoped to the resolved USB
+        camera, is re-applied after each HAL start / USB rebind, and has no
+        effect on CSI or other non-USB cameras.
+        """
+        sys_dev = self._resolve_usb_sysfs_dir(device_id)
+        if sys_dev is None:
+            return
+        control_path = os.path.join(sys_dev, "power", "control")
+        try:
+            with open(control_path, "w") as f:
+                f.write("on")
+            self._logger.info(
+                "Camera USB autosuspend disabled for %s", os.path.basename(sys_dev)
+            )
+        except OSError:
+            # Runtime-PM is an optional kernel feature. Failure must never
+            # stop a camera that otherwise works (including CSI cameras).
+            self._logger.warning(
+                "Could not disable USB autosuspend for camera at %s", sys_dev
+            )
 
     def _usb_power_cycle(self, device_id) -> bool:
         """Power-cycle the camera's USB device via driver unbind/bind.
@@ -490,6 +546,7 @@ class LocalVideoCaptureDevice(VideoCaptureDeviceBase):
         deadline = time.monotonic() + self._USB_DEVNODE_TIMEOUT_S
         while not self._stopped.is_set() and time.monotonic() < deadline:
             if node and os.path.exists(node):
+                self._disable_usb_autosuspend(device_id)
                 # Node is back, but the ISP is still booting — settle before
                 # handing control to the reopen, or the fresh open catches it
                 # mid-boot and re-triggers the green/posterized glitch.
@@ -552,6 +609,8 @@ class LocalVideoCaptureDevice(VideoCaptureDeviceBase):
 
         if isinstance(device_id, str) and device_id.isdigit():
             device_id = int(device_id)
+
+        self._disable_usb_autosuspend(device_id)
 
         video_capture = self._try_open(device_id)
 
