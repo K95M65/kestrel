@@ -12,8 +12,8 @@ import { ManualReachBox } from "./ManualReachBox";
 // (connecting / connected / failed).
 export function SetupProgressScreen({
   setupPhase, setupLanIP, setupErrorMsg, elapsed,
-  deviceMdnsHost, deviceTypePrefix,
-  onRetry,
+  deviceMdnsHost, deviceTypePrefix, apSsid,
+  onRetry, onStartOver,
 }: {
   setupPhase: "connecting" | "connected" | "failed";
   setupLanIP: string;
@@ -21,8 +21,17 @@ export function SetupProgressScreen({
   elapsed: number;
   deviceMdnsHost: string;
   deviceTypePrefix: string;
+  // The device's own hotspot SSID (same "<type>-<suffix>" string as the mDNS
+  // host — setup-ap.sh derives both from the hardware ID). Named on the failure
+  // screen because a failed join leaves the operator's machine on their home
+  // Wi-Fi, and they must rejoin this hotspot before the device is reachable
+  // again. Empty until the device config resolves; the hint is then omitted
+  // rather than showing a blank name.
+  apSsid: string;
   // Resets the wizard back to the Wi-Fi step after a failed join.
   onRetry: () => void;
+  // Discards the attempt and hard-reloads into a pristine wizard.
+  onStartOver: () => void;
 }) {
   return (
     <div className="lm-card lm-fade-in" style={{
@@ -203,19 +212,65 @@ export function SetupProgressScreen({
             <div style={{ fontWeight: 600, color: C.text, marginBottom: 6 }}>
               Things to check:
             </div>
-            <div>• Use a <strong style={{ color: C.text }}>2.4GHz</strong> Wi-Fi network — most devices can't join 5GHz.</div>
             <div>• Double-check the Wi-Fi password (it's case-sensitive).</div>
+            <div>• Use a <strong style={{ color: C.text }}>2.4GHz</strong> Wi-Fi network — most devices can't join 5GHz.</div>
             <div>• Keep the device close to your router during setup.</div>
           </div>
 
-          <button
-            type="button"
-            className="lm-btn lm-btn-primary"
-            onClick={onRetry}
-            style={{ padding: "9px 18px" }}
-          >
-            Back to Wi-Fi
-          </button>
+          {/* Rejoin instruction. A failed join drops the AP, which bumps the
+              operator's machine onto its home Wi-Fi — so by the time they read
+              this, they are almost certainly NOT on the device's network
+              anymore and neither button below can reach it. The device restores
+              its hotspot automatically (handler.Setup → SwitchToAPMode), so the
+              one action that unblocks them is rejoining that SSID. Naming it
+              explicitly beats "reconnect to the device" because the operator
+              has to pick it out of a Wi-Fi list. */}
+          <div style={{
+            textAlign: "left", background: "rgba(251,191,36,0.06)",
+            border: `1px solid rgba(251,191,36,0.22)`, borderRadius: 8,
+            padding: "12px 14px", marginBottom: 18, fontSize: 13,
+            color: C.textDim, lineHeight: 1.6,
+          }}>
+            <div style={{ fontWeight: 600, color: C.text, marginBottom: 6 }}>
+              Before you retry
+            </div>
+            <div>
+              Your device has switched its setup hotspot back on. Reconnect this
+              computer to{" "}
+              {apSsid
+                ? <strong style={{ color: C.amber }}>{apSsid}</strong>
+                : "the device's Wi-Fi hotspot"}
+              , then choose an option below.
+            </div>
+          </div>
+
+          <div style={{
+            display: "flex", gap: 10, justifyContent: "center",
+            alignItems: "center", flexWrap: "wrap",
+          }}>
+            <button
+              type="button"
+              className="lm-btn lm-btn-primary"
+              onClick={onRetry}
+              style={{ padding: "9px 18px" }}
+            >
+              Back to Wi-Fi
+            </button>
+            {/* Full reset. "Back to Wi-Fi" keeps this document (and the params
+                it was opened with) alive, which is the right default when only
+                the password was mistyped. This one exists for when the session
+                itself is suspect — stale pushed config, a popup reopened by the
+                companion app, or an operator who simply wants a clean slate. */}
+            <button
+              type="button"
+              className="lm-btn lm-btn-ghost"
+              onClick={onStartOver}
+              style={{ padding: "9px 18px", fontWeight: 500 }}
+              title="Discard this attempt and reload a fresh setup form"
+            >
+              Start over
+            </button>
+          </div>
         </>
       )}
     </div>

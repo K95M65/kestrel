@@ -15,6 +15,24 @@ const AP_SETUP_IP = "192.168.100.1";
 // AP tore down — not a slow response.
 const AP_LOST_AFTER_MS = 5000;
 
+// Seconds after submit before an unresolved join is declared failed client-side.
+//
+// Why this exists: the backend's own verdict is unreachable in the common
+// wrong-password case. SetupNetwork polls for a full 60s before returning an
+// error, but the AP tears down ~2s after submit — so from t=2s the phase poll
+// can no longer reach 192.168.100.1, and the operator's machine has usually
+// auto-rejoined its home Wi-Fi by then. The backend flips to phase="failed" at
+// t≈62s with nobody listening, leaving the UI spinning on "joining Wi-Fi…"
+// forever. This timeout is what turns that hang into a visible error.
+//
+// 80s sits deliberately past the backend's 60s network timeout plus the ~5-8s
+// device-ap-mode needs to bring hostapd back up, so a device that IS about to
+// come back has already done so — we never call failure on a join that was
+// merely slow. Only applies when the AP has been unreachable (apLost) and no
+// lan_ip was ever captured; a join with a known IP is handled by the LAN-IP
+// probe, which succeeds the moment the operator rejoins their network.
+const JOIN_TIMEOUT_SEC = 80;
+
 // Pollers driving the post-submit "Setting up…" UI. Redirect is IP-FIRST —
 // the raw LAN IP resolves on every network, so it's the primary target:
 //   (1) phase poll — runs while setupWorking, hits the AP IP for phase/lan_ip
@@ -39,14 +57,22 @@ const AP_LOST_AFTER_MS = 5000;
 //       canonical-upgrades the URL to the raw IP.
 export function useSetupStatusPolling({
   setupWorking,
+  setupPhase,
   setupLanIP,
+  elapsed,
   mdnsHost,
   setSetupPhase,
   setSetupLanIP,
   setSetupErrorMsg,
 }: {
   setupWorking: boolean;
+  // Current phase, so the join-timeout below can stand down once the join has
+  // already resolved either way.
+  setupPhase: SetupPhase;
   setupLanIP: string;
+  // Seconds since the join started (ticked by the controller). Drives the
+  // JOIN_TIMEOUT_SEC failure verdict.
+  elapsed: number;
   // Device hostname without the ".local" suffix (e.g. "lamp-a1b2"), derived
   // from the hardware MAC by Setup.tsx. Empty when the config hasn't loaded —
   // the mDNS fallback simply stays off in that case.
@@ -73,12 +99,27 @@ export function useSetupStatusPolling({
     let cancelled = false;
     setApLost(false);
     lastPollOkRef.current = performance.now();
+    // Guards against reading the PREVIOUS attempt's verdict as this one's.
+    // handler.Setup answers 200 immediately but defers device.Setup by 2s, and
+    // nothing resets setupState to idle in between (see system/device/setup.go)
+    // — so for ~2s after a resubmit the backend still reports the old
+    // phase="failed". Without this, the very first poll would bounce a retrying
+    // operator straight back to the failure screen. We ignore terminal verdicts
+    // until the backend has confirmed THIS run started (phase="connecting");
+    // from then on every verdict is genuinely ours.
+    let runStarted = false;
     const tick = async () => {
       try {
         const s = await getSetupStatus();
         if (cancelled) return;
         lastPollOkRef.current = performance.now();
         setApLost(false);
+        if (s.phase === "connecting") {
+          runStarted = true;
+          if (s.lan_ip) setSetupLanIP(s.lan_ip);
+          return;
+        }
+        if (!runStarted) return; // stale verdict from a prior attempt
         if (s.phase === "connected") {
           setSetupPhase("connected");
           if (s.lan_ip) setSetupLanIP(s.lan_ip);
@@ -109,6 +150,36 @@ export function useSetupStatusPolling({
     }, 1000);
     return () => { cancelled = true; clearInterval(id); clearInterval(watchdog); };
   }, [setupWorking, setSetupPhase, setSetupLanIP, setSetupErrorMsg]);
+
+  // Join timeout → client-side "failed" verdict. See JOIN_TIMEOUT_SEC above for
+  // why the backend's own verdict usually never arrives.
+  //
+  // Gates, all required:
+  //   - setupWorking:        only judge an in-flight join, never the idle form.
+  //   - phase === connecting: the poll may still have delivered a real verdict
+  //                           during the AP-alive window; that one wins.
+  //   - apLost:              the AP is confirmed unreachable. While it still
+  //                          answers, the backend remains authoritative and a
+  //                          slow-but-succeeding join must not be called dead.
+  //   - !setupLanIP:         a captured IP means the join reached DHCP; the
+  //                          LAN-IP probe redirects as soon as the operator is
+  //                          back on their network, so there's nothing to fail.
+  //
+  // The message is deliberately hedged ("couldn't be confirmed" + likely
+  // causes) rather than asserting a wrong password: we never received the
+  // backend's reason, so stating one as fact would be guessing at the
+  // operator's expense. The wording still leads with the most common cause.
+  useEffect(() => {
+    if (!setupWorking || setupPhase !== "connecting") return;
+    if (!apLost || setupLanIP) return;
+    if (elapsed < JOIN_TIMEOUT_SEC) return;
+    console.warn(`[setup] no verdict after ${elapsed}s with AP unreachable — declaring join failed`);
+    setSetupErrorMsg(
+      "The device couldn't be reached after joining Wi-Fi. This usually means " +
+      "the Wi-Fi password was wrong, or the network is 5GHz-only.",
+    );
+    setSetupPhase("failed");
+  }, [setupWorking, setupPhase, apLost, setupLanIP, elapsed, setSetupPhase, setSetupErrorMsg]);
 
   // IP-first auto-redirect. Once we know the device's LAN IP, probe it from the
   // browser; when the probe succeeds the user is back on home Wi-Fi and the
