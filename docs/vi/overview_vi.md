@@ -34,7 +34,7 @@ system/
 ├── bootstrap/                    — OTA worker
 └── web/                          — React 19 + Vite + Tailwind CSS 4 SPA
 
-runtimes/                   — Swappable brains: openclaw/ hermes/ picoclaw/ codex/ claudecode/
+runtimes/                   — Swappable brains: openclaw/ hermes/ picoclaw/ codex/ claudecode/ opencode/
 
 hal/
 ├── server.py                     — FastAPI server (38 endpoints)

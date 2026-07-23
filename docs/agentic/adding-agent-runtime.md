@@ -180,8 +180,8 @@ bundle) and ONE **write** adapter (bundle → its layout), in
 directions — file count is **linear (2 per runtime)**, not the quadratic N×(N-1)
 a per-pair migrator needs. Register the adapter in the `adapters` map in
 `migrator.go`; nothing else changes (no new `Direction` enum). openclaw, hermes,
-picoclaw, codex, and claudecode all have adapters, so any pair migrates both ways. A
-runtime with no registered adapter is skipped by `CanMigrate` — the boot-time
+picoclaw, codex, claudecode, and opencode all have adapters, so any pair migrates both
+ways. A runtime with no registered adapter is skipped by `CanMigrate` — the boot-time
 reconciler doesn't migrate to/from it.
 
 PicoClaw's adapter (`runtime_picoclaw.go`) mirrors openclaw's layout but reads/writes
@@ -298,7 +298,7 @@ What was done:
 
 > ⚠️ **Maintenance coupling — no compile-time link.** `runtimes/openclaw/hooks/emotion-acknowledge/
 > handler.ts` (OpenClaw) and the `emotion_ack.go` files in
-> `runtimes/{hermes,picoclaw,codex,claudecode}` are independent
+> `runtimes/{hermes,picoclaw,codex,claudecode,opencode}` are independent
 > implementations of the same behavior. **When you change one, change them
 > all** — skip rules, emotion name/intensity, and capability gate must stay
 > identical, or the backends drift apart silently. Keep the cross-reference
@@ -363,6 +363,8 @@ runtime changes.
     — all device-owned, mirroring codex: `telegram_poll.go` getUpdates loop,
     `discord.go` discordgo session, `slack.go` MQTT bridge; Claude Code's
     native channel plugins are deliberately not used)
+  - opencode → `[telegram, slack, discord]` (`runtimes/opencode/channels.go`
+    — all device-owned, mirroring codex/claudecode)
 - Helper `domain.ChannelSupported(gw, channel) bool` (`domain/channel.go`) — the
   one place callers test membership.
 - Shared sentinels in package `domain` (`domain/channel.go`):

@@ -14,6 +14,7 @@ import (
 	"go.autonomous.ai/os/runtimes/codex"
 	"go.autonomous.ai/os/runtimes/hermes"
 	"go.autonomous.ai/os/runtimes/openclaw"
+	"go.autonomous.ai/os/runtimes/opencode"
 	"go.autonomous.ai/os/runtimes/picoclaw"
 	"go.autonomous.ai/os/system/device"
 	"go.autonomous.ai/os/system/domain"
@@ -71,6 +72,15 @@ func GetClaudeCodeVersion() string {
 // populateClaudeCodeVersion populates the shared claudecode version cache at startup.
 func populateClaudeCodeVersion() {
 	claudecode.PopulateClaudeCodeVersion()
+}
+
+func GetOpenCodeVersion() string {
+	return opencode.GetOpenCodeVersion()
+}
+
+// populateOpenCodeVersion populates the shared opencode version cache at startup.
+func populateOpenCodeVersion() {
+	opencode.PopulateOpenCodeVersion()
 }
 
 // StopTTS interrupts active TTS playback on HAL.
