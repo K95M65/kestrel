@@ -6,6 +6,7 @@ import threading
 import time
 from copy import copy
 from dataclasses import dataclass
+from datetime import datetime  # DEBUG-ACTION-LOG (remove before prod — see action-logs/debug-note.txt)
 from enum import Enum
 from pathlib import Path
 from typing import Any, override
@@ -30,6 +31,40 @@ from .pose import PosePerception
 logger = logging.getLogger(__name__)
 
 RESOURCES_DIR = Path(__file__).parent / "resources"
+
+# ===== DEBUG-ACTION-LOG START (TEMPORARY — remove before prod) =============
+# Debug event log (offline analysis of action-recognition triggers).
+# Removal instructions: action-logs/debug-note.txt. Grep tag: DEBUG-ACTION-LOG.
+#
+# Every inference that actually reached the backend is dumped to disk under
+# `action-logs/<timestamp>_<class>_<conf>/` (one distinct sub-dir per trigger)
+# holding the exact input frame we sent, an annotated copy, and a meta.json
+# with every detected class + confidence, the threshold, and frame shape.
+# Naming mirrors the face-emotion `emotion-logs/` convention:
+#   20260713-114635-167199_using-computer_0.92   (top class + conf)
+#   20260713-122707-559111_FAIL-no-detection      (backend returned [])
+#   20260713-114756-025087_FAIL-request-error     (send/recv/encode raised)
+#
+# NOTE on FAIL-no-detection: unlike emotion's "no face", here it means the HAL
+# client received an empty `detected_classes` list. Per docs/action/pipeline.md
+# that empty list can mean any of: nothing crossed the threshold, the server's
+# person-detection gate found no crop, OR a backend `{"error": ...}` response
+# (RemoteMotionChecker.update does resp.get("detected_classes", []), which
+# collapses an error payload to []). Throttled frames instead return None from
+# update() and are NOT logged (skipped in _check_impl) to avoid one dir per tick.
+#
+# Enabled by default; set MOTION_DEBUG_LOG=0 to disable. MOTION_DEBUG_LOG_MAX
+# caps how many sub-dirs are kept (oldest pruned first) so a running device
+# can't fill its disk.
+_ACTION_LOG_DIR = Path(__file__).parent / "action-logs"
+_ACTION_LOG_ENABLED = os.environ.get("MOTION_DEBUG_LOG", "1").strip().lower() not in (
+    "0",
+    "false",
+    "no",
+    "",
+)
+_ACTION_LOG_MAX_DIRS = int(os.environ.get("MOTION_DEBUG_LOG_MAX", "2000"))
+# ===== DEBUG-ACTION-LOG END ================================================
 
 # Map raw Kinetics action labels to high-level activity groups.
 # The OS server receives the raw labels — the agent infers the group. The mapping here
@@ -488,9 +523,18 @@ class MotionPerception(Perception[cv2.typing.MatLike]):
 
         try:
             detections = self._checker.update(frame)
-        except Exception:
+        except Exception as e:
             logger.exception("[motion] inference error")
+            self._save_action_log(frame, None, error=repr(e))  # DEBUG-ACTION-LOG
             return
+
+        # ===== DEBUG-ACTION-LOG START (remove before prod) =====
+        # Dump every trigger that actually reached the backend. detections is
+        # None only when no inference ran (throttled frame / session down),
+        # which we skip to avoid one dir per HAL tick.
+        if detections is not None:
+            self._save_action_log(frame, detections)
+        # ===== DEBUG-ACTION-LOG END =====
 
         if detections:
             logger.debug("[motion] detections: %s", [d.class_name for d in detections])
@@ -571,6 +615,109 @@ class MotionPerception(Perception[cv2.typing.MatLike]):
         except Exception as e:
             logger.debug("[motion] snapshot save failed: %s", e)
             return None
+
+    # ===== DEBUG-ACTION-LOG START (TEMPORARY — remove before prod) =========
+    # Grep tag: DEBUG-ACTION-LOG. Removal instructions: action-logs/debug-note.txt
+    def _save_action_log(
+        self,
+        frame: cv2.typing.MatLike | None,
+        detections: list[MotionDetection] | None,
+        error: str | None = None,
+    ) -> None:
+        """Debug logger: persist one action-recognition trigger to disk.
+
+        Writes a distinct sub-dir per trigger under `action-logs/`, named
+        `<timestamp>_<top-class>_<conf>` (or `_FAIL-no-detection` /
+        `_FAIL-request-error`), containing the input frame we sent, an
+        annotated copy, and a meta.json with every detected class + score.
+        Best-effort — never lets a logging failure disturb detection.
+        """
+        if not _ACTION_LOG_ENABLED:
+            return
+        try:
+            # datetime for the human-readable micros suffix; time.time() below
+            # for the machine-friendly epoch inside meta.json.
+            ts = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+
+            if error is not None:
+                label = "FAIL-request-error"
+                status = "error"
+            elif detections is None:
+                label = "FAIL-no-inference"
+                status = "no_inference"
+            elif not detections:
+                label = "FAIL-no-detection"
+                status = "no_detection"
+            else:
+                top = detections[0]
+                safe_class = "".join(
+                    c if c.isalnum() else "-" for c in top.class_name
+                ).strip("-")
+                label = f"{safe_class}_{top.conf:.2f}"
+                status = "ok"
+
+            subdir = _ACTION_LOG_DIR / f"{ts}_{label}"
+            subdir.mkdir(parents=True, exist_ok=True)
+
+            # Input frame — the exact image sent to the backend. The backend
+            # buffers a sequence server-side for the action recognition; on the
+            # HAL side we only hold the single frame per trigger, so that is
+            # what we persist (no local crop happens here).
+            if frame is not None:
+                _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
+                _ = (subdir / "input.jpg").write_bytes(buf.tobytes())
+                if detections:
+                    annotated = self._draw_annotations(frame, detections)
+                    _, abuf = cv2.imencode(
+                        ".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 90]
+                    )
+                    _ = (subdir / "annotated.jpg").write_bytes(abuf.tobytes())
+
+            meta: dict[str, Any] = {
+                "timestamp": ts,
+                "epoch": time.time(),
+                "status": status,
+                "error": error,
+                "threshold": self._checker._threshold,
+                "backend_url": self._checker._base_url,
+                "frame_shape": list(frame.shape) if frame is not None else None,
+                "top_class": detections[0].class_name if detections else None,
+                "top_conf": detections[0].conf if detections else None,
+                "detections": [
+                    {"class_name": d.class_name, "conf": d.conf}
+                    for d in (detections or [])
+                ],
+            }
+            _ = (subdir / "meta.json").write_text(json.dumps(meta, indent=2))
+
+            self._rotate_action_logs()
+        except Exception as e:
+            logger.debug("[motion] action log write failed: %s", e)
+
+    @staticmethod
+    def _rotate_action_logs() -> None:
+        """Prune oldest event sub-dirs so the debug log can't fill the disk."""
+        try:
+            if not _ACTION_LOG_DIR.exists():
+                return
+            subdirs = sorted(
+                (p for p in _ACTION_LOG_DIR.iterdir() if p.is_dir()),
+                key=lambda p: p.stat().st_mtime,
+            )
+            while len(subdirs) > _ACTION_LOG_MAX_DIRS:
+                victim = subdirs.pop(0)
+                for f in victim.iterdir():
+                    try:
+                        f.unlink()
+                    except OSError:
+                        pass
+                try:
+                    victim.rmdir()
+                except OSError:
+                    pass
+        except Exception:
+            pass
+    # ===== DEBUG-ACTION-LOG END ============================================
 
     def _flush_buffer(self) -> None:
         with self._state_lock:
