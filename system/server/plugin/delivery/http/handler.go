@@ -1,8 +1,11 @@
 package http
 
 import (
+	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -74,4 +77,28 @@ func (h *PluginHandler) Uninstall(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, serializers.ResponseSuccess(true))
+}
+
+// Browse handles GET /api/plugin/browse. Proxies HuggingFace Spaces search
+// to avoid CORS issues when the web UI fetches from the device.
+func (h *PluginHandler) Browse(c *gin.Context) {
+	const hfURL = "https://huggingface.co/api/spaces?filter=autonomous-os-plugin&full=true&sort=likes&direction=-1"
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get(hfURL)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, serializers.ResponseError("failed to reach HuggingFace"))
+		return
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, serializers.ResponseError("failed to read HuggingFace response"))
+		return
+	}
+	var spaces []any
+	if err := json.Unmarshal(body, &spaces); err != nil {
+		c.JSON(http.StatusBadGateway, serializers.ResponseError("invalid JSON from HuggingFace"))
+		return
+	}
+	c.JSON(http.StatusOK, serializers.ResponseSuccess(spaces))
 }
