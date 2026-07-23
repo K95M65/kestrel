@@ -271,7 +271,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=%s
-ExecStart=%s/%s
+ExecStart=%s %s
 Environment=HAL_URL=http://localhost:5001
 Restart=on-failure
 RestartSec=5
