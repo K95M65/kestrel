@@ -102,9 +102,22 @@ func (h *DeviceHandler) Setup(c *gin.Context) {
 	// file (the web form hides them when `has_*` reports configured). Merge
 	// missing fields from the current config before validation so required
 	// tags + ValidateChannel still pass when only the changed fields ship.
-	if h.config.SetUpCompleted {
-		mergeMissingFromConfig(&req, h.config)
-	}
+	//
+	// Deliberately NOT gated on SetUpCompleted. A setup that fails at the Wi-Fi
+	// step (wrong password) never reaches the config writes in device.Setup, so
+	// the device stays SetUpCompleted=false — yet the operator's browser may
+	// well have lost the pushed credentials by the time they retry (the AP
+	// teardown kills the tab's sessionStorage, and a popup reopened without the
+	// original query string comes back empty). Gating here meant that retry
+	// failed validation on LLMAPIKey and surfaced "Missing: AI Brain API key" to
+	// someone who had only mistyped their Wi-Fi password.
+	//
+	// Safe by construction: mergeMissingFromConfig only fills slots the request
+	// left empty, and only from this device's own config, so it can neither
+	// override what the operator sent nor introduce a value they couldn't
+	// already read back. On a genuinely fresh device the config is empty, the
+	// merge is a no-op, and validation still rejects an incomplete request.
+	mergeMissingFromConfig(&req, h.config)
 	if err := validator.New().Struct(req); err != nil {
 		slog.Warn("setup validator failed", "component", "device", "error", err.Error(),
 			"ssid_set", req.SSID != "", "password_set", req.Password != "",

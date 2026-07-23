@@ -44,9 +44,8 @@ export default function Setup({ mode = "initial" }: SetupProps = {}) {
     currentStepIndex, isFirstStep, isLastStep, isSkippableStep,
     doneCount, progressPct, sectionDone, goPrev, goNext,
     isContinue, devicePushedConfig,
-    setupWorking, setupPhase, setupLanIP, setupErrorMsg, elapsed,
-    setSetupWorking, setSetupPhase, setActiveSection,
-    deviceMdnsHost, deviceTypePrefix,
+    showProgressScreen, setupPhase, setupLanIP, setupErrorMsg, elapsed,
+    deviceMdnsHost, deviceTypePrefix, startOver, retryFromFailure,
     error, stepError, loading, loadingList,
     handleSubmit, navigate,
     ssid, setSsid, password, setPassword,
@@ -178,11 +177,11 @@ export default function Setup({ mode = "initial" }: SetupProps = {}) {
             display: "flex", alignItems: "center", justifyContent: "space-between",
           }}>
             <span style={{ fontSize: 15, fontWeight: 600, color: C.text }}>
-              {setupWorking ? "Setting up…" : visibleSections.find((s) => s.id === activeSection)?.label ?? "Wi-Fi"}
+              {showProgressScreen ? "Setting up…" : visibleSections.find((s) => s.id === activeSection)?.label ?? "Wi-Fi"}
             </span>
             {/* "Step X / Y" only makes sense for a multi-step wizard. With a
                 single visible step (V2's merged flow) it's noise, so hide it. */}
-            {!setupWorking && visibleSections.length > 1 && (
+            {!showProgressScreen && visibleSections.length > 1 && (
               <span style={{ fontSize: 12, color: C.textDim }}>
                 Step {currentStepIndex + 1} / {visibleSections.length}
               </span>
@@ -192,7 +191,7 @@ export default function Setup({ mode = "initial" }: SetupProps = {}) {
               count) so the bar advances as the operator walks Back/Next.
               Hidden for a single-step flow — there's no progress to show when
               Wi-Fi is the only step (device-pushed config). */}
-          {!setupWorking && visibleSections.length > 1 && (
+          {!showProgressScreen && visibleSections.length > 1 && (
             <div className="lm-progress-track" style={{ borderRadius: 0 }}>
               <div
                 className="lm-progress-fill"
@@ -214,7 +213,7 @@ export default function Setup({ mode = "initial" }: SetupProps = {}) {
             {/* Post-submit screen: shows progress while the device joins
                 Wi-Fi, then a QR + IP for the user to continue setup on the
                 home network once the AP shuts down. */}
-            {setupWorking ? (
+            {showProgressScreen ? (
               <SetupProgressScreen
                 setupPhase={setupPhase}
                 setupLanIP={setupLanIP}
@@ -222,12 +221,13 @@ export default function Setup({ mode = "initial" }: SetupProps = {}) {
                 elapsed={elapsed}
                 deviceMdnsHost={deviceMdnsHost}
                 deviceTypePrefix={deviceTypePrefix}
-                onRetry={() => {
-                  setupBridge.retryClicked();
-                  setSetupWorking(false);
-                  setSetupPhase("connecting");
-                  setActiveSection("wifi");
-                }}
+                // The AP hotspot SSID and the mDNS host are the same
+                // "<type>-<suffix>" string (setup-ap.sh derives both from the
+                // hardware ID), so the resolved mDNS host doubles as the
+                // hotspot name to show on the failure screen.
+                apSsid={deviceMdnsHost}
+                onRetry={retryFromFailure}
+                onStartOver={startOver}
               />
             ) : (
               <>

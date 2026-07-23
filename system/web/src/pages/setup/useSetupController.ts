@@ -1,9 +1,9 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { getNetworks, setupDevice } from "@/lib/api";
+import { getNetworks, getSetupStatus, setupDevice } from "@/lib/api";
 import { useTheme } from "@/lib/useTheme";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
-import { useSetupUrlParams } from "@/hooks/setup/useSetupUrlParams";
+import { useSetupUrlParams, resetSetupSession, clearStoredSetupParams } from "@/hooks/setup/useSetupUrlParams";
 import { useTTSCatalog } from "@/hooks/setup/useTTSCatalog";
 import { useConfigPrefill } from "@/hooks/setup/useConfigPrefill";
 import { useSetupStatusPolling } from "@/hooks/setup/useSetupStatusPolling";
@@ -41,7 +41,7 @@ export function useSetupController(mode: SetupMode) {
     channelParam === "slack" || channelParam === "discord" ? (channelParam as ChannelType) : "telegram";
   const [channel, setChannel] = useState<ChannelType>(initialChannel);
 
-  const urlParams = useSetupUrlParams(searchParams);
+  const urlParams = useSetupUrlParams();
 
   // When the OS server (golang) pushes provisioning credentials via query params, the
   // operator only needs to pick a Wi-Fi — every other field is already filled.
@@ -68,6 +68,13 @@ export function useSetupController(mode: SetupMode) {
   // don't clobber each other. Cleared on any successful navigation.
   const [stepError, setStepError] = useState<string | null>(null);
   const [setupWorking, setSetupWorking] = useState(false);
+  // True when this tab adopted a `failed` verdict left behind by a PREVIOUS
+  // attempt (see the mount effect below). Kept separate from setupWorking on
+  // purpose: setupWorking drives the live pollers/ticker/bridge emits for a
+  // join this tab actually started, while this flag only says "show the failure
+  // screen". Cleared by the retry action, which returns the operator to the
+  // form.
+  const [adoptedFailure, setAdoptedFailure] = useState(false);
   // Setup phase mirrors the backend SetupStatus enum: connecting → connected
   // (success path) or failed. Drives the post-submit screen UI.
   const [setupPhase, setSetupPhase] = useState<"connecting" | "connected" | "failed">("connecting");
@@ -362,10 +369,84 @@ export function useSetupController(mode: SetupMode) {
   });
 
   useSetupStatusPolling({
-    setupWorking, setupLanIP,
+    setupWorking, setupPhase, setupLanIP, elapsed,
     mdnsHost: deviceMdnsHost,
     setSetupPhase, setSetupLanIP, setSetupErrorMsg,
   });
+
+  // Recover a failed join that this tab never witnessed.
+  //
+  // The wrong-password path strands the operator: the AP dies ~2s after submit,
+  // so the phase poll stops reaching the device long before the backend reaches
+  // its verdict at t≈62s. Whether they closed the tab, the popup was reopened by
+  // the companion app, or they simply reloaded once the AP came back, the fresh
+  // page mounts with setupWorking=false and renders a blank Wi-Fi form — no hint
+  // that the previous attempt failed or why.
+  //
+  // The backend still holds that verdict in setupState (in-memory, survives the
+  // AP→STA→AP bounce) and /api/device/setup/status is public — no admin session
+  // needed, which matters because a device that failed setup never wrote an
+  // admin password hash. So: read it once on mount and, if the last attempt
+  // failed, drop straight into the failure screen carrying the backend's real
+  // reason instead of the hedged client-side guess.
+  //
+  // Only "failed" is adopted. "connecting" is deliberately ignored: a stale
+  // in-flight phase from a previous tab would hijack this one into a progress
+  // screen it can't drive (its poller never ran, elapsed starts at 0), and the
+  // operator would be stuck watching a counter for a join nobody is tracking.
+  const failureAdoptedRef = useRef(false);
+  useEffect(() => {
+    if (failureAdoptedRef.current) return;
+    // A submit from THIS tab owns the screen — its own poller is authoritative.
+    if (setupWorking) return;
+    let cancelled = false;
+    getSetupStatus().then((s) => {
+      if (cancelled || s.phase !== "failed") return;
+      failureAdoptedRef.current = true;
+      // Wipe every field the failed attempt left behind, so rejoining the AP
+      // lands the operator on a genuinely clean wizard rather than one
+      // pre-filled from an attempt that never provisioned anything. A Wi-Fi
+      // failure bails before device.Setup writes any config, so none of this
+      // was ever persisted device-side — carrying it forward would only
+      // resubmit the credentials that just failed.
+      //
+      // The Wi-Fi password is the important one: leaving it would let the
+      // operator resubmit the same wrong value without noticing. The SSID goes
+      // too, so the picker re-resolves from the fresh scan (and from
+      // useConfigPrefill / useWifiConnected) instead of pinning a stale choice.
+      setSsid("");
+      setPassword("");
+      setAdminPassword("");
+      setError(null);
+      setStepError(null);
+      setSetupLanIP("");
+      setActiveSection("wifi");
+      // Also drop the persisted params snapshot: sessionStorage survives F5, so
+      // an operator who rejoins the AP and reloads this same tab would
+      // otherwise rehydrate the failed attempt's query string. Clearing it here
+      // (rather than reloading now) keeps the current document usable for the
+      // in-place "Back to Wi-Fi" retry while guaranteeing the NEXT load starts
+      // from nothing. "Start over" remains the explicit full-reset path.
+      clearStoredSetupParams();
+      setSetupErrorMsg(s.error || "Wi-Fi setup failed.");
+      setSetupPhase("failed");
+      // `adoptedFailure` — NOT setupWorking — is what shows the failure screen
+      // here. setupWorking means "this tab has a join in flight": it starts the
+      // 600ms phase poll, the elapsed ticker, and the bridge's connecting/
+      // failed emits. Setting it for a join we merely read about would restart
+      // that poll against a backend still reporting phase="failed" (nothing
+      // resets it to idle — see system/device/setup.go), so the poll would
+      // re-assert "failed" on a 600ms loop and bounce the operator straight
+      // back out of the Wi-Fi form every time they pressed "Back to Wi-Fi".
+      setAdoptedFailure(true);
+    }).catch(() => {
+      /* status unreachable (device rebooting / mid AP restore) — leave the
+         form as-is; the operator can still retry from a clean wizard. */
+    });
+    return () => { cancelled = true; };
+    // Mount-only, like the other setup hooks.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Parent-window event bridge (autonomous.ai) ──────────────────────────────
   // Notify whoever opened this popup of each meaningful Setup milestone via
@@ -537,6 +618,49 @@ export function useSetupController(mode: SetupMode) {
     [networks],
   );
 
+  // Discard the failed attempt entirely and restart the wizard from scratch —
+  // the state an operator gets the first time they join the device's AP.
+  //
+  // This is a HARD RESET by design, not the in-place reset the "Back to Wi-Fi"
+  // button performs. A wrong Wi-Fi password leaves the device un-provisioned
+  // (device.Setup bails before it writes any config), so nothing about the
+  // previous attempt is worth carrying forward — and the operator-supplied
+  // params baked into this document at load time (llm_api_key, device_id, …)
+  // may themselves be stale, since the companion app reopens the popup with a
+  // fresh set. Reloading is what makes them re-read; React state alone cannot,
+  // because useSetupUrlParams snapshots them at module scope.
+  //
+  // resetSetupSession() clears the sessionStorage snapshot and reloads onto a
+  // bare /setup. See its doc comment for exactly what is and isn't wiped.
+  const startOver = useCallback(() => {
+    setupBridge.startOverClicked();
+    resetSetupSession();
+  }, []);
+
+  // Whether the progress/failure screen replaces the form. Either this tab has
+  // a join in flight (setupWorking), or it adopted a previous attempt's failure
+  // on mount (adoptedFailure).
+  const showProgressScreen = setupWorking || adoptedFailure;
+
+  // "Back to Wi-Fi" — return to the form after a failure. Clears BOTH paths
+  // into the failure screen, otherwise an adopted failure would immediately
+  // re-render it and the button would look dead.
+  //
+  // The password is dropped so the operator retypes it deliberately instead of
+  // resubmitting the value that just failed; the SSID stays, since it was very
+  // likely correct and re-picking it from a list that may not have rescanned
+  // yet is friction for no gain. (On the adopted path the mount effect already
+  // cleared both.)
+  const retryFromFailure = useCallback(() => {
+    setupBridge.retryClicked();
+    setSetupWorking(false);
+    setAdoptedFailure(false);
+    setSetupPhase("connecting");
+    setSetupErrorMsg("");
+    setActiveSection("wifi");
+    setPassword("");
+  }, []);
+
   // Elapsed-seconds ticker for the connecting screen. Runs only while we're in
   // the connecting phase; resets on entry so re-tries (failed → Back → submit)
   // start from zero. Cleared on unmount / phase change.
@@ -693,9 +817,9 @@ export function useSetupController(mode: SetupMode) {
     // mode flags
     isContinue, devicePushedConfig,
     // post-submit screen
-    setupWorking, setupPhase, setupLanIP, setupErrorMsg, elapsed,
+    setupWorking, showProgressScreen, setupPhase, setupLanIP, setupErrorMsg, elapsed,
     setSetupWorking, setSetupPhase, setActiveSection,
-    deviceMdnsHost, deviceTypePrefix,
+    deviceMdnsHost, deviceTypePrefix, startOver, retryFromFailure,
     // form-level status
     error, stepError, loading, loadingList,
     handleSubmit, navigate,
