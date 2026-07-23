@@ -51,7 +51,20 @@ Do NOT use `track`, `artist`, `title`, `song` — those return 422.
 
 ## How HW markers work
 
-The Go server intercepts `[HW:/audio/play:...]` / `[HW:/audio/stop:...]` and forwards to HAL. This is the ONLY way to play music — never use `exec`, `mpv`, `vlc`, `yt-dlp`, or `curl /audio/play`.
+The Go server intercepts `[HW:/audio/play:...]` / `[HW:/audio/stop:...]` **in your reply text** and forwards to HAL. This is the ONLY way to play music — never use `exec`, `mpv`, `vlc`, `yt-dlp`, or `curl /audio/play`.
+
+**The marker is passive text, NOT a command to run.** Write it directly in your reply and stop — the OS runs it for you. Do NOT try to "execute" or "invoke" it.
+
+- ❌ **WRONG** — echoing/wrapping the marker in a shell tool. `echo` only prints to stdout inside your sandbox; the OS never sees it, so **no music plays**:
+  ```bash
+  echo '[HW:/audio/play:{"query":"Gymnopedie No 1 Satie"}]'
+  ```
+- ✅ **RIGHT** — the marker IS your reply text (no tool call at all):
+  ```
+  [HW:/audio/play:{"query":"Gymnopedie No 1 Satie"}][HW:/emotion:{"emotion":"curious","intensity":0.6}] Here's some Satie. 🎹
+  ```
+
+Never put `[HW:...]` inside `echo`, `exec`, `bash`, `printf`, or any tool argument. If you find yourself reaching for a tool to play music, stop — just emit the marker as text.
 
 ## Error handling
 
