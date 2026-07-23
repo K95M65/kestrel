@@ -12,6 +12,7 @@ class AgentGateway(StrEnum):
     PICOCLAW = "picoclaw"
     CODEX = "codex"
     CLAUDECODE = "claudecode"
+    OPENCODE = "opencode"
 
 
 class InputTypeEnum(StrEnum):

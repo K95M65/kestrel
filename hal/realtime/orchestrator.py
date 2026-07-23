@@ -175,17 +175,21 @@ class RealtimeOrchestrator:
     flow (device → OpenClaw).
     """
 
-    # PicoClaw and Codex reuse OpenClawContextManager: their workspaces are
-    # verbatim copies of OpenClaw's layout (SOUL.md / IDENTITY.md / MEMORY.md /
-    # memory/ / skills/), only the root dir differs. Claude Code matches that
-    # layout except skills, which live in .claude/skills (native claude CLI
-    # convention) — its subclass only changes the skills path.
+    # PicoClaw, Codex and OpenCode reuse OpenClawContextManager: their workspaces
+    # are verbatim copies of OpenClaw's layout (SOUL.md / IDENTITY.md / MEMORY.md /
+    # memory/ / skills/), only the root dir differs. (Like Codex, OpenCode keeps
+    # its skills in a non-workspace dir — ~/.config/opencode/skills — so the
+    # workspace-relative skills catalog is empty here; identity + memory load
+    # correctly.) Claude Code matches that layout except skills, which live in
+    # .claude/skills (native claude CLI convention) — its subclass only changes
+    # the skills path.
     CONTEXT_MANAGERS: dict[str, type[ContextManagerBase]] = {
         AgentGateway.OPENCLAW: OpenClawContextManager,
         AgentGateway.HERMES: HermesContextManager,
         AgentGateway.PICOCLAW: OpenClawContextManager,
         AgentGateway.CODEX: OpenClawContextManager,
         AgentGateway.CLAUDECODE: ClaudeCodeContextManager,
+        AgentGateway.OPENCODE: OpenClawContextManager,
     }
 
     WORKSPACE_DIRS: dict[str, str] = {
@@ -194,6 +198,7 @@ class RealtimeOrchestrator:
         AgentGateway.PICOCLAW: config.PICOCLAW_WORKSPACE_DIR,
         AgentGateway.CODEX: config.CODEX_WORKSPACE_DIR,
         AgentGateway.CLAUDECODE: config.CLAUDECODE_WORKSPACE_DIR,
+        AgentGateway.OPENCODE: config.OPENCODE_WORKSPACE_DIR,
     }
 
     def __init__(

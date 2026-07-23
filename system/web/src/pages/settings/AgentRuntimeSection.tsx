@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { C, SectionCard } from "@/components/setup/shared";
 import { getAgentRuntime, setAgentRuntime } from "@/lib/api";
 
-// Agent-runtime switch (openclaw / hermes / picoclaw / codex / claudecode).
+// Agent-runtime switch (openclaw / hermes / picoclaw / codex / claudecode / opencode).
 // Unlike the rest of EditConfig this is NOT part of the form's "Save Changes"
 // flow: switching is a heavyweight action that toggles systemd units and
 // restarts os-server, so it has its own Switch button hitting
@@ -13,7 +13,7 @@ import { getAgentRuntime, setAgentRuntime } from "@/lib/api";
 //
 // Options come from the API (single source = domain.AgentRuntimes); the fallback
 // list mirrors it only if the fetch fails.
-const FALLBACK = ["openclaw", "hermes", "picoclaw", "codex", "claudecode"];
+const FALLBACK = ["openclaw", "hermes", "picoclaw", "codex", "claudecode", "opencode"];
 
 const RUNTIME_BLURB: Record<string, string> = {
   openclaw: "OpenClaw — persistent WebSocket gateway (default).",
@@ -21,6 +21,7 @@ const RUNTIME_BLURB: Record<string, string> = {
   picoclaw: "PicoClaw — lightweight Go agent gateway (WebSocket).",
   codex: "Codex — OpenAI Codex CLI behind the os-server bridge (WebSocket).",
   claudecode: "Claude Code — Anthropic CLI agent behind a local bridge.",
+  opencode: "OpenCode — open-source coding agent behind the os-server bridge (WebSocket).",
 };
 
 const selectStyle = {

@@ -5,7 +5,7 @@ import type { DisplayEvent } from "../types";
 import type { FlowStage, ActiveFlowStage } from "./types";
 import { FLOW_NODES } from "./types";
 import { useTheme } from "@/lib/useTheme";
-import { extractNodeInfo, aggregateEvents } from "./helpers";
+import { cameraSnapshotURLs, extractNodeInfo, aggregateEvents } from "./helpers";
 
 // Hidden-textarea clipboard fallback for non-secure origins (http://Pi.local).
 // navigator.clipboard.writeText only works in secure contexts; without this,
@@ -34,7 +34,7 @@ export function FlowDiagram({
   turnEvents?: DisplayEvent[];
 }) {
   const VW = 1200;
-  const VH = 1080;
+  const VH = 1320;
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [, , themeClass] = useTheme();
 
@@ -118,10 +118,12 @@ export function FlowDiagram({
     // its edge to intent_check has a clear path up-right past mic.
     button_input:      { x: -40, y: 350 },
     // Device — output column (stacked vertically, same x, gap=135)
-    hw_emotion:        { x: 200, y: 390 },
-    hw_led:            { x: 200, y: 525 },
-    hw_servo:          { x: 200, y: 660 },
-    hw_audio:          { x: 200, y: 795 },
+    hw_camera:         { x: 200, y: 345 },
+    hw_emotion:        { x: 200, y: 480 },
+    hw_led:            { x: 200, y: 615 },
+    hw_servo:          { x: 200, y: 750 },
+    hw_audio:          { x: 200, y: 885 },
+    tts_speak:         { x: 200, y: 1020 },
     // OS-server-side log writes — stack BELOW the BCAST node (tg_alert at y=930)
     // so HOOK / BCAST stay grouped at the top of the OS-server column and the
     // three async-POST logs hang off the bottom in their own block.
@@ -131,7 +133,6 @@ export function FlowDiagram({
     hw_wellbeing:        { x: 467, y: 1200 },
     hw_music_suggestion: { x: 467, y: 1335 },
     hw_posture:          { x: 467, y: 1470 },
-    tts_speak:         { x: 200, y: 930 },
     // OpenClaw — agent core (cron lives in OpenClaw, fires agent_call).
     // The 2 inner nodes (agent_thinking, tool_exec) are rendered as a
     // single Event Pipeline rect between agent_call and agent_response —
@@ -176,6 +177,7 @@ export function FlowDiagram({
     ["tool_exec",         "hw_servo"],
     ["tool_exec",         "hw_emotion"],
     ["tool_exec",         "hw_audio"],
+    ["tool_exec",         "hw_camera"],
     ["tool_exec",         "os_gate"],
     ["agent_response",    "os_gate"],
     ["os_gate",         "hw_emotion"],
@@ -231,7 +233,7 @@ export function FlowDiagram({
   const nodeInfo = extractNodeInfo(turnEvents);
 
   // Extract snapshot URLs from agent_call lines (🖼 added by helpers.ts from sensing_input or chat_send).
-  const snapshotUrls: string[] = (nodeInfo.agent_call ?? [])
+  const sensingSnapshotUrls: string[] = (nodeInfo.agent_call ?? [])
     .filter((l) => l.startsWith("🖼"))
     .map((l) => l.match(/snapshot:\s*\/tmp\/(?:lamp|hal)-(?:sensing|emotion|motion)-snapshots\/((?:sensing|emotion|motion)_[^\s]+\.jpg)/)?.[1])
     .filter((f): f is string => !!f)
@@ -239,6 +241,7 @@ export function FlowDiagram({
 
   // Check if image was actually sent to agent (has_image in chat_send event)
   const imageSentToAgent: boolean = (nodeInfo.agent_call ?? []).some((l) => l.includes("📷 image attached"));
+  const agentSnapshotUrls = cameraSnapshotURLs(turnEvents);
 
   return (
     <div id="FLOW_DIAGRAM" data-region="FLOW_DIAGRAM" style={{ position: "relative", flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
@@ -283,7 +286,7 @@ export function FlowDiagram({
           </text>
         </g>
         <g>
-          <rect x={-100} y={185} width={360} height={805} rx={14}
+          <rect x={-100} y={185} width={360} height={1050} rx={14}
             fill="var(--lm-amber)" fillOpacity={0.04} stroke="var(--lm-amber)" strokeWidth={1} opacity={0.3}
             strokeDasharray="4 4"
           />
@@ -904,7 +907,7 @@ export function FlowDiagram({
         })}
 
         {/* Snapshot images — below CAM node (always shown) */}
-        {snapshotUrls.length > 0 && snapshotUrls.map((url, i) => {
+        {sensingSnapshotUrls.length > 0 && sensingSnapshotUrls.map((url, i) => {
           const imgW = 100;
           const imgH = 75;
           const snapX = 80 + i * (imgW + 10);
@@ -933,7 +936,7 @@ export function FlowDiagram({
                   textAnchor="middle"
                   fill="var(--lm-amber)" fontSize={6} fontWeight={600}
                 >
-                  📷 {snapshotUrls.length > 1 ? `${snapshotUrls.length} Snapshots` : "Snapshot"}
+                  📷 {sensingSnapshotUrls.length > 1 ? `${sensingSnapshotUrls.length} Snapshots` : "Snapshot"}
                 </text>
               )}
             </g>
@@ -941,7 +944,7 @@ export function FlowDiagram({
         })}
 
         {/* Snapshot on INTENT→AGENT line — only when image was actually sent to agent */}
-        {imageSentToAgent && snapshotUrls.length > 0 && snapshotUrls.slice(0, 1).map((url, i) => {
+        {imageSentToAgent && sensingSnapshotUrls.length > 0 && sensingSnapshotUrls.slice(0, 1).map((url, i) => {
           const imgW = 80;
           const imgH = 60;
           const snapX = 515;
@@ -971,6 +974,27 @@ export function FlowDiagram({
               >
                 📷 → Agent
               </text>
+            </g>
+          );
+        })}
+
+        {/* Exact saved frame returned by an agent GET /camera/snapshot call.
+            It is never a fresh preview capture. */}
+        {agentSnapshotUrls.map((url, i) => {
+          const imgW = 100;
+          const imgH = 75;
+          const snapX = 200 + i * (imgW + 10);
+          const snapY = 1160;
+          return (
+            <g key={`agent-camera-${url}`}>
+              <rect x={snapX - imgW / 2} y={snapY - imgH / 2} width={imgW} height={imgH}
+                rx={6} ry={6} fill="var(--lm-card)" stroke="var(--lm-amber)" strokeWidth={1} opacity={0.9} />
+              <image href={url} x={snapX - imgW / 2 + 2} y={snapY - imgH / 2 + 2}
+                width={imgW - 4} height={imgH - 4} preserveAspectRatio="xMidYMid meet"
+                clipPath={`inset(0 round 4px)`} style={{ cursor: "pointer" }}
+                onClick={(e) => { e.stopPropagation(); setLightboxUrl(url); }} />
+              {i === 0 && <text x={snapX} y={snapY + imgH / 2 + 10} textAnchor="middle"
+                fill="var(--lm-amber)" fontSize={6} fontWeight={600}>📷 Tool snapshot</text>}
             </g>
           );
         })}

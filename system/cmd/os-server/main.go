@@ -11,6 +11,7 @@ import (
 
 	ccgatewayd "go.autonomous.ai/os/runtimes/claudecode/gatewayd"
 	"go.autonomous.ai/os/runtimes/codex/gatewayd"
+	ocgatewayd "go.autonomous.ai/os/runtimes/opencode/gatewayd"
 	"go.autonomous.ai/os/system/lib/logger"
 	"go.autonomous.ai/os/system/server"
 	"go.autonomous.ai/os/system/server/config"
@@ -18,14 +19,18 @@ import (
 
 func main() {
 	// Subcommand dispatch before flag parsing: `os-server codex-gatewayd` /
-	// `os-server claudecode-gatewayd` run the backend WS bridges (systemd units
-	// codex.service / claudecode.service) instead of the API server — the
-	// bridges ship inside this binary so they OTA-update with it.
+	// `os-server claudecode-gatewayd` / `os-server opencode-gatewayd` run the
+	// backend WS bridges (systemd units codex.service / claudecode.service /
+	// opencode.service) instead of the API server — the bridges ship inside this
+	// binary so they OTA-update with it.
 	if len(os.Args) > 1 && os.Args[1] == "codex-gatewayd" {
 		os.Exit(gatewayd.Main())
 	}
 	if len(os.Args) > 1 && os.Args[1] == "claudecode-gatewayd" {
 		os.Exit(ccgatewayd.Main())
+	}
+	if len(os.Args) > 1 && os.Args[1] == "opencode-gatewayd" {
+		os.Exit(ocgatewayd.Main())
 	}
 	// `os-server claude-sessions` is the terminal coding-session picker (cc.go)
 	// — installed on the device as the /usr/local/bin/claude-sessions wrapper

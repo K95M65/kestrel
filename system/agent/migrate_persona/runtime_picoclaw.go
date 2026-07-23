@@ -108,5 +108,6 @@ func rebrandToPicoclaw(text string) string {
 	text = reMoltBot.ReplaceAllStringFunc(text, repl)
 	text = reCodex.ReplaceAllStringFunc(text, repl)
 	text = reClaudeCode.ReplaceAllStringFunc(text, repl)
+	text = reOpenCode.ReplaceAllStringFunc(text, repl)
 	return text
 }

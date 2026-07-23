@@ -4,7 +4,7 @@ import type { DisplayEvent } from "../types";
 export type FlowStage =
   | "mic_input" | "cam_input" | "button_input" | "channel_input" | "webchat_input" | "intent_check" | "local_match"
   | "agent_call" | "agent_thinking" | "tool_exec" | "agent_response" | "tts_speak"
-  | "schedule_trigger" | "os_gate" | "hw_led" | "hw_servo" | "hw_emotion" | "hw_audio" | "hw_wellbeing" | "hw_mood" | "hw_music_suggestion" | "hw_posture" | "tg_out" | "tg_alert";
+  | "schedule_trigger" | "os_gate" | "hw_camera" | "hw_led" | "hw_servo" | "hw_emotion" | "hw_audio" | "hw_wellbeing" | "hw_mood" | "hw_music_suggestion" | "hw_posture" | "tg_out" | "tg_alert";
 
 /** No pipeline node highlighted — e.g. no matching triggers in recent events */
 export type ActiveFlowStage = FlowStage | "idle";
@@ -198,13 +198,19 @@ export const FLOW_NODES: FlowNodeDef[] = [
     ] },
 
   { id: "hw_servo",
-    label: "Servo", short: "SERVO", icon: "🤖", color: "#8b5cf6", path: "agent",
+    label: "Servo Action", short: "SERVO", icon: "🤖", color: "#8b5cf6", path: "agent",
     shape: "diamond",
-    desc: "Servo motor · aim direction / play animation",
+    desc: "Move / animate servos · /servo/aim · /servo/play · /servo/track",
     triggers: [
       "hw_servo",
       "flow_event:hw_servo",
     ] },
+
+  { id: "hw_camera",
+    label: "Camera", short: "CAM", icon: "📷", color: "var(--lm-amber)", path: "agent",
+    shape: "diamond",
+    desc: "Take a saved frame · GET /camera/snapshot",
+    triggers: [] },
 
   { id: "hw_emotion",
     label: "Emotion", short: "EMO", icon: "😀", color: "#ec4899", path: "agent",

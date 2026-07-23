@@ -136,7 +136,7 @@ Rendered by `FlowDiagram` in `system/web/src/pages/Monitor.tsx`. The diagram is 
 | Region | Color (theme) | Stages |
 |--------|----------------|--------|
 | **OS Server** | Teal (`--lm-teal`) | `intent_check`, `local_match`, `schedule_trigger`, `lamp_gate` |
-| **HAL** | Amber (`--lm-amber`) | `mic_input`, `cam_input`, `hw_emotion`, `hw_led`, `hw_servo`, `tts_speak` |
+| **HAL** | Amber (`--lm-amber`) | `mic_input`, `cam_input`, `hw_camera`, `hw_emotion`, `hw_led`, `hw_servo`, `tts_speak` |
 | **OpenClaw** | Blue (`--lm-blue`) | `agent_call`, `telegram_input`, `tool_exec`, `agent_thinking`, `agent_response`, `tg_out` |
 
 ### OS Server (top band)
@@ -147,11 +147,19 @@ Rendered by `FlowDiagram` in `system/web/src/pages/Monitor.tsx`. The diagram is 
 
 ### HAL (left column)
 
-- **MIC** and **CAM** are input nodes (top of HAL section).
+- **MIC** and **CAM** are input nodes (top of HAL section). The lower **CAM**
+  diamond is separate and represents an agent tool calling
+  `GET /camera/snapshot`.
 - Output nodes are stacked vertically in a single column:
   - **EMO** (`hw_emotion`) — `/emotion` calls (coordinated LED + servo + display eyes)
   - **LED** (`hw_led`) — `/led/solid`, `/led/effect`, `/scene`, `/led/off`
-  - **SERVO** (`hw_servo`) — `/servo/aim`, `/servo/play`
+  - **SERVO** (`hw_servo`) — move or animate servos: `/servo/aim`,
+    `/servo/play`, `/servo/track`. The node detail shows the actual agent
+    command/API call for the selected turn.
+  - **CAM** (`hw_camera`) — `GET /camera/snapshot`; its saved result is
+    rendered as a clickable thumbnail so operators can debug the exact frame
+    returned to the agent (including an agent workspace image such as
+    `cam_face3.jpg`, not a newly captured preview).
   - **TTS** (`tts_speak`) — `/voice/speak`, text-to-speech output
 - These represent direct hardware calls from OpenClaw tools that bypass the OS server.
 
@@ -200,10 +208,12 @@ Values are the **node center** `(x, y)` in the SVG view box (see `positions` in 
 | `lamp_gate` | `(400, 570)` | OS server; between HAL and OpenClaw |
 | `mic_input` | `(-40, 240)` | HAL input |
 | `cam_input` | `(80, 240)` | HAL input |
-| `hw_emotion` | `(200, 390)` | HAL output; emotion calls |
-| `hw_led` | `(200, 510)` | HAL output; LED control |
-| `hw_servo` | `(200, 630)` | HAL output; servo motor |
-| `tts_speak` | `(200, 750)` | HAL output; TTS |
+| `hw_camera` | `(200, 345)` | HAL output; agent camera API call |
+| `hw_emotion` | `(200, 480)` | HAL output; emotion calls |
+| `hw_led` | `(200, 615)` | HAL output; LED control |
+| `hw_servo` | `(200, 750)` | HAL output; servo motor |
+| `hw_audio` | `(200, 885)` | HAL output; audio playback |
+| `tts_speak` | `(200, 1020)` | HAL output; TTS |
 | `agent_call` | `(800, 240)` | OpenClaw row 1 |
 | `telegram_input` | `(1000, 240)` | OpenClaw row 1 |
 | `tool_exec` | `(600, 390)` | OpenClaw row 2, col 1 |
@@ -222,6 +232,7 @@ agent_call → [Event Pipeline rect — thinking/assistant/tool rows] → agent_
 tool_exec → hw_emotion         (OpenClaw /emotion call → HAL)
 tool_exec → hw_led             (OpenClaw /led/* or /scene call → HAL)
 tool_exec → hw_servo           (OpenClaw /servo/* call → HAL)
+tool_exec → hw_camera          (agent GET /camera/snapshot → HAL; saved frame shown below node)
 tool_exec → lamp_gate          (OS server listens: pause ambient if LED; TTS-vs-music ordering is handled in HAL, not suppressed here)
 agent_response → lamp_gate     (OS server accumulates assistant text for TTS)
 agent_response → tts_speak     (Direct TTS from response to HAL)

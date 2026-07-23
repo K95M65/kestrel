@@ -58,11 +58,17 @@ Component `FlowDiagram` trong `system/web/src/pages/Monitor.tsx` vẽ **ba vùng
 
 ### HAL
 
-- **MIC** và **CAM** là input nodes (hàng trên HAL).
+- **MIC** và **CAM** là input nodes (hàng trên HAL). Node hình thoi **CAM**
+  phía dưới là node riêng cho agent gọi `GET /camera/snapshot`.
 - Output nodes xếp dọc trong 1 cột:
   - **EMO** (`hw_emotion`) — `/emotion` (phối hợp LED + servo + display eyes)
   - **LED** (`hw_led`) — `/led/solid`, `/led/effect`, `/scene`, `/led/off`
-  - **SERVO** (`hw_servo`) — `/servo/aim`, `/servo/play`
+  - **SERVO** (`hw_servo`) — di chuyển hoặc chạy animation servo:
+    `/servo/aim`, `/servo/play`, `/servo/track`. Chi tiết node hiển thị đúng
+    lệnh/API call agent đã chạy trong turn đang chọn.
+  - **CAM** (`hw_camera`) — `GET /camera/snapshot`; ảnh đã lưu mà tool
+    trả về (kể cả file workspace như `cam_face3.jpg`) hiện thumbnail bấm để
+    phóng to, giúp debug đúng frame agent nhận được, không chụp lại ảnh mới.
   - **TTS** (`tts_speak`) — `/voice/speak`, text-to-speech
 - Đây là hardware calls trực tiếp từ OpenClaw tools, không qua OS server.
 - Đường nối từ LOCAL → output nodes dùng **elbow routing** (gấp khúc bên trái) để tránh cắt qua node trung gian.

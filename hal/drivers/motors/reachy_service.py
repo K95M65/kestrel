@@ -330,9 +330,10 @@ class ReachyMotionService:
 
         target = _AIM_TARGETS.get(direction)
         if target is None:
-            raise ValueError(
-                f"Unknown direction '{direction}'. Available: {list(_AIM_TARGETS.keys())}"
-            )
+            # Unknown direction (LLM reached for a non-preset word, e.g. "front")
+            # — aim the neutral center pose instead of failing the HW node.
+            logger.warning("[reachy] unknown aim direction %r — defaulting to center", direction)
+            target = _AIM_TARGETS[P.AIM_CENTER]
         positions = {**current_positions, **target}
         eff = min_move_duration(safety_policy, positions, current_positions, duration)
         self._goto({**self._current_or_target(), **positions}, max(eff, _MIN_MOVE_DURATION_S))
