@@ -28,6 +28,10 @@
 //         case "setup_connected":   /* online — e.data.mdns_host / e.data.lan_ip */ break;
 //         case "setup_failed":      /* join failed — e.data.message */ break;
 //         case "retry_clicked":     /* user hit "Back to WiFi" after a failure */ break;
+//         case "start_over_clicked": /* user discarded the attempt — popup is
+//                                       reloading clean and DROPS every param it
+//                                       was opened with. Reopen with a fresh URL
+//                                       if your pushed config must survive. */ break;
 //         case "continue_clicked":  /* user clicked "Continue setup →" */ break;
 //         case "monitor_clicked":   /* user clicked "Go to monitor →" */ break;
 //       }
@@ -56,6 +60,7 @@ export type SetupBridgeEvent =
   | "setup_connected"   // device reached home WiFi and is reachable
   | "setup_failed"      // WiFi join failed
   | "retry_clicked"     // operator clicked "Back to Wi-Fi" after a failure
+  | "start_over_clicked" // operator discarded a failed attempt; page reloads clean
   | "continue_clicked"  // operator clicked "Continue setup →"
   | "monitor_clicked"   // operator clicked "Go to monitor →"
   | "setup_done";       // operator finished the wizard (e.g. Skip & finish)
@@ -139,6 +144,12 @@ export const setupBridge = {
     emit("setup_connected", info),
   failed: (message: string) => emit("setup_failed", { message }),
   retryClicked: () => emit("retry_clicked", {}),
+  // Operator chose to discard a failed attempt and start from scratch. Fired
+  // immediately BEFORE the page hard-reloads onto a bare /setup, so the parent
+  // learns the popup is about to drop every param it was opened with. A parent
+  // that wants the operator to keep its pushed config (llm_api_key, device_id,
+  // …) should reopen the popup with a fresh URL on receiving this.
+  startOverClicked: () => emit("start_over_clicked", {}),
   continueClicked: (info: { mdns_host?: string }) =>
     emit("continue_clicked", info),
   monitorClicked: () => emit("monitor_clicked", {}),
