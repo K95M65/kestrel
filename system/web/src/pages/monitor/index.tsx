@@ -24,7 +24,7 @@ import {
   UserCircle, MessageSquare, Link as LinkIcon, MonitorSmartphone, LayoutGrid,
   Workflow, Users, Camera, Radar, ChartColumn, Move3d, Bluetooth, ScrollText,
   Terminal, FileCode, Hexagon, ExternalLink, SlidersHorizontal, ChevronRight,
-  Server, Zap, LogOut, Clock, Search, X, CornerDownLeft, Plug,
+  Server, Zap, LogOut, Clock, Search, X, CornerDownLeft, Plug, Blocks,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -100,6 +100,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   "settings:channel": MessageSquare,
   "settings:mqtt": LinkIcon,
   "settings:mcp": Plug,
+  "settings:plugins": Blocks,
   "settings:timezone": Clock,
   // device children
   overview: LayoutGrid,

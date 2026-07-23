@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Blocks } from "lucide-react";
 import { toast } from "sonner";
 import { C, SectionCard, LABEL_STYLE, INPUT_STYLE } from "@/components/setup/shared";
 import { listPlugins, installPlugin, startPlugin, stopPlugin, uninstallPlugin } from "@/lib/api";
@@ -90,7 +91,7 @@ export function PluginsSection({ active }: { active: boolean }) {
   };
 
   return (
-    <SectionCard id="plugins" title="Plugins" active={active}>
+    <SectionCard id="plugins" title="Plugins" icon={<Blocks size={17} />} active={active}>
       <div style={{ fontSize: 12.5, color: C.textDim, marginBottom: 14, lineHeight: 1.6 }}>
         Standalone Python apps that extend device capabilities via HAL.
         Install from any git URL (HuggingFace, GitHub, GitLab, etc.).
