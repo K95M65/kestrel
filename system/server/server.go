@@ -317,6 +317,7 @@ func (s *Server) Serve(closeFn func()) error {
 	device.DELETE("mcp-tools/:name", adminAuthMiddleware(s.config), s.deviceHandler.RemoveMCPTool)
 
 	pluginGroup := api.Group("plugin")
+	pluginGroup.GET("browse", adminAuthMiddleware(s.config), s.pluginHandler.Browse)
 	pluginGroup.POST("install", adminAuthMiddleware(s.config), s.pluginHandler.Install)
 	pluginGroup.GET("", adminAuthMiddleware(s.config), s.pluginHandler.List)
 	pluginGroup.POST(":name/start", adminAuthMiddleware(s.config), s.pluginHandler.Start)

@@ -66,8 +66,8 @@ import os, time, requests
 
 HAL = os.environ.get("HAL_URL", "http://localhost:5001")
 
-requests.post(f"{HAL}/led/set", json={"effect": "rainbow"})
-requests.post(f"{HAL}/audio/speak", json={"text": "Let's dance!"})
+requests.post(f"{HAL}/led/effect", json={"effect": "rainbow"})
+requests.post(f"{HAL}/voice/speak", json={"text": "Let's dance!"})
 time.sleep(30)
 requests.post(f"{HAL}/led/off")
 ```
@@ -95,6 +95,7 @@ POST /api/plugin/install {"url": "https://git.example.com/my-plugin.git"}
 All endpoints require admin authentication.
 
 ```
+GET    /api/plugin/browse        — discover community plugins (proxies HuggingFace Spaces API)
 POST   /api/plugin/install       — clone git repo, create venv, generate systemd unit
 GET    /api/plugin               — list installed plugins with status
 POST   /api/plugin/:name/start   — start plugin (systemctl start)
@@ -114,20 +115,25 @@ Each plugin runs as a systemd service (`os-plugin-<name>.service`):
 ### Web UI
 
 **Settings > Plugins** tab provides:
-- List of installed plugins with name, version, status (running/stopped/failed)
-- Start/Stop/Uninstall controls per plugin
-- Install form (paste git URL)
-- Refresh button to poll status
+- **Installed** — list of installed plugins with status (running/stopped/failed),
+  Start/Stop/Uninstall controls
+- **Browse** — discover community plugins from HuggingFace Spaces tagged
+  `autonomous-os-plugin`, one-click install. Backend proxies HF API to avoid
+  CORS (`GET /api/plugin/browse`)
+- **Install from URL** — paste any git URL for non-HF plugins (GitHub, GitLab, etc.)
 
 ## Roadmap
 
-### v1 — Pipeline (implemented)
+### v1 — Pipeline + Store (implemented)
 
-Git URL → venv → systemd unit → HAL HTTP. Minimal viable plugin system:
-- Install from any git URL
+Git URL → venv → systemd unit → HAL HTTP. Full plugin lifecycle:
+- Install from any git URL (HuggingFace, GitHub, GitLab, etc.)
 - systemd lifecycle (start/stop/restart on crash)
-- Web UI management
-- Plugin template for community forking
+- Plugin store — browse community plugins from HuggingFace Spaces
+  (`autonomous-os-plugin` tag), one-click install
+- Manual URL install for non-HF plugins
+- Web UI management (Installed / Browse / Install from URL)
+- Plugin template on HuggingFace for community forking
 
 ### v2 — SDK + Agent Integration
 
@@ -149,8 +155,6 @@ Git URL → venv → systemd unit → HAL HTTP. Minimal viable plugin system:
 
 ### v3 — Ecosystem
 
-- **Plugin store UI** — browse available plugins by tag, one-click install
-  (HuggingFace discovery via `autonomous-os-plugin` tag)
 - **Resource manager** — HAL audio mixer, camera multiplexing for true
   multi-plugin coexistence
 - **Exclusive mode** — `"exclusive": true` in manifest parks HAL, gives plugin
@@ -177,4 +181,5 @@ hello-world plugin with LED + voice demo.
 - Pollen ecosystem analysis: `devices/reachy-mini/docs/pollen-ecosystem-analysis.md`
 - HAL API routes: `hal/routes/`
 - Device capabilities: `devices/contract/capabilities.md`
-- Plugin template: `integrations/plugin-template/`
+- Plugin template: `integrations/community-apps/plugin-template/`
+- HuggingFace template: https://huggingface.co/spaces/autonomous-os/autonomous-os-hello-robot

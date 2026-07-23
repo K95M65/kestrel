@@ -503,6 +503,19 @@ export async function uninstallPlugin(name: string): Promise<boolean> {
   });
 }
 
+// HuggingFace plugin discovery — proxied through backend to avoid CORS.
+export interface HFSpace {
+  id: string;
+  likes: number;
+  tags: string[];
+  cardData?: { title?: string; emoji?: string; description?: string };
+}
+
+/** GET /api/plugin/browse */
+export async function searchHFPlugins(): Promise<HFSpace[]> {
+  return apiRequest<HFSpace[]>(`${API_BASE}/api/plugin/browse`);
+}
+
 export async function logout(): Promise<boolean> {
   setApiToken("");
   return apiRequest<boolean>(`${API_BASE}/api/logout`, { method: "POST" });
