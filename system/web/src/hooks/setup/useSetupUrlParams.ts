@@ -76,6 +76,55 @@ export function getInitialSearch(): string {
   return INITIAL_SEARCH;
 }
 
+// Wipes every trace of the current Setup attempt and hard-reloads into a
+// pristine wizard — the state a device shows the very first time an operator
+// joins its AP. Used by the Wi-Fi-failure recovery path (see
+// SetupProgressScreen's "Start over" action).
+//
+// A hard reload is REQUIRED, not a convenience: INITIAL_SEARCH / INITIAL_PARAMS
+// above are module-level constants frozen at script-load time. Resetting React
+// state alone would leave the old operator-supplied params (llm_api_key,
+// device_id, …) live in this module, so the "clean" form would still submit
+// stale credentials. Only a fresh document re-evaluates them.
+//
+// Cleared, in order:
+//   1. sessionStorage params snapshot — otherwise the reload rehydrates the
+//      exact query string we're trying to discard (see INITIAL_SEARCH above).
+//   2. The URL's query + hash — the reload must land on a bare /setup, since a
+//      surviving `?llm_api_key=…` would repopulate the snapshot in step 1.
+// Deliberately NOT cleared: the theme preference (localStorage `theme`), which
+// is a device-wide user choice unrelated to this setup attempt.
+export function resetSetupSession(): void {
+  if (typeof window === "undefined") return;
+  clearStoredSetupParams();
+  // replace() (not assign) so the dirty URL doesn't linger in history where a
+  // Back press would restore the params we just discarded.
+  window.location.replace(`${window.location.pathname}`);
+}
+
+// Drops the persisted params snapshot WITHOUT reloading.
+//
+// Used on the failed-join recovery path, where the page has already mounted and
+// we want the next reload — however it happens (F5, the operator reopening the
+// popup, the companion app pushing a fresh URL) — to come up with nothing
+// carried over from the attempt that failed.
+//
+// Why this is needed separately from resetSetupSession(): sessionStorage is
+// per-tab but survives F5. An operator who leaves the tab open, rejoins the
+// device AP and presses reload would otherwise rehydrate the exact query string
+// from the failed attempt (see INITIAL_SEARCH above) — a form that looks clean
+// but still ships the old llm_api_key. Clearing at mount closes that window
+// while leaving the current document's already-frozen INITIAL_PARAMS untouched,
+// so the in-place "Back to Wi-Fi" retry still has what it needs to submit.
+export function clearStoredSetupParams(): void {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.removeItem(SESSION_STORE_KEY);
+  } catch {
+    /* private-mode / disabled storage — nothing was persisted to begin with */
+  }
+}
+
 // searchParams is no longer read inside the hook (kept in the signature so
 // the call site doesn't need to change), but the dep array intentionally
 // excludes it: the snapshot is fixed for the session.
