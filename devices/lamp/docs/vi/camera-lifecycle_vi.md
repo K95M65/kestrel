@@ -247,11 +247,11 @@ Capture loop (`drivers/camera/video_capture_device.py`) tự khôi phục 2 dạ
 
 Cả hai watchdog ISP (freeze và loạn màu) dùng chung một thang leo qua `_recover_isp_fault()`:
 
-- **Trigger** — ≥3 lần reopen do ISP fault (`_ISP_FAULT_ESCALATE_COUNT`) trong cửa sổ trượt 10 phút (`_ISP_FAULT_WINDOW_S`, 600s). Reopen do `read()`-fail **không** được tính.
+- **Trigger** — **ngay lần ISP fault đầu tiên** (`_ISP_FAULT_ESCALATE_COUNT` = 1) là leo thang liền. Reopen V4L2 thường **không** reset được ISP — đã verify trên device: reopen một ISP đang kẹt lại kích đúng cái glitch xanh/posterize, watchdog fire lại sau vài giây, loop tự nuôi vòng lặp. Đi thẳng power-cycle tránh được điều đó; thứ giới hạn tần suất power-cycle camera chết hẳn là **cooldown 10 phút** bên dưới, không phải số đếm fault. Reopen do `read()`-fail **không** được tính (loại đó reopen thường chữa được). Fault vẫn được track theo cửa sổ trượt (`_ISP_FAULT_WINDOW_S`, 600s) để tính cooldown.
 - **Resolve USB path** — động, không hardcode: đi ngược chuỗi parent sysfs từ `/sys/class/video4linux/video<N>/device` tới node có `idVendor` (chính là USB device), lấy basename (ví dụ `1-1`). Nếu camera không phải USB (ví dụ sensor CSI) → bỏ qua leo thang, log lý do và giữ nguyên đường reopen thường.
-- **Power-cycle** — ghi bus path vào `/sys/bus/usb/drivers/usb/unbind`, đợi ~3s (`_USB_REBIND_DELAY_S`), ghi vào `.../bind` (HAL chạy root), rồi đợi tối đa 15s (`_USB_DEVNODE_TIMEOUT_S`) cho `/dev/video<N>` enumerate lại trước khi trả quyền cho `_reopen_with_backoff()`. Best-effort: lỗi sysfs nào cũng chỉ log rồi fallback về reopen thường.
+- **Power-cycle** — ghi bus path vào `/sys/bus/usb/drivers/usb/unbind`, đợi ~3s (`_USB_REBIND_DELAY_S`), ghi vào `.../bind` (HAL chạy root), rồi đợi tối đa 15s (`_USB_DEVNODE_TIMEOUT_S`) cho `/dev/video<N>` enumerate lại. **Khi node hiện lại, đợi settle thêm 5s (`_USB_SETTLE_AFTER_BIND_S`) rồi mới trả quyền cho `_reopen_with_backoff()`** — node có thể hiện lại sau <1s nhưng firmware ISP vẫn đang boot, mở lại lúc boot dở thì frame lại corrupt; đã verify: power-cycle + reopen ngay → về xanh, cùng cycle nhưng có settle → về sạch. Best-effort: lỗi sysfs nào cũng chỉ log rồi fallback về reopen thường.
 - **Cooldown** — tối đa 1 lần power-cycle mỗi 10 phút (`_USB_POWER_CYCLE_COOLDOWN_S`); camera chết hẳn không được kéo loop unbind/bind vô hạn. Trong thời gian cooldown, fault vẫn đi đường reopen thường.
-- **Log** — `Camera USB power-cycle (ISP deep-stuck: N ISP-fault reopens in Ws)`.
+- **Log** — `Camera USB power-cycle (ISP fault — plain reopen won't clear an ISP wedge; N fault(s) in Ws)`, rồi `Camera USB power-cycled (1-1) — /dev/video0 is back, settling 5s`.
 
 ## Edge Cases
 
