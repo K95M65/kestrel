@@ -503,6 +503,24 @@ export async function uninstallPlugin(name: string): Promise<boolean> {
   });
 }
 
+// HuggingFace plugin discovery — public API, no auth needed.
+export interface HFSpace {
+  id: string;
+  likes: number;
+  tags: string[];
+  cardData?: { title?: string; emoji?: string; description?: string };
+}
+
+const HF_PLUGIN_TAG = "autonomous-os-plugin";
+
+export async function searchHFPlugins(): Promise<HFSpace[]> {
+  const res = await fetch(
+    `https://huggingface.co/api/spaces?filter=${HF_PLUGIN_TAG}&full=true&sort=likes&direction=-1`,
+  );
+  if (!res.ok) throw new Error("Failed to fetch plugins from HuggingFace");
+  return res.json();
+}
+
 export async function logout(): Promise<boolean> {
   setApiToken("");
   return apiRequest<boolean>(`${API_BASE}/api/logout`, { method: "POST" });
