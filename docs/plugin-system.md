@@ -124,13 +124,16 @@ Each plugin runs as a systemd service (`os-plugin-<name>.service`):
 
 ## Roadmap
 
-### v1 — Pipeline (implemented)
+### v1 — Pipeline + Store (implemented)
 
-Git URL → venv → systemd unit → HAL HTTP. Minimal viable plugin system:
-- Install from any git URL
+Git URL → venv → systemd unit → HAL HTTP. Full plugin lifecycle:
+- Install from any git URL (HuggingFace, GitHub, GitLab, etc.)
 - systemd lifecycle (start/stop/restart on crash)
-- Web UI management
-- Plugin template for community forking
+- Plugin store — browse community plugins from HuggingFace Spaces
+  (`autonomous-os-plugin` tag), one-click install
+- Manual URL install for non-HF plugins
+- Web UI management (Installed / Browse / Install from URL)
+- Plugin template on HuggingFace for community forking
 
 ### v2 — SDK + Agent Integration
 
@@ -152,8 +155,6 @@ Git URL → venv → systemd unit → HAL HTTP. Minimal viable plugin system:
 
 ### v3 — Ecosystem
 
-- **Plugin store UI** — browse available plugins by tag, one-click install
-  (HuggingFace discovery via `autonomous-os-plugin` tag)
 - **Resource manager** — HAL audio mixer, camera multiplexing for true
   multi-plugin coexistence
 - **Exclusive mode** — `"exclusive": true` in manifest parks HAL, gives plugin
@@ -180,4 +181,5 @@ hello-world plugin with LED + voice demo.
 - Pollen ecosystem analysis: `devices/reachy-mini/docs/pollen-ecosystem-analysis.md`
 - HAL API routes: `hal/routes/`
 - Device capabilities: `devices/contract/capabilities.md`
-- Plugin template: `integrations/plugin-template/`
+- Plugin template: `integrations/community-apps/plugin-template/`
+- HuggingFace template: https://huggingface.co/spaces/autonomous-os/autonomous-os-hello-robot
