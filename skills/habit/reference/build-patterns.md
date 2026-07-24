@@ -38,8 +38,8 @@ This makes Flow A idempotent and safe to invoke from `wellbeing/SKILL.md` on eve
    | `enter` | Arrival time |
    | `leave` | Departure time |
    | `using computer` | Work session start |
-   | `writing`, `texting`, `reading book`, `drawing` | Activity patterns |
-   | Raw eat labels (`eating burger`, `eating cake`, `eating chips`, `eating doughnuts`, `eating hotdog`, `eating ice cream`, `eating spaghetti`, `eating watermelon`, `eating carrots`, `dining`, `tasting food`) | Meal timing — **collapse all to a single `eat` bucket** (typical_hour computed across the group, food-specific subhabits are overkill for v1) |
+   | `writing`, `texting`, `reading`, `drawing` | Activity patterns |
+   | Raw eat labels (`eating burger`, `eating cake`, `eating doughnuts`, `eating hotdog`, `eating ice cream`, `eating spaghetti`, `eating watermelon`, `eating carrots`, `dining`, `tasting food`) | Meal timing — **collapse all to a single `eat` bucket** (typical_hour computed across the group, food-specific subhabits are overkill for v1) |
    | `coffee` | Coffee timing (from conversation intent) |
    | `sleep` | Sleep timing (from conversation intent) |
    | `exercise` | Exercise timing (from conversation intent) |

@@ -725,7 +725,7 @@ The Lamp server is forked from openclaw-lobster. Approximately 70-80% of Layer 1
 
 **Implementation**:
 - **Event-driven, not timer-based.** The `wellbeing/SKILL.md` triggers on every `motion.activity` event (from action recognition).
-- Action recognition via perception-service classifies user activity: `using computer`, `writing`, `reading book`, `texting`, `drawing`, `playing controller` (sedentary) vs `drink`, `break` (reset activities).
+- Action recognition via perception-service classifies user activity: `using computer`, `writing`, `reading`, `texting`, `drawing`, `playing controller` (sedentary) vs `drink`, `break`, `celebrate` (reset activities).
 - Each activity is logged to per-user JSONL timeline via `POST /api/openclaw/wellbeing/log`.
 - On each event, skill reads recent history, computes time since last hydration/break reset, and nudges if thresholds exceeded.
 - Per-user tracking: `current_user` from sensing context tag, strangers share `"unknown"` timeline.
