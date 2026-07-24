@@ -1,6 +1,6 @@
 ---
 name: wellbeing
-description: Proactive coaching across hydration, breaks, meals AND posture. Use when an [activity] event fires (message starts with `[activity] Activity detected: <labels>.` — labels include drink, break, or sedentary raw labels like "using computer"; sedentary events may also carry a [posture_summary: {...}] block when the user has been at the computer long enough for posture to drift), or when the user asks if they should drink water / take a break / fix their posture. Thresholds are computed from per-user logs, never guessed.
+description: Proactive coaching across hydration, breaks, meals AND posture. Use when an [activity] event fires (message starts with `[activity] Activity detected: <labels>.` — labels include drink, break, celebrate, or sedentary raw labels like "using computer"; sedentary events may also carry a [posture_summary: {...}] block when the user has been at the computer long enough for posture to drift), or when the user asks if they should drink water / take a break / fix their posture. Thresholds are computed from per-user logs, never guessed.
 ---
 
 # Wellbeing
@@ -30,7 +30,7 @@ BREAK_THRESHOLD_MIN     = 30
 TOILET_DRINK_THRESHOLD  = 2     # count-based — fires once per N drinks since last nudge
 ```
 
-**The backend writes activities; you only write nudges.** Rows for `drink` / `break` / sedentary labels are posted by the backend directly when `motion.activity` fires — before the event reaches you. Do NOT re-log them. You still POST `nudge_hydration` / `nudge_break` because only you know when you actually spoke.
+**The backend writes activities; you only write nudges.** Rows for `drink` / `break` / `celebrate` / sedentary labels are posted by the backend directly when `motion.activity` fires — before the event reaches you. Do NOT re-log them. You still POST `nudge_hydration` / `nudge_break` because only you know when you actually spoke.
 
 **Presence rows** (`enter` / `leave`) are written by the backend on `presence.*` events. You never POST those either.
 
@@ -116,7 +116,7 @@ Read the `[activity] Activity detected: <labels>.` message + the `[wellbeing_con
 
 | # | Condition | Route | Output |
 |---|---|---|---|
-| 1 | labels list contains `drink` or `break` OR any raw eat label (`eating burger`, `dining`, `tasting food`, … — i.e. any `eating *` / `dining` / `tasting food`) | **reaction** | 1–3 sentence acknowledgment per the **Reaction** section. **No HW marker** (the backend already logged the row upstream). |
+| 1 | labels list contains `drink`, `break`, or `celebrate` OR any raw eat label (`eating burger`, `dining`, `tasting food`, … — i.e. any `eating *` / `dining` / `tasting food`) | **reaction** | 1–3 sentence acknowledgment per the **Reaction** section. **No HW marker** (the backend already logged the row upstream). |
 | 2 | `first_activity_today == true` AND `current_hour ∈ [5, 11)` AND `morning_greeting_done_today == false` | **morning-greeting** | See `reference/morning-greeting.md`. Logs `morning_greeting` action to gate next firings today. |
 | 3 | `current_hour >= 21` AND labels are sedentary (no `drink`/`break`) AND `sleep_winddown_done_today == false` | **sleep-winddown** | See `reference/sleep-winddown.md`. Logs `sleep_winddown` action. Replaces break nudge in late evening. |
 | 4 | `meal_window` is non-empty AND `meal_signal_in_window == false` | **meal-reminder** | See `reference/meal-reminder.md`. Logs `meal_reminder` action with trigger `lunch` / `dinner`. Gate covers BOTH a prior reminder you already fired AND a real eat label the backend logged — so we don't ask "have you eaten?" after a real meal. |
@@ -136,7 +136,7 @@ Read the `[activity] Activity detected: <labels>.` message + the `[wellbeing_con
 
 ## Reaction (when the user just did the thing)
 
-When the activity labels include `drink`, `break`, or any raw eat label (`eating burger`, `dining`, `tasting food`, …), **always speak** — silence on a positive action makes the device feel dead. This is the path the user explicitly asked for: short, surprised, casual acknowledgments instead of stoic NO_REPLY.
+When the activity labels include `drink`, `break`, `celebrate`, or any raw eat label (`eating burger`, `dining`, `tasting food`, …), **always speak** — silence on a positive action makes the device feel dead. This is the path the user explicitly asked for: short, surprised, casual acknowledgments instead of stoic NO_REPLY.
 
 **Inputs to weave in (use what fits, ignore what doesn't):**
 - `count_today.drink` / `count_today.break` — N-th of the day, streak, milestone.
@@ -171,6 +171,7 @@ If you genuinely cannot think of a fresh angle, prefer a shorter line ("Nice.") 
 - *"Dining mid-lunch — right on time."* (raw label `dining` in lunch window)
 - *"Spaghetti this late? Bold move."* (raw label `eating spaghetti`, evening)
 - *"Cake between meetings — celebrating something?"* (raw label `eating cake`, off-meal)
+- *"Ayy, what are we celebrating?"* (bucket `celebrate` — clap/applause/celebration)
 
 After speaking, you are done — no log POST, no extra tool calls, no follow-up question unless something is genuinely off (e.g. 8th drink in an hour).
 
