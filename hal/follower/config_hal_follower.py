@@ -82,3 +82,13 @@ class LeLampFollowerConfig(RobotConfig):
                     self.id = "hal"
             else:
                 self.calibration_dir = CALIBRATION_DIR
+
+        # Log the calibration file the runtime will actually load. lerobot loads
+        # `calibration_dir / f"{id}.json"`, so this path == what gets read. exists=False
+        # means the arm will start uncalibrated (or, for a per-device id, that the
+        # fallback above already switched it to the repo hal.json).
+        fpath = self.calibration_dir / f"{self.id}.json"
+        logging.getLogger(__name__).info(
+            "calibration: loading id=%s from %s (exists=%s)",
+            self.id, fpath, fpath.is_file(),
+        )
