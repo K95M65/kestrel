@@ -76,6 +76,9 @@ case "${DEVICE_TYPE}" in
   intern-v2)
     DEVICE_BASE_IMG="${DEVICE_BASE_IMG:-/input/intern-v2/golden-opi-dev.img.xz}"
     ;;
+  intern-v2-hermes)
+      DEVICE_BASE_IMG="${DEVICE_BASE_IMG:-/input/intern-v2-hermes/golden-opi-dev.img.xz}"
+      ;;
   *)
     DEVICE_BASE_IMG=""
     ;;
