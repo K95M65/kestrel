@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -26,6 +27,16 @@ from lerobot.robots import RobotConfig
 # breaks when the service user differs (e.g. hal.service runs as root, not orangepi).
 # lerobot loads `calibration_dir / f"{id}.json"` (id = HAL_DEVICE_ID, default "hal").
 CALIBRATION_DIR = Path(__file__).resolve().parent.parent / "calibration" / "robots" / "hal_follower"
+
+# Per-device calibration dir for the fleet. homing_offset / range_min / range_max are
+# unique to each physically-assembled unit (servo-horn spline mounting varies per build),
+# so the repo file only fits the one unit it was recorded on. Each device carries its own
+# <HAL_DEVICE_ID>.json here, provisioned by the hardware team. Lives OUTSIDE the OTA tree
+# (/opt/hal is overwritten every update) so calibration survives updates. Override the base
+# with HAL_CALIBRATION_DIR.
+PERSISTENT_CALIBRATION_DIR = Path(
+    os.environ.get("HAL_CALIBRATION_DIR", "/var/lib/hal/calibration/robots/hal_follower")
+)
 
 
 @RobotConfig.register_subclass("hal_follower")
@@ -49,6 +60,12 @@ class LeLampFollowerConfig(RobotConfig):
 
     def __post_init__(self):
         super().__post_init__()
-        # Pin calibration to the repo-local dir unless a caller overrides it.
+        # Resolve the calibration dir unless a caller pinned one explicitly.
+        # Default id "hal" (HAL_DEVICE_ID unset) keeps reading the version-controlled
+        # repo file. A per-device id (e.g. "lamp-abcd") reads its own file from the
+        # persistent fleet dir, where the hardware team drops <id>.json per unit.
         if self.calibration_dir is None:
-            self.calibration_dir = CALIBRATION_DIR
+            if self.id and self.id != "hal":
+                self.calibration_dir = PERSISTENT_CALIBRATION_DIR
+            else:
+                self.calibration_dir = CALIBRATION_DIR
