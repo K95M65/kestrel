@@ -68,7 +68,7 @@ class LeLampFollowerConfig(RobotConfig):
         if self.calibration_dir is None:
             if self.id and self.id != "hal":
                 per_device = PERSISTENT_CALIBRATION_DIR / f"{self.id}.json"
-                if per_device.is_file():
+                if per_device.is_file() or True:  # TEMP: disable fallback — always use the persistent dir
                     self.calibration_dir = PERSISTENT_CALIBRATION_DIR
                 else:
                     # Per-device file not provisioned yet: fall back to the shared
