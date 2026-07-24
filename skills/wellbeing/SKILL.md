@@ -227,8 +227,7 @@ shape live in `reference/posture.md`.
 | `using computer` | *"Eyes have been glued to that screen a while. Quick sip of water before your head starts to ache — your brain runs on hydration, not just caffeine."* |
 | `writing` | *"Pen's been moving non-stop. Grab a glass — staying hydrated keeps your thinking sharper than another coffee would."* |
 | `texting` | *"Phone's had your full attention for a while. Got water nearby?"* |
-| `reading book` | *"Deep in it, I see. Sip of water before the next chapter — dry eyes pull you out faster than a bad sentence."* |
-| `reading newspaper` | *"Pages have been turning a while. Water alongside before the next one?"* |
+| `reading` | *"Deep in it, I see. Sip of water before the next page — dry eyes pull you out faster than a bad sentence."* |
 | `drawing` | *"You're in the zone. While your hand's moving, get some water in — easier to keep the flow going than to push through a dry spell."* |
 | `playing controller` | *"Mid-session, I won't pull you out — just keep water within arm's reach. Dehydration drags reaction time more than you'd think."* |
 | (no label) | *"Haven't seen you drink anything in a while. A glass of water sounds about right — even a small one counts."* |
@@ -240,8 +239,7 @@ shape live in `reference/posture.md`.
 | `using computer` | *"You've been on that screen a while. Look up at the ceiling for twenty seconds, roll your neck a bit — your eyes will thank you."* |
 | `writing` | *"Hand's been writing for ages. Stand up, take a thirty-second walk, let the blood move again before you head back in."* |
 | `texting` | *"Neck's been bent down forever — that catches up with you later. Stand up and stretch your shoulders for a sec."* |
-| `reading book` | *"You've been reading straight through. Close your eyes for ten seconds or look out the window — give them a reset."* |
-| `reading newspaper` | *"Eyes have been working hard. Glance out the window for a moment, just to let them rest."* |
+| `reading` | *"You've been reading straight through. Close your eyes for ten seconds or look out the window — give them a reset."* |
 | `drawing` | *"Hands and shoulders have been working overtime. Drop the pen for thirty seconds, shake out your wrists — stiff hands ruin clean lines."* |
 | `playing controller` | *"Wrap up this round, then stand and stretch your legs. Sitting still tightens up your circulation — you'll feel it tonight if you don't."* |
 | (no label) | *"You've been parked in one spot a while. Up on your feet for a quick lap, get the body waking up again."* |
@@ -307,8 +305,9 @@ Backend writes the `enter` / `leave` rows. You do nothing for these events — s
 | Action | Written by | Meaning |
 |---|---|---|
 | `drink`, `break` | the backend (on `motion.activity`, before event reaches you) | User acted. **Reset point.** |
-| Raw eat labels — `eating burger`, `eating cake`, `eating carrots`, `eating chips`, `eating doughnuts`, `eating hotdog`, `eating ice cream`, `eating spaghetti`, `eating watermelon`, `dining`, `tasting food` | the backend (on `motion.activity`) | User ate. Raw labels kept (same hybrid as sedentary) so reaction phrasing can ground in the specific food. **Counts as meal signal** for the meal-reminder gate, **not** as a reset for break/hydration timers. |
-| `using computer`, `writing`, `texting`, `reading book`, `reading newspaper`, `drawing`, `playing controller` | the backend (on `motion.activity`) | Sedentary — logged for timeline + phrasing. **Not a reset point.** |
+| `celebrate` | the backend (on `motion.activity`) | User celebrated (clap / applause / celebration), collapsed to the bucket name. Reaction only — **not** a reset point for break/hydration timers. |
+| Raw eat labels — `eating burger`, `eating cake`, `eating carrots`, `eating doughnuts`, `eating hotdog`, `eating ice cream`, `eating spaghetti`, `eating watermelon`, `dining`, `tasting food` | the backend (on `motion.activity`) | User ate. Raw labels kept (same hybrid as sedentary) so reaction phrasing can ground in the specific food. **Counts as meal signal** for the meal-reminder gate, **not** as a reset for break/hydration timers. |
+| `using computer`, `writing`, `texting`, `reading`, `drawing`, `playing controller` | the backend (on `motion.activity`) | Sedentary — logged for timeline + phrasing. `reading` covers book/newspaper (collapsed in HAL). **Not a reset point.** |
 | `enter`, `leave` | Backend (on `presence.*` events) | Session boundary; deduped against last presence row, so stranger-ID churn collapses. **Reset point.** |
 | `nudge_hydration`, `nudge_break` | **You**, after speaking a nudge | Wellbeing log. Timeline + reset for next window. |
 | `nudge_toilet` | **You**, after a toilet nudge | Wellbeing log. Resets `drinks_since_toilet_nudge` counter to 0. Sparse by design: only re-fires after another N drinks. |
