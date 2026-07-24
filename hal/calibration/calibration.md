@@ -95,33 +95,86 @@ per-unit provisioning step for a new device. Pass the `id` the device runs with:
   `/var/lib/hal/calibration/robots/hal_follower/<id>.json`.
 
 For a per-device id the file lands in its final persistent location directly — **no
-separate copy step**, and it survives OTA. Provisioning a new unit is therefore: set
-`HAL_DEVICE_ID=<id>`, run calibrate on the lamp, restart HAL.
+separate copy step**, and it survives OTA.
+
+> **Stop HAL first.** The running `hal` service holds the servo serial port; two
+> processes can't own `/dev/ttyACM0` at once. Stop it before calibrating, start it after.
+
+### Provision a new fleet device (per-unit)
+
+Run on the lamp itself (same image flashed to every unit). In the commands below,
+replace **`lamp-abcd`** with this unit's id everywhere — match the hostname so it's easy
+to track.
+
+> **Two different things use the id — don't confuse them:**
+> - **`--id lamp-abcd` on the calibrate command** = what *names the output file*. The
+>   CLI reads this argument directly, **not** `.env`. So calibrate writes
+>   `lamp-abcd.json` no matter what `HAL_DEVICE_ID` currently says.
+> - **`HAL_DEVICE_ID=lamp-abcd` in `.env`** = what the *runtime reads at boot*. This is
+>   only needed **after** the file exists.
+>
+> Therefore the order is: **calibrate first** (creates the file via `--id`), **then set
+> `.env` and restart** (points the runtime at it). Do **not** set `.env` and restart
+> before the file exists — the runtime would just fall back to the repo `hal.json`.
 
 ```bash
-# Follower only
-sudo /opt/hal/.venv/bin/python3 -m hal.calibrate \
-  --id hal --port /dev/ttyACM0 --follower-only
+# 1) Release the servo serial port (the running service holds it)
+sudo systemctl stop hal
 
-# Leader only
-sudo /opt/hal/.venv/bin/python3 -m hal.calibrate \
-  --id hal --port /dev/ttyACM0 --leader-only
+# 2) Calibrate this unit's follower arm. --id names the output file, so this writes
+#    /var/lib/hal/calibration/robots/hal_follower/lamp-abcd.json (persistent, survives OTA).
+#    No .env change is needed for this step.
+cd /opt/hal
+sudo ./.venv/bin/python3 -m hal.calibrate --id lamp-abcd --port /dev/ttyACM0 --follower-only
 
-# Both follower and leader
-sudo /opt/hal/.venv/bin/python3 -m hal.calibrate \
-  --id hal --port /dev/ttyACM0
+# 3) NOW that the file exists, point the runtime at it and bring HAL back up.
+#    Append the line, or edit it in place if HAL_DEVICE_ID already exists in .env.
+echo 'HAL_DEVICE_ID=lamp-abcd' | sudo tee -a /opt/hal/.env
+sudo systemctl start hal
+```
+
+- **Serial port:** if it isn't `ACM0`, check `ls /dev/ttyACM*` and adjust `--port`.
+- **Only the follower** (5 servos) is on a shipped lamp; the leader is the teleop arm.
+- **Custom store:** prepend `HAL_CALIBRATION_DIR=/other/path` to step 2 to change the dir.
+
+Verify:
+
+```bash
+cat /var/lib/hal/calibration/robots/hal_follower/lamp-abcd.json   # 5 servos present
+journalctl -u hal -n 30 | grep -i calib                          # NOT "falling back to repo hal.json"
+```
+
+A "falling back to repo hal.json" line means the `HAL_DEVICE_ID` in `.env` doesn't match
+a file that exists in the persistent dir — recheck that step 2 wrote `lamp-abcd.json` and
+that step 3 used the same id.
+
+### Default `hal` calibration (dev / shared repo file)
+
+Use `--id hal` to (re)record the version-controlled repo file — e.g. on a dev bench, or
+to refresh the shared fallback:
+
+```bash
+sudo systemctl stop hal
+cd /opt/hal
+sudo ./.venv/bin/python3 -m hal.calibrate --id hal --port /dev/ttyACM0 --follower-only  # add --leader-only / omit for both
+sudo systemctl start hal
 ```
 
 ### Calibration steps (interactive)
 
-1. **Torque is disabled** — servos go limp so you can move them by hand.
-2. **Move all joints to the middle** of their range of motion, then press ENTER. This sets the homing offset.
-3. **Move each joint through its full range** (min to max). The script records encoder positions. Press ENTER when done.
-4. Calibration is saved to `hal/calibration/robots/hal_follower/hal.json`.
+Both flows prompt the same way:
+
+1. Press `c` at the prompt to run calibration (ENTER reuses the existing file).
+2. **Torque is disabled** — servos go limp so you can move them by hand.
+3. **Move all joints to the middle** of their range of motion, then press ENTER. This sets the homing offset.
+4. **Move each joint through its full range** (min to max). The script records encoder positions. Press ENTER when done.
+5. Calibration is saved to `<calibration_dir>/<id>.json` — the persistent dir for a
+   per-device id, or the repo file for `--id hal`.
 
 ### After calibration
 
-- For the default `hal` id: commit the updated file(s) under `hal/calibration/` so a
-  fresh checkout picks them up. For a per-device id the file stays on the device under
-  `/var/lib/hal/...` — do **not** commit it (each unit's calibration is its own).
-- Restart the HAL service: `sudo systemctl restart hal` (or reboot).
+- **Per-device id:** the file stays on the device under `/var/lib/hal/...` — do **not**
+  commit it (each unit's calibration is its own).
+- **`hal` id:** commit the updated file under `hal/calibration/` so a fresh checkout /
+  the shared fallback picks it up.
+- Restart the HAL service if you haven't: `sudo systemctl restart hal` (or reboot).
