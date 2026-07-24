@@ -36,18 +36,25 @@ func (h *AgentHandler) handleSessionToolEvent(evt domain.WSEvent) error {
 	summary := toolName
 	if payload.Data.Phase == "start" {
 		summary = fmt.Sprintf("Tool %s started", toolName)
+		// DEFENSIVE (2026-07-23): rescue [HW:...] markers the agent echoed
+		// inside a shell tool call (e.g. `echo '[HW:/audio/play:{...}]'`)
+		// instead of emitting them as reply text — a shell echo never reaches
+		// the reply-text marker interceptor, so it no-ops (node lights up, HAL
+		// gets nothing). Fire them for real; skip the cosmetic-only detection
+		// below when we do, to avoid duplicate flow nodes. See fireEchoedHWMarkers.
+		echoedHW := h.fireEchoedHWMarkers(toolName, toolArgs, flowRunID)
 		// [2026-06-30] Do NOT suppress TTS on /audio/play — the spoken reply
 		// must play before music. Python music_service waits for TTS via
 		// wait_for_tts() before grabbing ALSA, so the Go-side suppress is
 		// redundant and was swallowing the reply. See handler_event_agent.go
 		// for the full rationale (mirrors the 2026-05-11 hwCalls fix).
-		if strings.Contains(toolArgs, "/audio/play") {
+		if !echoedHW && strings.Contains(toolArgs, "/audio/play") {
 			h.monitorBus.Push(domain.MonitorEvent{Type: "hw_audio", Summary: toolArgs, RunID: flowRunID})
 			flow.Log("hw_audio", map[string]any{"args": toolArgs, "run_id": flowRunID}, flowRunID)
 		}
 		// Emit specific hardware events for flow monitor visualization.
 		// Both flow.Log (for JSONL persistence + UI flow_event triggers) and monitorBus (for SSE).
-		if strings.Contains(toolArgs, "/emotion") {
+		if !echoedHW && strings.Contains(toolArgs, "/emotion") {
 			h.monitorBus.Push(domain.MonitorEvent{Type: "led_set", Summary: "agent tool: " + toolName})
 			h.monitorBus.Push(domain.MonitorEvent{Type: "hw_emotion", Summary: toolArgs, RunID: flowRunID})
 			flow.Log("hw_emotion", map[string]any{"args": toolArgs, "run_id": flowRunID}, flowRunID)
@@ -63,12 +70,12 @@ func (h *AgentHandler) handleSessionToolEvent(evt domain.WSEvent) error {
 			h.monitorBus.Push(domain.MonitorEvent{Type: "hw_led", Summary: toolArgs, RunID: flowRunID})
 			flow.Log("hw_led", map[string]any{"args": toolArgs, "run_id": flowRunID}, flowRunID)
 		}
-		if strings.Contains(toolArgs, "/led/off") {
+		if !echoedHW && strings.Contains(toolArgs, "/led/off") {
 			h.monitorBus.Push(domain.MonitorEvent{Type: "led_off", Summary: "agent tool: " + toolName})
 			h.monitorBus.Push(domain.MonitorEvent{Type: "hw_led", Summary: toolArgs, RunID: flowRunID})
 			flow.Log("hw_led", map[string]any{"args": toolArgs, "run_id": flowRunID}, flowRunID)
 		}
-		if strings.Contains(toolArgs, "/servo/aim") || strings.Contains(toolArgs, "/servo/play") {
+		if !echoedHW && (strings.Contains(toolArgs, "/servo/aim") || strings.Contains(toolArgs, "/servo/play")) {
 			h.monitorBus.Push(domain.MonitorEvent{Type: "hw_servo", Summary: toolArgs, RunID: flowRunID})
 			flow.Log("hw_servo", map[string]any{"args": toolArgs, "run_id": flowRunID}, flowRunID)
 		}
@@ -96,16 +103,21 @@ func (h *AgentHandler) handleSessionToolEvent(evt domain.WSEvent) error {
 			summary += ": " + result
 		}
 	}
-	flow.Log("tool_call", map[string]any{"tool": toolName, "phase": payload.Data.Phase, "run_id": flowRunID, "source": "session.tool", "args": toolArgs}, flowRunID)
+	toolFlowData := map[string]any{"tool": toolName, "phase": payload.Data.Phase, "run_id": flowRunID, "source": "session.tool", "args": toolArgs}
+	if snapshotURL := cameraSnapshotURL(toolArgs, payload.ResultText()); snapshotURL != "" {
+		toolFlowData["snapshot_url"] = snapshotURL
+	}
+	flow.Log("tool_call", toolFlowData, flowRunID)
+	toolDetail := map[string]string{"tool": toolName, "args": toolArgs}
+	if snapshotURL, ok := toolFlowData["snapshot_url"].(string); ok {
+		toolDetail["snapshot_url"] = snapshotURL
+	}
 	h.monitorBus.Push(domain.MonitorEvent{
 		Type:    "tool_call",
 		Summary: summary,
 		RunID:   flowRunID,
 		Phase:   payload.Data.Phase,
-		Detail: map[string]string{
-			"tool": toolName,
-			"args": toolArgs,
-		},
+		Detail:  toolDetail,
 	})
 
 	return nil

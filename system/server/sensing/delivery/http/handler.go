@@ -714,6 +714,40 @@ func (h *SensingHandler) GetSnapshot(c *gin.Context) {
 	c.Status(http.StatusNotFound)
 }
 
+// GetAgentSnapshot serves a saved GET /camera/snapshot image referenced by a
+// Flow Monitor tool result. Only JPEGs in an approved runtime workspace or
+// HAL snapshot directory are accepted; the raw filesystem path is never sent
+// to the UI.
+func (h *SensingHandler) GetAgentSnapshot(c *gin.Context) {
+	runtime := c.Param("runtime")
+	source := c.Param("source")
+	name := c.Param("name")
+	if !regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*\.(jpg|jpeg)$`).MatchString(name) {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	if runtime != "openclaw" && runtime != "hermes" && runtime != "picoclaw" && runtime != "codex" && runtime != "claudecode" {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	var dir string
+	switch source {
+	case "workspace":
+		dir = filepath.Join("/root/."+runtime, "workspace")
+	case "media-hal-snapshots":
+		dir = filepath.Join("/root/."+runtime, "media", "hal-snapshots")
+	default:
+		c.Status(http.StatusNotFound)
+		return
+	}
+	path := filepath.Join(dir, name)
+	if info, err := os.Stat(path); err == nil && !info.IsDir() {
+		c.File(path)
+		return
+	}
+	c.Status(http.StatusNotFound)
+}
+
 // speechEmotionAudioDirs are the on-Pi locations where the speech_emotion
 // service writes its debug WAV clips (mirrors HAL_SPEECH_EMOTION_AUDIO_DIR
 // default + a persistent fallback). GetAudio serves files by basename from

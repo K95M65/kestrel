@@ -46,6 +46,21 @@ var configPath = "config/config.json"
 //	-X go.autonomous.ai/os/system/server/config.OSVersion=v1.2.3
 var OSVersion = "dev"
 
+// MCPTool is a remote MCP tool endpoint the agent can call over HTTPS.
+// Public tools need only Name+URL; authenticated tools carry custom headers
+// (e.g. Authorization, X-API-Key).
+type MCPTool struct {
+	// Name is the short identifier used as the mcp.servers.<name> key in
+	// openclaw.json (e.g. "search", "weather"). Must be unique.
+	Name string `json:"name" yaml:"name"`
+	// URL is the remote MCP endpoint (e.g.
+	// "https://owner-space.hf.space/gradio_api/mcp/").
+	URL string `json:"url" yaml:"url"`
+	// Headers are optional HTTP headers sent with every MCP request.
+	// Common uses: {"Authorization": "Bearer sk-..."} or {"X-API-Key": "..."}.
+	Headers map[string]string `json:"headers,omitempty" yaml:"headers,omitempty"`
+}
+
 type Config struct {
 	// mu serialises LLMModel mutations and config.Save() so the primary-model
 	// watcher goroutine (syncPrimaryFromFile) cannot race with HTTP handlers
@@ -226,6 +241,12 @@ type Config struct {
 	// GuardInstruction is a custom instruction the owner provides when enabling guard mode.
 	// Injected into sensing events so the agent follows it (e.g. "play scary sound when stranger detected").
 	GuardInstruction string `json:"guard_instruction,omitempty" yaml:"guardInstruction"`
+
+	// MCPTools is the list of remote MCP tool endpoints (HF Spaces, public MCP
+	// servers) the agent can call. Each entry is synced to openclaw.json
+	// mcp.servers on save so the active runtime picks them up. Managed via
+	// the web dashboard Settings → MCP Tools section.
+	MCPTools []MCPTool `json:"mcp_tools,omitempty" yaml:"mcpTools"`
 
 	// AdminPasswordHash is the bcrypt hash of the admin login password set during
 	// device setup. POST /api/login validates against this. Empty before setup

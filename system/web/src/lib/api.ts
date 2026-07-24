@@ -440,6 +440,82 @@ export async function login(password: string): Promise<boolean> {
   });
 }
 
+// MCP Tools — remote MCP tool endpoints (HF Spaces, public MCP servers).
+// headers is optional; key-value pairs sent with every MCP request.
+export interface MCPTool { name: string; url: string; headers?: Record<string, string> }
+
+/** GET /api/device/mcp-tools */
+export async function listMCPTools(): Promise<MCPTool[]> {
+  return apiRequest<MCPTool[]>(`${API_BASE}/api/device/mcp-tools`);
+}
+
+/** POST /api/device/mcp-tools */
+export async function addMCPTool(tool: MCPTool): Promise<boolean> {
+  return apiRequest<boolean>(`${API_BASE}/api/device/mcp-tools`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(tool),
+  });
+}
+
+/** DELETE /api/device/mcp-tools/:name */
+export async function removeMCPTool(name: string): Promise<boolean> {
+  return apiRequest<boolean>(`${API_BASE}/api/device/mcp-tools/${encodeURIComponent(name)}`, {
+    method: "DELETE",
+  });
+}
+
+// Plugins — standalone Python apps installed from git URLs.
+export interface Plugin { name: string; version: string; description: string; status: string; url: string }
+
+/** GET /api/plugin */
+export async function listPlugins(): Promise<Plugin[]> {
+  return apiRequest<Plugin[]>(`${API_BASE}/api/plugin`);
+}
+
+/** POST /api/plugin/install */
+export async function installPlugin(url: string): Promise<boolean> {
+  return apiRequest<boolean>(`${API_BASE}/api/plugin/install`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  });
+}
+
+/** POST /api/plugin/:name/start */
+export async function startPlugin(name: string): Promise<boolean> {
+  return apiRequest<boolean>(`${API_BASE}/api/plugin/${encodeURIComponent(name)}/start`, {
+    method: "POST",
+  });
+}
+
+/** POST /api/plugin/:name/stop */
+export async function stopPlugin(name: string): Promise<boolean> {
+  return apiRequest<boolean>(`${API_BASE}/api/plugin/${encodeURIComponent(name)}/stop`, {
+    method: "POST",
+  });
+}
+
+/** DELETE /api/plugin/:name */
+export async function uninstallPlugin(name: string): Promise<boolean> {
+  return apiRequest<boolean>(`${API_BASE}/api/plugin/${encodeURIComponent(name)}`, {
+    method: "DELETE",
+  });
+}
+
+// HuggingFace plugin discovery — proxied through backend to avoid CORS.
+export interface HFSpace {
+  id: string;
+  likes: number;
+  tags: string[];
+  cardData?: { title?: string; emoji?: string; description?: string };
+}
+
+/** GET /api/plugin/browse */
+export async function searchHFPlugins(): Promise<HFSpace[]> {
+  return apiRequest<HFSpace[]>(`${API_BASE}/api/plugin/browse`);
+}
+
 export async function logout(): Promise<boolean> {
   setApiToken("");
   return apiRequest<boolean>(`${API_BASE}/api/logout`, { method: "POST" });

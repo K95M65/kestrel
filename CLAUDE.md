@@ -26,6 +26,7 @@ This repo is developed in both **Cursor** and **Claude Code**. The following rul
    | PicoClaw agent backend (`agent_runtime`, runtimes/picoclaw, WebSocket) | `docs/agentic/picoclaw.md` | `docs/vi/agentic/picoclaw_vi.md` |
    | Codex agent backend (`agent_runtime`, runtimes/codex, WS bridge) | `docs/agentic/codex.md` | `docs/vi/agentic/codex_vi.md` |
    | Claude Code agent backend (`agent_runtime`, runtimes/claudecode, bridge WebSocket, native Telegram channel plugin) | `docs/agentic/claudecode.md` | `docs/vi/agentic/claudecode_vi.md` |
+   | OpenCode agent backend (`agent_runtime`, runtimes/opencode, bridge WebSocket, `opencode run --format json` per turn) | `docs/agentic/opencode.md` | `docs/vi/agentic/opencode_vi.md` |
    | Adding/changing an agentic backend (AgentGateway contract, switch, install/presync, migration, skills, hooks, reset) | `docs/agentic/adding-agent-runtime.md` | `docs/vi/agentic/adding-agent-runtime_vi.md` |
    | Safety engine (SAFETY.md bounds, deterministic enforcement gate) | `docs/safety.md` | `docs/vi/safety_vi.md` |
 
@@ -41,6 +42,15 @@ This repo is developed in both **Cursor** and **Claude Code**. The following rul
    | Physical controls (GPIO button, TTP223 touchpad, gestures, pet response) | `devices/lamp/docs/physical-controls.md` | `devices/lamp/docs/vi/physical-controls_vi.md` |
    | Autonomous Buddy (Mac companion app) | `integrations/companions/autonomous-buddy/docs/autonomous-buddy.md`, `integrations/companions/autonomous-buddy/docs/autonomous-buddy-mvp.md`, `integrations/companions/autonomous-buddy/docs/release-signing.md` | `integrations/companions/autonomous-buddy/docs/vi/autonomous-buddy_vi.md`, `integrations/companions/autonomous-buddy/docs/vi/autonomous-buddy-mvp_vi.md`, `integrations/companions/autonomous-buddy/docs/vi/release-signing_vi.md` |
    | Security test checklist | `devices/lamp/docs/security-test.md` | _(no vi version)_ |
+
+   **Reachy Mini docs** (`devices/reachy-mini/docs/` + `devices/reachy-mini/docs/vi/`):
+
+   | Code area | English doc | Vietnamese doc |
+   |-----------|-------------|----------------|
+   | Bring-up, motion driver, deploy, safety delta | `devices/reachy-mini/docs/runtime.md` | `devices/reachy-mini/docs/vi/runtime_vi.md` |
+   | Recovery (Pollen OS), SSH, WiFi impact | `devices/reachy-mini/docs/recovery.md` | `devices/reachy-mini/docs/vi/recovery_vi.md` |
+   | First-boot recon plan, setup.sh design, smoke tests | `devices/reachy-mini/docs/first-boot-plan.md` | `devices/reachy-mini/docs/vi/first-boot-plan_vi.md` |
+   | Pollen ecosystem reference (voice, tool registry, app distribution) | `devices/reachy-mini/docs/pollen-ecosystem-analysis.md` | `devices/reachy-mini/docs/vi/pollen-ecosystem-analysis_vi.md` |
 
 2. **Comments in English** — Project standard.
 3. **Code is the single source of truth** — Docs reflect code, not the other way around.

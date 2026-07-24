@@ -17,12 +17,14 @@ import { TimezoneSection } from "@/pages/settings/TimezoneSection";
 import { STTSection, type SttProvider } from "@/pages/settings/STTSection";
 import { ChannelSection } from "@/pages/settings/ChannelSection";
 import { MqttSection } from "@/pages/settings/MqttSection";
+import { MCPToolsSection } from "@/pages/settings/MCPToolsSection";
+import { PluginsSection } from "@/pages/settings/PluginsSection";
 
 // The set of sections this panel can render. Controlled by the parent now (the
 // page shell owns the sidebar / active-section state). `stt` is the Language
 // section (rendered under id="stt"), matching the legacy /edit layout. `runtime`
 // is the agent-backend switch (its own Switch button, not part of Save).
-export type SettingsSectionId = "device" | "wifi" | "llm" | "runtime" | "voice" | "face" | "tts" | "realtime" | "stt" | "channel" | "mqtt" | "timezone";
+export type SettingsSectionId = "device" | "wifi" | "llm" | "runtime" | "voice" | "face" | "tts" | "realtime" | "stt" | "channel" | "mqtt" | "mcp" | "plugins" | "timezone";
 
 // Header-row label lookup. Kept local so the panel can render the active-section
 // title above the form without depending on the page's NAV_GROUPS config.
@@ -38,6 +40,8 @@ const SECTION_LABELS: Record<SettingsSectionId, string> = {
   stt: "Language",
   channel: "Channels",
   mqtt: "MQTT",
+  mcp: "MCP Tools",
+  plugins: "Plugins",
   timezone: "Timezone",
 };
 
@@ -95,9 +99,9 @@ export function SettingsPanel({ activeSection }: { activeSection: SettingsSectio
   const [sttLanguage, setSttLanguage] = useState("en");
   const [ttsApiKey, setTtsApiKey] = useState("");
   const [ttsBaseUrl, setTtsBaseUrl] = useState("");
-  const [ttsProvider, setTtsProvider] = useState("openai");
+  const [ttsProvider, setTtsProvider] = useState("elevenlabs");
   const [ttsProviders, setTtsProviders] = useState<string[]>([]);
-  const [ttsVoice, setTtsVoice] = useState("alloy");
+  const [ttsVoice, setTtsVoice] = useState("Rachel");
   const [ttsVoices, setTtsVoices] = useState<string[]>([]);
   const [realtimeEnabled, setRealtimeEnabled] = useState(true);
   const [realtimeProvider, setRealtimeProvider] = useState("gemini");
@@ -186,8 +190,8 @@ export function SettingsPanel({ activeSection }: { activeSection: SettingsSectio
         setSttProvider(cfg.has_deepgram_api_key ? "deepgram" : "autonomous");
         setSttLanguage(cfg.stt_language || "en");
         setTtsBaseUrl(cfg.tts_base_url ?? "");
-        setTtsProvider(cfg.tts_provider || "openai");
-        setTtsVoice(cfg.tts_voice || "alloy");
+        setTtsProvider(cfg.tts_provider || "elevenlabs");
+        setTtsVoice(cfg.tts_voice || "Rachel");
         if (cfg.realtime) {
           setRealtimeEnabled(cfg.realtime.enabled ?? true);
           setRealtimeProvider(cfg.realtime.provider || "gemini");
@@ -258,8 +262,8 @@ export function SettingsPanel({ activeSection }: { activeSection: SettingsSectio
           sttProvider: sttProviderInit,
           sttLanguage: cfg.stt_language || "en",
           ttsBaseUrl: (cfg.tts_base_url ?? "") || llmUrlInit,
-          ttsProvider: cfg.tts_provider || "openai",
-          ttsVoice: cfg.tts_voice || "alloy",
+          ttsProvider: cfg.tts_provider || "elevenlabs",
+          ttsVoice: cfg.tts_voice || "Rachel",
           channel: (cfg.channel as ChannelType) || "telegram",
           teleUserId: cfg.telegram_user_id ?? "",
           slackUserId: cfg.slack_user_id ?? "",
@@ -582,6 +586,9 @@ export function SettingsPanel({ activeSection }: { activeSection: SettingsSectio
               discordGuildId={discordGuildId} setDiscordGuildId={setDiscordGuildId}
               discordUserId={discordUserId} setDiscordUserId={setDiscordUserId}
             />
+
+            <MCPToolsSection active={activeSection === "mcp"} />
+            <PluginsSection active={activeSection === "plugins"} />
 
             <MqttSection
               active={activeSection === "mqtt"}

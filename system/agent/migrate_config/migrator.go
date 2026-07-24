@@ -43,6 +43,7 @@ const (
 	RuntimePicoclaw   Runtime = "picoclaw"
 	RuntimeCodex      Runtime = "codex"
 	RuntimeClaudeCode Runtime = "claudecode"
+	RuntimeOpenCode   Runtime = "opencode"
 )
 
 // runtimeAdapter is the read/write surface every migratable runtime implements.
@@ -58,6 +59,7 @@ var adapters = map[Runtime]runtimeAdapter{
 	RuntimePicoclaw:   picoclawAdapter{},
 	RuntimeCodex:      codexAdapter{},
 	RuntimeClaudeCode: claudecodeAdapter{},
+	RuntimeOpenCode:   opencodeAdapter{},
 }
 
 // CanMigrate reports whether a runtime has a registered config adapter.
@@ -73,6 +75,8 @@ type Options struct {
 	PicoclawConfigDir string // e.g. /root/.picoclaw
 	CodexHome         string // e.g. /root/.codex (config.toml + .env)
 	ClaudecodeDir     string // e.g. /root/.claudecode
+	OpenCodeHome      string // e.g. /root/.opencode (.env)
+	OpenCodeConfig    string // e.g. /root/.config/opencode/opencode.json
 }
 
 func DefaultOptions(openclawConfigDir, hermesRoot string) Options {
@@ -88,6 +92,8 @@ func DefaultOptions(openclawConfigDir, hermesRoot string) Options {
 		PicoclawConfigDir: "/root/.picoclaw",
 		CodexHome:         "/root/.codex",
 		ClaudecodeDir:     "/root/.claudecode",
+		OpenCodeHome:      "/root/.opencode",
+		OpenCodeConfig:    "/root/.config/opencode/opencode.json",
 	}
 }
 

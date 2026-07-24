@@ -1,0 +1,7 @@
+{
+  "name": "hello-world",
+  "version": "1.0.0",
+  "description": "LED rainbow + greeting — fork this to make your own plugin",
+  "entry": "main.py",
+  "tags": ["autonomous-os-plugin"]
+}

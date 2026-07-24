@@ -320,6 +320,7 @@ theo agent gateway (`HAL_AGENT_GATEWAY`):
 | `picoclaw` | `OpenClawContextManager` (layout giống hệt) | `HAL_PICOCLAW_WORKSPACE_DIR` (`/root/.picoclaw/workspace`) |
 | `codex` | `OpenClawContextManager` (layout giống hệt) | `HAL_CODEX_WORKSPACE_DIR` (`/root/.codex/workspace`) |
 | `claudecode` | `context_manager/claudecode.py` `ClaudeCodeContextManager` — layout OpenClaw trừ skills, đọc từ `.claude/skills/` (dir native của claude CLI) | `HAL_CLAUDECODE_WORKSPACE_DIR` (`/root/.claudecode/workspace`) |
+| `opencode` | `OpenClawContextManager` (layout giống hệt; như codex, skills nằm ở dir ngoài workspace `~/.config/opencode/skills` nên catalog skills theo workspace rỗng — identity + memory vẫn nạp đúng) | `HAL_OPENCODE_WORKSPACE_DIR` (`/root/.opencode/workspace`) |
 
 `ContextManagerBase` (`context_manager/base.py`) lo phần lắp ráp prompt
 (`build_instructions`), lưu lượt (`add_turn`), nạp/trim memory, và summarize;

@@ -7,8 +7,9 @@
 #   make TARGET=rpi RPI_MODEL=4 build — Raspberry Pi 4B golden image
 #   make sd-card-list                 — list disks for flashing
 #   make sd-card-test DISK=N          — test SD card with 100 MB dd
-#   make sd-card-flash DISK=N         — flash the default-target image to /dev/diskN
+#   make sd-card-flash DISK=N         — flash the .xz image to /dev/diskN
 #   make sd-card-flash TARGET=rpi DISK=N — flash RPi image instead
+#   make sd-card-flash-raw DEVICE_TYPE=lamp DISK=N — flash the raw .img via rdiskN (fast, no wait for .xz)
 # =============================================================================
 
 TARGET ?= opi
@@ -31,6 +32,25 @@ OTA_METADATA_URL ?=
 # class. E.g. make build TARGET=opi DEVICE_TYPE=intern.
 DEVICE_TYPE ?=
 
+# Per-image default agent runtime, baked into f_r_default_agent so it survives
+# a Factory Reset, AND (for DEVICE_TYPE=intern-v2 only) gates SSH — claudecode
+# opens it (Developer Edition / black case), every other value closes it (see
+# build-orangepi.sh). OPTIONAL — unset behaves exactly like before this
+# existed. Also used below to name the output file so multiple builds of the
+# SAME DEVICE_TYPE (e.g. intern-v2's blue/orange/black case variants) don't
+# clobber each other. There is no separate CASE_COLOR var — the case color is
+# purely cosmetic packaging, DEFAULT_AGENT alone drives both the seeded
+# runtime and the SSH policy so the two can't disagree.
+DEFAULT_AGENT ?=
+
+# CASE_COLOR was removed (see DEFAULT_AGENT above) — fail fast at the Makefile
+# level too, so a stale `make build CASE_COLOR=blue` (old muscle memory / an
+# un-updated CI script) errors immediately instead of silently building with
+# SSH open when the caller expected it closed.
+ifneq ($(origin CASE_COLOR),undefined)
+$(error CASE_COLOR is removed — set DEFAULT_AGENT=hermes|openclaw|claudecode instead (SSH now follows DEFAULT_AGENT directly))
+endif
+
 ifndef BUILD_SCRIPT
 $(error Unknown TARGET=$(TARGET). Supported: rpi, opi)
 endif
@@ -39,12 +59,23 @@ endif
 # builds clobber each other. The build script always writes BUILT_IMG; the build
 # target renames it to the device-typed IMG_FILE (3 device types = 3 images).
 # OPi build produces .img.xz (compressed); RPi build produces raw .img.
+# DEFAULT_AGENT (when set) is folded into IMG_FILE too — named by agent, since
+# that's what you actually remember later — so multiple case-color builds of
+# the SAME DEVICE_TYPE (e.g. intern-v2 hermes vs. claudecode) land as separate
+# files instead of clobbering one another. Unset DEFAULT_AGENT (every build
+# before this feature existed) → filename unchanged.
 BUILT_IMG_rpi := golden.img
 BUILT_IMG_opi := $(DEVICE_TYPE)/golden-opi.img.xz
 BUILT_IMG := $(BUILT_IMG_$(TARGET))
-IMG_FILE_rpi := golden-$(DEVICE_TYPE).img
-IMG_FILE_opi := $(DEVICE_TYPE)/golden-opi-$(DEVICE_TYPE).img.xz
+IMG_FILE_rpi := golden-$(DEVICE_TYPE)$(if $(DEFAULT_AGENT),-$(DEFAULT_AGENT),).img
+IMG_FILE_opi := $(DEVICE_TYPE)/golden-opi-$(DEVICE_TYPE)$(if $(DEFAULT_AGENT),-$(DEFAULT_AGENT),).img.xz
 IMG_FILE := $(IMG_FILE_$(TARGET))
+
+# Uncompressed raw image (independent of the .xz). Used by sd-card-flash-raw to flash
+# straight from the raw .img — skips waiting for xz compression, and writes via rdiskN.
+RAW_IMG_rpi := golden.img
+RAW_IMG_opi := $(DEVICE_TYPE)/golden-opi.img
+RAW_IMG := $(RAW_IMG_$(TARGET))
 
 # Preflight — check Docker resources + clean dangling layers before a long
 # build run. Avoids the most common failure modes: OOM (Docker memory < 4GB)
@@ -93,6 +124,7 @@ build: build-preflight
 	-e RPI_MODEL=$(RPI_MODEL) \
 	-e OTA_METADATA_URL=$(OTA_METADATA_URL) \
 	-e DEVICE_TYPE=$(DEVICE_TYPE) \
+	-e DEFAULT_AGENT=$(DEFAULT_AGENT) \
 	-e BUILD_GIT_SHA=$(shell git -C .. rev-parse HEAD 2>/dev/null || echo unknown) \
 	pi-builder /work/$(BUILD_SCRIPT)
 	@# Name the output per device type so lamp/intern/dog images don't clobber.
@@ -128,6 +160,23 @@ endif
 	else \
 		sudo dd if=./output/$(IMG_FILE) of=/dev/disk$(DISK) bs=64m conv=fsync status=progress; \
 	fi
+	sync
+	diskutil eject /dev/disk$(DISK) 2>/dev/null || true
+	@echo "==> Flash complete"
+
+# Flash the RAW uncompressed image straight to the card. For dev machines that already
+# have the raw output/<type>/golden-opi.img — skips waiting for the .xz (which exists
+# only to compress for CDN upload). Writes via /dev/rdiskN (raw, unbuffered = 2-5x
+# faster than the buffered /dev/diskN on macOS).
+#   make sd-card-flash-raw DEVICE_TYPE=lamp DISK=12
+sd-card-flash-raw:
+ifndef DISK
+	$(error DISK is required. Usage: make sd-card-flash-raw DEVICE_TYPE=lamp DISK=12)
+endif
+	@[ -f ./output/$(RAW_IMG) ] || { echo "ERROR: ./output/$(RAW_IMG) not found — pass DEVICE_TYPE, or the raw .img isn't built yet"; exit 1; }
+	@echo "==> Flashing ./output/$(RAW_IMG) to /dev/rdisk$(DISK) (raw, fast)..."
+	diskutil unmountDisk force /dev/disk$(DISK)
+	sudo dd if=./output/$(RAW_IMG) of=/dev/rdisk$(DISK) bs=64m conv=fsync status=progress
 	sync
 	diskutil eject /dev/disk$(DISK) 2>/dev/null || true
 	@echo "==> Flash complete"

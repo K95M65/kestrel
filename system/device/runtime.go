@@ -37,20 +37,71 @@ func ensureSwitchRuntime() error {
 	return nil
 }
 
-// SeedAgentRuntimeFromGateway materializes DEVICE.md gateway.default into
-// config.agent_runtime when the field is still empty, then persists it. Once a
-// concrete value is on disk the device "owns" its runtime: a dev who set it
-// (via switch or by hand) is left untouched, and the resolve-fallback in
-// CurrentAgentRuntimeFromConfig becomes a no-op. Idempotent — only the first
-// boot of a fresh/legacy config.json writes. When gateway.default is itself
-// absent there is nothing to seed, so the field stays empty and the runtime
-// keeps resolving to openclaw at boot.
+// frDefaultAgentPath is a build-time-baked, per-image default runtime — e.g.
+// the intern-v2 case-color images (blue=hermes, orange=openclaw, black=claudecode,
+// scripts/imager/build-orangepi.sh DEFAULT_AGENT). It deliberately lives outside
+// /root/config/config.json so it survives Factory Reset untouched (it is NOT
+// in factoryreset.go's deviceWipePaths — verified device-side: siblings like
+// bootstrap.json/buddy.json in the same dir already survive F_R the same way).
+// Most builds never write this file, so it is absent and this is a no-op.
+// var, not const, so tests can point it at a temp file.
+var frDefaultAgentPath = "/root/config/f_r_default_agent"
+
+// readFRDefaultAgent returns the baked per-image default runtime, or "" if
+// the file is absent (the common case — falls back to DEVICE.md gateway.default).
+func readFRDefaultAgent() string {
+	b, err := os.ReadFile(frDefaultAgentPath)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}
+
+// ResolveDefaultAgent returns the device's built-in default runtime when
+// config.agent_runtime is not yet set, checked with priority: (1) the
+// build-baked f_r_default_agent file — a per-image/per-color default that
+// survives Factory Reset; (2) DEVICE.md gateway.default. Returns "" (source
+// "") when neither names a valid runtime.
+//
+// This is the SINGLE source of truth for that resolution — shared by
+// SeedAgentRuntimeFromGateway (persists the default into config.json) AND
+// agent.resolveRuntime (decides which gateway implementation actually gets
+// constructed, system/agent/factory.go). They must never resolve
+// independently: system/server/wire_gen.go constructs agent.ProvideGateway
+// BEFORE device.ProvideService runs SeedAgentRuntimeFromGateway, so if
+// resolveRuntime had its own copy of this priority (as it did before this
+// function existed), a fresh boot / post-Factory-Reset device would construct
+// its in-memory gateway from DEVICE.md gateway.default (ignoring
+// f_r_default_agent) while SeedAgentRuntimeFromGateway simultaneously
+// persisted the CORRECT value to config.json a moment later — config.json and
+// the actually-running backend would disagree until the next os-server
+// restart. Routing both callers through this one function makes the two
+// resolutions structurally impossible to drift, independent of Wire's
+// provider order.
+func ResolveDefaultAgent(cfg *config.Config) (value, source string) {
+	if g := strings.ToLower(readFRDefaultAgent()); g != "" && domain.IsValidAgentRuntime(g) {
+		return g, "f_r_default_agent"
+	}
+	if g := strings.ToLower(strings.TrimSpace(GatewayDefault(cfg.DeviceTypeOrDefault()))); g != "" && domain.IsValidAgentRuntime(g) {
+		return g, "DEVICE.md gateway.default"
+	}
+	return "", ""
+}
+
+// SeedAgentRuntimeFromGateway materializes the device's default runtime (see
+// ResolveDefaultAgent) into config.agent_runtime when the field is still
+// empty, then persists it. Once a concrete value is on disk the device "owns"
+// its runtime: a dev who set it (via switch or by hand) is left untouched,
+// and the resolve-fallback in CurrentAgentRuntimeFromConfig becomes a no-op.
+// Idempotent — only the first boot of a fresh/legacy config.json writes. When
+// ResolveDefaultAgent names nothing there is nothing to seed, so the field
+// stays empty and the runtime keeps resolving to openclaw at boot.
 func SeedAgentRuntimeFromGateway(cfg *config.Config) {
 	if cfg == nil || strings.TrimSpace(cfg.AgentRuntime) != "" {
 		return
 	}
-	g := strings.ToLower(strings.TrimSpace(GatewayDefault(cfg.DeviceTypeOrDefault())))
-	if g == "" || !domain.IsValidAgentRuntime(g) {
+	g, _ := ResolveDefaultAgent(cfg)
+	if g == "" {
 		return
 	}
 	cfg.AgentRuntime = g
@@ -69,14 +120,17 @@ func (s *Service) CurrentAgentRuntime() string {
 
 // CurrentAgentRuntimeFromConfig resolves the effective agentic backend without a
 // Service receiver, so callers holding only a *config.Config (e.g. the MQTT info
-// handler) can report what is actually running. Same precedence as factory.go:
-// config.agent_runtime, else DEVICE.md gateway.default, else openclaw.
+// handler, the web-CLI env-file check in server.go) can report what is actually
+// running. Same precedence as agent.resolveRuntime: config.agent_runtime, else
+// ResolveDefaultAgent (f_r_default_agent, then DEVICE.md gateway.default), else
+// openclaw — routed through the same shared resolver so this can't become a
+// third place that drifts from what actually gets seeded/constructed.
 func CurrentAgentRuntimeFromConfig(cfg *config.Config) string {
 	if r := strings.ToLower(strings.TrimSpace(cfg.AgentRuntime)); r != "" {
 		return r
 	}
-	if g := GatewayDefault(cfg.DeviceTypeOrDefault()); g != "" {
-		return strings.ToLower(strings.TrimSpace(g))
+	if g, _ := ResolveDefaultAgent(cfg); g != "" {
+		return g
 	}
 	return domain.AgentRuntimeOpenClaw
 }

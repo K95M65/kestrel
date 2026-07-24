@@ -136,7 +136,7 @@ Rendered by `FlowDiagram` in `system/web/src/pages/Monitor.tsx`. The diagram is 
 | Region | Color (theme) | Stages |
 |--------|----------------|--------|
 | **OS Server** | Teal (`--lm-teal`) | `intent_check`, `local_match`, `schedule_trigger`, `lamp_gate` |
-| **HAL** | Amber (`--lm-amber`) | `mic_input`, `cam_input`, `hw_emotion`, `hw_led`, `hw_servo`, `tts_speak` |
+| **HAL** | Amber (`--lm-amber`) | `mic_input`, `cam_input`, `hw_camera`, `hw_emotion`, `hw_led`, `hw_servo`, `tts_speak` |
 | **OpenClaw** | Blue (`--lm-blue`) | `agent_call`, `telegram_input`, `tool_exec`, `agent_thinking`, `agent_response`, `tg_out` |
 
 ### OS Server (top band)
@@ -147,11 +147,19 @@ Rendered by `FlowDiagram` in `system/web/src/pages/Monitor.tsx`. The diagram is 
 
 ### HAL (left column)
 
-- **MIC** and **CAM** are input nodes (top of HAL section).
+- **MIC** and **CAM** are input nodes (top of HAL section). The lower **CAM**
+  diamond is separate and represents an agent tool calling
+  `GET /camera/snapshot`.
 - Output nodes are stacked vertically in a single column:
   - **EMO** (`hw_emotion`) — `/emotion` calls (coordinated LED + servo + display eyes)
   - **LED** (`hw_led`) — `/led/solid`, `/led/effect`, `/scene`, `/led/off`
-  - **SERVO** (`hw_servo`) — `/servo/aim`, `/servo/play`
+  - **SERVO** (`hw_servo`) — move or animate servos: `/servo/aim`,
+    `/servo/play`, `/servo/track`. The node detail shows the actual agent
+    command/API call for the selected turn.
+  - **CAM** (`hw_camera`) — `GET /camera/snapshot`; its saved result is
+    rendered as a clickable thumbnail so operators can debug the exact frame
+    returned to the agent (including an agent workspace image such as
+    `cam_face3.jpg`, not a newly captured preview).
   - **TTS** (`tts_speak`) — `/voice/speak`, text-to-speech output
 - These represent direct hardware calls from OpenClaw tools that bypass the OS server.
 
@@ -200,10 +208,12 @@ Values are the **node center** `(x, y)` in the SVG view box (see `positions` in 
 | `lamp_gate` | `(400, 570)` | OS server; between HAL and OpenClaw |
 | `mic_input` | `(-40, 240)` | HAL input |
 | `cam_input` | `(80, 240)` | HAL input |
-| `hw_emotion` | `(200, 390)` | HAL output; emotion calls |
-| `hw_led` | `(200, 510)` | HAL output; LED control |
-| `hw_servo` | `(200, 630)` | HAL output; servo motor |
-| `tts_speak` | `(200, 750)` | HAL output; TTS |
+| `hw_camera` | `(200, 345)` | HAL output; agent camera API call |
+| `hw_emotion` | `(200, 480)` | HAL output; emotion calls |
+| `hw_led` | `(200, 615)` | HAL output; LED control |
+| `hw_servo` | `(200, 750)` | HAL output; servo motor |
+| `hw_audio` | `(200, 885)` | HAL output; audio playback |
+| `tts_speak` | `(200, 1020)` | HAL output; TTS |
 | `agent_call` | `(800, 240)` | OpenClaw row 1 |
 | `telegram_input` | `(1000, 240)` | OpenClaw row 1 |
 | `tool_exec` | `(600, 390)` | OpenClaw row 2, col 1 |
@@ -222,6 +232,7 @@ agent_call → [Event Pipeline rect — thinking/assistant/tool rows] → agent_
 tool_exec → hw_emotion         (OpenClaw /emotion call → HAL)
 tool_exec → hw_led             (OpenClaw /led/* or /scene call → HAL)
 tool_exec → hw_servo           (OpenClaw /servo/* call → HAL)
+tool_exec → hw_camera          (agent GET /camera/snapshot → HAL; saved frame shown below node)
 tool_exec → lamp_gate          (OS server listens: pause ambient if LED; TTS-vs-music ordering is handled in HAL, not suppressed here)
 agent_response → lamp_gate     (OS server accumulates assistant text for TTS)
 agent_response → tts_speak     (Direct TTS from response to HAL)
@@ -249,6 +260,20 @@ Node info extracted from turn events:
   label=`tool · <name>`, with `start`/`result` phases collapsed into the
   row's duration. Outgoing HW edges (LED / servo / emotion / audio /
   lamp_gate) anchor at the pipeline's right edge.
+  - **Echoed-marker rescue (2026-07-23):** an `[HW:...]` marker only reaches
+    HAL when the agent emits it as **reply text** (the Go interceptor runs
+    `extractHWCalls` on the assistant message). Occasionally the agent instead
+    wraps it in a shell tool call — e.g. `echo '[HW:/audio/play:{...}]'` — which
+    only prints to the sandbox stdout and never fires, yet the tool args contain
+    the marker string so the HW node (e.g. `hw_audio`) still lights up: the node
+    looks active but nothing played. `fireEchoedHWMarkers`
+    (`handler_hw.go`, called from both the device-chat `tool` path in
+    `handler_event_agent.go` and the `session.tool` path) now detects any
+    `[HW:...]` markers in the tool args and fires them for real, logging a WARN.
+    It matches only the `[HW:/path:{json}]` grammar, so a legitimate
+    `curl .../audio/play` (no marker) is untouched and still plays via its own
+    request. When the rescue fires, the cosmetic args-only HW node emit is
+    skipped so the node isn't duplicated.
 - `lifecycle_end` → Response node + final row in the Event Pipeline.
 - `tts_send` → TTS Speak + Output nodes. Output text is read from `detail.data.full_text` (the complete reply) with fallback to `detail.data.text`. When the agent's first sentence is streamed to TTS mid-turn (`tts_stream_send`, sent early for lower latency), `data.text` holds only the **remainder** (sentence 1 sliced off so it isn't spoken twice); `data.full_text` carries sentence 1 + remainder so the web chat and flow Output show the full reply. `data.streamed_len` is the byte offset where the remainder begins.
 - `tts_suppressed` → 🔇 marker in the gate column. `data.reason` discriminates: `channel_run` (real Telegram user turn — detected by `tg-` runID prefix synthesised in the `session.message` handler, or `channelRuns` map mark from chat.history fallback; reply fans out via OpenClaw session instead of the device speaker), `already_spoken` (built-in tts tool already routed), `voice_agent_handled` (realtime voice agent already spoke this turn), `web_chat` (Flow Monitor chat — reply shown in web UI only). Emitted *instead of* `tts_send` when the actual `SendToHalTTS` call is skipped — prevents the UI from misleadingly claiming TTS happened. Note: there is no `music_playing` reason — playing music no longer suppresses the spoken reply; the OS server always sends the reply TTS and HAL serializes it before music (the reply speaks first, then music plays). Classifier uses positive evidence only: UUID runs from OpenClaw steer-mode self-fire, cron fires, and heartbeats are NOT `channel_run` and DO speak on the device.

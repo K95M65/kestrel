@@ -24,7 +24,7 @@ on. Swappable — and where Autonomous's differentiated value (the default brain
 character) lives. Its **tools** — how it reaches beyond the device — are **MCP connectors**
 (`runtimes/*/mcp.go`, synced across a switch by `system/agent`) and the **CLI** the LLM calls
 directly; skills are the device's own abilities through the HAL, tools are external.
-*(`runtimes/{openclaw,hermes,picoclaw,codex,claudecode}`)*
+*(`runtimes/{openclaw,hermes,picoclaw,codex,claudecode,opencode}`)*
 
 **HAL — Capabilities** — the frozen, versioned interface, 12 capabilities: `audio`, `vision`,
 `sensing`, `presence`, `motion`, `light`, `display`, `expression`, `media`, `connectivity`,

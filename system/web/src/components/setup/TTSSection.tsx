@@ -32,7 +32,7 @@ export function TTSSection({
           onChange={(e) => setTtsProvider(e.target.value)}
           style={{ ...INPUT_STYLE, cursor: "pointer" }}
         >
-          {(ttsProviders.length > 0 ? ttsProviders : ["openai"]).map((p) => (
+          {(ttsProviders.length > 0 ? ttsProviders : ["elevenlabs"]).map((p) => (
             <option key={p} value={p}>{p}</option>
           ))}
         </select>
@@ -47,7 +47,7 @@ export function TTSSection({
           onChange={(e) => setTtsVoice(e.target.value)}
           style={{ ...INPUT_STYLE, cursor: "pointer" }}
         >
-          {(ttsVoices.length > 0 ? ttsVoices : ["alloy"]).map((v) => (
+          {(ttsVoices.length > 0 ? ttsVoices : ["Rachel"]).map((v) => (
             <option key={v} value={v}>{v}</option>
           ))}
         </select>

@@ -20,9 +20,22 @@ func init() {
 	runtimereg.RegisterVersion(domain.AgentRuntimeOpenClaw, GetOpenClawVersion)
 }
 
-// openclawVersionProbeTimeout caps the one-shot `openclaw --version` probe so a
-// wedged CLI can't stall startup.
-const openclawVersionProbeTimeout = 5 * time.Second
+// openclawVersionProbeTimeout caps a single `openclaw --version` probe. OpenClaw
+// is a Node CLI whose cold-start (node bootstrap + bundle load) can exceed a few
+// seconds when the box is busy right after boot — a 5s cap killed the probe and
+// left the version blank for the whole process lifetime. Kept generous so a slow
+// cold start still resolves.
+const openclawVersionProbeTimeout = 20 * time.Second
+
+// openclawVersionProbeRetries bounds how long PopulateOpenClawVersion keeps
+// retrying a killed/empty probe. The one-shot probe used to give up after the
+// first boot-time timeout, so the Overview card showed no Agent version until the
+// next os-server restart. Retry with backoff so a transient cold-start slowdown
+// self-heals; a warm probe is ~100ms, so successful runs return on the first try.
+const openclawVersionProbeRetries = 6
+
+// openclawVersionProbeBackoff is the wait between failed probe attempts.
+const openclawVersionProbeBackoff = 10 * time.Second
 
 // openclawSemverRe captures the first semver-like token in `openclaw --version`
 // output (e.g. "OpenClaw 2026.5.27 (27ae826)" → "2026.5.27"). Mirrors the regex
@@ -49,27 +62,46 @@ func GetOpenClawVersion() string {
 	return ""
 }
 
-// PopulateOpenClawVersion shells out to `openclaw --version` with a short timeout
-// and stores the normalized semver in openClawVersion. Empty result when openclaw
-// is not on PATH or the command fails — the Status endpoint then returns "" and the
-// UI renders nothing for that field.
+// PopulateOpenClawVersion shells out to `openclaw --version`, normalizes the
+// semver, and stores it in openClawVersion. Retries on a killed/empty probe
+// (openclawVersionProbeRetries) so a boot-time cold-start slowdown self-heals
+// instead of leaving the Overview card blank until the next restart. Runs in a
+// startup goroutine, so blocking across retries is fine. Once a non-empty version
+// is stored it stops early — the CLI version doesn't change while the process runs.
 func PopulateOpenClawVersion() {
+	for attempt := 0; ; attempt++ {
+		if v, ok := probeOpenClawVersion(); ok {
+			openClawVersion.Store(&v)
+			return
+		}
+		if attempt >= openclawVersionProbeRetries {
+			slog.Warn("read openclaw version gave up after retries (expected if not on openclaw backend)", "component", "openclaw-probe", "attempts", attempt+1)
+			return
+		}
+		time.Sleep(openclawVersionProbeBackoff)
+	}
+}
+
+// probeOpenClawVersion runs a single `openclaw --version` probe and returns the
+// normalized semver. ok is false when the command fails/times out or the output
+// carries no semver token, signalling PopulateOpenClawVersion to retry.
+func probeOpenClawVersion() (version string, ok bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), openclawVersionProbeTimeout)
 	defer cancel()
 	out, err := system.Run(ctx, "openclaw", "--version")
 	if err != nil {
 		slog.Warn("read openclaw version failed (expected if not on openclaw backend)", "component", "openclaw-probe", "error", err)
-		return
+		return "", false
 	}
 	line := strings.TrimSpace(strings.TrimRight(string(out), "\r\n"))
 	if i := strings.IndexByte(line, '\n'); i >= 0 {
 		line = strings.TrimSpace(line[:i])
 	}
-	v := ""
-	if loc := openclawSemverRe.FindStringSubmatch(line); len(loc) > 1 {
-		v = loc[1]
+	loc := openclawSemverRe.FindStringSubmatch(line)
+	if len(loc) <= 1 {
+		return "", false
 	}
-	openClawVersion.Store(&v)
+	return loc[1], true
 }
 
 // RuntimeInfo carries the installed openclaw runtime's parsed version. Pass it

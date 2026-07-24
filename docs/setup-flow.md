@@ -227,6 +227,139 @@ Until the early `lan_ip` poll lands, the manual copy link falls back to
   remove the constraint, but the target hardware has a single Wi-Fi radio — so
   the "learn the IP before AP dies, or via mDNS after" model is inherent.
 
+### Failed joins (wrong Wi-Fi password)
+
+A wrong Wi-Fi password is the most common setup failure, and it exposes the same
+single-radio constraint from the other side: the operator never learns why.
+
+**Why the backend's verdict goes unheard.** `SetupNetwork` polls for up to 60s
+before returning an error, but the AP tears down ~2s after submit. From that
+moment the phase poll can no longer reach `192.168.100.1`, and the operator's
+machine has usually auto-rejoined its home Wi-Fi. The backend sets
+`phase="failed"` at t≈62s and `handler.Setup` calls `SwitchToAPMode()`, which
+restores the hotspot ~5-8s later — but by then nothing in the browser is
+listening. Before the fix below, the page spun on "joining Wi-Fi…" forever.
+
+Three mechanisms now cover it:
+
+1. **Client-side join timeout** (`useSetupStatusPolling.ts`,
+   `JOIN_TIMEOUT_SEC = 80`). When the join is still `connecting`, the AP has
+   been unreachable (`apLost`), and no `lan_ip` was ever captured, the FE
+   declares failure itself. 80s sits past the backend's 60s network timeout plus
+   the AP restore, so a merely-slow join is never called dead. The message is
+   hedged ("couldn't be reached… usually the Wi-Fi password was wrong, or the
+   network is 5GHz-only") because the real reason never arrived — asserting a
+   specific cause would be guessing.
+
+2. **Failure adoption on mount** (`useSetupController.ts`). `setupState` lives
+   in os-server's memory and survives the AP→STA→AP bounce, and
+   `GET /api/device/setup/status` is public (a device that failed setup never
+   wrote an admin hash, so an admin-gated endpoint would be unreadable). The
+   controller reads it once on mount; if the last attempt `failed`, it drops
+   straight into the failure screen carrying the backend's **real** error
+   message. This is what rescues a reopened popup, a closed tab, or a manual
+   reload — all of which previously mounted a blank Wi-Fi form with no hint that
+   anything had gone wrong. Only `failed` is adopted; a stale `connecting` would
+   hijack the tab into a progress screen it cannot drive.
+
+   **Adoption also clears the failed attempt's state.** Rejoining the device AP
+   after a failure lands the operator on a genuinely clean wizard: `ssid`,
+   `password`, `adminPassword`, `error`, `stepError` and `setupLanIP` are reset
+   and the wizard returns to the Wi-Fi step. A Wi-Fi failure bails before
+   `device.Setup` writes any config, so none of it was ever persisted
+   device-side — keeping it would only let the operator resubmit the credentials
+   that just failed without noticing. The persisted params snapshot is dropped
+   too (`clearStoredSetupParams()`): `sessionStorage` is per-tab but **survives
+   F5**, so an operator who leaves the tab open, rejoins the AP and reloads
+   would otherwise rehydrate the failed attempt's query string into a form that
+   looks clean but still ships the old `llm_api_key`. Clearing at mount (rather
+   than reloading immediately) keeps the current document usable for the
+   in-place "Back to Wi-Fi" retry while guaranteeing the *next* load starts from
+   nothing.
+
+   An adopted failure sets its own `adoptedFailure` flag rather than reusing
+   `setupWorking`. The two mean different things: `setupWorking` says *this tab
+   has a join in flight* and starts the 600ms phase poll, the elapsed ticker and
+   the bridge's connecting/failed emits. Raising it for a join we merely read
+   about would restart the poll against a backend still reporting
+   `phase="failed"` — nothing resets `setupState` to `idle` — so the poll would
+   re-assert the failure every 600ms and bounce the operator out of the Wi-Fi
+   form each time they pressed "Back to Wi-Fi". The screen renders on
+   `showProgressScreen = setupWorking || adoptedFailure`; the retry action
+   clears both.
+
+   **Stale-verdict guard in the poll.** `handler.Setup` answers `200`
+   immediately but defers `device.Setup` by 2s, and nothing sets `setupState`
+   back to `idle` in between — so for ~2s after a resubmit the backend still
+   reports the *previous* attempt's `phase="failed"`. The poll therefore ignores
+   terminal verdicts until it has seen `phase="connecting"` confirming the
+   current run started; without that guard the first poll after a retry would
+   throw the operator straight back to the failure screen.
+
+3. **Retry that actually validates.** `mergeMissingFromConfig` is no longer
+   gated on `SetUpCompleted`. A Wi-Fi failure bails before `device.Setup` writes
+   any config, so the device stays `SetUpCompleted=false` — while the browser
+   may have lost the pushed credentials (sessionStorage dies with the tab; a
+   reopened popup without the original query string comes back empty). The gate
+   meant retry failed validation on `LLMAPIKey` and showed *"Missing: AI Brain
+   API key"* to someone who had only mistyped a Wi-Fi password. The merge only
+   fills empty slots from the device's own config, so it can neither override
+   what the operator sent nor expose anything new.
+
+**Recovery UI.** The failure screen names the hotspot SSID to rejoin
+(`<type>-<suffix>`, the same string as the mDNS host — `setup-ap.sh` derives
+both from the hardware ID), since a failed join leaves the operator on their
+home network and neither button can reach the device until they switch back. Two
+actions:
+
+- **Back to Wi-Fi** — in-place retry. Clears the password that just failed
+  (so it isn't resubmitted unchanged) but keeps the SSID and this document,
+  including the params it was opened with. The right default for a typo.
+- **Start over** — hard reset (`resetSetupSession()`): clears the
+  sessionStorage params snapshot and **hard-reloads** onto a bare `/setup`,
+  producing exactly the state of a first-ever AP visit. The reload is required,
+  not cosmetic: `useSetupUrlParams` snapshots `INITIAL_SEARCH` at *module load*,
+  so resetting React state alone would leave stale `llm_api_key` / `device_id`
+  live in that module and the "clean" form would still submit them. Emits
+  `start_over_clicked` first so a parent that wants its pushed config preserved
+  can reopen the popup with a fresh URL. The theme preference is deliberately
+  kept — it's a user choice unrelated to the attempt.
+
+**Per-device: skipping the failure screen.** `intern-v2` does not show the
+failure screen at all. A failed join drops the operator straight back on the
+Wi-Fi form — the same end state as pressing "Back to Wi-Fi" — with no error
+banner, checklist or rejoin hint. This is a deliberate product decision for that
+device class; `lamp`, `reachy-mini` and `unitree-go2w` keep the full screen.
+
+The class comes from `mac` (`"<device_type>-<4 hex>"`, e.g. `intern-v2-d94b`),
+stripped of its hex suffix — never from a URL param, which the operator's
+browser must not be able to influence (see `DeviceTypeOrDefault`, which treats
+`DEVICE_TYPE` as immutable hardware identity). Both routes into a failure are
+covered:
+
+- **Timeout in this tab** — `showProgressScreen` suppresses the screen and an
+  effect calls the same `retryFromFailure()` the button uses, so the two paths
+  cannot drift.
+- **Adoption on mount** — the mount effect reads the class from the *same*
+  `setup/status` response that carried the verdict, rather than waiting on the
+  `mac` state (filled by a separate request), which would otherwise let the
+  screen paint for a frame before being suppressed. It clears the attempt's
+  state as usual but never raises the failure flags.
+
+Both still emit `setup_failed` on the bridge. The screen is hidden from the
+*operator*, not from the companion app — the adoption path fires the emit
+directly, since the effect that normally sends it is gated on `setupWorking`,
+which that path deliberately never raises.
+
+**Not covered.** The device's own reason is still coarse: `SetupNetwork` only
+polls `CheckInternet()` + SSID match, so a wrong password, a 5GHz-only network,
+and a router rejecting the client all surface as
+`"no internet or SSID did not match within 60s"` after a full 60s.
+`wpa_supplicant` knows the difference immediately (`4WAY_HANDSHAKE_FAILED`,
+`WRONG_KEY`); reading `wpa_cli status` in the poll loop would fail in ~5s with
+an exact cause — while the AP is still alive, so the phase poll would deliver it
+and the timeout above would become a rare fallback rather than the primary path.
+
 ### Marking the Wi-Fi step done after the reload
 
 The auto-redirect lands a **full page reload on the new LAN-IP origin**
@@ -340,6 +473,7 @@ Every message is a flat JSON envelope:
 | `setup_connected` | Device online + reachable | `mdns_host`, `lan_ip` |
 | `setup_failed` | WiFi join failed | `message` |
 | `retry_clicked` | "Back to Wi-Fi" after a failure | — |
+| `start_over_clicked` | "Start over" after a failure — popup is about to hard-reload and **drop every param it was opened with**; reopen with a fresh URL if the pushed config must survive | — |
 | `continue_clicked` | "Continue setup →" clicked | `mdns_host` |
 | `monitor_clicked` | "Go to monitor →" clicked | — |
 
