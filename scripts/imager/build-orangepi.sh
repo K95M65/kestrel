@@ -489,9 +489,25 @@ if [ "\${DEVICE_TYPE}" = "intern-v2" ] || [ "\${DEVICE_TYPE}" = "lamp" ]; then
   # running the installer), not \`curl\`, in the \`curl … | bash\` pipeline —
   # env vars only bind to the command they prefix.
   OPENCODE_VERSION="\${OPENCODE_VERSION:-1.18.4}"
+  OPENCODE_BIN=/usr/local/bin/opencode
   retry "curl -fsSL https://opencode.ai/install | OPENCODE_INSTALL_DIR=/usr/local/bin bash -s -- --version '\${OPENCODE_VERSION#v}'" 3 10
-  opencode --version || true
-  opencode --version 2>/dev/null | tr -d '[:space:]' > /tmp/baked-opencode-version || echo "unknown" > /tmp/baked-opencode-version
+  # Belt-and-suspenders, same as install.sh: the official installer has a
+  # history of ignoring OPENCODE_INSTALL_DIR and dropping the binary at its
+  # own default (~/.opencode/bin) while only patching PATH into ~/.bashrc —
+  # which a non-interactive/non-login shell like this one never sources. Skip
+  # only if the installer actually respected OPENCODE_INSTALL_DIR this time.
+  if [ ! -x "\$OPENCODE_BIN" ]; then
+    echo "[stage] \$OPENCODE_BIN missing — locating installer output"
+    SRC="\$(command -v opencode 2>/dev/null || true)"
+    [ -x "\$SRC" ] || SRC="/root/.opencode/bin/opencode"
+    if [ -x "\$SRC" ]; then
+      install -m 0755 "\$SRC" "\$OPENCODE_BIN"
+      echo "[stage] copied \$SRC → \$OPENCODE_BIN"
+    fi
+  fi
+  "\$OPENCODE_BIN" --version || true
+  "\$OPENCODE_BIN" --version 2>/dev/null | tr -d '[:space:]' > /tmp/baked-opencode-version
+  [ -s /tmp/baked-opencode-version ] || echo "unknown" > /tmp/baked-opencode-version
 else
   echo "unbaked" > /tmp/baked-codex-version
   echo "unbaked" > /tmp/baked-claudecode-version
