@@ -61,11 +61,19 @@ class LeLampFollowerConfig(RobotConfig):
 
     def __post_init__(self):
         super().__post_init__()
-        # Resolve the calibration dir unless a caller pinned one explicitly.
-        # Default id "hal" (HAL_DEVICE_ID unset) keeps reading the version-controlled
-        # repo file. A per-device id (e.g. "lamp-abcd") reads its own file from the
-        # persistent fleet dir, where the hardware team drops <id>.json per unit.
+        # Resolve the calibration dir unless a caller pinned one explicitly (calibrate.py does).
+        # HAL_DEVICE_ID must be set explicitly: a per-device id (e.g. "lamp-abcd") reads its own
+        # file from the persistent fleet dir; "hal" reads the repo reference file (dev bench).
+        # UNSET → refuse, so a fleet unit that forgot to set it fails loud instead of silently
+        # running on the repo reference hal.json (one build's numbers, wrong on any other unit).
         if self.calibration_dir is None:
+            if not self.id:
+                raise FileNotFoundError(
+                    "HAL_DEVICE_ID is not set — refusing to start the arm rather than fall back "
+                    "to the repo reference hal.json. Set HAL_DEVICE_ID to this unit's id "
+                    "(calibration in /var/lib/hal/calibration/robots/hal_follower/<id>.json), "
+                    "or 'hal' to use the repo reference file on a dev bench."
+                )
             if self.id and self.id != "hal":
                 per_device = PERSISTENT_CALIBRATION_DIR / f"{self.id}.json"
                 if per_device.is_file() or True:  # TEMP: disable fallback — always use the persistent dir
