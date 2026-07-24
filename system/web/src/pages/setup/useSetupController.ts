@@ -52,7 +52,7 @@ export function useSetupController(mode: SetupMode) {
   const devicePushedConfig = mode === "initial" && !!urlParams.llmApiKey;
 
   // Language + Lamp's Voice are gated behind ?debug=true: regular operators
-  // get the auto-detected language and the "alloy"/openai voice defaults,
+  // get the auto-detected language and the "Rachel"/elevenlabs voice defaults,
   // which still flow through submit because the sections stay in the DOM
   // (display:none) — same pattern as STT/MQTT below.
   const debug = searchParams.get("debug") === "true";
@@ -186,8 +186,8 @@ export function useSetupController(mode: SetupMode) {
     if (loc.startsWith("en")) return "en";
     return "en";
   });
-  const [ttsProvider, setTtsProvider] = useState(urlParams.ttsProvider || "openai");
-  const [ttsVoice, setTtsVoice] = useState(urlParams.ttsVoice || "alloy");
+  const [ttsProvider, setTtsProvider] = useState(urlParams.ttsProvider || "elevenlabs");
+  const [ttsVoice, setTtsVoice] = useState(urlParams.ttsVoice || "Rachel");
   const { ttsProviders, ttsVoices } = useTTSCatalog({
     ttsProvider, sttLanguage, ttsVoice,
     urlProvider: urlParams.ttsProvider,
