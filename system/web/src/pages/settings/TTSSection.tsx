@@ -48,7 +48,7 @@ export function TTSSection({
             fontSize: 12.5, color: C.text, outline: "none", cursor: "pointer",
           }}
         >
-          {(ttsProviders.length > 0 ? ttsProviders : ["openai"]).map((p) => (
+          {(ttsProviders.length > 0 ? ttsProviders : ["elevenlabs"]).map((p) => (
             <option key={p} value={p}>{p}</option>
           ))}
         </select>
@@ -68,7 +68,7 @@ export function TTSSection({
             fontSize: 12.5, color: C.text, outline: "none", cursor: "pointer",
           }}
         >
-          {(ttsVoices.length > 0 ? ttsVoices : ["alloy"]).map((v) => (
+          {(ttsVoices.length > 0 ? ttsVoices : ["Rachel"]).map((v) => (
             <option key={v} value={v}>{v}</option>
           ))}
         </select>
