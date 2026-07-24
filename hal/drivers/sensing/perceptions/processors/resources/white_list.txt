@@ -2,16 +2,17 @@ drinking
 drinking beer
 drinking shots
 tasting beer
-tasting food
 opening bottle
-making tea
+celebrating
+clapping
+applauding
 stretching arm
 stretching leg
+tasting food
 dining
 eating burger
 eating cake
 eating carrots
-eating chips
 eating doughnuts
 eating hotdog
 eating ice cream
@@ -28,12 +29,3 @@ laughing
 crying
 yawning
 singing
-applauding
-clapping
-celebrating
-sneezing
-sniffing
-hugging
-kissing
-headbanging
-sticking tongue out

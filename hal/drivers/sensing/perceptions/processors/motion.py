@@ -115,18 +115,15 @@ ACTIVITY_GROUP: dict[str, str] = {
     "tasting beer": "drink",
     "opening bottle": "drink",
     # "making tea": "drink",
-    # break — reset break timer (stretching, movement, social)
+    # break — reset break timer (stretching, movement)
     "stretching arm": "break",
     "stretching leg": "break",
-    # "applauding": "break",
-    # "clapping": "break",
-    # "celebrating": "break",
-    # "sneezing": "break",
-    # "sniffing": "break",
-    # "hugging": "break",
-    # "kissing": "break",
-    # "headbanging": "break",
-    # "sticking tongue out": "break",
+    # sneezing/sniffing/hugging/kissing/headbanging/sticking-tongue-out dropped:
+    # reflex/social noise, not real desk breaks, and magnet-prone.
+    # celebrate — upbeat reaction (collapses to bucket name, like drink/break)
+    "celebrating": "celebrate",
+    "clapping": "celebrate",
+    "applauding": "celebrate",
     # eat — meal signal (raw labels kept for phrasing + per-food UI icons)
     "tasting food": "eat",
     "dining": "eat",
@@ -145,6 +142,13 @@ ACTIVITY_GROUP: dict[str, str] = {
     "texting": "sedentary",
     "reading book": "sedentary",
     "reading newspaper": "sedentary",
+    # reading book + reading newspaper both emit the generic label "reading"
+    # (see _RAW_LABEL_EMIT_REMAP): a phone misdetected as "reading newspaper" is
+    # still truthfully "reading", so the collapse neutralises the wording error
+    # while keeping the sedentary signal. "reading" is a synthetic emit label
+    # (never returned by the model), so it needs its own bucket entry for the
+    # sedentary streak / posture-window / cooldown lookups below.
+    "reading": "sedentary",
     "drawing": "sedentary",
     "playing controller": "sedentary",
     # emotional — always speak, log mood
@@ -152,6 +156,15 @@ ACTIVITY_GROUP: dict[str, str] = {
     "crying": "emotional",
     "yawning": "emotional",
     "singing": "emotional",
+}
+
+# Some raw Kinetics labels are folded to a coarser spoken label at emit time
+# while still routing through their real bucket. reading book / reading
+# newspaper both surface as "reading" so the agent never asserts the wrong
+# medium (book vs paper vs a phone misread as newspaper).
+_RAW_LABEL_EMIT_REMAP: dict[str, str] = {
+    "reading book": "reading",
+    "reading newspaper": "reading",
 }
 
 
@@ -830,7 +843,7 @@ class MotionPerception(Perception[cv2.typing.MatLike]):
                 # here so motion.activity stays purely about physical actions.
                 continue
             if group in ("sedentary", "eat"):
-                labels.add(a)
+                labels.add(_RAW_LABEL_EMIT_REMAP.get(a, a))
             else:
                 labels.add(group)
 
