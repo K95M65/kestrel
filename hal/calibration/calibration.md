@@ -20,6 +20,10 @@ configs therefore resolve `calibration_dir` in `__post_init__` two ways, keyed o
   `HAL_CALIBRATION_DIR`). The hardware team drops each unit's `<id>.json` there at
   provisioning; it lives **outside the OTA tree** (`/opt/hal` is overwritten every
   update) so calibration survives updates.
+  - **Fallback:** if `HAL_DEVICE_ID` is set but that `<id>.json` is **missing**, the
+    config logs a warning and falls back to the repo `hal.json` (it drops the effective
+    id to `"hal"`), so the arm never starts uncalibrated — it runs on the shared
+    calibration until the per-device file is in place.
 
 > **Why override lerobot's default at all:** lerobot's per-user path
 > (`~/.cache/huggingface/lerobot/calibration`) breaks when the service user differs
@@ -41,10 +45,19 @@ hal/calibration/
 On a deployed device the repo copy ships under `/opt/hal/calibration/...`; a per-device
 unit reads `/var/lib/hal/calibration/robots/hal_follower/<id>.json` instead.
 
-> **Provisioning order matters:** there is **no fallback** to `hal.json`. If a device
-> sets `HAL_DEVICE_ID=<id>` before its `<id>.json` exists in the persistent dir,
-> lerobot finds no file and the servos start **uncalibrated** (wrong ranges, possible
-> over-travel). Place `<id>.json` first, then set `HAL_DEVICE_ID` and restart HAL.
+> **Provisioning order:** ideally place `<id>.json` in the persistent dir first, then
+> set `HAL_DEVICE_ID` and restart HAL. If the order is reversed (env set, file not yet
+> there), the arm does **not** start uncalibrated — it falls back to the repo `hal.json`
+> and logs a warning; once the per-device file is dropped in and HAL restarts, it picks
+> up the unit's own calibration.
+>
+> **Caveat for on-device calibration:** because a missing per-device file falls back to
+> id `"hal"`, running `hal.calibrate --id <device>` while the file is absent would
+> **write to the repo `hal.json`**, not the per-device file. In the fleet flow the
+> hardware team supplies `<id>.json` out-of-band, so this doesn't arise; if you do
+> calibrate on-device for a brand-new id, create the persistent
+> `/var/lib/hal/calibration/robots/hal_follower/<id>.json` first (an empty `{}` is
+> enough to defeat the fallback) so the write lands in the persistent dir.
 
 Each JSON contains per-servo values:
 

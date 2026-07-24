@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -66,6 +67,18 @@ class LeLampFollowerConfig(RobotConfig):
         # persistent fleet dir, where the hardware team drops <id>.json per unit.
         if self.calibration_dir is None:
             if self.id and self.id != "hal":
-                self.calibration_dir = PERSISTENT_CALIBRATION_DIR
+                per_device = PERSISTENT_CALIBRATION_DIR / f"{self.id}.json"
+                if per_device.is_file():
+                    self.calibration_dir = PERSISTENT_CALIBRATION_DIR
+                else:
+                    # Per-device file not provisioned yet: fall back to the shared
+                    # repo hal.json so the arm never starts uncalibrated. lerobot keys
+                    # the filename on self.id, so drop id back to "hal" to load it.
+                    logging.getLogger(__name__).warning(
+                        "calibration: %s not found; falling back to repo hal.json",
+                        per_device,
+                    )
+                    self.calibration_dir = CALIBRATION_DIR
+                    self.id = "hal"
             else:
                 self.calibration_dir = CALIBRATION_DIR
