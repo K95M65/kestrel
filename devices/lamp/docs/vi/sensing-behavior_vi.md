@@ -139,7 +139,7 @@ HAL stream từng frame camera lên perception-service `/api/dl/pose-estimation/
 
 ### Tumbling window (lúc nào summary được inject)
 
-Window mở khi **motion flush đầu tiên có label sedentary** — `MotionPerception` gọi `pose.start_window()` ngay lúc thấy bất kỳ label sedentary nào (`using computer`, `writing`, `reading book`, …). Pose samples đã đến trước thời điểm đó (vd user đang đứng/stretching nhưng vẫn present) bị clear, để bad_ratio chỉ phản ánh giai đoạn ngồi. Sau khi mở, window chạy **chỉ theo thời gian**: stay open đủ `POSE_WINDOW_DURATION_S` bất kể user có break sedentary giữa chừng — stretch break không stop clock, chỉ làm bad_ratio honest hơn. Default **600 s = 10 phút** test; đổi 3600 cho production — 1 biến duy nhất, không có nhánh code test/prod.
+Window mở khi **motion flush đầu tiên có label sedentary** — `MotionPerception` gọi `pose.start_window()` ngay lúc thấy bất kỳ label sedentary nào (`using computer`, `writing`, `reading`, …). Pose samples đã đến trước thời điểm đó (vd user đang đứng/stretching nhưng vẫn present) bị clear, để bad_ratio chỉ phản ánh giai đoạn ngồi. Sau khi mở, window chạy **chỉ theo thời gian**: stay open đủ `POSE_WINDOW_DURATION_S` bất kể user có break sedentary giữa chừng — stretch break không stop clock, chỉ làm bad_ratio honest hơn. Default **600 s = 10 phút** test; đổi 3600 cho production — 1 biến duy nhất, không có nhánh code test/prod.
 
 Khi window complete, `MotionPerception` ra đúng 1 quyết định và **luôn gọi `reset_window()`** — không carry-over samples cũ. Nếu user vẫn sedentary ở flush kế tiếp, `start_window()` mở cycle mới ngay; nếu không, window stay unanchored đến lần sedentary tiếp theo. Detection miss (perception-service không trả `ergo`, bị che, low confidence) không kéo dài window; chỉ làm giảm số sample trong window.
 
@@ -313,13 +313,13 @@ Wellbeing hoạt động **event-driven**. **KHÔNG còn cron wellbeing** nào. 
 | Action | Do ai ghi | Mục đích |
 |---|---|---|
 | `drink`, `break` | **HAL** (`motion.py` POST `/api/wellbeing/log` ngay trước khi fire `motion.activity`) | Reset point cho nudge timer tương ứng |
-| `using computer`, `writing`, `texting`, `reading book`, `reading newspaper`, `drawing`, `playing controller` | **HAL** (`motion.py`, cùng đường đó) | Timeline + nudge phrasing. **KHÔNG** phải reset point. |
+| `using computer`, `writing`, `texting`, `reading`, `drawing`, `playing controller` | **HAL** (`motion.py`, cùng đường đó) | Timeline + nudge phrasing. **KHÔNG** phải reset point. (`reading book` + `reading newspaper` đều gộp về label chung `reading`.) |
 | `enter`, `leave` | **HAL** (`FaceRecognizer._post_wellbeing`, gọi từ `_check_impl` khi fresh detection và `_check_leaves` khi forget hết) | Session boundary — mỗi friend có timeline riêng; stranger gộp chung vào 1 timeline `"unknown"` duy nhất qua flag `_any_stranger_logged` (1 enter khi stranger đầu xuất hiện, 1 leave khi stranger cuối cùng forget). |
 | `nudge_hydration`, `nudge_break` | Agent (sau khi nhắc) | Ghi lại thời điểm Lamp nhắc — hiện lên timeline. Chỉ agent biết khi nào nó thực sự nói, nên chỉ agent ghi entry này. |
 
 **Dedup nằm ở 2 nơi.**
 
-*Activity dedup (window 5 phút).* `hal/drivers/sensing/perceptions/motion.py` giữ `_last_sent_key = (current_user, frozenset(labels))` và `_last_sent_ts`, trong đó `labels` khớp với outbound message (bucket names cho drink/break, raw Kinetics labels cho sedentary). Trước khi gửi `motion.activity` **và trước khi POST các row tới `/api/wellbeing/log`**, nếu key không đổi **và** khoảng cách từ lần gửi cuối chưa vượt `MOTION_DEDUP_WINDOW_S = 300` giây (5 phút) → drop cả chu kỳ. Nên `eating burger → eating cake` gộp thành cùng key `break` và bị drop, còn `writing → drawing` lật key (sedentary giữ raw) nên pass qua.
+*Activity dedup (window 5 phút).* `hal/drivers/sensing/perceptions/motion.py` giữ `_last_sent_key = (current_user, frozenset(labels))` và `_last_sent_ts`, trong đó `labels` khớp với outbound message (bucket names cho drink/break/celebrate, raw Kinetics labels cho sedentary). Trước khi gửi `motion.activity` **và trước khi POST các row tới `/api/wellbeing/log`**, nếu key không đổi **và** khoảng cách từ lần gửi cuối chưa vượt `MOTION_DEDUP_WINDOW_S = 300` giây (5 phút) → drop cả chu kỳ. Nên `eating burger → eating cake` gộp thành cùng key `break` và bị drop, còn `writing → drawing` lật key (sedentary giữ raw) nên pass qua.
 
 - Đổi user (owner→owner, owner→unknown, unknown→owner) lật key ngay → event pass qua.
 - Stranger khác nhau (`stranger_46` → `stranger_54`) đều collapse về `"unknown"` qua `FaceRecognizer.current_user()` → đổi stranger không phá dedup.
@@ -526,7 +526,7 @@ Khi user đang ở trạng thái PRESENT và camera phát hiện chuyển độn
 
 `MotionPerception` buffer snapshots và action names, flush theo interval (`MOTION_FLUSH_S`). Khi flush, check `PresenceService.state`:
 - **PRESENT** → gửi 1 event `motion.activity` duy nhất. Format message:
-  - `Activity detected: <labels>.` — HAL đã categorize: physical actions gộp thành bucket (`drink`, `break`); sedentary activities giữ raw Kinetics label (`using computer`, `writing`, `texting`, `reading book`, `reading newspaper`, `drawing`, `playing controller`). Agent log từng label nguyên văn — không map gì thêm ở phía agent.
+  - `Activity detected: <labels>.` — HAL đã categorize: physical actions gộp thành bucket (`drink`, `break`, `celebrate`); sedentary activities giữ raw Kinetics label (`using computer`, `writing`, `texting`, `reading`, `drawing`, `playing controller`). Một ngoại lệ của "giữ raw label": `reading book` + `reading newspaper` đều gộp về một label chung `reading`. Agent log từng label nguyên văn — không map gì thêm ở phía agent.
   - Emotional X3D actions (`laughing`, `crying`, `yawning`, `singing`) **cố ý bị drop** ở đây. Một event type riêng `motion.emotional` sẽ được thêm sau; cho đến khi đó, detection emotional bị bỏ qua im lặng. `motion.activity` giữ thuần vật lý.
   - Không gửi ảnh — tiết kiệm tokens. **Không** yêu cầu nhận diện friend.
 - **Còn lại** → event bị **skip** (log, không gửi). Lamp chỉ expect `motion.activity` — plain `motion` từ X3D/pose không có handler và lãng phí agent tokens.
@@ -535,7 +535,7 @@ Ví dụ message:
 ```
 Activity detected: drink, using computer.
 Activity detected: break.
-Activity detected: writing, reading book.
+Activity detected: writing, reading.
 ```
 
 ### Flow wellbeing nudge (event-driven)
@@ -583,7 +583,7 @@ Lamp nhận diện trạng thái cảm xúc **của người dùng** qua ba kên
 
 1. **Biểu cảm khuôn mặt** (chính) — event `emotion.detected` từ `hal/drivers/sensing/perceptions/emotion.py`. Dùng emotion classifier chuyên dụng chạy trên perception-service tự host qua WebSocket. Nhận diện 7 cảm xúc: Angry, Disgust, Fear, Happy, Sad, Surprise, Neutral. Ngưỡng confidence cấu hình được (`EMOTION_CONFIDENCE_THRESHOLD`).
 2. **Cảm xúc giọng nói** (phụ) — event `speech_emotion.detected` từ `hal/drivers/voice/speech_emotion/`. Chạy ở cuối mỗi phiên STT đã nhận diện được speaker, cùng WAV bytes đã dùng cho speaker recognition. Dùng `emotion2vec_plus_large` trên perception-service qua HTTP. Xem [Speech Emotion Recognition](../../../../docs/speech-emotion.md) cho pipeline đầy đủ.
-3. **Body action** (cấp 3) — emotional X3D actions từ action recognition **cố ý bị loại** khỏi `motion.activity` (giờ thuần vật lý: sedentary/drink/break). Một event type `motion.emotional` riêng đang được lên kế hoạch.
+3. **Body action** (cấp 3) — emotional X3D actions từ action recognition **cố ý bị loại** khỏi `motion.activity` (giờ thuần vật lý: sedentary/drink/break/celebrate). Một event type `motion.emotional` riêng đang được lên kế hoạch.
 
 > **Đừng nhầm lẫn với Emotion Expression** (`emotion/SKILL.md`) — cái đó điều khiển cảm xúc đầu ra của Lamp (servo + LED + eyes). Emotion Detection là cảm nhận *user* đang cảm thấy gì; Emotion Expression là cách *Lamp* thể hiện cảm xúc của chính nó.
 
