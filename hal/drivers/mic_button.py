@@ -119,6 +119,14 @@ class MicButtonHandler:
         # _on_edge fire. Feeds the [mic-switch-trace] logs so operators can
         # tell "switch was slow" from "internal ops were slow" at a glance.
         self._last_edge_ts: float = 0.0
+        # Last pin level we actually applied to app_state. Set at boot-sync
+        # and every reconcile. The watchdog compares the CURRENT pin against
+        # this — a divergence means the lgpio callback thread missed an edge
+        # (silent stall) and we need to catch up. WITHOUT this compare the
+        # watchdog would blindly re-drive state to match the pin every 30s,
+        # which reverts software-only mutes (web UI / voice command) because
+        # the pin never moved. None until start() populates it.
+        self._last_known_level: int | None = None
 
     def start(self):
         dev = _resolve_device_type()
@@ -178,6 +186,7 @@ class MicButtonHandler:
         # a ~hundreds-of-ms window where the mic is hot despite the hardware
         # kill switch being off. The route call is idempotent and cheap
         # (~tens of ms at most) so blocking start() here is worth it.
+        self._last_known_level = initial_level
         with self._apply_lock:
             self._apply_state_locked(initial_level == _LEVEL_MUTED)
 
@@ -232,18 +241,41 @@ class MicButtonHandler:
                 (t_lock_got - t_lock_want) * 1000,
             )
             self._apply_state_locked(current_level == _LEVEL_MUTED)
+            self._last_known_level = current_level
             logger.info(
                 "[mic-switch-trace] APPLY_STATE done (total_edge→done=%.0fms)",
                 (time.monotonic() - self._last_edge_ts) * 1000 if self._last_edge_ts else -1,
             )
 
     def _watchdog_loop(self):
+        """Periodic pin re-read to catch missed edges (lgpio callback thread
+        has been observed to stall silently under sustained edge storms).
+        Compares the CURRENT pin against the last level we applied — reconciles
+        ONLY on a divergence. Blindly forcing reconcile every tick would revert
+        software-only mutes (web UI, voice command, MQTT) because the physical
+        pin never moved from its idle position, but our state did — verified
+        2026-07-24: user muted via web, watchdog auto-unmuted 28s later because
+        pin_level=1 while state._mic_muted=True."""
         while True:
             time.sleep(_WATCHDOG_SEC)
             try:
+                current = self._lgpio.gpio_read(self._handle, _MIC_BTN_LINE)
+            except Exception as e:
+                logger.warning("Mic switch watchdog read failed: %s", e)
+                continue
+            if self._last_known_level is None or current == self._last_known_level:
+                # Pin hasn't moved since last apply — callback (if fired) hasn't
+                # missed anything. Software may have mutated state._mic_muted
+                # via another channel; leave it alone.
+                continue
+            logger.warning(
+                "Mic switch watchdog: pin state diverged (pin=%d, last_known=%d) — callback likely stalled, reconciling",
+                current, self._last_known_level,
+            )
+            try:
                 self._reconcile()
             except Exception as e:
-                logger.warning("Mic switch watchdog tick failed: %s", e)
+                logger.warning("Mic switch watchdog reconcile failed: %s", e)
 
     def _paint_listening_after_cue(self):
         """Fire the blue LISTENING pulse after the unmute "I'm listening"
