@@ -114,7 +114,7 @@ ACTIVITY_GROUP: dict[str, str] = {
     "drinking shots": "drink",
     "tasting beer": "drink",
     "opening bottle": "drink",
-    "making tea": "drink",
+    # "making tea": "drink",
     # break — reset break timer (stretching, movement, social)
     "stretching arm": "break",
     "stretching leg": "break",
@@ -133,7 +133,7 @@ ACTIVITY_GROUP: dict[str, str] = {
     "eating burger": "eat",
     "eating cake": "eat",
     "eating carrots": "eat",
-    "eating chips": "eat",
+    # "eating chips": "eat",
     "eating doughnuts": "eat",
     "eating hotdog": "eat",
     "eating ice cream": "eat",
