@@ -51,13 +51,9 @@ unit reads `/var/lib/hal/calibration/robots/hal_follower/<id>.json` instead.
 > and logs a warning; once the per-device file is dropped in and HAL restarts, it picks
 > up the unit's own calibration.
 >
-> **Caveat for on-device calibration:** because a missing per-device file falls back to
-> id `"hal"`, running `hal.calibrate --id <device>` while the file is absent would
-> **write to the repo `hal.json`**, not the per-device file. In the fleet flow the
-> hardware team supplies `<id>.json` out-of-band, so this doesn't arise; if you do
-> calibrate on-device for a brand-new id, create the persistent
-> `/var/lib/hal/calibration/robots/hal_follower/<id>.json` first (an empty `{}` is
-> enough to defeat the fallback) so the write lands in the persistent dir.
+The runtime fallback only affects **reads**. `hal.calibrate` pins the write target
+explicitly (see below), so calibrating on-device with a per-device id always writes to
+the persistent dir, even on the first calibration — no clobbering the shared repo file.
 
 Each JSON contains per-servo values:
 
@@ -91,10 +87,16 @@ sudo systemctl restart hal
 
 ## Run fresh calibration on a Pi
 
-Use this when the arm hardware changes (e.g. after replacing servos). Calibration
-writes back through the same `calibration_dir` resolution as the runtime, so pass the
-`id` the device runs with: `--id hal` writes the repo file, `--id <device>` writes
-`/var/lib/hal/calibration/robots/hal_follower/<id>.json`.
+Use this when the arm hardware changes (e.g. after replacing servos), and as the
+per-unit provisioning step for a new device. Pass the `id` the device runs with:
+
+- `--id hal` → writes the repo file `hal/calibration/robots/hal_follower/hal.json`.
+- `--id <device>` (e.g. `lamp-abcd`) → writes **straight to**
+  `/var/lib/hal/calibration/robots/hal_follower/<id>.json`.
+
+For a per-device id the file lands in its final persistent location directly — **no
+separate copy step**, and it survives OTA. Provisioning a new unit is therefore: set
+`HAL_DEVICE_ID=<id>`, run calibrate on the lamp, restart HAL.
 
 ```bash
 # Follower only
