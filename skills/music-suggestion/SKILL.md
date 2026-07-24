@@ -9,7 +9,7 @@ description: Proactive music suggestion. Routed in by user-emotion-detection/SKI
 
 ## Triggers
 
-Only one trigger: **Mood** — after logging a mood `decision` that is suggestion-worthy (`sad`, `stressed`, `tired`, `excited`, `happy`, `bored`). Activity events (`[activity] Activity detected: ...`, whether sedentary or drink/break) route to `wellbeing/SKILL.md` and never to this skill.
+Only one trigger: **Mood** — after logging a mood `decision` that is suggestion-worthy (`sad`, `stressed`, `tired`, `excited`, `happy`, `bored`). Activity events (`[activity] Activity detected: ...`, whether sedentary, drink/break, or celebrate) route to `wellbeing/SKILL.md` and never to this skill.
 
 ## User attribution
 
