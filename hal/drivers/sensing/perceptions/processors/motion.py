@@ -4,10 +4,8 @@ import logging
 import os
 import threading
 import time
-from collections import deque  # DEBUG-ACTION-LOG (remove before prod)
 from copy import copy
 from dataclasses import dataclass
-from datetime import datetime  # DEBUG-ACTION-LOG (remove before prod — see action-logs/debug-note.txt)
 from enum import Enum
 from pathlib import Path
 from typing import Any, override
@@ -32,63 +30,6 @@ from .pose import PosePerception
 logger = logging.getLogger(__name__)
 
 RESOURCES_DIR = Path(__file__).parent / "resources"
-
-# ===== DEBUG-ACTION-LOG START (TEMPORARY — remove before prod) =============
-# Debug event log (offline analysis of action-recognition triggers).
-# Removal instructions: action-logs/debug-note.txt. Grep tag: DEBUG-ACTION-LOG.
-#
-# Every inference that actually reached the backend is dumped to disk under
-# `action-logs/<timestamp>_<class>_<conf>/` (one distinct sub-dir per trigger)
-# holding the exact input frame we sent, an annotated copy, and a meta.json
-# with every detected class + confidence, the threshold, and frame shape.
-# Naming mirrors the face-emotion `emotion-logs/` convention:
-#   20260713-114635-167199_using-computer_0.92   (top class + conf)
-#   20260713-122707-559111_FAIL-no-detection      (backend returned [])
-#   20260713-114756-025087_FAIL-request-error     (send/recv/encode raised)
-#
-# NOTE on FAIL-no-detection: unlike emotion's "no face", here it means the HAL
-# client received an empty `detected_classes` list. Per docs/action/pipeline.md
-# that empty list can mean any of: nothing crossed the threshold, the server's
-# person-detection gate found no crop, OR a backend `{"error": ...}` response
-# (RemoteMotionChecker.update does resp.get("detected_classes", []), which
-# collapses an error payload to []). Throttled frames instead return None from
-# update() and are NOT logged (skipped in _check_impl) to avoid one dir per tick.
-#
-# CLIP RECONSTRUCTION — APPROXIMATE, read this before trusting the frames.
-# Action recognition is temporal: the model classifies an 8-frame window
-# (UniformerV2 max_frames). That window lives SERVER-side
-# (perception-service session.py::_frame_buffer) and the HAL sends one frame per
-# call, so the exact window CANNOT be reconstructed from the client:
-#   * The server ingests only ~1 frame / frame_interval (default 1.0s,
-#     core/models/action.py). Frames arriving sooner are NOT buffered.
-#   * A throttled frame still gets a response — the STALE cached prediction —
-#     which is indistinguishable from a fresh one on the wire. So "got a
-#     non-None response" does NOT mean "entered the server window".
-# Best effort: we mirror the server's 1.0s cadence on the HAL side — keep a
-# frame into the rolling clip only when >= _ACTION_LOG_INTERVAL_S has elapsed
-# since the last kept one — so the dumped sequence spans ~8s like the real
-# window instead of 8 near-duplicate sub-second frames. Still an approximation:
-# our clock is phase-shifted from the server's, we don't know the server's exact
-# frame_interval if overridden, and person-gate no-crop drops are invisible
-# here. Treat the clip as "roughly what the model saw", not byte-exact.
-#
-# Enabled by default; set MOTION_DEBUG_LOG=0 to disable. MOTION_DEBUG_LOG_MAX
-# caps how many sub-dirs are kept (oldest pruned first) so a running device
-# can't fill its disk. MOTION_DEBUG_LOG_FRAMES sets the reconstructed clip
-# length (default 8 = UniformerV2 max_frames). MOTION_DEBUG_LOG_INTERVAL mirrors
-# the server frame_interval (default 1.0s) — set it to match if you change the
-# server's ACTION__FRAME_INTERVAL.
-_ACTION_LOG_DIR = Path(__file__).parent / "action-logs"
-_ACTION_LOG_ENABLED = os.environ.get("MOTION_DEBUG_LOG", "1").strip().lower() not in (
-    "0",
-    "false",
-    "no",
-    "",
-)
-_ACTION_LOG_MAX_DIRS = int(os.environ.get("MOTION_DEBUG_LOG_MAX", "2000"))
-_ACTION_LOG_WINDOW = int(os.environ.get("MOTION_DEBUG_LOG_FRAMES", "8"))
-_ACTION_LOG_INTERVAL_S = float(os.environ.get("MOTION_DEBUG_LOG_INTERVAL", "1.0"))
-# ===== DEBUG-ACTION-LOG END ================================================
 
 # Map raw Kinetics action labels to high-level activity groups.
 # The OS server receives the raw labels — the agent infers the group. The mapping here
@@ -430,13 +371,6 @@ class MotionPerception(Perception[cv2.typing.MatLike]):
         self._snapshots_buffer: list[cv2.typing.MatLike] = []
         self._actions_buffer: list[str] = []
 
-        # DEBUG-ACTION-LOG: rolling clip approximating the server's temporal
-        # window. We keep ~1 frame / _ACTION_LOG_INTERVAL_S (mirroring the
-        # server frame_interval) since the client can't tell which frames the
-        # server actually buffered. Dumped in full per trigger. Remove w/ tag.
-        self._debug_clip: deque[cv2.typing.MatLike] = deque(maxlen=_ACTION_LOG_WINDOW)
-        self._debug_last_kept_ts: float = 0.0
-
         # Dedup state for outbound motion.activity events.
         # Key = (current_user, frozenset(labels)) where `labels` matches what
         # actually goes into the message: bucket names for drink/break, raw
@@ -567,29 +501,9 @@ class MotionPerception(Perception[cv2.typing.MatLike]):
 
         try:
             detections = self._checker.update(frame)
-        except Exception as e:
+        except Exception:
             logger.exception("[motion] inference error")
-            # error path: window + the frame that raised, for context
-            self._save_action_log(  # DEBUG-ACTION-LOG
-                list(self._debug_clip) + [frame], None, error=repr(e)
-            )
             return
-
-        # ===== DEBUG-ACTION-LOG START (remove before prod) =====
-        # A non-None response does NOT mean this frame entered the server's
-        # window — throttled frames get the stale cached prediction, which is
-        # indistinguishable from a fresh one here. So we can't key the clip on
-        # "non-None". Instead we mirror the server's ~1.0s frame_interval: keep
-        # a frame (and write one log dir) at most once per _ACTION_LOG_INTERVAL_S,
-        # so the reconstructed clip spans ~8s like the real window rather than 8
-        # sub-second near-duplicates. Approximate — see the module header.
-        if detections is not None:
-            now = time.time()
-            if now - self._debug_last_kept_ts >= _ACTION_LOG_INTERVAL_S:
-                self._debug_clip.append(frame)
-                self._debug_last_kept_ts = now
-                self._save_action_log(list(self._debug_clip), detections)
-        # ===== DEBUG-ACTION-LOG END =====
 
         if detections:
             logger.debug("[motion] detections: %s", [d.class_name for d in detections])
@@ -670,132 +584,6 @@ class MotionPerception(Perception[cv2.typing.MatLike]):
         except Exception as e:
             logger.debug("[motion] snapshot save failed: %s", e)
             return None
-
-    # ===== DEBUG-ACTION-LOG START (TEMPORARY — remove before prod) =========
-    # Grep tag: DEBUG-ACTION-LOG. Removal instructions: action-logs/debug-note.txt
-    def _save_action_log(
-        self,
-        frames: list[cv2.typing.MatLike],
-        detections: list[MotionDetection] | None,
-        error: str | None = None,
-    ) -> None:
-        """Debug logger: persist one action-recognition trigger to disk.
-
-        Writes a distinct sub-dir per trigger under `action-logs/`, named
-        `<timestamp>_<top-class>_<conf>` (or `_FAIL-no-detection` /
-        `_FAIL-request-error`). Because action recognition is temporal, the
-        whole reconstructed clip is dumped as `frame_00.jpg`..`frame_NN.jpg`
-        (oldest→newest); the newest frame — the one that triggered — is the one
-        annotated. meta.json carries every detected class + score, the
-        threshold, and the clip length. Best-effort — never lets a logging
-        failure disturb detection.
-        """
-        if not _ACTION_LOG_ENABLED:
-            return
-        try:
-            # datetime for the human-readable micros suffix; time.time() below
-            # for the machine-friendly epoch inside meta.json.
-            ts = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
-
-            if error is not None:
-                label = "FAIL-request-error"
-                status = "error"
-            elif detections is None:
-                label = "FAIL-no-inference"
-                status = "no_inference"
-            elif not detections:
-                label = "FAIL-no-detection"
-                status = "no_detection"
-            else:
-                top = detections[0]
-                safe_class = "".join(
-                    c if c.isalnum() else "-" for c in top.class_name
-                ).strip("-")
-                label = f"{safe_class}_{top.conf:.2f}"
-                status = "ok"
-
-            subdir = _ACTION_LOG_DIR / f"{ts}_{label}"
-            subdir.mkdir(parents=True, exist_ok=True)
-
-            # Dump the reconstructed clip: the last N frames the backend
-            # actually ingested into its server-side 8-frame window, oldest
-            # first. This is the temporal context the model classified — a
-            # single still can't explain a motion-based label. No local crop
-            # happens on the HAL side (the person crop is server-side).
-            clip = [f for f in frames if f is not None]
-            width = max(2, len(str(max(len(clip) - 1, 0))))
-            for i, f in enumerate(clip):
-                _, buf = cv2.imencode(".jpg", f, [cv2.IMWRITE_JPEG_QUALITY, 90])
-                _ = (subdir / f"frame_{i:0{width}d}.jpg").write_bytes(buf.tobytes())
-            # Annotate the newest frame (the trigger) when we have detections.
-            if detections and clip:
-                annotated = self._draw_annotations(clip[-1], detections)
-                _, abuf = cv2.imencode(
-                    ".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 90]
-                )
-                _ = (subdir / "annotated.jpg").write_bytes(abuf.tobytes())
-
-            newest = clip[-1] if clip else None
-            meta: dict[str, Any] = {
-                "timestamp": ts,
-                "epoch": time.time(),
-                "status": status,
-                "error": error,
-                "threshold": self._checker._threshold,
-                "backend_url": self._checker._base_url,
-                "clip_len": len(clip),
-                "clip_window_max": _ACTION_LOG_WINDOW,
-                "clip_is_approximate": True,
-                "clip_sample_interval_s": _ACTION_LOG_INTERVAL_S,
-                "clip_note": (
-                    "HAL-side reconstruction: frames sampled at ~server "
-                    "frame_interval, NOT the exact server _frame_buffer. "
-                    "Predictions may be cached/stale on throttled frames."
-                ),
-                "frame_shape": list(newest.shape) if newest is not None else None,
-                "top_class": detections[0].class_name if detections else None,
-                "top_conf": detections[0].conf if detections else None,
-                "detections": [
-                    {"class_name": d.class_name, "conf": d.conf}
-                    for d in (detections or [])
-                ],
-            }
-            _ = (subdir / "meta.json").write_text(json.dumps(meta, indent=2))
-
-            self._rotate_action_logs()
-        except Exception as e:
-            logger.debug("[motion] action log write failed: %s", e)
-
-    @staticmethod
-    def _rotate_action_logs() -> None:
-        """Prune oldest event sub-dirs so the debug log can't fill the disk.
-
-        Bounded by MOTION_DEBUG_LOG_MAX (default 2000). Set it to 0 to keep
-        everything — no auto-delete (watch your disk on long runs).
-        """
-        if _ACTION_LOG_MAX_DIRS <= 0:
-            return
-        try:
-            if not _ACTION_LOG_DIR.exists():
-                return
-            subdirs = sorted(
-                (p for p in _ACTION_LOG_DIR.iterdir() if p.is_dir()),
-                key=lambda p: p.stat().st_mtime,
-            )
-            while len(subdirs) > _ACTION_LOG_MAX_DIRS:
-                victim = subdirs.pop(0)
-                for f in victim.iterdir():
-                    try:
-                        f.unlink()
-                    except OSError:
-                        pass
-                try:
-                    victim.rmdir()
-                except OSError:
-                    pass
-        except Exception:
-            pass
-    # ===== DEBUG-ACTION-LOG END ============================================
 
     def _flush_buffer(self) -> None:
         with self._state_lock:
