@@ -30,6 +30,7 @@ interface Props {
 const WELLBEING_ICONS: Record<string, { icon: string; title: string }> = {
   drink: { icon: "💧", title: "Drink" },
   break: { icon: "🧘", title: "Break" },
+  celebrate: { icon: "🎉", title: "Celebrate" },
   sedentary: { icon: "💺", title: "Sedentary" },
   emotional: { icon: "✨", title: "Emotional" },
   enter: { icon: "👋", title: "Entered" },
@@ -79,6 +80,8 @@ const RAW_LABEL_ICON: Record<string, string> = {
   "using computer": "💻",
   "writing": "✍️",
   "texting": "📱",
+  "reading": "📖",
+  // legacy raw labels (pre-collapse) kept so old timeline rows still render an icon
   "reading book": "📖",
   "reading newspaper": "📰",
   "drawing": "🎨",
