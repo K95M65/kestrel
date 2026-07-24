@@ -7,8 +7,9 @@
 #   make TARGET=rpi RPI_MODEL=4 build — Raspberry Pi 4B golden image
 #   make sd-card-list                 — list disks for flashing
 #   make sd-card-test DISK=N          — test SD card with 100 MB dd
-#   make sd-card-flash DISK=N         — flash the default-target image to /dev/diskN
+#   make sd-card-flash DISK=N         — flash the .xz image to /dev/diskN
 #   make sd-card-flash TARGET=rpi DISK=N — flash RPi image instead
+#   make sd-card-flash-raw DEVICE_TYPE=lamp DISK=N — flash the raw .img via rdiskN (fast, no wait for .xz)
 # =============================================================================
 
 TARGET ?= opi
@@ -69,6 +70,12 @@ BUILT_IMG := $(BUILT_IMG_$(TARGET))
 IMG_FILE_rpi := golden-$(DEVICE_TYPE)$(if $(DEFAULT_AGENT),-$(DEFAULT_AGENT),).img
 IMG_FILE_opi := $(DEVICE_TYPE)/golden-opi-$(DEVICE_TYPE)$(if $(DEFAULT_AGENT),-$(DEFAULT_AGENT),).img.xz
 IMG_FILE := $(IMG_FILE_$(TARGET))
+
+# Uncompressed raw image (independent of the .xz). Used by sd-card-flash-raw to flash
+# straight from the raw .img — skips waiting for xz compression, and writes via rdiskN.
+RAW_IMG_rpi := golden.img
+RAW_IMG_opi := $(DEVICE_TYPE)/golden-opi.img
+RAW_IMG := $(RAW_IMG_$(TARGET))
 
 # Preflight — check Docker resources + clean dangling layers before a long
 # build run. Avoids the most common failure modes: OOM (Docker memory < 4GB)
@@ -153,6 +160,23 @@ endif
 	else \
 		sudo dd if=./output/$(IMG_FILE) of=/dev/disk$(DISK) bs=64m conv=fsync status=progress; \
 	fi
+	sync
+	diskutil eject /dev/disk$(DISK) 2>/dev/null || true
+	@echo "==> Flash complete"
+
+# Flash the RAW uncompressed image straight to the card. For dev machines that already
+# have the raw output/<type>/golden-opi.img — skips waiting for the .xz (which exists
+# only to compress for CDN upload). Writes via /dev/rdiskN (raw, unbuffered = 2-5x
+# faster than the buffered /dev/diskN on macOS).
+#   make sd-card-flash-raw DEVICE_TYPE=lamp DISK=12
+sd-card-flash-raw:
+ifndef DISK
+	$(error DISK is required. Usage: make sd-card-flash-raw DEVICE_TYPE=lamp DISK=12)
+endif
+	@[ -f ./output/$(RAW_IMG) ] || { echo "ERROR: ./output/$(RAW_IMG) not found — pass DEVICE_TYPE, or the raw .img isn't built yet"; exit 1; }
+	@echo "==> Flashing ./output/$(RAW_IMG) to /dev/rdisk$(DISK) (raw, fast)..."
+	diskutil unmountDisk force /dev/disk$(DISK)
+	sudo dd if=./output/$(RAW_IMG) of=/dev/rdisk$(DISK) bs=64m conv=fsync status=progress
 	sync
 	diskutil eject /dev/disk$(DISK) 2>/dev/null || true
 	@echo "==> Flash complete"
