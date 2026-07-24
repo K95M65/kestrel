@@ -11,11 +11,7 @@ from typing import Optional, Union
 
 # --- Hardware ---
 SERVO_PORT = os.environ.get("HAL_SERVO_PORT", "/dev/ttyACM0")
-# No default: unset means "not provisioned". The follower config refuses to start on an
-# unset id rather than silently loading the repo reference hal.json (wrong per-unit).
-# .env.example sets HAL_DEVICE_ID=hal so a dev checkout still works; each fleet unit sets
-# its own id at provisioning.
-DEVICE_ID = os.environ.get("HAL_DEVICE_ID", None)
+DEVICE_ID = os.environ.get("HAL_DEVICE_ID", "hal")
 SERVO_FPS = int(os.environ.get("HAL_SERVO_FPS", "30"))
 SERVO_HOLD_S = float(os.environ.get("HAL_SERVO_HOLD_S", "3.0"))
 # Ramp before a recording plays: /servo/play interpolates from the current pose

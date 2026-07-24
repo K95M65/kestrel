@@ -7,26 +7,23 @@ The arm uses 5x Feetech STS3215 servos controlled via the `lerobot` library. Eac
 `homing_offset` / `range_min` / `range_max` are **unique to each physically-assembled
 unit** — the servo horn mounts on a discrete spline, so the mechanical zero shifts a
 few degrees per build. A calibration recorded on one arm only fits that arm; sharing
-it makes another unit start with the wrong zero and travel limits. **`HAL_DEVICE_ID`
-must be set explicitly.** The follower/leader configs resolve `calibration_dir` in
-`__post_init__` keyed on it:
+it makes another unit start with the wrong zero and travel limits. The follower/leader
+configs therefore resolve `calibration_dir` in `__post_init__` two ways, keyed on
+`HAL_DEVICE_ID`:
 
-- **Unset** → **refuse to start** (`FileNotFoundError` at config init). There is **no
-  silent default**: a fleet unit that forgot to set `HAL_DEVICE_ID` fails loud instead
-  of quietly running on the repo reference file (which is one build's numbers, wrong on
-  any other unit).
-- **`id = "hal"`** → the **version-controlled repo file** — now a **reference only**
-  (sample / dev bench), not a fleet calibration. Set `HAL_DEVICE_ID=hal` explicitly to
-  use it:
+- **Default `id = "hal"`** (unset / dev) → the **version-controlled repo file**, so a
+  fresh checkout or dev machine works out of the box:
   - `hal/follower/config_hal_follower.py` → `hal/calibration/robots/hal_follower`
   - `hal/leader/config_hal_leader.py` → `hal/calibration/teleoperators/hal_leader`
 - **Per-device `id` (e.g. `lamp-abcd`)** → the **persistent fleet dir**
   `/var/lib/hal/calibration/robots/hal_follower/<id>.json` (override the base with
   `HAL_CALIBRATION_DIR`). The hardware team drops each unit's `<id>.json` there at
   provisioning; it lives **outside the OTA tree** (`/opt/hal` is overwritten every
-  update) so calibration survives updates. If `HAL_DEVICE_ID` is set but that
-  `<id>.json` is **missing**, there is **no fallback** — the arm stays uncalibrated and
-  motion won't run until the file is in place.
+  update) so calibration survives updates.
+  - **Fallback:** if `HAL_DEVICE_ID` is set but that `<id>.json` is **missing**, the
+    config logs a warning and falls back to the repo `hal.json` (it drops the effective
+    id to `"hal"`), so the arm never starts uncalibrated — it runs on the shared
+    calibration until the per-device file is in place.
 
 > **Why override lerobot's default at all:** lerobot's per-user path
 > (`~/.cache/huggingface/lerobot/calibration`) breaks when the service user differs
@@ -35,10 +32,9 @@ must be set explicitly.** The follower/leader configs resolve `calibration_dir` 
 > `FeetechMotorsBus(...) has no calibration registered`. Both dirs above are
 > independent of the service user.
 
-lerobot loads `calibration_dir / f"{id}.json"`, where `id` is `HAL_DEVICE_ID`. It must
-be set — `hal/.env.example` sets `HAL_DEVICE_ID=hal` so a dev checkout still works, and
-each fleet unit sets its own id at provisioning. With `id=hal` the repo reference files
-are:
+lerobot loads `calibration_dir / f"{id}.json"`, where `id` is `HAL_DEVICE_ID`
+(`hal/config.py`, default `"hal"`; `hal/.env.example` sets `HAL_DEVICE_ID=hal`).
+With the default id the repo files are:
 
 ```
 hal/calibration/
@@ -49,13 +45,13 @@ hal/calibration/
 On a deployed device the repo copy ships under `/opt/hal/calibration/...`; a per-device
 unit reads `/var/lib/hal/calibration/robots/hal_follower/<id>.json` instead.
 
-> **Provisioning order:** place `<id>.json` in the persistent dir first, then set
-> `HAL_DEVICE_ID` and restart HAL. There is **no fallback**: if `HAL_DEVICE_ID` is unset,
-> or set but the file is missing, the arm does not run (config init raises; the motion
-> service logs the error and doesn't start — the rest of HAL stays up). Once the file is
-> in place and the id is set, restart HAL and it picks up the unit's own calibration.
-
-The startup guard only affects the **read** path. `hal.calibrate` pins the write target
+> **Provisioning order:** ideally place `<id>.json` in the persistent dir first, then
+> set `HAL_DEVICE_ID` and restart HAL. If the order is reversed (env set, file not yet
+> there), the arm does **not** start uncalibrated — it falls back to the repo `hal.json`
+> and logs a warning; once the per-device file is dropped in and HAL restarts, it picks
+> up the unit's own calibration.
+>
+The runtime fallback only affects **reads**. `hal.calibrate` pins the write target
 explicitly (see below), so calibrating on-device with a per-device id always writes to
 the persistent dir, even on the first calibration — no clobbering the shared repo file.
 
@@ -152,11 +148,10 @@ A "falling back to repo hal.json" line means the `HAL_DEVICE_ID` in `.env` doesn
 a file that exists in the persistent dir — recheck that step 2 wrote `lamp-abcd.json` and
 that step 3 used the same id.
 
-### Reference `hal` calibration (dev bench / repo sample)
+### Default `hal` calibration (dev / shared repo file)
 
-Use `--id hal` to (re)record the version-controlled repo **reference** file — e.g. on a
-dev bench. It is a sample only, not a fleet calibration; fleet units use their own
-per-device file:
+Use `--id hal` to (re)record the version-controlled repo file — e.g. on a dev bench, or
+to refresh the shared fallback:
 
 ```bash
 sudo systemctl stop hal
@@ -180,6 +175,6 @@ Both flows prompt the same way:
 
 - **Per-device id:** the file stays on the device under `/var/lib/hal/...` — do **not**
   commit it (each unit's calibration is its own).
-- **`hal` id:** commit the updated file under `hal/calibration/` so a fresh checkout
-  picks up the new reference sample.
+- **`hal` id:** commit the updated file under `hal/calibration/` so a fresh checkout /
+  the shared fallback picks it up.
 - Restart the HAL service if you haven't: `sudo systemctl restart hal` (or reboot).
