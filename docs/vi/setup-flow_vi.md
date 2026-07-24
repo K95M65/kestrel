@@ -178,15 +178,19 @@ Nên trên router chặn mDNS multicast (đúng case thực tế), trang kẹt v
 | **CSP** (`scripts/imager/build*.sh`, `scripts/provision/setup.sh`, `scripts/maintenance/patch-security.sh`) | `connect-src 'self' ws: wss:` → `connect-src 'self' ws: wss: http:` | Cho browser `fetch` probe cross-origin LAN-IP. Phải dùng `http:` (không phải `http://*.local`) vì **CSP không biểu diễn được dải IP** — một token `http:` là cách duy nhất cho phép `http://<bất-kỳ-ip-lan>/…`, nên fix độc lập với subnet của khách (`172.x`, `192.168.x`, `10.x`). |
 | **Backend** (`system/device/setup.go`) | Một goroutine poll `GetCurrentIP()` mỗi giây **song song với** `SetupNetwork()` và publish IP STA vào setup state ngay khi xuất hiện (bỏ qua IP AP `192.168.100.1`), trước khi vòng chờ internet 60s xong. | Cho FE **cửa sổ lớn nhất có thể** để đọc `lan_ip` trong khoảng overlap ngắn lúc nó còn poll AP — để kênh LAN-IP thực sự có IP mà chuyển hướng tới. Một guard giữ IP đã capture khỏi bị ghi đè thành chuỗi rỗng bởi lần đọc sau lúc AP đang teardown. |
 | **Frontend** (`useSetupStatusPolling.ts`) | Bỏ kênh redirect mDNS `.local` khỏi vai trò *chính*. Kênh redirect chính là LAN-IP probe, carry `pathname + search` và nhắm tới `http://<lan_ip>/setup?<params>`; nó cũng đóng vai trò pre-submit canonical-URL upgrade. (Sau này một fallback `.local` chỉ-để-discovery được thêm lại cho race AP-chết-trước-lan_ip — xem kênh 3–4 ở trên.) | `.local` không đáng tin trên mạng chặn mDNS nên không thể làm đích redirect chính. IP đọc động từ backend — **không hardcode subnet, happy path không phụ thuộc mDNS**. |
-| **Frontend** (`Setup.tsx`) | Ô copy "save this address" và link "Continue setup" giờ dùng **URL IP thô** (`http://<lan_ip>/setup`); cả hai màn gating theo `setupLanIP` thay vì mDNS host, fallback về gợi ý router-admin khi chưa biết IP. | IP-only từ đầu đến cuối — operator không bao giờ bị đưa địa chỉ `.local` không resolve được trên mạng của họ. |
+| **Frontend** (`Setup.tsx`) | Ô copy "save this address" và link "Continue setup" giờ dùng **URL IP thô** (`http://<lan_ip>/setup`); gating theo `setupLanIP` thay vì mDNS host, fallback về gợi ý router-admin khi chưa biết IP. (Ô copy sau đó đã bị bỏ khỏi màn *connecting* — vẫn còn trên màn connected.) | IP-only từ đầu đến cuối — operator không bao giờ bị đưa địa chỉ `.local` không resolve được trên mạng của họ. |
 | **Frontend** (`Setup.tsx`) | Nút Copy thêm fallback `document.execCommand("copy")` (textarea ẩn) cho khi `navigator.clipboard` không có. | Trang Setup phục vụ qua HTTP thuần (`http://192.168.100.1`), nơi `navigator.clipboard` là `undefined` (cần secure context) — nên API mới im lặng không làm gì và nút không hoạt động. Đường legacy chạy được trên origin `http://`. |
 
 ### Đích chuyển hướng
 
 Happy path giờ chuyển hướng tới **`http://<lan_ip>/setup?<params>`** (vd
-`http://172.168.20.145/setup?…`) — IP thô, hoạt động bất kể mDNS. Tới khi
-early-poll lấy được `lan_ip`, link copy thủ công fallback về
-`http://<type>-<id>.local/setup?<params>`.
+`http://172.168.20.145/setup?…`) — IP thô, hoạt động bất kể mDNS.
+
+Ô copy chỉ còn trên màn **connected**. Ô từng hiện trên màn "joining Wi-Fi…" —
+vốn là lưới an toàn cho trường hợp AP sập trước khi phase poll kịp lật — đã bị
+bỏ vì gây nhiễu UI, cùng với dòng "This page disconnects when you rejoin home
+Wi-Fi". Trong lúc join đang chạy, màn hình giờ chỉ còn spinner, thông báo và bộ
+đếm thời gian.
 
 ### Đánh giá & đánh đổi
 
@@ -197,9 +201,11 @@ early-poll lấy được `lan_ip`, link copy thủ công fallback về
   capture `lan_ip` trong khoảng ~2s lúc AP còn sống — với lần setup đầu, cửa
   sổ này thường đóng trước khi DHCP xong. mDNS fallback (kênh 3) cover case
   đó trên các mạng resolve được `.local`; trên mạng chặn mDNS mà không capture
-  được `lan_ip` thì không kênh tự động nào bắn được, và **nhập IP thủ công là
-  fallback chắc chắn** — operator tra IP thiết bị trong router rồi gõ vào, nên
-  không bao giờ bị kẹt.
+  được `lan_ip` thì **không kênh tự động nào bắn được**. Ô nhập IP thủ công
+  trước đây cover case này đã bị bỏ vì gây nhiễu UI, nên trang sẽ chạy hết thời
+  gian join rồi rơi vào màn failure theo `JOIN_TIMEOUT_SEC`; đường phục hồi là
+  rejoin AP của thiết bị và chạy lại setup (failure được adopt lúc mount — xem
+  "Join thất bại").
 - **Backend rendezvous (phía device đã sẵn sàng):** cú ping backend sớm (bước
   6d) publish `local_ip` ngay khi WiFi lên, nên trang đã mở popup Setup (vd
   autonomous.ai) có thể poll backend theo `mac` rồi navigate popup sang
@@ -291,29 +297,47 @@ Ba cơ chế hiện xử lý việc này:
    khẩu Wi-Fi. Merge chỉ điền vào các ô đang rỗng, lấy từ chính config của thiết
    bị, nên không thể ghi đè thứ operator gửi lên, cũng không lộ thêm gì mới.
 
-**UI khôi phục.** Màn hình lỗi nêu rõ tên hotspot cần nối lại
-(`<type>-<suffix>`, cùng chuỗi với mDNS host — `setup-ap.sh` suy ra cả hai từ
-hardware ID), vì join thất bại để lại operator trên mạng nhà và không nút nào
-với tới thiết bị được cho đến khi họ chuyển mạng lại. Hai hành động:
+**UI khôi phục.** Màn hình lỗi hiển thị thông báo lỗi, một checklist ba mục về
+các nguyên nhân thường gặp (mật khẩu phân biệt hoa thường, 2.4GHz vs 5GHz,
+khoảng cách tới router), và một hành động:
 
-- **Back to Wi-Fi** — retry tại chỗ. Xoá mật khẩu vừa sai (để không bị gửi lại y
-  nguyên) nhưng giữ SSID và giữ nguyên document hiện tại, gồm cả các param nó
-  được mở kèm. Đây là mặc định hợp lý cho lỗi gõ nhầm.
-- **Start over** — reset cứng (`resetSetupSession()`): xoá snapshot param trong
-  sessionStorage và **hard-reload** về `/setup` trơn, tạo ra đúng trạng thái của
-  lần đầu tiên vào AP. Việc reload là **bắt buộc**, không phải cho đẹp:
-  `useSetupUrlParams` snapshot `INITIAL_SEARCH` ở *module load*, nên chỉ reset
-  React state sẽ để lại `llm_api_key` / `device_id` cũ còn sống trong module đó
-  và form "sạch" vẫn submit chúng. Bắn `start_over_clicked` trước, để parent nào
-  muốn giữ config đã đẩy có thể mở lại popup bằng URL mới. Tuỳ chọn theme được
-  giữ lại có chủ ý — đó là lựa chọn của người dùng, không liên quan tới lần thử
-  này.
+- **Back to Wi-Fi** — retry tại chỗ về một wizard sạch. Xoá mọi field lần thử
+  hỏng để lại — `ssid`, `password`, `adminPassword`, `error`, `stepError`,
+  `setupLanIP`, `elapsed`, cả hai cờ failure — và bỏ snapshot param trong
+  sessionStorage (`clearStoredSetupParams()`), rồi quay về bước Wi-Fi. Cleanup
+  này khớp từng field với đường adoption: đó là hai đường duy nhất quay lại
+  form, nếu clear khác nhau thì "retry trong tab này" và "mở lại sau khi rejoin
+  AP" sẽ hành xử khác nhau mà operator không đoán được.
+
+  Xoá được an toàn vì join Wi-Fi thất bại bail ngay trong `SetupNetwork`, trước
+  khi `device.Setup` ghi bất kỳ config nào — không có gì được persist phía
+  thiết bị. Riêng password bắt buộc phải xoá, nếu không operator có thể gửi lại
+  đúng giá trị vừa sai mà không nhận ra.
+
+  Đây **không phải** reload: document hiện tại, cùng các param parent đã đẩy vào
+  (`llm_api_key`, `channel`, `device_id`), vẫn còn sống, nên operator chỉ nhập
+  lại thông tin Wi-Fi chứ không phải toàn bộ setup.
+
+  **Không có gì để clear phía server.** Thiết bị chưa hề ghi config cho một lần
+  join thất bại. `setupState` trong RAM vẫn báo `phase="failed"` — không code
+  path nào reset nó về `idle` — nên poll bỏ qua mọi verdict terminal cho tới khi
+  thấy `phase="connecting"` xác nhận lần chạy mới đã bắt đầu. Thiếu guard đó,
+  reset này sẽ bị verdict của lần trước ghi đè lại trong vòng 600ms.
+
+Join thất bại để lại operator trên mạng nhà, nên nút này không với tới thiết bị
+được cho đến khi họ nối lại hotspot mà thiết bị đã tự bật lại (`handler.Setup` →
+`SwitchToAPMode`). Màn hình không còn nêu tên SSID đó nữa: phần hướng dẫn nối
+lại và hành động thứ hai **Start over** đã bị bỏ vì gây nhiễu UI. Handler
+`startOver` cùng prop `apSsid` bị gỡ theo; `resetSetupSession()` và bridge event
+`start_over_clicked` vẫn còn nhưng hiện không còn caller nào.
 
 **Theo từng device: bỏ qua màn hình lỗi.** `intern-v2` hoàn toàn không hiện màn
 hình lỗi. Join thất bại sẽ đưa operator thẳng về form Wi-Fi — đúng trạng thái
-cuối như khi bấm "Back to Wi-Fi" — không banner lỗi, không checklist, không gợi
-ý nối lại hotspot. Đây là quyết định sản phẩm cho riêng device class đó; `lamp`,
-`reachy-mini` và `unitree-go2w` giữ nguyên màn hình đầy đủ.
+cuối như khi bấm "Back to Wi-Fi", gồm cả việc xoá sạch state ở trên — không
+banner lỗi, không checklist. Đây là quyết định sản phẩm cho riêng device class
+đó; `lamp`, `reachy-mini` và `unitree-go2w` giữ nguyên màn hình đầy đủ. Effect
+auto-return gọi thẳng `retryFromFailure()` nên phần reset không bao giờ lệch
+giữa hai đường.
 
 Device class lấy từ `mac` (`"<device_type>-<4 hex>"`, ví dụ `intern-v2-d94b`),
 bỏ đi phần hex đuôi — **không** lấy từ URL param, vì browser của operator không
@@ -365,9 +389,10 @@ mạng sống của thiết bị**, không phải từ các ô form (`useWifiCon
 Cả hai đều **public** (không cần admin auth), khớp đúng tín hiệu internet mà
 `SetupGate` (`App.tsx`) đã dùng để chọn continue vs initial mode. Khi cả hai
 thỏa, `sectionDone.wifi` short-circuit thành done và `WifiSection` thu gọn
-picker thành một hàng **"Connected to `<ssid>`"** (kèm link *Change network* để
-đổi mạng) thay cho selector rỗng. SSID đang associated cũng được prefill vào
-picker. *Password* Wi-Fi không bao giờ rời thiết bị — chỉ tên SSID đang associated
+picker thành một hàng **"Connected to `<ssid>`"** chỉ-đọc thay cho selector rỗng.
+Từ hàng đó không có đường quay lại picker: đổi mạng là việc của `/setting#wifi`
+(`pages/settings/WifiSection.tsx`, luôn render picker đầy đủ), không phải thứ
+wizard setup cung cấp. SSID đang associated cũng được prefill vào picker. *Password* Wi-Fi không bao giờ rời thiết bị — chỉ tên SSID đang associated
 (thứ thiết bị vốn đã scan và broadcast) và boolean `check-internet` được đọc.
 
 Trong lúc probe đầu tiên còn đang chạy (`checking`), `WifiSection` render một
@@ -378,12 +403,54 @@ giữ nguyên tương tác được sau khi đã hiện.
 
 ### Deep-link vào một bước qua URL hash
 
-Redirect carry nguyên hash, nên một URL kiểu `http://<lan_ip>/setup?<params>#voice`
-phải mở thẳng tab **Voice**. Lúc mount, `Setup.tsx` đọc `window.location.hash` và
-khi nó trỏ tới một section đang hiển thị (`#wifi` / `#voice` / `#face` / …) thì
-chọn bước đó. Vì Voice/Face chỉ tồn tại ở continue mode, việc này dựa vào
-`SetupGate` resolve xong mode *trước khi* Setup mount (nó render `null` cho tới
-lúc đó).
+Một URL kiểu `http://<lan_ip>/setup?<params>#voice` phải mở thẳng tab **Voice**.
+`useSetupController` đọc `window.location.hash` và khi nó trỏ tới một section
+đang hiển thị (`#wifi` / `#voice` / `#face` / …) thì chọn bước đó; `#force` là
+test flag chứ không phải step nên được bỏ qua.
+
+**Không giả định thứ tự resolve.** Voice/Face chỉ tồn tại ở continue mode, mà
+mode đó do `SetupGate` resolve từ hai request (`checkInternet` +
+`getSetupStatus`) — trên mạng chậm Setup mount **trước**. Một effect chỉ chạy
+lúc mount vì thế thấy `visibleSections` chưa có `voice`, rơi vào nhánh seed bước
+mặc định và ghim operator ở Wi-Fi. Nay effect re-run theo `visibleSections.length`
+và được đặt ngay *dưới* chỗ khai báo `visibleSections` — nó đọc biến đó làm
+dependency nên không thể nằm trên nữa.
+
+Ba quy tắc của effect:
+
+- **Chỉ honor một lần** (`deepLinkedRef`) — early-return khi ref đã set. Nếu
+  không, một thay đổi sections về sau sẽ kéo operator ra khỏi tab họ tự bấm.
+- **Hash trỏ tới step chưa visible → return, không đụng vào URL.** Trước đây
+  nhánh seed ghi `#wifi` đè lên `#voice` bằng `history.replaceState`, xoá mất
+  dấu vết duy nhất của tab đích — sau đó không lần chạy nào khôi phục được nữa,
+  vì thông tin đã mất chứ không phải chưa tới. Thay vào đó effect set state
+  `awaitingDeepLink` rồi chờ lần chạy kế.
+- **Nhánh seed step đầu tiên chỉ chạy khi không có hash nào cả** — để URL phản
+  ánh tab đang hiển thị ngay từ render đầu.
+
+**Skeleton trong lúc chờ.** `SetupSkeleton`
+(`system/web/src/pages/setup/SetupSkeleton.tsx`) render placeholder mô phỏng
+đúng chrome thật — sidebar 192px + topbar + card, cùng kích thước — nên khi
+resolve xong nội dung swap vào mà layout không nhảy; theme-aware qua `useTheme`
+(chạy cả dark và light). Hai chỗ render:
+
+- `SetupGate` (`App.tsx`) khi `provisioned === null`, thay cho `return null`.
+- `Setup.tsx` khi `awaitingDeepLink && !showProgressScreen` — không bao giờ chặn
+  màn progress sau submit, màn đó sở hữu trang khi join đang chạy.
+
+Điều kiện hiện skeleton **không** dựa trên thời gian: không delay cố định, chỉ
+hiện khi step đích thật sự chưa biết và biến mất ngay khi biết. Mạng nhanh gần
+như không thấy nó, mạng chậm không bao giờ nháy nhầm tab. `awaitingDeepLink`
+được seed từ hash ban đầu (true khi hash trỏ tới thứ khác `force` và khác `wifi`
+— `wifi` luôn có mặt) nên ngay frame đầu đã đúng.
+
+**Mọi đường redirect đều carry hash.** Ba chỗ dựng target URL từ
+`pathname + search` nay nối thêm `window.location.hash`: `SetupGate` trong
+`system/web/src/App.tsx`, LAN-IP probe và mDNS `.local` probe trong
+`system/web/src/hooks/setup/useSetupStatusPolling.ts`. Đánh rơi hash ở bất kỳ hop
+nào cũng làm mất tab đích y như việc ghi đè ở trên. `scrubLocationSecrets()`
+trong `lib/api.ts` vốn đã giữ hash, nên ba chỗ này là ngoại lệ phải sửa chứ
+không phải quy ước chung.
 
 Auto-scroll của continue mode — vốn nhảy operator tới bước *chưa hoàn thành* đầu
 tiên — bị chặn khi một deep-link hash hợp lệ đã được honor (`deepLinkedRef`), nên
@@ -455,7 +522,7 @@ Mỗi message là một JSON envelope phẳng:
 | `setup_connected` | Thiết bị online + reachable | `mdns_host`, `lan_ip` |
 | `setup_failed` | Join WiFi thất bại | `message` |
 | `retry_clicked` | Bấm "Back to Wi-Fi" sau khi lỗi | — |
-| `start_over_clicked` | Bấm "Start over" sau khi lỗi — popup sắp hard-reload và **bỏ toàn bộ param nó được mở kèm**; mở lại bằng URL mới nếu cần giữ config đã đẩy | — |
+| `start_over_clicked` | **Không còn được bắn** — nút "Start over" đã bị bỏ. Event và `resetSetupSession()` vẫn còn định nghĩa; nếu có caller thì popup sẽ hard-reload và **bỏ toàn bộ param nó được mở kèm** | — |
 | `continue_clicked` | Bấm "Continue setup →" | `mdns_host` |
 | `monitor_clicked` | Bấm "Go to monitor →" | — |
 
@@ -469,8 +536,10 @@ listener đầy đủ nằm ở phần header của file `lib/setupBridge.ts`.
 |------|---------|
 | `system/device/setup.go` | Setup orchestration + goroutine early-capture IP LAN |
 | `system/web/src/lib/setupBridge.ts` | Bridge sự kiện về cửa sổ cha (postMessage) |
-| `system/web/src/pages/Setup.tsx` | UI wizard Setup + các điểm gọi emit bridge + link copy ưu tiên IP |
-| `system/web/src/hooks/setup/useSetupStatusPolling.ts` | Auto-redirect AP→STA: phase poll + LAN-IP probe + mDNS probe |
+| `system/web/src/pages/setup/Setup.tsx` | UI wizard Setup + các điểm gọi emit bridge + link copy ưu tiên IP |
+| `system/web/src/pages/setup/useSetupController.ts` | State + điều hướng bước của wizard: `visibleSections`, deep-link theo hash, auto-scroll continue mode |
+| `system/web/src/pages/setup/SetupSkeleton.tsx` | Placeholder cùng kích thước chrome thật, render khi mode hoặc step deep-link chưa resolve |
+| `system/web/src/hooks/setup/useSetupStatusPolling.ts` | Auto-redirect AP→STA: phase poll + LAN-IP probe + mDNS probe (carry hash) |
 | `system/web/src/hooks/setup/useWifiConnected.ts` | Nhận biết Wi-Fi-đã-xong sau reload từ trạng thái sống của thiết bị (`check-internet` + `network/current`) |
 | `system/network/service.go` | WiFi connect, AP mode, `CurrentNetwork()` (SSID đang associated) |
 | `system/server/device/delivery/http/handler.go` | HTTP setup handler (goroutine async) |

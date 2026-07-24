@@ -209,8 +209,12 @@ export function useSetupStatusPolling({
     let cancelled = false;
     const base = `http://${setupLanIP}`;
     // Carry pathname + original search so the IP host lands back on /setup with
-    // the OS-server-pushed params (llm_api_key, device_id, …) intact.
-    const target = `${base}${window.location.pathname}${carrySearch}`;
+    // the OS-server-pushed params (llm_api_key, device_id, …) intact. The hash
+    // rides along too — it names the active/deep-linked step (#voice / #face),
+    // and dropping it lands the reload on Wi-Fi with no record of the target.
+    // Read live (not snapshotted like carrySearch) so it reflects the step the
+    // operator is on at redirect time.
+    const target = `${base}${window.location.pathname}${carrySearch}${window.location.hash}`;
     let attempt = 0;
     let timer: number | undefined;
     const probe = async () => {
@@ -261,7 +265,8 @@ export function useSetupStatusPolling({
     if (window.location.hostname === host) return;
     let cancelled = false;
     const base = `http://${host}`;
-    const target = `${base}${window.location.pathname}${carrySearch}`;
+    // Same as the IP probe above: carry the hash so the step survives the hop.
+    const target = `${base}${window.location.pathname}${carrySearch}${window.location.hash}`;
     let timer: number | undefined;
     let attempt = 0;
     const probe = async () => {

@@ -188,15 +188,19 @@ permanently stuck on "joining Wi-Fi…" despite a fully successful join.
 | **CSP** (`scripts/imager/build*.sh`, `scripts/provision/setup.sh`, `scripts/maintenance/patch-security.sh`) | `connect-src 'self' ws: wss:` → `connect-src 'self' ws: wss: http:` | Lets the browser `fetch` the cross-origin LAN-IP probe. `http:` (not `http://*.local`) is required because **CSP can't express an IP range** — a single `http:` token is the only way to allow `http://<any-lan-ip>/…`, so the fix is independent of the customer's subnet (`172.x`, `192.168.x`, `10.x`). |
 | **Backend** (`system/device/setup.go`) | A goroutine polls `GetCurrentIP()` once per second **in parallel with** `SetupNetwork()` and publishes the STA IP into setup state the instant it appears (skipping the AP's own `192.168.100.1`), before the 60s internet wait completes. | Gives the FE the **largest possible window** to read `lan_ip` during the brief overlap where it's still polling the AP — so the LAN-IP channel actually has an IP to redirect to. A guard keeps an already-captured IP from being clobbered by a later empty read during AP teardown. |
 | **Frontend** (`useSetupStatusPolling.ts`) | Removed the `.local` mDNS redirect channel as a *primary* target. The primary redirect is the LAN-IP probe, which carries `pathname + search` and targets `http://<lan_ip>/setup?<params>`; it also serves as the pre-submit canonical-URL upgrade. (A discovery-only `.local` fallback was later re-added for the AP-died-before-lan_ip race — see channels 3–4 above.) | `.local` is unreliable on mDNS-blocking networks, so it can't be the primary redirect target. The IP is read dynamically from the backend — **no hardcoded subnet, no mDNS dependency on the happy path**. |
-| **Frontend** (`Setup.tsx`) | The "save this address" copy field and the "Continue setup" link now use the **raw-IP URL** (`http://<lan_ip>/setup`); both screens gate on `setupLanIP` instead of the mDNS host, falling back to a router-admin hint when no IP is known yet. | IP-only, end to end — the operator is never handed a `.local` address that can't resolve on their network. |
+| **Frontend** (`Setup.tsx`) | The "save this address" copy field and the "Continue setup" link now use the **raw-IP URL** (`http://<lan_ip>/setup`); they gate on `setupLanIP` instead of the mDNS host, falling back to a router-admin hint when no IP is known yet. (The copy field has since been removed from the *connecting* screen — it remains on the connected one.) | IP-only, end to end — the operator is never handed a `.local` address that can't resolve on their network. |
 | **Frontend** (`Setup.tsx`) | The Copy button gained a `document.execCommand("copy")` fallback (hidden textarea) for when `navigator.clipboard` is unavailable. | The Setup page is served over plain HTTP (`http://192.168.100.1`), where `navigator.clipboard` is `undefined` (it needs a secure context) — so the modern API silently no-op'd and the button did nothing. The legacy path works on `http://` origins. |
 
 ### Redirect target
 
 The happy path now redirects to **`http://<lan_ip>/setup?<params>`** (e.g.
 `http://172.168.20.145/setup?…`) — the raw IP, which works regardless of mDNS.
-Until the early `lan_ip` poll lands, the manual copy link falls back to
-`http://<type>-<id>.local/setup?<params>`.
+
+The copy field survives only on the **connected** screen. The one that used to
+appear on the "joining Wi-Fi…" screen — a safety net for when the AP dropped
+before the phase poll flipped — was removed as UI noise, along with its "This
+page disconnects when you rejoin home Wi-Fi" line. While the join is in flight
+the screen now shows just the spinner, the message and the elapsed counter.
 
 ### Assessment & trade-offs
 
@@ -207,10 +211,11 @@ Until the early `lan_ip` poll lands, the manual copy link falls back to
   fires if the FE captured `lan_ip` during the ~2s AP-alive overlap — on a
   first-time setup that window usually closes before DHCP completes. The mDNS
   fallback (channel 3) covers that case on networks where `.local` resolves;
-  on mDNS-blocking networks with no captured `lan_ip`, no automatic channel
-  can fire, and the **manual IP entry is the guaranteed fallback** — the
-  operator finds the device's IP in their router and types it in, so they are
-  never stranded.
+  on mDNS-blocking networks with no captured `lan_ip`, **no automatic channel
+  can fire**. The in-page manual IP entry that used to cover this case was
+  removed as UI noise, so the page now rides out the join and lands on the
+  `JOIN_TIMEOUT_SEC` failure screen; recovery is rejoining the device AP and
+  re-running setup (the failure is adopted on mount — see "Failed joins").
 - **Backend rendezvous (device side ready):** the early backend ping (step 6d)
   publishes `local_ip` the moment WiFi is up, so a page that opened the Setup
   popup (e.g. autonomous.ai) can poll the backend by `mac` and navigate the
@@ -306,30 +311,50 @@ Three mechanisms now cover it:
    fills empty slots from the device's own config, so it can neither override
    what the operator sent nor expose anything new.
 
-**Recovery UI.** The failure screen names the hotspot SSID to rejoin
-(`<type>-<suffix>`, the same string as the mDNS host — `setup-ap.sh` derives
-both from the hardware ID), since a failed join leaves the operator on their
-home network and neither button can reach the device until they switch back. Two
-actions:
+**Recovery UI.** The failure screen shows the error, a three-item checklist of
+the common causes (password case, 2.4GHz vs 5GHz, distance to the router), and
+one action:
 
-- **Back to Wi-Fi** — in-place retry. Clears the password that just failed
-  (so it isn't resubmitted unchanged) but keeps the SSID and this document,
-  including the params it was opened with. The right default for a typo.
-- **Start over** — hard reset (`resetSetupSession()`): clears the
-  sessionStorage params snapshot and **hard-reloads** onto a bare `/setup`,
-  producing exactly the state of a first-ever AP visit. The reload is required,
-  not cosmetic: `useSetupUrlParams` snapshots `INITIAL_SEARCH` at *module load*,
-  so resetting React state alone would leave stale `llm_api_key` / `device_id`
-  live in that module and the "clean" form would still submit them. Emits
-  `start_over_clicked` first so a parent that wants its pushed config preserved
-  can reopen the popup with a fresh URL. The theme preference is deliberately
-  kept — it's a user choice unrelated to the attempt.
+- **Back to Wi-Fi** — in-place retry onto a clean wizard. Wipes every field the
+  failed attempt left behind — `ssid`, `password`, `adminPassword`, `error`,
+  `stepError`, `setupLanIP`, `elapsed`, both failure flags — and drops the
+  sessionStorage params snapshot (`clearStoredSetupParams()`), returning to the
+  Wi-Fi step. This mirrors the adoption path's cleanup field for field: those
+  are the only two routes back to the form, and clearing different things would
+  make "retry in this tab" and "reopen after rejoining the AP" behave
+  differently for no reason the operator could predict.
+
+  Safe to wipe because a Wi-Fi failure bails inside `SetupNetwork`, before
+  `device.Setup` writes any config — nothing was persisted device-side. The
+  password in particular must go, or the operator can resubmit the exact value
+  that just failed without noticing.
+
+  It is **not** a reload: the current document, and the params the parent pushed
+  into it (`llm_api_key`, `channel`, `device_id`), stay alive, so the operator
+  re-enters Wi-Fi credentials rather than the whole setup.
+
+  **Nothing to clear server-side.** The device never wrote config for a failed
+  join. Its in-memory `setupState` does still report `phase="failed"` — no code
+  path resets it to `idle` — which is why the poll ignores terminal verdicts
+  until it has seen `phase="connecting"` confirm the new run started. Without
+  that guard this reset would be undone within 600ms by the previous attempt's
+  verdict.
+
+A failed join leaves the operator on their home network, so the button can't
+reach the device until they rejoin the hotspot the device restored on its own
+(`handler.Setup` → `SwitchToAPMode`). The screen no longer names that SSID: the
+rejoin hint and the second **Start over** action were removed as UI noise. The
+`startOver` handler and its `apSsid` prop went with them; `resetSetupSession()`
+and the `start_over_clicked` bridge event remain in place but currently have no
+caller.
 
 **Per-device: skipping the failure screen.** `intern-v2` does not show the
 failure screen at all. A failed join drops the operator straight back on the
-Wi-Fi form — the same end state as pressing "Back to Wi-Fi" — with no error
-banner, checklist or rejoin hint. This is a deliberate product decision for that
-device class; `lamp`, `reachy-mini` and `unitree-go2w` keep the full screen.
+Wi-Fi form — the same end state as pressing "Back to Wi-Fi", including the full
+state wipe above — with no error banner or checklist. This is a deliberate
+product decision for that device class; `lamp`, `reachy-mini` and `unitree-go2w`
+keep the full screen. The auto-return effect calls `retryFromFailure()` verbatim,
+so the reset can never drift between the two paths.
 
 The class comes from `mac` (`"<device_type>-<4 hex>"`, e.g. `intern-v2-d94b`),
 stripped of its hex suffix — never from a URL param, which the operator's
@@ -382,9 +407,11 @@ To avoid re-prompting, the Wi-Fi step's done-state is derived from the
 Both are **public** (no admin auth), matching the same internet signal
 `SetupGate` (`App.tsx`) already uses to pick continue vs initial mode. When both
 are satisfied, `sectionDone.wifi` short-circuits to done and `WifiSection`
-collapses the picker into a **"Connected to `<ssid>`"** row (with a *Change
-network* link to switch), instead of the empty selector. The associated SSID
-also prefills the picker. The Wi-Fi *password* never leaves the device — only
+collapses the picker into a read-only **"Connected to `<ssid>`"** row instead of
+the empty selector. There is no way back to the picker from that row: switching
+networks is a `/setting#wifi` concern (`pages/settings/WifiSection.tsx`, which
+always renders the full picker), not something the setup wizard offers. The
+associated SSID also prefills the picker. The Wi-Fi *password* never leaves the device — only
 the associated SSID name (which the device already scans and broadcasts) and the
 `check-internet` boolean are read.
 
@@ -396,12 +423,45 @@ re-raise the skeleton, so the picker stays interactive once shown.
 
 ### Deep-linking into a step via the URL hash
 
-The redirect carries the original hash through, so a URL like
-`http://<lan_ip>/setup?<params>#voice` should open the **Voice** tab directly.
-On mount, `Setup.tsx` reads `window.location.hash` and, when it names a
-currently-visible section (`#wifi` / `#voice` / `#face` / …), selects that step.
-Because Voice/Face only exist in continue mode, this relies on `SetupGate`
-resolving the mode *before* Setup mounts (it renders `null` until then).
+A URL like `http://<lan_ip>/setup?<params>#voice` opens the **Voice** tab
+directly. Every redirect path carries the hash through — `SetupGate` in
+`App.tsx` and both probes (LAN-IP, mDNS `.local`) in `useSetupStatusPolling.ts`
+now append `window.location.hash` to the rebuilt target, matching what
+`scrubLocationSecrets()` in `lib/api.ts` already did.
+
+The deep-link effect in `useSetupController.ts` reads `window.location.hash` and
+selects the named step when it maps to a **currently-visible** section, so a
+stale or hidden id can't strand the operator on a blank step (`#force` is a test
+flag, not a step, and is skipped). Voice/Face only exist in continue mode, which
+`SetupGate` resolves from two awaited requests (`checkInternet` +
+`getSetupStatus`) — so the effect **cannot** assume the mode is known by the
+time Setup mounts. It re-runs keyed on `visibleSections.length` rather than
+firing once on mount; it lives below the `visibleSections` declaration because
+it now reads it as a dependency.
+
+Two rules keep the re-runs from fighting the operator:
+
+- **A hash naming a step that isn't visible yet leaves the URL untouched.** The
+  effect returns and sets `awaitingDeepLink` instead. Overwriting the hash here
+  was the actual defect: seeding `#wifi` over the requested `#voice` via
+  `history.replaceState` destroyed the only record of the target, so no later
+  pass could recover it and the wizard sat on Wi-Fi. The "seed the default first
+  step" branch now runs only when there is **no** hash at all.
+- **A hash is honored at most once** (`deepLinkedRef`), so a later change to
+  `visibleSections` can't yank the operator off a tab they navigated to by hand.
+
+While the target step is unknown, Setup renders `SetupSkeleton` — a placeholder
+mirroring the real chrome (192px sidebar + topbar + card) at matching
+dimensions, so resolving swaps content in without a layout jump. It is
+theme-aware via `useTheme`. Two render sites: `SetupGate` uses it while
+`provisioned === null` (previously `return null`), and `Setup.tsx` while
+`awaitingDeepLink && !showProgressScreen` — it never blocks the post-submit
+progress screen, which owns the page once a join is in flight. The skeleton is
+deliberately **not** a fixed delay: it appears only while the target step is
+genuinely unknown and disappears the instant it is known, so a fast network
+barely sees it and a slow one never flashes the wrong tab. `awaitingDeepLink` is
+seeded from the initial hash — true when the hash names anything other than
+`force` or the always-present `wifi` — so even the first paint is correct.
 
 The continue-mode auto-scroll — which otherwise jumps the operator to the first
 *incomplete* step — is suppressed when a valid deep-link hash was honored
@@ -473,7 +533,7 @@ Every message is a flat JSON envelope:
 | `setup_connected` | Device online + reachable | `mdns_host`, `lan_ip` |
 | `setup_failed` | WiFi join failed | `message` |
 | `retry_clicked` | "Back to Wi-Fi" after a failure | — |
-| `start_over_clicked` | "Start over" after a failure — popup is about to hard-reload and **drop every param it was opened with**; reopen with a fresh URL if the pushed config must survive | — |
+| `start_over_clicked` | **Never emitted** — the "Start over" button was removed. The event and `resetSetupSession()` are still defined; a caller would hard-reload the popup and **drop every param it was opened with** | — |
 | `continue_clicked` | "Continue setup →" clicked | `mdns_host` |
 | `monitor_clicked` | "Go to monitor →" clicked | — |
 
@@ -487,7 +547,9 @@ full listener example lives in the file header of `lib/setupBridge.ts`.
 |------|------|
 | `system/device/setup.go` | Setup orchestration + early LAN-IP capture goroutine |
 | `system/web/src/lib/setupBridge.ts` | Parent-window event bridge (postMessage) |
-| `system/web/src/pages/Setup.tsx` | Setup wizard UI + bridge emit call sites + IP-first copy link |
+| `system/web/src/pages/setup/Setup.tsx` | Setup wizard UI + bridge emit call sites + IP-first copy link |
+| `system/web/src/pages/setup/useSetupController.ts` | Setup page state: sections, step navigation, deep-link hash handling (`deepLinkedRef`, `awaitingDeepLink`) |
+| `system/web/src/pages/setup/SetupSkeleton.tsx` | Chrome-shaped placeholder rendered while the target step is unknown (mode resolving / pending deep-link) |
 | `system/web/src/hooks/setup/useSetupStatusPolling.ts` | AP→STA auto-redirect: phase poll + LAN-IP probe + mDNS probe |
 | `system/web/src/hooks/setup/useWifiConnected.ts` | Post-reload Wi-Fi-done detection from live device state (`check-internet` + `network/current`) |
 | `system/network/service.go` | WiFi connect, AP mode, `CurrentNetwork()` (associated SSID) |
