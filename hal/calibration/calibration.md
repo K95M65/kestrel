@@ -83,13 +83,16 @@ sudo systemctl start hal
 ```
 
 Use it to **put a unit's own numbers back** — after a servo swap, or if someone recalibrated
-and the result was worse. `--dry-run` reports what would change without writing.
+and the result was worse. To inspect the servos without writing anything:
 
-> **Never run it with the shared `hal.json` on a unit other than the one that file was
-> recorded on.** With no `--file`/`--id` it defaults to the repo `hal.json`, which holds the
-> **reference unit's** `homing_offset`. Pushing that onto a different arm replaces that
-> arm's zero with someone else's, and the servos move to visibly wrong poses. Always check
-> the `source :` line it prints before letting it write.
+```bash
+sudo ./.venv/bin/python3 -m hal.apply_calibration --dry-run --id hal
+```
+
+`--file` or `--id` is **required**; there is no default source. Pushing the shared
+`hal.json` onto an arm other than the one it was recorded from replaces that arm's zero
+with the reference unit's, and the servos move to visibly wrong poses — so the tool refuses
+to guess. Check the `source :` line it prints before letting it write.
 >
 > The tool does not back up what it overwrites — the `BEFORE` table it prints is the only
 > record of the previous values. Keep it.
@@ -135,7 +138,8 @@ journalctl -u hal -b | grep -i calib
 # calibration: loading id=hal from /opt/hal/calibration/robots/hal_follower/hal.json (exists=True)
 ```
 
-To see the EEPROM side, run `apply_calibration --dry-run` and read its `BEFORE` table.
+To see the EEPROM side, run `apply_calibration --dry-run --id hal` and read its `BEFORE`
+table.
 
 ## Servos
 
@@ -172,6 +176,6 @@ Two lessons:
 
 - `homing_offset` in a file is effectively **write-only** from the runtime's point of view.
   It can drift from the hardware indefinitely with no symptom. Never assume the file
-  reflects the servos — check with `apply_calibration --dry-run`.
+  reflects the servos — check with `apply_calibration --dry-run --id hal`.
 - Pushing that same file to a *different* arm was tried and produced visibly wrong poses,
   which is what confirmed `homing_offset` cannot be shared between units.
