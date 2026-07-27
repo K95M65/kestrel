@@ -29,7 +29,7 @@ from lerobot.motors.feetech import (
 
 from lerobot.robots import Robot
 from lerobot.robots.utils import ensure_safe_goal_position
-from .config_hal_follower import LeLampFollowerConfig
+from .config_hal_follower import AUTO_APPLY_CALIBRATION, LeLampFollowerConfig
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +105,35 @@ class LeLampFollower(Robot):
                 "Mismatch between calibration values in the motor and the calibration file or no calibration file found"
             )
             self.calibrate()
+        elif not self.is_calibrated and AUTO_APPLY_CALIBRATION and self.calibration:
+            # Non-interactive self-heal: the same push `hal.apply_calibration` does.
+            # disable_torque() first — it clears the `Lock` register, which the servo
+            # requires before it accepts EEPROM writes. The arm goes limp; configure()
+            # below re-enables torque.
+            #
+            # Never fatal: this only improves on the previous behaviour of running with a
+            # mismatch, so a serial hiccup here must not take the motion service down with
+            # it. Log and carry on — the next start retries.
+            logger.warning(
+                "calibration: motors disagree with %s — writing it to them "
+                "(HAL_AUTO_APPLY_CALIBRATION)",
+                self.calibration_fpath,
+            )
+            try:
+                self.bus.disable_torque()
+                self.bus.write_calibration(self.calibration)
+                if self.is_calibrated:
+                    logger.info("calibration: motors now match the file")
+                else:
+                    logger.error(
+                        "calibration: write did not take — motors still disagree with "
+                        "the file; continuing on the motors' own values"
+                    )
+            except Exception as exc:
+                logger.error(
+                    "calibration: could not write to the motors (%s); "
+                    "continuing on the motors' own values", exc,
+                )
 
         for cam in self.cameras.values():
             cam.connect()
