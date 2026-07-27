@@ -31,7 +31,8 @@ Camera detects physical actions → HAL logs to wellbeing JSONL automatically.
 |--------|--------|
 | `drink` | Camera activity detection |
 | `break` | Camera activity detection |
-| `using computer`, `writing`, `reading book`, `texting`, `drawing` | Camera sedentary detection |
+| `celebrate` | Camera activity detection |
+| `using computer`, `writing`, `reading`, `texting`, `drawing` | Camera sedentary detection |
 | `enter` / `leave` | Presence detection (backend) |
 
 ### 2. Conversation intent (via SOUL)

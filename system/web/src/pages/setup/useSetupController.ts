@@ -3,7 +3,7 @@ import { useSearchParams, useNavigate } from "react-router-dom";
 import { getNetworks, getSetupStatus, setupDevice } from "@/lib/api";
 import { useTheme } from "@/lib/useTheme";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
-import { useSetupUrlParams, resetSetupSession, clearStoredSetupParams } from "@/hooks/setup/useSetupUrlParams";
+import { useSetupUrlParams, clearStoredSetupParams } from "@/hooks/setup/useSetupUrlParams";
 import { useTTSCatalog } from "@/hooks/setup/useTTSCatalog";
 import { useConfigPrefill } from "@/hooks/setup/useConfigPrefill";
 import { useSetupStatusPolling } from "@/hooks/setup/useSetupStatusPolling";
@@ -52,7 +52,7 @@ export function useSetupController(mode: SetupMode) {
   const devicePushedConfig = mode === "initial" && !!urlParams.llmApiKey;
 
   // Language + Lamp's Voice are gated behind ?debug=true: regular operators
-  // get the auto-detected language and the "alloy"/openai voice defaults,
+  // get the auto-detected language and the "Rachel"/elevenlabs voice defaults,
   // which still flow through submit because the sections stay in the DOM
   // (display:none) — same pattern as STT/MQTT below.
   const debug = searchParams.get("debug") === "true";
@@ -146,7 +146,7 @@ export function useSetupController(mode: SetupMode) {
   // Devices that skip the Wi-Fi failure screen entirely and drop the operator
   // straight back on the form (equivalent to auto-pressing "Back to Wi-Fi").
   // Product decision, per device class — every other device keeps the screen
-  // with its error text, checklist and rejoin hint.
+  // with its error text and checklist.
   const skipsFailureScreen = deviceType === "intern-v2";
   const [llmApiKey, setLlmApiKey] = useState(urlParams.llmApiKey || "");
   const [llmUrl, setLlmUrl] = useState(urlParams.llmUrl || "");
@@ -186,8 +186,8 @@ export function useSetupController(mode: SetupMode) {
     if (loc.startsWith("en")) return "en";
     return "en";
   });
-  const [ttsProvider, setTtsProvider] = useState(urlParams.ttsProvider || "openai");
-  const [ttsVoice, setTtsVoice] = useState(urlParams.ttsVoice || "alloy");
+  const [ttsProvider, setTtsProvider] = useState(urlParams.ttsProvider || "elevenlabs");
+  const [ttsVoice, setTtsVoice] = useState(urlParams.ttsVoice || "Rachel");
   const { ttsProviders, ttsVoices } = useTTSCatalog({
     ttsProvider, sttLanguage, ttsVoice,
     urlProvider: urlParams.ttsProvider,
@@ -309,6 +309,18 @@ export function useSetupController(mode: SetupMode) {
   // activeSection to the first-incomplete step — the operator asked for a
   // specific tab and we honor it. The all-done → /monitor bounce still applies.
   const deepLinkedRef = useRef(false);
+  // True while the URL hash names a step that isn't visible yet — i.e. the mode
+  // hasn't resolved, so we can't know whether that step is about to exist. Setup
+  // renders a skeleton in this window instead of falling back to Wi-Fi and then
+  // correcting itself, which is what made the requested tab appear seconds late.
+  // Seeded from the initial hash so the very first paint is already correct: a
+  // hash naming anything other than the always-present `wifi` step is a deep-link
+  // whose target may still be pending.
+  const [awaitingDeepLink, setAwaitingDeepLink] = useState(() => {
+    if (typeof window === "undefined") return false;
+    const h = window.location.hash.replace(/^#/, "");
+    return !!h && h !== "force" && h !== "wifi";
+  });
   useEffect(() => {
     if (!isContinue) return;
     if (!llmApiKey) return; // wait until config has loaded
@@ -446,7 +458,7 @@ export function useSetupController(mode: SetupMode) {
       // otherwise rehydrate the failed attempt's query string. Clearing it here
       // (rather than reloading now) keeps the current document usable for the
       // in-place "Back to Wi-Fi" retry while guaranteeing the NEXT load starts
-      // from nothing. "Start over" remains the explicit full-reset path.
+      // from nothing.
       clearStoredSetupParams();
       // Devices that skip the failure screen stop here: the state above is
       // already the clean Wi-Fi form we want them on, so we simply never raise
@@ -494,28 +506,8 @@ export function useSetupController(mode: SetupMode) {
     setupBridge.opened({ mode, deviceId, mac });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  // Deep-link: open the step named by the URL hash (#wifi / #voice / #face / …)
-  // on load. Only honor a hash that maps to a currently-visible section so a
-  // stale/hidden id can't strand the operator on a blank step; `#force` is a
-  // test flag, not a step, so it's skipped. Runs once on mount.
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const fromHash = window.location.hash.replace(/^#/, "");
-    // Keep the `#force` test flag as-is — it's a mode toggle, not a step hash.
-    if (fromHash === "force") return;
-    if (fromHash && visibleSections.some((s) => s.id === fromHash)) {
-      // Record the explicit deep-link so the continue-mode auto-scroll doesn't
-      // later yank the operator off this tab onto the first incomplete step.
-      deepLinkedRef.current = true;
-      scrollTo(fromHash as SectionId); // deep-link into the named step
-    } else {
-      // No (or unusable) hash: seed one for the default first step so the URL
-      // reflects the visible tab from the very first render, not just after a
-      // click. scrollTo re-selects the current section — a harmless no-op here.
-      scrollTo(visibleSections[0]?.id ?? "wifi");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // (The deep-link effect used to sit here. It now reads `visibleSections` as a
+  // dependency, so it lives just below that declaration instead.)
   // Operator moved to a new step.
   useEffect(() => { setupBridge.stepChanged(activeSection); }, [activeSection]);
   // A WiFi network was chosen.
@@ -604,6 +596,48 @@ export function useSetupController(mode: SetupMode) {
     ? SECTIONS.filter((s) => s.id === "wifi")
     : SECTIONS;
 
+  // Deep-link: open the step named by the URL hash (#wifi / #voice / #face / …).
+  // Only honor a hash that maps to a currently-visible section so a stale/hidden
+  // id can't strand the operator on a blank step; `#force` is a test flag, not a
+  // step, so it's skipped.
+  //
+  // Re-runs as visibleSections grows instead of firing once on mount. Voice/Face
+  // only exist in continue mode, and SetupGate resolves that mode from two awaited
+  // requests (checkInternet + getSetupStatus) — on a slow network Setup mounts
+  // first, so a mount-only effect saw a sections list without `voice`, fell into
+  // the seed branch below, and pinned the operator to Wi-Fi. Worse, seeding wrote
+  // `#wifi` over the requested `#voice`, destroying the only record of the target
+  // tab, so no later pass could recover it.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    // Already honored — never re-apply. Otherwise a later sections change would
+    // yank the operator back off a tab they navigated to by hand.
+    if (deepLinkedRef.current) return;
+    const fromHash = window.location.hash.replace(/^#/, "");
+    // Keep the `#force` test flag as-is — it's a mode toggle, not a step hash.
+    if (fromHash === "force") return;
+    if (fromHash && visibleSections.some((s) => s.id === fromHash)) {
+      // Record the explicit deep-link so the continue-mode auto-scroll doesn't
+      // later yank the operator off this tab onto the first incomplete step.
+      deepLinkedRef.current = true;
+      setAwaitingDeepLink(false);
+      scrollTo(fromHash as SectionId); // deep-link into the named step
+      return;
+    }
+    // A hash naming a step that isn't visible yet means the mode is still
+    // resolving. Leave the URL untouched and wait for the next run — seeding
+    // here would overwrite the very target we're waiting for. `awaitingDeepLink`
+    // makes the page render a skeleton meanwhile, so the operator never sees
+    // Wi-Fi flash before the requested tab arrives.
+    if (fromHash) { setAwaitingDeepLink(true); return; }
+    // No hash at all: seed one for the default first step so the URL reflects the
+    // visible tab from the very first render, not just after a click. scrollTo
+    // re-selects the current section — a harmless no-op here.
+    setAwaitingDeepLink(false);
+    scrollTo(visibleSections[0]?.id ?? "wifi");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleSections.length]);
+
   // Wizard-style step navigation: Prev/Next walk through visibleSections; the
   // submit button only renders on the last visible step. Auto-scroll edge
   // cases (activeSection on a hidden section) fall back to index 0 so Next
@@ -665,13 +699,6 @@ export function useSetupController(mode: SetupMode) {
   // fresh set. Reloading is what makes them re-read; React state alone cannot,
   // because useSetupUrlParams snapshots them at module scope.
   //
-  // resetSetupSession() clears the sessionStorage snapshot and reloads onto a
-  // bare /setup. See its doc comment for exactly what is and isn't wiped.
-  const startOver = useCallback(() => {
-    setupBridge.startOverClicked();
-    resetSetupSession();
-  }, []);
-
   // Whether the progress/failure screen replaces the form. Either this tab has
   // a join in flight (setupWorking), or it adopted a previous attempt's failure
   // on mount (adoptedFailure).
@@ -687,19 +714,49 @@ export function useSetupController(mode: SetupMode) {
   // into the failure screen, otherwise an adopted failure would immediately
   // re-render it and the button would look dead.
   //
-  // The password is dropped so the operator retypes it deliberately instead of
-  // resubmitting the value that just failed; the SSID stays, since it was very
-  // likely correct and re-picking it from a list that may not have rescanned
-  // yet is friction for no gain. (On the adopted path the mount effect already
-  // cleared both.)
+  // Wipes every field the failed attempt left behind so the operator lands on
+  // the same wizard a first-ever AP visit would give them. This mirrors the
+  // adoption path's cleanup (see the mount effect above) field for field — the
+  // two are the only routes back to the form, and letting them clear different
+  // things would make "retry in this tab" and "reopen after rejoining the AP"
+  // behave differently for no reason the operator could predict.
+  //
+  // Safe to wipe: a Wi-Fi failure bails inside SetupNetwork, before device.Setup
+  // writes any config, so none of this was ever persisted device-side. The
+  // password in particular must go — keeping it lets the operator resubmit the
+  // exact value that just failed without noticing. The SSID goes with it so the
+  // picker re-resolves from the fresh scan (and from useConfigPrefill /
+  // useWifiConnected) instead of pinning a stale choice.
+  //
+  // NOT a reload: this keeps the current document — and the params the parent
+  // pushed into it (llm_api_key, channel, device_id) — alive, so the operator
+  // only re-enters Wi-Fi credentials rather than the whole setup. That was the
+  // "Start over" button's job, and it is deliberately gone.
+  //
+  // Nothing to clear server-side: the device never wrote config for a failed
+  // join. Its in-memory setupState still reports phase="failed" (no code path
+  // resets it to idle — see system/device/setup.go), which is exactly why the
+  // poll ignores terminal verdicts until it has seen phase="connecting" confirm
+  // the new run started. Without that guard this reset would be undone within
+  // 600ms by the previous attempt's verdict.
   const retryFromFailure = useCallback(() => {
     setupBridge.retryClicked();
     setSetupWorking(false);
     setAdoptedFailure(false);
     setSetupPhase("connecting");
     setSetupErrorMsg("");
-    setActiveSection("wifi");
+    setSetupLanIP("");
+    setElapsed(0);
+    setSsid("");
     setPassword("");
+    setAdminPassword("");
+    setError(null);
+    setStepError(null);
+    setActiveSection("wifi");
+    // sessionStorage survives F5, so an operator who reloads this tab after a
+    // failure would otherwise rehydrate the failed attempt's query string —
+    // a form that looks clean but still ships the old llm_api_key.
+    clearStoredSetupParams();
   }, []);
 
   // Devices in `skipsFailureScreen`: a failed join sends the operator straight
@@ -879,11 +936,11 @@ export function useSetupController(mode: SetupMode) {
     currentStepIndex, isFirstStep, isLastStep, isSkippableStep,
     doneCount, progressPct, sectionDone, goPrev, goNext,
     // mode flags
-    isContinue, devicePushedConfig,
+    isContinue, devicePushedConfig, awaitingDeepLink,
     // post-submit screen
     setupWorking, showProgressScreen, setupPhase, setupLanIP, setupErrorMsg, elapsed,
     setSetupWorking, setSetupPhase, setActiveSection,
-    deviceMdnsHost, deviceTypePrefix, startOver, retryFromFailure,
+    deviceMdnsHost, deviceTypePrefix, retryFromFailure,
     // form-level status
     error, stepError, loading, loadingList,
     handleSubmit, navigate,

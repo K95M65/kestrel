@@ -45,8 +45,7 @@ Lamp chọn câu dựa trên **hoạt động đang quan sát** (raw label từ 
 | `using computer` | *"You've been at the screen a while. Want some water?"* | *"Your eyes have been working. Look up for a sec?"* |
 | `writing` | *"Pen's been moving a while. Sip of water?"* | *"Your hand's been busy. Time for a stretch?"* |
 | `texting` | *"Phone's had your attention a bit. Water nearby?"* | *"You've been on your phone a while. Stand up for a sec?"* |
-| `reading book` | *"Deep in it. Water before the next chapter?"* | *"You've been reading a while. Rest your eyes?"* |
-| `reading newspaper` | *"You've been on the page a while. Water alongside?"* | *"Eyes have been working. Look up for a moment?"* |
+| `reading` | *"Deep in it. Water before the next chapter?"* | *"You've been reading a while. Rest your eyes?"* |
 | `drawing` | *"You've been at it. Sip of water?"* | *"Your hand's been working. Quick stretch?"* |
 | `playing controller` | *"Mid-session. Water within reach?"* | *"You've been playing a while. Stand up between rounds?"* |
 | (không rõ / chung chung) | *"Been a while since I saw you drink anything. Water?"* | *"You've been still a while. Stretch?"* |

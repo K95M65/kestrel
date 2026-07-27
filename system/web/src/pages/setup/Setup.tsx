@@ -16,6 +16,7 @@ import { Wifi, Brain, Volume2, MessageSquare, UserCircle, Mic, Globe, Check } fr
 import type { SetupMode } from "./helpers";
 import { useSetupController } from "./useSetupController";
 import { SetupProgressScreen } from "./SetupProgressScreen";
+import { SetupSkeleton } from "./SetupSkeleton";
 
 // Sidebar/tab icon per section id. Kept in the view layer (JSX) — the
 // controller owns the icon-free SECTIONS list so its logic stays UI-agnostic.
@@ -43,9 +44,9 @@ export default function Setup({ mode = "initial" }: SetupProps = {}) {
     contentRef, visibleSections, activeSection, scrollTo,
     currentStepIndex, isFirstStep, isLastStep, isSkippableStep,
     doneCount, progressPct, sectionDone, goPrev, goNext,
-    isContinue, devicePushedConfig,
+    isContinue, devicePushedConfig, awaitingDeepLink,
     showProgressScreen, setupPhase, setupLanIP, setupErrorMsg, elapsed,
-    deviceMdnsHost, deviceTypePrefix, startOver, retryFromFailure,
+    deviceMdnsHost, deviceTypePrefix, retryFromFailure,
     error, stepError, loading, loadingList,
     handleSubmit, navigate,
     ssid, setSsid, password, setPassword,
@@ -61,6 +62,13 @@ export default function Setup({ mode = "initial" }: SetupProps = {}) {
     ttsProvider, setTtsProvider, ttsProviders, ttsVoice, setTtsVoice, ttsVoices,
     faceOwners, loadFaceOwners,
   } = useSetupController(mode);
+
+  // The URL deep-links to a step that isn't visible yet (mode still resolving).
+  // Hold the skeleton rather than painting Wi-Fi first: the requested tab is
+  // usually one render away, and flashing the wrong step then jumping is what
+  // this screen exists to prevent. Never blocks the post-submit progress screen —
+  // that one owns the page once a join is in flight.
+  if (awaitingDeepLink && !showProgressScreen) return <SetupSkeleton />;
 
   return (
     <div className={`lm-root lm-setup ${themeClass}`} style={{
@@ -104,9 +112,9 @@ export default function Setup({ mode = "initial" }: SetupProps = {}) {
                 className={`lm-nav-item${active ? " lm-nav-item--active" : ""}${done && !active ? " lm-nav-item--done" : ""}`}
               >
                 {SECTION_ICONS[s.id]}
-                <span style={{ flex: 1 }}>{s.label}</span>
+                <span className="lm-nav-label" style={{ flex: 1 }}>{s.label}</span>
                 {s.optional && !done && (
-                  <span style={{
+                  <span className="lm-nav-badge" style={{
                     fontSize: 10, fontWeight: 600, color: C.textMuted,
                     textTransform: "uppercase", letterSpacing: "0.04em",
                   }}>
@@ -221,13 +229,7 @@ export default function Setup({ mode = "initial" }: SetupProps = {}) {
                 elapsed={elapsed}
                 deviceMdnsHost={deviceMdnsHost}
                 deviceTypePrefix={deviceTypePrefix}
-                // The AP hotspot SSID and the mDNS host are the same
-                // "<type>-<suffix>" string (setup-ap.sh derives both from the
-                // hardware ID), so the resolved mDNS host doubles as the
-                // hotspot name to show on the failure screen.
-                apSsid={deviceMdnsHost}
                 onRetry={retryFromFailure}
-                onStartOver={startOver}
               />
             ) : (
               <>

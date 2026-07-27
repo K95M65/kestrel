@@ -3,6 +3,7 @@
 import argparse
 import logging
 from .follower import LeLampFollower, LeLampFollowerConfig
+from .follower.config_hal_follower import PERSISTENT_CALIBRATION_DIR
 from .leader import LeLampLeader, LeLampLeaderConfig
 
 logging.basicConfig(level=logging.INFO)
@@ -12,10 +13,18 @@ logger = logging.getLogger(__name__)
 def calibrate_follower(lamp_id: str, port: str) -> None:
     """Calibrate the follower robot."""
     logger.info(f"Starting follower calibration for lamp ID: {lamp_id} on port: {port}")
-    
+
+    # For a per-device id, pin the write target to the persistent fleet dir so the
+    # calibration lands straight in /var/lib/hal/.../<id>.json — no separate copy step,
+    # and it survives OTA. Passing calibration_dir explicitly also skips the config's
+    # missing-file fallback (which would otherwise drop id to "hal" on the FIRST
+    # calibration and clobber the shared repo hal.json). id "hal" keeps writing the repo file.
+    calibration_dir = PERSISTENT_CALIBRATION_DIR if lamp_id and lamp_id != "hal" else None
+
     follower_config = LeLampFollowerConfig(
         port=port,
         id=lamp_id,
+        calibration_dir=calibration_dir,
     )
     
     follower = LeLampFollower(follower_config)

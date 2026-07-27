@@ -8,7 +8,7 @@ updates itself — locally first.
 **Autonomous Lamp** is the first reference device. **Intern** is the second. Anyone can
 build a third.
 
-> The brain is a swappable **agentic runtime** (OpenClaw, Hermes, PicoClaw, OpenAI Codex,
+> The brain is a swappable **agentic runtime** (OpenClaw, Hermes, OpenCode, OpenAI Codex,
 > Claude Code, or any LLM + skills + memory). Autonomous OS is everything else — the body, the skills, and the bounds.
 
 ## Reference devices
@@ -48,14 +48,14 @@ with or without the runtime. OTA runs as its own worker (`bootstrap/`).
 
 ### Agentic Runtime
 
-**OpenClaw**, **Hermes**, **PicoClaw**, **OpenAI Codex**, **Claude Code**, or a custom
+**OpenClaw**, **Hermes**, **OpenCode**, **OpenAI Codex**, **Claude Code**, or a custom
 runtime. Runs the skills, embodies the device's `SOUL.md`, and decides what to act on.
 Swappable at runtime (web Settings or MQTT) — and where Autonomous OS's differentiated value
 (the default brain, memory, character) lives. Its **tools** — how it reaches beyond the device —
 are **MCP connectors** (`runtimes/*/mcp.go`, synced across a switch by `system/agent`) and the
 **CLI** the LLM calls directly (`curl`, shell); skills are the device's own abilities through the
 HAL, tools are external capabilities the runtime calls.
-*(`runtimes/{openclaw,hermes,picoclaw,codex,claudecode}`; adding
+*(`runtimes/{openclaw,hermes,opencode,codex,claudecode}`; adding
 your own: `docs/agentic/adding-agent-runtime.md`)*
 
 ### Hardware Abstraction Layer (HAL)
@@ -112,7 +112,7 @@ The tree maps onto the architecture layers (top of the stack first):
 skills/           Skills — the apps (SKILL.md)
 system/           System Managers (Go): one folder per manager — intent, network, monitor, OTA…
   web/            on-device setup + monitor UI (React)
-runtimes/         Agentic Runtime — one folder per swappable brain (openclaw, hermes, picoclaw, codex, claudecode)
+runtimes/         Agentic Runtime — one folder per swappable brain (openclaw, hermes, opencode, codex, claudecode)
 hal/              HAL (Python) — the package; capability host + routes
   drivers/        Drivers — by subsystem (motion, audio, vision, light, display, sensing)
   board/          Board Support — per-board profiles + declaration-driven mounting

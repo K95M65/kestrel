@@ -73,9 +73,9 @@ export function WifiSection({
   /** The SSID the device is CURRENTLY joined to (from useWifiConnected /
    *  GET /api/network/current). When set, the device already left the setup AP
    *  and is on home Wi-Fi — this is the state after the AP→STA join reloads the
-   *  page — so we show a "Connected to <ssid>" row instead of re-prompting the
-   *  operator to pick a network + type a password they already entered. A
-   *  "Change network" link folds the picker back open for switching Wi-Fi. */
+   *  page — so we show a read-only "Connected to <ssid>" row instead of
+   *  re-prompting the operator to pick a network + type a password they already
+   *  entered. Switching networks is a /setting#wifi concern, not a setup one. */
   connectedSsid?: string;
   /** Device admin password. Only passed (and only rendered) when the device
    *  has no admin password on file yet — i.e. first-time setup. Shown in clear
@@ -87,10 +87,11 @@ export function WifiSection({
 }) {
   const showAdminPassword = setAdminPassword !== undefined;
   // When the device reports it's already on home Wi-Fi, collapse the picker
-  // into a "connected" confirmation. `changing` lets the operator re-open the
-  // full picker if they actually want to switch networks during re-setup.
-  const [changing, setChanging] = useState(false);
-  const showConnected = !!connectedSsid && !changing;
+  // into a read-only "connected" confirmation. Setup has no way back to the
+  // picker from here by design — switching networks mid-setup isn't a flow this
+  // wizard supports, and the operator can change it later from /setting#wifi
+  // (pages/settings/WifiSection.tsx, which always renders the full picker).
+  const showConnected = !!connectedSsid;
   // Device password is revealed by default (it's set once and the operator
   // needs to read it back), with an eye toggle to hide if someone's watching.
   const [adminVisible, setAdminVisible] = useState(true);
@@ -172,14 +173,14 @@ export function WifiSection({
       ) : showConnected ? (
         // Device is already on home Wi-Fi (post-join page reload). Show the
         // live network as a done state instead of an empty picker + password
-        // the operator would otherwise be forced to re-enter. "Change network"
-        // re-opens the full picker for a deliberate switch.
+        // the operator would otherwise be forced to re-enter. Read-only —
+        // network switching lives in /setting#wifi, not in the setup wizard.
         <div style={{ marginBottom: FIELD_GAP }}>
           {!showAdminPassword && (
             <label style={LABEL_STYLE}>Wi-Fi network</label>
           )}
           <div style={{
-            display: "flex", alignItems: "center", justifyContent: "space-between",
+            display: "flex", alignItems: "center",
             gap: 10, padding: "10px 13px",
             background: C.bg, border: `1px solid ${C.border}`,
             borderRadius: 10, fontSize: 14, color: C.textDim,
@@ -188,16 +189,6 @@ export function WifiSection({
               <Check size={15} style={{ color: C.green }} />
               <span>Connected to <span style={{ color: C.text }}>{connectedSsid}</span></span>
             </span>
-            <button
-              type="button"
-              onClick={() => { setChanging(true); setSsid(""); }}
-              style={{
-                background: "none", border: "none", cursor: "pointer",
-                color: C.amber, fontSize: 13, padding: 0,
-              }}
-            >
-              Change network →
-            </button>
           </div>
         </div>
       ) : (
