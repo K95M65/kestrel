@@ -114,19 +114,31 @@ This command set up each motor of LeLamp with an unique ID.
 uv run -m lelamp.setup_motors --id your_lamp_name --port the_port_found_in_previous_step
 ```
 
-3. **Calibrate motors**:
+3. **Push the calibration into the motors**:
 
-This command calibrate your motors.
+For a normal build, do **not** hand-calibrate. The servo's zero (`homing_offset`) lives in
+the servo's own EEPROM and the runtime never writes it, so a new unit must have the shared
+reference calibration pushed into it once — non-interactively:
+
+```bash
+sudo systemctl stop hal          # frees the serial port
+sudo uv run -m hal.apply_calibration --port the_port_found_in_previous_step
+sudo systemctl start hal
+```
+
+It prints a before/after table and verifies the write; `5/5 motors` means it landed. Add
+`--dry-run` to preview without writing.
+
+Only re-record a calibration when the mechanics actually changed (replaced servo, horn
+remounted) — hand-calibrating creates a frame that no longer matches the shared animation
+library:
 
 ```bash
 sudo uv run -m hal.calibrate --id your_lamp_name --port the_port_found_in_previous_step
 ```
 
-The calibration process will:
-
-- Calibrate both follower and leader modes
-- Ensure proper servo positioning and response
-- Set baseline positions for accurate movement
+See [calibration/calibration.md](calibration/calibration.md) for the full picture — why the
+JSON alone cannot fix an uncalibrated arm, and what each field actually controls.
 
 ### 2. Unit Testing
 
