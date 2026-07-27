@@ -99,7 +99,7 @@ class AudioProcessorSetting(BaseModel):
 
 class AudioEmbedderSetting(BaseModel):
     enabled: bool = True
-    model: AudioEmbedderEnum = AudioEmbedderEnum.ECAPA_TDNN_1024
+    model: AudioEmbedderEnum = AudioEmbedderEnum.RESNET293
     model_path: str | None = None
     remote_url: str | None = None
     batch_size: int | None = None

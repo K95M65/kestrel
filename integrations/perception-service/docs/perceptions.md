@@ -25,7 +25,7 @@ The configured default for each subsystem comes from `src/config.py`
 | 3 | Pose estimation | RTMPose + TCPFormer | yes | WS pose |
 | 4 | Speech emotion (SER) | emotion2vec | yes | HTTP ser |
 | 5 | Object detection | per-detector | no (opt-in) | WS + HTTP object |
-| 6 | Audio embedder | WeSpeaker ECAPA-TDNN-1024 | no | HTTP embed |
+| 6 | Audio embedder | WeSpeaker ResNet293 | no | HTTP embed |
 | 7 | Face detection | YuNet | (internal) | feeds FER/pose |
 | 8 | Person detection | YOLO | no (internal) | feeds action |
 
@@ -137,14 +137,15 @@ selected by URL path segment (`{detector_name}`).
 Produces a speaker embedding for verification/identification (matching is done by
 the caller).
 
-- Enum `AudioEmbedderEnum` (`enums/audio.py`): `resnet34`, `ecapa-tdnn1024`, `campplus`
+- Enum `AudioEmbedderEnum` (`enums/audio.py`): `resnet34`, `resnet293`, `ecapa-tdnn1024`, `campplus`
 - Predictors (`perception/audio/predictors/`):
 
   | Model | File | Weights | Embedding dim |
   |-------|------|---------|---------------|
   | WeSpeaker ResNet34 | `resnet34.py` | `wespeaker_resnet34.onnx` | 256 |
-  | **WeSpeaker ECAPA-TDNN-1024** (default) | `ecapa_tdnn.py` | `wespeaker_ecapa_tdnn1024.onnx` | 1024 |
-  | WeSpeaker CAM++ | `campplus.py` | `wespeaker_campplus.onnx` | — |
+  | **WeSpeaker ResNet293** (default) | `resnet293.py` | `voxceleb_resnet293_LM.onnx` | 256 |
+  | WeSpeaker ECAPA-TDNN-1024 | `ecapa_tdnn.py` | `wespeaker_ecapa_tdnn1024.onnx` | 192 |
+  | WeSpeaker CAM++ | `campplus.py` | `wespeaker_campplus.onnx` | 512 |
 
 - All models: 16 kHz mono input → 80-bin fbank → chunking → L2-normalized embedding.
   Net speech ≤ 10 s is embedded as one whole-utterance chunk (like WeSpeaker's
@@ -190,6 +191,7 @@ on first use. Override with `<NAME>__CKPT_PATH` (local) or `<NAME>__REMOTE_URL` 
 | emotion2vec+ | `emotion2vec.onnx` | ONNX | `onnx_models/` |
 | ECAPA-TDNN-1024 | `wespeaker_ecapa_tdnn1024.onnx` | ONNX | `onnx_models/` |
 | ResNet34 | `wespeaker_resnet34.onnx` | ONNX | `onnx_models/` |
+| ResNet293 | `voxceleb_resnet293_LM.onnx` | ONNX | `onnx_models/` |
 | CAM++ | `wespeaker_campplus.onnx` | ONNX | `onnx_models/` |
 | YuNet | `face_detection_yunet_2023mar.onnx` | ONNX | `onnx_models/` |
 | YOLO person (ONNX) | `yolo12x_raw.onnx` / `yolo12x.onnx` | ONNX | `onnx_models/` |

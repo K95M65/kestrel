@@ -57,7 +57,7 @@ For a single-node dev setup you can talk to `dlserver` directly and skip
 | Speech emotion (SER) | HTTP | emotion2vec | 9-class emotion + confidence |
 | Pose estimation | WS | RTMPose (2D) + TCPFormer (3D) | 2D/3D keypoints + RULA ergonomics |
 | Object detection | WS + HTTP | per-detector (opt-in) | Open-vocabulary boxes |
-| Audio embedder | HTTP | WeSpeaker ECAPA-TDNN-1024 | Speaker embedding vector |
+| Audio embedder | HTTP | WeSpeaker ResNet293 | Speaker embedding vector |
 | Face detection | internal | YuNet | Face boxes (feeds emotion/pose) |
 | Person detection | internal | YOLO | Person crop (feeds action) |
 

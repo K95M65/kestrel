@@ -3,9 +3,10 @@ from enum import StrEnum
 
 class ModelEnum(StrEnum):
     # Audio embedder (WeSpeaker)
-    WESPEAKER_RESNET34 = "wespeaker_resnet34"
-    WESPEAKER_ECAPA_TDNN_1024 = "wespeaker_ecapa_tdnn1024"
-    WESPEAKER_CAMPPLUS = "wespeaker_campplus"
+    WESPEAKER_RESNET34 = "wespeaker_resnet34"                   # 256-dim
+    WESPEAKER_RESNET293 = "wespeaker_resnet293"                 # 256-dim
+    WESPEAKER_ECAPA_TDNN_1024 = "wespeaker_ecapa_tdnn1024"      # 192-dim
+    WESPEAKER_CAMPPLUS = "wespeaker_campplus"                   # 512-dim
 
     # Audio emotion (SER)
     EMOTION2VEC_ONNX = "emotion2vec_onnx"

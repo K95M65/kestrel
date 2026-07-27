@@ -65,6 +65,8 @@ def create_embedder(
     """Instantiate the correct audio embedder model."""
     if model_name == AudioEmbedderEnum.RESNET34:
         from core.perception.audio.predictors.resnet34 import ResNet34Embedder as cls
+    elif model_name == AudioEmbedderEnum.RESNET293:
+        from core.perception.audio.predictors.resnet293 import ResNet293Embedder as cls
     elif model_name == AudioEmbedderEnum.ECAPA_TDNN_1024:
         from core.perception.audio.predictors.ecapa_tdnn import EcapaTdnn1024Embedder as cls
     elif model_name == AudioEmbedderEnum.CAMPPLUS:
