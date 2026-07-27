@@ -1,69 +1,136 @@
 # Servo Calibration
 
-The arm uses 5x Feetech STS3215 servos controlled via the `lerobot` library. Each servo requires calibration to map raw encoder positions to degrees. Calibration data is stored as JSON and loaded at startup.
+The arm uses 5x Feetech STS3215 servos controlled via the `lerobot` library. Calibration
+maps raw encoder positions to joint positions. **It lives in two places, and this split is
+the single most important thing to understand here.**
 
-## Calibration files (repo default + per-device fleet override)
+## Where calibration actually lives
 
-`homing_offset` / `range_min` / `range_max` are **unique to each physically-assembled
-unit** — the servo horn mounts on a discrete spline, so the mechanical zero shifts a
-few degrees per build. A calibration recorded on one arm only fits that arm; sharing
-it makes another unit start with the wrong zero and travel limits. The follower/leader
-configs therefore resolve `calibration_dir` in `__post_init__` two ways, keyed on
-`HAL_DEVICE_ID`:
+A calibration JSON holds five values per servo, but they do **not** share a fate at runtime:
 
-- **Default `id = "hal"`** (unset / dev) → the **version-controlled repo file**, so a
-  fresh checkout or dev machine works out of the box:
-  - `hal/follower/config_hal_follower.py` → `hal/calibration/robots/hal_follower`
-  - `hal/leader/config_hal_leader.py` → `hal/calibration/teleoperators/hal_leader`
-- **Per-device `id` (e.g. `lamp-abcd`)** → the **persistent fleet dir**
-  `/var/lib/hal/calibration/robots/hal_follower/<id>.json` (override the base with
-  `HAL_CALIBRATION_DIR`). The hardware team drops each unit's `<id>.json` there at
-  provisioning; it lives **outside the OTA tree** (`/opt/hal` is overwritten every
-  update) so calibration survives updates.
-  - **Fallback:** if `HAL_DEVICE_ID` is set but that `<id>.json` is **missing**, the
-    config logs a warning and falls back to the repo `hal.json` (it drops the effective
-    id to `"hal"`), so the arm never starts uncalibrated — it runs on the shared
-    calibration until the per-device file is in place.
+| Field | Where it takes effect | Applied by |
+|-------|----------------------|------------|
+| `homing_offset` | **The servo's own EEPROM** (STS3215 control-table address 31) | The **servo, in hardware**: `Present_Position = Actual_Position − Homing_Offset` |
+| `range_min` / `range_max` | Read from the **JSON file** on every start | lerobot **software** normalization (`_normalize` / `_unnormalize`) |
+| `id`, `drive_mode` | JSON | software |
 
-> **Why override lerobot's default at all:** lerobot's per-user path
-> (`~/.cache/huggingface/lerobot/calibration`) breaks when the service user differs
-> from the user that ran calibration. `hal.service` runs as **root**, so it would look
-> under `/root/.cache/...` and miss a calibration saved elsewhere — surfacing as
-> `FeetechMotorsBus(...) has no calibration registered`. Both dirs above are
-> independent of the service user.
+`homing_offset` is the per-unit "tare" that compensates how the servo horn sits on its
+spline. **The runtime never writes it to the motors** — the services call
+`connect(calibrate=False)`, and `write_calibration()` is only reachable from
+`hal.calibrate` / `hal.apply_calibration`. So the number in the JSON has **no effect on
+the servo's zero**; only the copy inside the servo's EEPROM does.
+
+Consequence, and the reason this page exists:
+
+> A freshly assembled unit ships with factory `Homing_Offset = 0`. It will move to the
+> wrong poses **no matter which JSON it is pointed at**, until the calibration is pushed
+> into the motors once. Copying JSON files around cannot fix it.
+
+EEPROM is non-volatile, so the push survives power-off, reflash and OTA. It only has to
+happen once per physical unit (or after replacing a servo / remounting a horn).
+
+## Provisioning a unit — the normal path
+
+Push the shared reference calibration into the motors. **No jogging the arm by hand, no
+per-device JSON, no `.env` edit.**
+
+```bash
+sudo systemctl stop hal          # the running service holds /dev/ttyACM0
+cd /opt/hal
+sudo ./.venv/bin/python3 -m hal.apply_calibration --port /dev/ttyACM0
+sudo systemctl start hal
+```
+
+`hal/apply_calibration.py` is non-interactive. It prints the servos' current values next
+to the file's, disables torque first (which clears the `Lock` register — the servo rejects
+EEPROM writes while locked), writes, then **reads back and verifies**. Success looks like:
+
+```
+=== AFTER (read back from the servos) ===
+motor                         homing             range_min             range_max
+base_yaw                        1928                   828                  3255
+...
+5/5 motors already match the file
+```
+
+Anything other than `5/5` means the write did not land — do not ship the unit.
+
+Useful flags:
+
+- `--dry-run` — report what would change, write nothing.
+- `--port` — default `/dev/ttyACM0`; check `ls /dev/ttyACM*` if it differs.
+- `--id <device>` — resolve the file for a per-device id instead of the shared one.
+- `--file <path>` — write an explicit JSON (used to restore a backup).
+
+To back up a unit's current EEPROM before overwriting it, run with `--dry-run` first and
+keep the printed values, or dump them via `bus.read_calibration()`.
+
+## Do not hand-calibrate to "fix" a unit
+
+`hal.calibrate` with the `c` option re-records `homing_offset` **and** `range_min/max`
+from scratch. That produces a *valid but different* frame for that one unit — and the
+shared animation library (`hal/recordings/*.csv`) stores **normalized** values that were
+authored in the reference frame. Playback maps them back through whatever `range_min/max`
+is in force, so a unit with its own ranges plays every canned animation at the wrong pose.
+
+**For a shared animation library, every unit must share one frame.** That means: the same
+`range_min/max` (the repo `hal.json`) and a `homing_offset` that anchors each unit to the
+same physical zero. `apply_calibration` gives exactly that.
+
+Only reach for a real re-calibration when the hardware itself changed — a replaced servo,
+or a horn remounted a tooth off (~14° per spline tooth, visible by eye).
+
+> **Device-verified 2026-07-27 (lamp-ac82).** Before the push, the unit's EEPROM held
+> `base_pitch homing = −556` against the file's `−381`, i.e. the arm sat **15° off** the
+> reference frame, and its EEPROM travel limits silently clipped `base_yaw` by ~13° at
+> each end. After `apply_calibration`, read-back showed 5/5 matching and the arm visibly
+> tilted forward by the predicted ~15°. Three units had been running in three slightly
+> different frames — "working" only because lamp motion tolerates a few degrees.
+
+## Which JSON the runtime reads
 
 lerobot loads `calibration_dir / f"{id}.json"`, where `id` is `HAL_DEVICE_ID`
 (`hal/config.py`, default `"hal"`; `hal/.env.example` sets `HAL_DEVICE_ID=hal`).
-With the default id the repo files are:
+`config_hal_follower.py.__post_init__` resolves the directory:
+
+- **`id = "hal"`** (default / unset) → the version-controlled repo file. This is the
+  **shared reference frame** the animation library is authored in, and the normal choice
+  for the whole fleet:
+  - `hal/follower/config_hal_follower.py` → `hal/calibration/robots/hal_follower`
+  - `hal/leader/config_hal_leader.py` → `hal/calibration/teleoperators/hal_leader`
+- **Per-device `id`** (e.g. `lamp-abcd`) → `/var/lib/hal/calibration/robots/hal_follower/<id>.json`
+  (override the base with `HAL_CALIBRATION_DIR`). Outside the OTA tree (`/opt/hal` is
+  overwritten every update), so it survives updates. **If that file is missing, the config
+  logs a warning and falls back to the repo `hal.json`** — the arm never starts with no
+  calibration registered.
+
+The per-device path exists for the exception case (a unit that genuinely needs its own
+numbers). It is **not** the normal provisioning route — see the warning above.
 
 ```
 hal/calibration/
-├── robots/hal_follower/hal.json
+├── robots/hal_follower/hal.json          # shared reference frame
 └── teleoperators/hal_leader/hal.json
 ```
 
-On a deployed device the repo copy ships under `/opt/hal/calibration/...`; a per-device
-unit reads `/var/lib/hal/calibration/robots/hal_follower/<id>.json` instead.
+On a device the repo copy ships under `/opt/hal/calibration/...` via OTA.
 
-> **Provisioning order:** ideally place `<id>.json` in the persistent dir first, then
-> set `HAL_DEVICE_ID` and restart HAL. If the order is reversed (env set, file not yet
-> there), the arm does **not** start uncalibrated — it falls back to the repo `hal.json`
-> and logs a warning; once the per-device file is dropped in and HAL restarts, it picks
-> up the unit's own calibration.
->
-The runtime fallback only affects **reads**. `hal.calibrate` pins the write target
-explicitly (see below), so calibrating on-device with a per-device id always writes to
-the persistent dir, even on the first calibration — no clobbering the shared repo file.
+> **Why override lerobot's default at all:** lerobot's per-user path
+> (`~/.cache/huggingface/lerobot/calibration`) breaks when the service user differs from
+> the user that ran calibration. `hal.service` runs as **root**, so it would look under
+> `/root/.cache/...` and miss a calibration saved elsewhere — surfacing as
+> `FeetechMotorsBus(...) has no calibration registered`. Both dirs above are independent
+> of the service user.
 
-Each JSON contains per-servo values:
+Startup log line (greppable) confirms what was loaded:
 
-| Field | Description |
-|-------|-------------|
-| `id` | Servo ID (1–5) |
-| `drive_mode` | Direction (0 = normal) |
-| `homing_offset` | Encoder offset for center position |
-| `range_min` | Minimum encoder value (physical limit) |
-| `range_max` | Maximum encoder value (physical limit) |
+```bash
+journalctl -u hal -b | grep -i calib
+# calibration: loading id=hal from /opt/hal/calibration/robots/hal_follower/hal.json (exists=True)
+```
+
+Note this only tells you which **file** was read — it says nothing about what is in the
+servos' EEPROM. Use `apply_calibration --dry-run` to compare the two.
 
 ## Servos
 
@@ -75,106 +142,33 @@ Each JSON contains per-servo values:
 | 4 | `wrist_roll` | Wrist rotation |
 | 5 | `wrist_pitch` | Wrist tilt |
 
-## Deploy to a device
+## Re-recording a calibration (hardware changed)
 
-No copy-to-`~/.cache` step is needed: the calibration ships with the repo checkout
-under `/opt/hal/calibration/...` and is read directly. After deploying new code or a
-new calibration, restart the HAL service:
-
-```bash
-sudo systemctl restart hal
-```
-
-## Run fresh calibration on a Pi
-
-Use this when the arm hardware changes (e.g. after replacing servos), and as the
-per-unit provisioning step for a new device. Pass the `id` the device runs with:
-
-- `--id hal` → writes the repo file `hal/calibration/robots/hal_follower/hal.json`.
-- `--id <device>` (e.g. `lamp-abcd`) → writes **straight to**
-  `/var/lib/hal/calibration/robots/hal_follower/<id>.json`.
-
-For a per-device id the file lands in its final persistent location directly — **no
-separate copy step**, and it survives OTA.
-
-> **Stop HAL first.** The running `hal` service holds the servo serial port; two
-> processes can't own `/dev/ttyACM0` at once. Stop it before calibrating, start it after.
-
-### Provision a new fleet device (per-unit)
-
-Run on the lamp itself (same image flashed to every unit). In the commands below,
-replace **`lamp-abcd`** with this unit's id everywhere — match the hostname so it's easy
-to track.
-
-> **Two different things use the id — don't confuse them:**
-> - **`--id lamp-abcd` on the calibrate command** = what *names the output file*. The
->   CLI reads this argument directly, **not** `.env`. So calibrate writes
->   `lamp-abcd.json` no matter what `HAL_DEVICE_ID` currently says.
-> - **`HAL_DEVICE_ID=lamp-abcd` in `.env`** = what the *runtime reads at boot*. This is
->   only needed **after** the file exists.
->
-> Therefore the order is: **calibrate first** (creates the file via `--id`), **then set
-> `.env` and restart** (points the runtime at it). Do **not** set `.env` and restart
-> before the file exists — the runtime would just fall back to the repo `hal.json`.
-
-```bash
-# 1) Release the servo serial port (the running service holds it)
-sudo systemctl stop hal
-
-# 2) Calibrate this unit's follower arm. --id names the output file, so this writes
-#    /var/lib/hal/calibration/robots/hal_follower/lamp-abcd.json (persistent, survives OTA).
-#    No .env change is needed for this step.
-cd /opt/hal
-sudo ./.venv/bin/python3 -m hal.calibrate --id lamp-abcd --port /dev/ttyACM0 --follower-only
-
-# 3) NOW that the file exists, point the runtime at it and bring HAL back up.
-#    Append the line, or edit it in place if HAL_DEVICE_ID already exists in .env.
-echo 'HAL_DEVICE_ID=lamp-abcd' | sudo tee -a /opt/hal/.env
-sudo systemctl start hal
-```
-
-- **Serial port:** if it isn't `ACM0`, check `ls /dev/ttyACM*` and adjust `--port`.
-- **Only the follower** (5 servos) is on a shipped lamp; the leader is the teleop arm.
-- **Custom store:** prepend `HAL_CALIBRATION_DIR=/other/path` to step 2 to change the dir.
-
-Verify:
-
-```bash
-cat /var/lib/hal/calibration/robots/hal_follower/lamp-abcd.json   # 5 servos present
-journalctl -u hal -n 30 | grep -i calib                          # NOT "falling back to repo hal.json"
-```
-
-A "falling back to repo hal.json" line means the `HAL_DEVICE_ID` in `.env` doesn't match
-a file that exists in the persistent dir — recheck that step 2 wrote `lamp-abcd.json` and
-that step 3 used the same id.
-
-### Default `hal` calibration (dev / shared repo file)
-
-Use `--id hal` to (re)record the version-controlled repo file — e.g. on a dev bench, or
-to refresh the shared fallback:
+Use this only when the mechanics changed. It rewrites both the frame and the file, so
+afterwards the unit no longer matches the shared animation frame unless you re-record the
+reference for the whole fleet.
 
 ```bash
 sudo systemctl stop hal
 cd /opt/hal
-sudo ./.venv/bin/python3 -m hal.calibrate --id hal --port /dev/ttyACM0 --follower-only  # add --leader-only / omit for both
+sudo ./.venv/bin/python3 -m hal.calibrate --id hal --port /dev/ttyACM0 --follower-only
 sudo systemctl start hal
 ```
 
-### Calibration steps (interactive)
+`--id` names the output file (the CLI reads this argument, **not** `.env`): `--id hal`
+writes the repo file; `--id <device>` writes straight to the persistent per-device dir.
 
-Both flows prompt the same way:
+Interactive steps:
 
-1. Press `c` at the prompt to run calibration (ENTER reuses the existing file).
-2. **Torque is disabled** — servos go limp so you can move them by hand.
-3. **Move all joints to the middle** of their range of motion, then press ENTER. This sets the homing offset.
-4. **Move each joint through its full range** (min to max). The script records encoder positions. Press ENTER when done.
-5. Calibration is saved to `<calibration_dir>/<id>.json` — the persistent dir for a
-   per-device id, or the repo file for `--id hal`.
+1. Press `c` to run a fresh calibration (ENTER instead **writes the existing file to the
+   motors** — the same thing `apply_calibration` does, but unverified and without
+   unlocking the EEPROM first).
+2. Torque is disabled — the servos go limp so you can move them by hand.
+3. Move all joints to the middle of their range, press ENTER. This sets `homing_offset`.
+4. Move each joint through its **full** range, min to max, press ENTER. An incomplete
+   sweep records too-narrow ranges, which compresses every animation.
+5. The result is saved to `<calibration_dir>/<id>.json` and written to the motors.
 
-### After calibration
-
-- **Per-device id:** the file stays on the device under `/var/lib/hal/...` — do **not**
-  commit it (each unit's calibration is its own).
-- **`hal` id:** commit the updated file under `hal/calibration/` so a fresh checkout /
-  the shared fallback picks it up.
-- Restart the HAL service if you haven't: `sudo systemctl restart hal` (or reboot).
+Afterwards: commit the updated `hal/calibration/...` file if you re-recorded the shared
+reference (`--id hal`); a per-device file stays on the device and is not committed.
+Restart HAL: `sudo systemctl restart hal`.
