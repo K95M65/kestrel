@@ -63,6 +63,20 @@ Config field: `timezone` trong `config/config.json` (chuỗi IANA zone, omitempt
 | GET | `/api/network/current` | SSID + IP hiện tại |
 | GET | `/api/network/check-internet` | Kiểm tra kết nối internet |
 
+**Monitor kết nối** (`system/network/service.go`, chạy khi `SetUpCompleted` = true).
+Ping `8.8.8.8` mỗi 5s — không phụ thuộc interface, nên máy online qua dây vẫn được
+tính là online. Fail 5 lần liên tiếp → bật LED state `Connectivity`; fail 10 lần
+(~50s) → leo thang sang reconnect WiFi (restart `wpa_supplicant@wlan0`, bounce
+interface); reconnect fail 5 lần (~10 phút) → reboot thiết bị.
+
+Nấc leo thang đó là đường phục hồi dành cho **WiFi**, nên bị bỏ qua khi WiFi không
+phải là link đang có vấn đề — nếu không, máy chạy dây sẽ tự reboot mỗi ~10 phút suốt
+thời gian ISP hỏng mà nó chẳng liên quan. Bỏ qua khi một trong hai: không có SSID nào
+được lưu (máy provision bằng dây — xem `setupWired` trong `docs/setup-flow.md`), hoặc
+default route thuộc về interface khác (traffic đang đi ra bằng dây). Còn khi link WiFi
+rớt thật thì *không* còn default route nào cả và `PrimaryInterface()` fallback về
+`wlan0`, nên đúng sự cố mà nấc này sinh ra để xử lý vẫn lọt qua guard.
+
 ### Guard Mode (Chế độ canh gác)
 
 | Method | Endpoint | Mô tả |

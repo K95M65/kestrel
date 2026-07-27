@@ -230,7 +230,7 @@ export function useSetupController(mode: SetupMode) {
   // AP→STA redirect performs. This is what marks the Wi-Fi step done after the
   // device joins Wi-Fi and the page reloads on the new LAN-IP origin, instead
   // of re-prompting "choose your Wi-Fi + password". See useWifiConnected.
-  const { wifiConnected, currentSsid, checking: wifiChecking } = useWifiConnected();
+  const { wifiConnected, wiredUplink, currentSsid, checking: wifiChecking } = useWifiConnected();
 
   // Per-section "done" detection drives the ✓ checkmark in the sidebar and
   // the auto-scroll-to-next-pending behavior in continue mode. We treat a
@@ -254,7 +254,10 @@ export function useSetupController(mode: SetupMode) {
     // ssid/password reset to empty, but the device IS on home Wi-Fi — so the
     // live-state signal (internet + associated SSID) is the authoritative
     // "Wi-Fi is set up" truth, not the wiped form input.
-    wifi: wifiConnected || (!!ssid && (!!password || hasNetworkPassword)),
+    // `wiredUplink` satisfies it too: the device already reaches the network
+    // over ethernet, so there are no Wi-Fi credentials to collect and the step
+    // must not block setup.
+    wifi: wifiConnected || wiredUplink || (!!ssid && (!!password || hasNetworkPassword)),
     llm: !!llmApiKey || llmLoaded.apiKey,
     language: true, // Auto/empty is a valid choice — never block on this.
     realtime: true, // Not a setup step (edit-only card); never blocks setup.
@@ -827,12 +830,17 @@ export function useSetupController(mode: SetupMode) {
     // tokens) ride through URL params or the saved config merge on the
     // backend, so we let the server be the source of truth for those — see
     // the normaliseSetupError() catch below for friendlier rendering.
+    // No network chosen is only an error when the device actually needs one.
+    // On a wired device we submit an empty ssid on purpose — the backend reads
+    // that as "keep using the uplink you already have", verifies it, and tears
+    // down the provisioning AP instead of running a Wi-Fi join.
     if (!ssid.trim()) {
-      setError("Choose a Wi-Fi network before continuing.");
-      setActiveSection("wifi");
-      return;
-    }
-    if (!password && !hasNetworkPassword) {
+      if (!wiredUplink) {
+        setError("Choose a Wi-Fi network before continuing.");
+        setActiveSection("wifi");
+        return;
+      }
+    } else if (!password && !hasNetworkPassword) {
       setError("Enter the Wi-Fi password.");
       setActiveSection("wifi");
       return;
@@ -925,7 +933,7 @@ export function useSetupController(mode: SetupMode) {
     discordBotToken, discordGuildId, discordUserId, ssid, password, llmUrl, llmApiKey,
     llmModel, llmDisableThinking, sttApiKey, sttBaseUrl, ttsApiKey, ttsBaseUrl, ttsVoice, deviceId,
     mqttEndpoint, mqttPort, mqttUsername, mqttPassword, faChannel, fdChannel,
-    sttLanguage, ttsProvider, hasNetworkPassword, adminPassword,
+    sttLanguage, ttsProvider, hasNetworkPassword, adminPassword, wiredUplink,
   ]);
 
   return {
@@ -948,7 +956,7 @@ export function useSetupController(mode: SetupMode) {
     ssid, setSsid, password, setPassword,
     hasAdminPassword, hasNetworkPassword,
     adminPassword, setAdminPassword,
-    uniqueNetworks, refreshNetworks, wifiConnected, currentSsid, wifiChecking,
+    uniqueNetworks, refreshNetworks, wifiConnected, wiredUplink, currentSsid, wifiChecking,
     // LLM
     llmLoaded, llmApiKey, setLlmApiKey, llmUrl, setLlmUrl, llmModel, setLlmModel,
     // channel

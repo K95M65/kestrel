@@ -45,6 +45,7 @@ export function WifiSection({
   passwordConfigured = false,
   connectedSsid = "",
   checkingConnection = false,
+  wiredUplink = false,
   adminPassword, setAdminPassword,
 }: {
   active: boolean;
@@ -66,6 +67,14 @@ export function WifiSection({
    *  group during this window so the step doesn't flash the empty "Choose your
    *  Wi-Fi" picker for a beat before collapsing into the connected state. */
   checkingConnection?: boolean;
+  /** True when the device has internet while joined to no SSID — in practice an
+   *  ethernet cable, though a USB modem or tether looks the same and behaves the
+   *  same for our purposes. Only ever true on devices that actually have such a
+   *  connection right now, so a Wi-Fi-only device never sees this. The picker
+   *  stays available (the operator may still want Wi-Fi as well), but leaving it
+   *  empty is now a valid choice, so we say so instead of letting the step look
+   *  unfinished. */
+  wiredUplink?: boolean;
   /** True when ConfigPublicResponse.has_network_password=true: hide the
    *  password input + show "configured" indicator. Operator can rotate via
    *  /edit or by clicking "update" → toggles back into the input. */
@@ -193,6 +202,24 @@ export function WifiSection({
         </div>
       ) : (
         <>
+          {wiredUplink && !ssid && (
+            // Online without any SSID = wired. Say so, otherwise the empty
+            // picker reads as an unfinished step and the operator hunts for a
+            // network the device does not need.
+            <div style={{
+              display: "flex", alignItems: "center",
+              gap: 8, marginBottom: FIELD_GAP, padding: "10px 13px",
+              background: C.bg, border: `1px solid ${C.border}`,
+              borderRadius: 10, fontSize: 13, color: C.textDim,
+            }}>
+              <Check size={15} style={{ color: C.green, flexShrink: 0 }} />
+              <span>
+                This device is already online without Wi-Fi — usually an ethernet
+                cable. Leave this empty to keep that connection, or pick a network
+                to add Wi-Fi.
+              </span>
+            </div>
+          )}
           <div style={{ marginBottom: FIELD_GAP }}>
             {!showAdminPassword && (
               <label htmlFor="ssid" style={LABEL_STYLE}>

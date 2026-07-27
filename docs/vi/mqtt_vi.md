@@ -291,7 +291,7 @@ metadata device/version chuẩn cộng với `kind`, `status` (`success|failure`
 | `channel.refresh_config` | Áp dụng lại block config chuẩn của một channel (bất đồng bộ; ack `configuring`) | `channel` |
 | `system.info` | Snapshot tổng hợp: versions + network + host | _(không)_ |
 | `system.version` | Chỉ versions các thành phần (rẻ hơn `system.info`) | _(không)_ |
-| `system.network` | Chỉ thông tin mạng wlan0 | _(không)_ |
+| `system.network` | Chỉ thông tin mạng của interface đang giữ default route | _(không)_ |
 
 **Phản hồi `system.info`:** đồng bộ (không có trạng thái `starting` trung gian); mỗi
 probe lỗi sẽ rơi về zero value của nó.
@@ -329,6 +329,13 @@ probe lỗi sẽ rơi về zero value của nó.
 
 Field `host.timezone` là múi giờ IANA **trực tiếp** của device, đọc tươi từ hệ thống
 (`/etc/timezone`, fallback về config); bị bỏ qua khi không resolve được.
+
+Block `network` mô tả **interface đang giữ default route**, không phải cứ `wlan0` —
+`network.PrimaryInterface()` đọc từ `ip route show default`, nên device chạy dây ethernet
+báo `"interface": "end0"` kèm `private_ip` và `mac` của link đó, còn `ssid` rỗng (nó không
+associate WiFi nào cả). Khi không có default route — tức AP/provisioning mode — nó fallback
+về `wlan0`, lúc này đang giữ `192.168.100.1` của chính AP. Trước đây interface bị hardcode
+nên device chỉ cắm dây báo IP và MAC rỗng dù vẫn truy cập được bình thường.
 
 `system.version` chỉ trả về block `versions` trong `data`; `system.network` chỉ trả
 về block `network`. Cách probe version: `os-server` từ biến ldflags lúc build, `bootstrap`

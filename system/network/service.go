@@ -18,7 +18,12 @@ import (
 )
 
 const (
-	defaultInterface = "wlan0"
+	// wifiInterface is the WiFi NIC. Use it only for genuinely WiFi-specific
+	// operations — scanning, association, SSID/link readout, wpa_supplicant.
+	// It is NOT "the interface the device reaches the network through": a device
+	// on ethernet routes through eth0/end0 and wlan0 may hold no address at all.
+	// Use PrimaryInterface() for anything address- or reachability-related.
+	wifiInterface = "wlan0"
 
 	// Network monitor: after N consecutive ping failures, set LED to WorkingNoInternet.
 	// Use forgiving timeouts/counts so brief WiFi hiccups don't flip to no-internet.
@@ -67,7 +72,7 @@ func (s *Service) ListNetworks() ([]domain.Network, error) {
 // listNetworksIW runs `iw dev wlan0 scan` and parses BSS/SSID/signal etc.
 func (s *Service) listNetworksIW() ([]domain.Network, error) {
 	slog.Debug("wifi scan started", "component", "network")
-	cmd := exec.Command("iw", "dev", defaultInterface, "scan")
+	cmd := exec.Command("iw", "dev", wifiInterface, "scan")
 	var outBuf, errBuf bytes.Buffer
 	cmd.Stdout = &outBuf
 	cmd.Stderr = &errBuf
@@ -185,17 +190,57 @@ func parseIWScan(out string) []domain.Network {
 	return list
 }
 
-// GetCurrentIP returns the IPv4 address of the default interface (e.g. wlan0), or empty string if none.
+// PrimaryInterface returns the interface carrying the default route — "end0"/"eth0"
+// when the device is on ethernet, "wlan0" when it is on WiFi. When several default
+// routes exist (both links up), `ip route show default` lists them by ascending
+// metric, so the first line is the one traffic actually takes.
+//
+// Falls back to the WiFi interface when there is no default route at all, which is
+// exactly the AP-mode case: wlan0 then holds the AP's own 192.168.100.1 and callers
+// already recognise that address as "still provisioning".
+func PrimaryInterface() string {
+	out, err := exec.Command("ip", "route", "show", "default").Output()
+	if err != nil {
+		return wifiInterface
+	}
+	if iface := parseDefaultRouteIface(string(out)); iface != "" {
+		return iface
+	}
+	return wifiInterface
+}
+
+// parseDefaultRouteIface pulls the device name out of `ip route show default`
+// output, e.g. "default via 192.168.1.1 dev end0 proto dhcp src 192.168.1.50
+// metric 202". Returns the first line's device — with both links up the kernel
+// prints the lowest-metric (actually used) route first. Empty when no route.
+func parseDefaultRouteIface(out string) string {
+	for _, line := range strings.Split(out, "\n") {
+		fields := strings.Fields(line)
+		for i, f := range fields {
+			if f == "dev" && i+1 < len(fields) {
+				return fields[i+1]
+			}
+		}
+	}
+	return ""
+}
+
+// GetCurrentIP returns the IPv4 address of the interface the device actually
+// reaches the network through (see PrimaryInterface), or empty string if none.
+// Not hardcoded to wlan0: a device provisioned over ethernet has no wlan0 address,
+// and reporting "" there would blind the web UI's post-setup redirect, the status
+// reporter's LocalIP and buddy pairing.
 func (s *Service) GetCurrentIP() (string, error) {
-	cmd := exec.Command("ip", "-4", "addr", "show", defaultInterface)
+	iface := PrimaryInterface()
+	cmd := exec.Command("ip", "-4", "addr", "show", iface)
 	out, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("ip addr: %w", err)
+		return "", fmt.Errorf("ip addr %s: %w", iface, err)
 	}
 	if m := reInet.FindStringSubmatch(string(out)); len(m) > 1 {
 		return m[1], nil
 	}
-	slog.Debug("no IP found", "component", "network", "output", string(out))
+	slog.Debug("no IP found", "component", "network", "interface", iface, "output", string(out))
 	return "", nil
 }
 
@@ -223,7 +268,7 @@ func (s *Service) CurrentNetwork() (*domain.Network, error) {
 // the interface is not associated or parsing fails — callers treat 0 as
 // "unknown". Single shell-out keeps the two values consistent.
 func readCurrentLink() (signal int, linkRate int) {
-	out, err := exec.Command("iw", "dev", defaultInterface, "link").Output()
+	out, err := exec.Command("iw", "dev", wifiInterface, "link").Output()
 	if err != nil {
 		return 0, 0
 	}
@@ -246,7 +291,7 @@ func readCurrentLink() (signal int, linkRate int) {
 // SetupNetwork can confirm the association without timing out. Exported so the
 // system.info MQTT probe reuses the same chain instead of calling iwgetid alone.
 func ReadCurrentSSID() string {
-	if out, err := exec.Command("iwgetid", "-r", defaultInterface).Output(); err == nil {
+	if out, err := exec.Command("iwgetid", "-r", wifiInterface).Output(); err == nil {
 		if s := strings.TrimSpace(string(out)); s != "" {
 			return s
 		}
@@ -256,7 +301,7 @@ func ReadCurrentSSID() string {
 	//   SSID: Glinks
 	// Non-ASCII bytes come back as `\xNN` escapes — decode so the value
 	// matches the raw UTF-8 the user typed (e.g. Chinese SSIDs).
-	if out, err := exec.Command("iw", "dev", defaultInterface, "link").Output(); err == nil {
+	if out, err := exec.Command("iw", "dev", wifiInterface, "link").Output(); err == nil {
 		for _, line := range strings.Split(string(out), "\n") {
 			line = strings.TrimSpace(line)
 			if strings.HasPrefix(line, "SSID:") {
@@ -268,7 +313,7 @@ func ReadCurrentSSID() string {
 	}
 	// `wpa_cli -i <iface> status` lines include `ssid=Glinks`. wpa_cli
 	// uses the same `\xNN` escape format as iw for non-printable bytes.
-	if out, err := exec.Command("wpa_cli", "-i", defaultInterface, "status").Output(); err == nil {
+	if out, err := exec.Command("wpa_cli", "-i", wifiInterface, "status").Output(); err == nil {
 		for _, line := range strings.Split(string(out), "\n") {
 			line = strings.TrimSpace(line)
 			if strings.HasPrefix(line, "ssid=") {
@@ -379,11 +424,42 @@ func (s *Service) runNetworkMonitorTick() {
 		s.onConnectivityLost()
 	}
 
-	// Auto-reconnect: restart wlan0 after sustained outage
+	// Auto-reconnect: restart wlan0 after sustained outage — but only when WiFi
+	// is actually the link in question (see wifiReconnectSkipReason).
 	if n >= networkMonitorReconnectAt && time.Since(s.lastReconnectAttempt) >= networkMonitorReconnectCooldown {
-		s.lastReconnectAttempt = time.Now()
-		go s.reconnectWiFi()
+		if reason := wifiReconnectSkipReason(s.config.NetworkSSID, PrimaryInterface()); reason != "" {
+			slog.Info("skipping WiFi reconnect escalation", "component", "network-monitor", "reason", reason, "fails", n)
+		} else {
+			s.lastReconnectAttempt = time.Now()
+			go s.reconnectWiFi()
+		}
 	}
+}
+
+// wifiReconnectSkipReason returns a non-empty reason when the WiFi reconnect
+// escalation must not run for this outage, or "" when it should.
+//
+// The escalation exists to recover a dropped WiFi association, and it ends in
+// `sudo reboot` after networkMonitorMaxReconnects attempts. That is the right
+// last resort for a WiFi device, and the wrong answer for a device that reaches
+// the network over ethernet: bouncing wlan0 cannot fix an upstream outage it has
+// no part in, so the device would reboot itself roughly every 10 minutes for the
+// whole duration of an ISP problem. Two ways to be sure WiFi isn't the link:
+//
+//   - No SSID on file. A device provisioned over ethernet (empty SSID — see
+//     device.setupWired) has nothing to re-associate to.
+//   - The default route belongs to another interface, i.e. traffic is leaving
+//     over the cable. Note that a *dropped* WiFi link leaves no default route at
+//     all, and PrimaryInterface falls back to wlan0 in that case — so the outage
+//     this escalation was built for still passes the guard.
+func wifiReconnectSkipReason(configuredSSID, primaryIface string) string {
+	if strings.TrimSpace(configuredSSID) == "" {
+		return "device has no WiFi credentials (wired setup)"
+	}
+	if primaryIface != wifiInterface {
+		return "default route is on " + primaryIface + ", not WiFi"
+	}
+	return ""
 }
 
 // reconnectWiFi restarts wpa_supplicant and wlan0 to recover from WiFi drops.
@@ -401,9 +477,9 @@ func (s *Service) reconnectWiFi() {
 	time.Sleep(3 * time.Second)
 
 	// Bounce the interface
-	_ = exec.Command("ip", "link", "set", defaultInterface, "down").Run()
+	_ = exec.Command("ip", "link", "set", wifiInterface, "down").Run()
 	time.Sleep(2 * time.Second)
-	_ = exec.Command("ip", "link", "set", defaultInterface, "up").Run()
+	_ = exec.Command("ip", "link", "set", wifiInterface, "up").Run()
 	time.Sleep(5 * time.Second)
 
 	if s.pingNetworkMonitor(networkMonitorPingTarget) {
@@ -542,6 +618,24 @@ func (s *Service) SetupNetwork(ssid string, password string) (bool, error) {
 		}
 	}
 	return true, nil
+}
+
+// LeaveAPMode tears down the provisioning AP without joining any WiFi — the path
+// a device takes when it is set up over ethernet and never receives credentials.
+//
+// It delegates to the same device-sta-mode script the WiFi path reaches as the
+// last step of connect-wifi, so AP teardown keeps exactly one implementation:
+// stop hostapd + dnsmasq, drop the captive-portal DNS wildcard, return wlan0 to
+// managed mode and hand wlan0 back to dhcpcd. Without this call a wired setup
+// would leave the device broadcasting its open setup hotspot forever, since
+// nothing else on that path ever runs device-sta-mode.
+func (s *Service) LeaveAPMode() error {
+	out, err := exec.Command("/usr/local/bin/device-sta-mode").CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("device-sta-mode: %w: %s", err, string(out))
+	}
+	slog.Info("left AP mode without WiFi (wired setup)", "component", "network")
+	return nil
 }
 
 // SwitchToAPMode runs device-ap-mode to return to provisioning (AP) mode for reconfiguring WiFi.

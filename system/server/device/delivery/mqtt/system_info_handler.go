@@ -25,7 +25,6 @@ import (
 const (
 	sysProbeTimeout = 2 * time.Second
 	bootstrapBinary = "/usr/local/bin/bootstrap-server"
-	sysInterface    = "wlan0"
 )
 
 // handleSystemInfo returns the full aggregate snapshot — versions + network +
@@ -102,13 +101,19 @@ func probeVersions(ctx context.Context) domain.MQTTVersionsData {
 	return out
 }
 
-// probeNetwork collects wlan0 IPv4 + hardware MAC + current SSID + default
-// gateway. Each piece probes independently — a missing SSID (AP mode) doesn't
-// poison the IP/MAC fields.
+// probeNetwork collects the IPv4 + hardware MAC of the interface carrying the
+// default route, plus the current SSID and default gateway. Each piece probes
+// independently — a missing SSID doesn't poison the IP/MAC fields, which is the
+// normal state both in AP mode and on a device wired over ethernet.
+//
+// The interface is resolved from the route table rather than hardcoded to wlan0:
+// on an ethernet-connected device wlan0 carries no address, so the dashboard used
+// to show a blank IP and MAC for a device that was perfectly reachable.
 func probeNetwork(ctx context.Context) domain.MQTTNetworkData {
-	out := domain.MQTTNetworkData{Interface: sysInterface}
+	ifaceName := network.PrimaryInterface()
+	out := domain.MQTTNetworkData{Interface: ifaceName}
 
-	if iface, err := net.InterfaceByName(sysInterface); err == nil {
+	if iface, err := net.InterfaceByName(ifaceName); err == nil {
 		out.MAC = iface.HardwareAddr.String()
 		if addrs, err := iface.Addrs(); err == nil {
 			for _, a := range addrs {
@@ -128,7 +133,7 @@ func probeNetwork(ctx context.Context) domain.MQTTNetworkData {
 	// showed it.
 	out.SSID = network.ReadCurrentSSID()
 
-	// `ip route show default` → "default via 192.168.1.1 dev wlan0 …".
+	// `ip route show default` → "default via 192.168.1.1 dev end0 …".
 	// Pull the gateway IPv4 out of the via-field; the rest of the line varies.
 	if v, err := system.Run(ctx, "ip", "route", "show", "default"); err == nil {
 		fields := strings.Fields(string(v))

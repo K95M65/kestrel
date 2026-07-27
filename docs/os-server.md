@@ -63,6 +63,22 @@ Config field: `timezone` in `config/config.json` (IANA zone string, omitempty) �
 | GET | `/api/network/current` | Current SSID + IP |
 | GET | `/api/network/check-internet` | Check internet connectivity |
 
+**Connectivity monitor** (`system/network/service.go`, started once
+`SetUpCompleted` flips true). Pings `8.8.8.8` every 5s — interface-agnostic, so a
+device online over ethernet is seen as online. After 5 consecutive failures it
+raises the `Connectivity` LED state; after 10 (~50s) it escalates to a WiFi
+reconnect (restart `wpa_supplicant@wlan0`, bounce the interface), and after 5
+failed reconnects (~10 min) it reboots the device.
+
+That escalation is a **WiFi** recovery path, so it is skipped when WiFi is not the
+link in question — otherwise a wired device would reboot itself every ~10 minutes
+for the length of an upstream outage it plays no part in. It is skipped when
+either: no SSID is on file (the device was provisioned over ethernet — see
+`setupWired` in `docs/setup-flow.md`), or the default route belongs to another
+interface (traffic is leaving over the cable). A genuinely dropped WiFi link
+leaves *no* default route and `PrimaryInterface()` falls back to `wlan0`, so the
+outage the escalation exists for still passes the guard.
+
 ### Guard Mode
 
 | Method | Endpoint | Description |

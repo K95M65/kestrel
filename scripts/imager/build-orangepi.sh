@@ -680,8 +680,29 @@ systemctl stop wpa_supplicant@wlan0 2>/dev/null || true
 systemctl disable wpa_supplicant@wlan0 2>/dev/null || true
 systemctl mask wpa_supplicant@wlan0 2>/dev/null || true
 killall wpa_supplicant 2>/dev/null || true
-systemctl stop dhcpcd 2>/dev/null || true
-systemctl disable dhcpcd 2>/dev/null || true
+# AP mode owns wlan0 — and ONLY wlan0. Do not stop/disable dhcpcd: this image
+# purges NetworkManager at build time, so dhcpcd is the DHCP client for EVERY
+# interface, and disabling it also kills the wired link. A device in AP mode
+# (fresh out of the box, after a factory reset, or after "change WiFi") would
+# then have no ethernet at all, and because the disable persists, it stays dead
+# across reboots until device-sta-mode runs — i.e. until someone supplies WiFi
+# credentials, which is enghaixactly what a wired user is trying to avoid.
+# Instead tell dhcpcd to ignore wlan0 and keep serving eth0/end0; wlan0's AP
+# address is assigned by hand further below.
+touch /etc/dhcpcd.conf
+if ! grep -q '^denyinterfaces wlan0\$' /etc/dhcpcd.conf; then
+  # Prepend, never append: in dhcpcd.conf every option after an "interface X"
+  # line belongs to that interface's block, and the base image's file may well
+  # end inside one — appending there would scope this global option to a single
+  # interface and silently do nothing.
+  if [ -s /etc/dhcpcd.conf ]; then
+    sed -i '1i denyinterfaces wlan0' /etc/dhcpcd.conf
+  else
+    echo 'denyinterfaces wlan0' > /etc/dhcpcd.conf
+  fi
+fi
+systemctl enable dhcpcd 2>/dev/null || true
+systemctl restart dhcpcd 2>/dev/null || true
 systemctl stop NetworkManager systemd-networkd 2>/dev/null || true
 rm -f /var/lib/dhcpcd5/dhcpcd-wlan0 2>/dev/null || true
 rm -f /var/lib/dhcpcd/dhcpcd-wlan0 2>/dev/null || true
@@ -771,7 +792,9 @@ ip link set wlan0 down 2>/dev/null || true; sleep 1
 iw dev wlan0 set type managed
 ip link set wlan0 up; sleep 1
 ip addr flush dev wlan0
-sed -i '/static ip_address=192.168.100.1\\/24/d;/nohook wpa_supplicant/d' /etc/dhcpcd.conf 2>/dev/null || true
+# Hand wlan0 back to dhcpcd — device-ap-mode denied it so the AP could own the
+# interface while the wired link kept its lease.
+sed -i '/static ip_address=192.168.100.1\\/24/d;/nohook wpa_supplicant/d;/^denyinterfaces wlan0\$/d' /etc/dhcpcd.conf 2>/dev/null || true
 sed -i '/^address=\\/#\\//d' /etc/dnsmasq.d/99-${DEVICE_TYPE}.conf 2>/dev/null || true
 systemctl unmask wpa_supplicant@wlan0 2>/dev/null || true
 systemctl enable wpa_supplicant@wlan0

@@ -70,6 +70,12 @@ Thay đổi messaging channel sau khi đã setup. Chấp nhận `telegram`, `sla
 
 ## Network Setup
 
+`device.Setup` đi một trong hai nhánh mạng, chọn theo việc request có SSID hay không.
+Toàn bộ phần sau đó (LLM config, channel, agent setup, `SetUpCompleted`) giống hệt nhau
+ở cả hai nhánh.
+
+**Nhánh Wi-Fi** (`setupWiFi`, có SSID):
+
 1. Gọi `connect-wifi` CLI tool với SSID + password
 2. Poll kiểm tra:
    - SSID match? (`iwgetid`)
@@ -77,12 +83,71 @@ Thay đổi messaging channel sau khi đã setup. Chấp nhận `telegram`, `sla
 3. Timeout 60s → fail
 4. Thành công → lưu SSID + password vào config
 
+`connect-wifi` kết thúc bằng việc chạy `device-sta-mode` — đó chính là chỗ tắt AP.
+
+**Nhánh dây** (`setupWired`, SSID rỗng):
+
+SSID rỗng là request hợp lệ, mang nghĩa *"thiết bị đã có đường ra mạng rồi, đừng join
+Wi-Fi nào cả"* — trường hợp cắm dây. Nên `SSID`/`Password` không còn tag
+`validate:"required"` (password rỗng kèm SSID khác rỗng cũng hợp lệ = mạng mở, dù web UI
+setup vẫn bắt nhập).
+
+1. `CheckInternet()` phải pass — lời khai được kiểm chứng chứ không tin suông. AP
+   provisioning không có uplink, nên máy không dây lẫn không Wi-Fi sẽ fail ở đây với
+   *"no WiFi credentials given and the device has no working internet connection"* và ở
+   lại AP mode.
+2. Publish `lan_ip` vào setup state **trước** khi đụng tới AP — tắt AP kéo theo restart
+   dhcpcd, có thể làm gián đoạn đúng cái kết nối mà client đang nói chuyện với mình, nên
+   địa chỉ phải đọc được từ `GET /api/device/setup/status` trước đã.
+3. `LeaveAPMode()` chạy `device-sta-mode` — đúng script mà nhánh Wi-Fi tới qua
+   `connect-wifi`, giữ việc tắt AP chỉ có một implementation. **Bước này chính là lý do
+   nhánh dây không thể bỏ qua phase mạng:** không còn chỗ nào khác tắt `hostapd`/`dnsmasq`,
+   và thiết bị sẽ phát mãi cái hotspot setup không mật khẩu kèm DNS wildcard captive
+   portal. Lỗi ở bước này được log mức error nhưng không abort setup — abort thì cái AP đó
+   vẫn còn nguyên.
+
+`config.NetworkSSID`/`NetworkPassword` để rỗng ở nhánh này.
+
+**Web UI.** `useWifiConnected` vốn đã probe `GET /api/network/check-internet` và
+`GET /api/network/current` (cả hai public, không cần admin session). Có internet **kèm**
+SSID = "đã ở trên Wi-Fi nhà"; có internet **mà không có** SSID = uplink qua dây, khi đó
+bước Wi-Fi coi như đã thoả, hiện thông báo phía trên picker, và cho submit với SSID rỗng.
+Vẫn chọn được mạng — operator có thể thêm Wi-Fi chồng lên dây.
+
+Lời mời này dựa trên **kết nối thực tế, không dựa trên phần cứng**: không có chỗ nào hỏi
+"máy có cổng ethernet không". Máy không có cổng, hoặc có cổng mà không cắm dây, sẽ fail
+`check-internet` trong lúc ở AP mode (AP provisioning không có uplink), nên thông báo
+không bao giờ hiện và bước Wi-Fi vẫn chặn y như cũ. Hai điểm cần biết:
+
+- `GET /api/network/current` trả `null` cho cả "không associate SSID nào" lẫn "probe
+  lỗi", nên hook tách riêng hai kết cục và chỉ coi câu trả lời rỗng *thành công* là uplink
+  dây. Probe lỗi thì để ngỏ và retry — để ngỏ nghĩa là bước đó vẫn đòi credential, đúng
+  mặc định an toàn.
+- USB modem hay tether điện thoại nhìn không khác gì ethernet ở đây, và hành xử y hệt
+  (không cần Wi-Fi, vẫn tắt AP) — nên câu chữ ghi "online mà không cần Wi-Fi" chứ không
+  khẳng định là dây.
+
+**Lưu ý khi re-setup.** `mergeMissingFromConfig` sẽ điền lại `ssid` rỗng từ
+`config.NetworkSSID`, nên chạy lại setup trên máy đã provision bằng Wi-Fi vẫn đi nhánh
+Wi-Fi dù operator để trống ô đó. Chỉ máy chưa có SSID lưu sẵn (máy mới, hoặc trước đó
+setup bằng dây) mới vào được nhánh dây theo cách đó.
+
 ## AP Mode
 
 - Khi chưa setup hoặc setup fail → tự động chuyển AP mode
 - Thiết bị phát WiFi hotspot
 - Web UI phục vụ trang setup
 - `SwitchToAPMode()` trong `system/network/service.go`
+- **AP mode chỉ sở hữu `wlan0` — dây mạng vẫn sống.** Trước đây `device-ap-mode`
+  `systemctl stop`/`disable dhcpcd`, nhưng golden image đã purge NetworkManager nên dhcpcd
+  là DHCP client của *mọi* interface — disable nó giết luôn `eth0`/`end0`, và trạng thái
+  disable sống qua reboot cho tới khi `device-sta-mode` chạy (tức là tới khi có người nhập
+  WiFi). Giờ nó append `denyinterfaces wlan0` vào `/etc/dhcpcd.conf` và giữ dhcpcd chạy;
+  `device-sta-mode` xoá dòng đó để trả `wlan0` lại. Hệ quả: thiết bị đang ở AP mode mà có
+  cắm dây vẫn giữ được địa chỉ LAN, và vì avahi quảng bá trên mọi interface nên trang setup
+  vào được từ LAN dây qua `http://<device_type>-<suffix>.local/` chứ không chỉ
+  `192.168.100.1` của AP. Chính địa chỉ dây đó là thứ khiến luồng setup-bằng-dây bên
+  dưới khả thi.
 - **Tín hiệu LED:** ngay khi HTTP server bắt đầu listen, nếu `SetUpCompleted == false` thì OS server spawn goroutine background (`waitAndPaintSetupReady` trong `server/server.go`) poll `GET /health` của HAL mỗi giây tối đa 30s. Khi `health.led == true` thì fire `POST /led/solid` với `{"color":[255,255,255]}` paint strip trắng solid. Poll vì os-server bind :5000 thường nhanh hơn HAL FastAPI bind :5001 trên cold boot (Python load `rpi_ws281x`, SPI, audio, camera) — fire-and-forget paint sẽ rớt im lặng với `connection refused`. Trắng giữ đến khi setup xong (agent flash + ambient paint đè lên). Blue-breathing booting vẫn show trong lúc init.
 - **Khử nhiễu LED trong AP mode:** openclaw WS reconnect loop (`runtimes/openclaw/service_ws.go`) skip Set/Clear `StateAgentDown` khi `config.SetUpCompleted == false`, để overlay cyan disconnect không đè lên trắng setup-needed lúc provisioning. WS vẫn chạy (`device.Setup` cần nó ready để `WaitForAgentReady` pass trước khi flip `SetUpCompleted=true`), chỉ gate side-effect LED thôi.
 - **Tín hiệu LED khi join Wi-Fi (`StateWifiConnecting`):** ngay khi setup handler vào `device.Setup()`, kích hoạt `statusled.StateWifiConnecting` (HAL preset `wifi_connecting` = blink màu xanh dương `[0,135,255]` speed 0.5) để ring chuyển từ trắng setup sang blink xanh trong lúc `wlan0` associate. `defer` trong `Setup()` clear state ở mọi return path, nên fail rồi rớt xuống `SwitchToAPMode()` cũng không để strip kẹt blink. Priority nằm trên `Booting` và dưới `OTA`/`Error`/`Connectivity` — tín hiệu này thắng state boot còn sót lại nhưng không che khuất fault thật. Device không có capability `light` sẽ short-circuit trong statusled (no-op).
