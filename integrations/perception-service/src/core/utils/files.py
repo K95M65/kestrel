@@ -39,6 +39,7 @@ CDN_PATHS: dict[ModelEnum, str] = {
     ModelEnum.TCPFORMER_H36M_243_PTH: "pytorch_models/TCPFormer_h36m_243_379.pth.tr",
     # Audio embedder (WeSpeaker)
     ModelEnum.WESPEAKER_RESNET34: "onnx_models/wespeaker_resnet34.onnx",
+    ModelEnum.WESPEAKER_RESNET293: "onnx_models/voxceleb_resnet293_LM.onnx",
     ModelEnum.WESPEAKER_ECAPA_TDNN_1024: "onnx_models/wespeaker_ecapa_tdnn1024.onnx",
     ModelEnum.WESPEAKER_CAMPPLUS: "onnx_models/wespeaker_campplus.onnx",
     # Face detection

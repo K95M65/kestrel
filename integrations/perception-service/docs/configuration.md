@@ -48,6 +48,7 @@ Base URL: `https://storage.googleapis.com/autonomous-models/`
 | RTMPose-m (pose 2D) | `…/onnx_models/rtmpose-m.onnx` |
 | TCPFormer (pose 3D) | `…/onnx_models/tcpformer_h36m_243.onnx` |
 | WeSpeaker ResNet34 (embed) | `…/onnx_models/wespeaker_resnet34.onnx` ⚠️ |
+| WeSpeaker ResNet293 (embed) | `…/onnx_models/voxceleb_resnet293_LM.onnx` |
 | WeSpeaker ECAPA-1024 (embed) | `…/onnx_models/wespeaker_ecapa_tdnn1024.onnx` |
 | WeSpeaker CAM++ (embed) | `…/onnx_models/wespeaker_campplus.onnx` ⚠️ |
 | YuNet (face) | `…/onnx_models/face_detection_yunet_2023mar.onnx` |
@@ -65,7 +66,8 @@ Base URL: `https://storage.googleapis.com/autonomous-models/`
 > including the default action model **X3D** and the default audio embedder
 > **WeSpeaker ResNet34**, so a fresh out-of-the-box run will fail to download them.
 > The fifth, **Emo-AffectNet**, is newly added and must be exported and uploaded
-> before it resolves (until then use `FER__CKPT_PATH` to point at the locally exported ONNX). The
+> before it resolves (until then use `FER__CKPT_PATH` to point at the locally exported ONNX).
+> **WeSpeaker ResNet293** (`voxceleb_resnet293_LM.onnx`) is present in the bucket. The
 > remaining files return `200`. Until the weights are uploaded (or `CDN_PATHS` in
 > `src/core/utils/files.py` is corrected to the real filenames — pending confirmation
 > from the maintainers), work around it by either selecting a model whose weights do
@@ -129,7 +131,7 @@ checkpoint override and threshold(s).
 | `PERSON_DETECTOR__BATCH_SIZE` | `1` | Max items per GPU batch |
 | `PERSON_DETECTOR__BATCH_TIMEOUT` | `0.1` | Seconds to wait for batch to fill |
 | `AUDIO_EMBEDDER__ENABLED` | `false` | Enable speaker embedder |
-| `AUDIO_EMBEDDER__MODEL` | `resnet34` | `resnet34` \| `ecapa-tdnn1024` \| `campplus` |
+| `AUDIO_EMBEDDER__MODEL` | `resnet293` | `resnet34` \| `resnet293` \| `ecapa-tdnn1024` \| `campplus` |
 | `AUDIO_EMBEDDER__MODEL_PATH` | _(auto)_ | Local embedder weights override path |
 | `AUDIO_EMBEDDER__REMOTE_URL` | _(auto)_ | Alternate remote URL or HuggingFace repo id |
 | `AUDIO_EMBEDDER__BATCH_SIZE` | `1` | Max items per GPU batch |
