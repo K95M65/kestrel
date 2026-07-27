@@ -80,12 +80,23 @@ same physical zero. `apply_calibration` gives exactly that.
 Only reach for a real re-calibration when the hardware itself changed — a replaced servo,
 or a horn remounted a tooth off (~14° per spline tooth, visible by eye).
 
-> **Device-verified 2026-07-27 (lamp-ac82).** Before the push, the unit's EEPROM held
-> `base_pitch homing = −556` against the file's `−381`, i.e. the arm sat **15° off** the
-> reference frame, and its EEPROM travel limits silently clipped `base_yaw` by ~13° at
-> each end. After `apply_calibration`, read-back showed 5/5 matching and the arm visibly
-> tilted forward by the predicted ~15°. Three units had been running in three slightly
-> different frames — "working" only because lamp motion tolerates a few degrees.
+> **Device-verified 2026-07-27 (lamp-ac82, the reference unit).** Its EEPROM held
+> `base_pitch homing = −556` while `hal.json` said `−381` — a **15.4° gap** nobody had
+> noticed, because the runtime never reads `homing_offset` from the file, so the drift was
+> invisible. Its EEPROM travel limits were also silently clipping `base_yaw` by ~13° at
+> each end.
+>
+> Pushing the file made the arm tilt forward by exactly the predicted 15.4° ("too
+> upright"), which pinned down the cause: `hal.json` was recorded on 2026-06-10 (commit
+> `ede2e350`, new servos fitted), the unit was hand-calibrated again afterwards without
+> committing the result, and the animation library was re-recorded on 06-29 / 07-06 —
+> i.e. **against the EEPROM state, not against the file**. The file's `homing_offset` was
+> simply stale. It was corrected to the unit's live values (ranges untouched, since those
+> are what normalization used while the animations were authored), which restored the
+> original pose *and* removed the `base_yaw` clipping.
+>
+> Lesson: `homing_offset` in the file is write-only from the runtime's point of view. It
+> can drift from reality indefinitely without any symptom until someone pushes it.
 
 ## Which JSON the runtime reads
 
@@ -106,6 +117,37 @@ lerobot loads `calibration_dir / f"{id}.json"`, where `id` is `HAL_DEVICE_ID`
 
 The per-device path exists for the exception case (a unit that genuinely needs its own
 numbers). It is **not** the normal provisioning route — see the warning above.
+
+> **A per-device file alone changes nothing about the arm's zero.** Dropping `<id>.json`
+> in and setting `HAL_DEVICE_ID` only changes which `range_min/max` the *software* reads.
+> `homing_offset` still has to be pushed into the servos — run `apply_calibration --id
+> <id>` afterwards. (The one exception: `hal.calibrate` + `c` writes the EEPROM itself as
+> part of calibrating, so no separate push is needed there.)
+
+### Exception recipe: one unit is mechanically off
+
+If a unit's horn really is mounted a tooth off and cannot be remounted, keep the **shared
+ranges** and override **only** the affected joint's `homing_offset`. That shifts just that
+joint back to the right physical zero without rescaling any animation:
+
+```bash
+# start from the shared reference so ranges stay identical to the rest of the fleet
+sudo cp /opt/hal/calibration/robots/hal_follower/hal.json \
+        /var/lib/hal/calibration/robots/hal_follower/lamp-abcd.json
+sudo nano /var/lib/hal/calibration/robots/hal_follower/lamp-abcd.json
+#   edit ONLY homing_offset of the affected joint(s). 1° ≈ 11.4 ticks;
+#   larger value = further forward on base_pitch.
+
+echo 'HAL_DEVICE_ID=lamp-abcd' | sudo tee -a /opt/hal/.env
+
+sudo systemctl stop hal
+cd /opt/hal
+sudo ./.venv/bin/python3 -m hal.apply_calibration --id lamp-abcd --port /dev/ttyACM0
+sudo systemctl start hal
+```
+
+Do **not** change `range_min/max` here — they define the normalized frame the animation
+library shares. Only `homing_offset` is safe to vary per unit.
 
 ```
 hal/calibration/
