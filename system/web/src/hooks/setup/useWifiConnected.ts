@@ -21,6 +21,12 @@ import { checkInternet, getCurrentNetwork } from "@/lib/api";
 //
 // Returns:
 //   wifiConnected — true once the device is confirmed on home Wi-Fi.
+//   wiredUplink   — true when the device has internet but is associated with NO
+//                   SSID: it reaches the network some other way, in practice an
+//                   ethernet cable. Same reasoning as above makes this safe — the
+//                   setup AP has no uplink, so internet without an SSID cannot be
+//                   the device's own hotspot. The caller uses it to stop
+//                   demanding Wi-Fi credentials the device doesn't need.
 //   currentSsid   — the associated SSID, so the caller can prefill the Wi-Fi
 //                   picker instead of showing an empty "choose your Wi-Fi".
 //   checking      — true while the FIRST probe is still in flight (nothing
@@ -33,8 +39,9 @@ import { checkInternet, getCurrentNetwork } from "@/lib/api";
 //
 // Polls a few times because wlan0 may not have finished associating / gotten a
 // DHCP lease in the first instant after the reload; once confirmed it stops.
-export function useWifiConnected(): { wifiConnected: boolean; currentSsid: string; checking: boolean } {
+export function useWifiConnected(): { wifiConnected: boolean; wiredUplink: boolean; currentSsid: string; checking: boolean } {
   const [wifiConnected, setWifiConnected] = useState(false);
+  const [wiredUplink, setWiredUplink] = useState(false);
   const [currentSsid, setCurrentSsid] = useState("");
   // Starts true: the very first render is "we don't know yet", which is exactly
   // the skeleton state. Cleared once the first probe resolves either way.
@@ -49,19 +56,39 @@ export function useWifiConnected(): { wifiConnected: boolean; currentSsid: strin
     const check = async () => {
       attempt += 1;
       try {
+        // GET /api/network/current answers `null` in TWO different situations:
+        // "not associated to any SSID" (a 200 with null data — the wired case)
+        // and "the probe itself failed". Collapsing both to null would let a
+        // transient failure be read as proof of a wired uplink and wave the
+        // operator past the Wi-Fi step on a device that actually needs it. Keep
+        // the outcomes apart so only a SUCCESSFUL empty answer counts.
         const [online, current] = await Promise.all([
           checkInternet().catch(() => false),
-          getCurrentNetwork().catch(() => null),
+          getCurrentNetwork()
+            .then((n) => ({ ok: true, ssid: n?.ssid ?? "" }))
+            .catch(() => ({ ok: false, ssid: "" })),
         ]);
         if (cancelled) return;
-        const ssid = current?.ssid ?? "";
-        if (online && ssid) {
+        if (online && current.ok && current.ssid) {
           doneRef.current = true;
-          setCurrentSsid(ssid);
+          setCurrentSsid(current.ssid);
           setWifiConnected(true);
           setChecking(false);
           return; // confirmed — stop polling
         }
+        if (online && current.ok) {
+          // Internet confirmed, and the device is confirmed to be associated
+          // with no SSID: it reaches the network some other way — in practice an
+          // ethernet cable. Also conclusive, so stop polling; retrying would
+          // only re-confirm the same answer.
+          doneRef.current = true;
+          setWiredUplink(true);
+          setChecking(false);
+          return;
+        }
+        // Anything else (offline, or the SSID probe failed) stays undecided and
+        // falls through to the retry below. Undecided means the Wi-Fi step keeps
+        // asking for credentials — the safe default.
       } catch {
         /* transient — retry below */
       }
@@ -81,5 +108,5 @@ export function useWifiConnected(): { wifiConnected: boolean; currentSsid: strin
     // Mount-only, like the other setup hooks.
   }, []);
 
-  return { wifiConnected, currentSsid, checking };
+  return { wifiConnected, wiredUplink, currentSsid, checking };
 }

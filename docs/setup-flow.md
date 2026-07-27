@@ -70,6 +70,12 @@ Change messaging channel after setup is complete. Accepts `telegram`, `slack`, `
 
 ## Network Setup
 
+`device.Setup` takes one of two network paths, chosen by whether the request carries
+an SSID. Everything after the network phase (LLM config, channel, agent setup,
+`SetUpCompleted`) is identical for both.
+
+**Wi-Fi path** (`setupWiFi`, SSID present):
+
 1. Call `connect-wifi` CLI tool with SSID + password
 2. Poll checks:
    - SSID match? (`iwgetid`)
@@ -77,12 +83,74 @@ Change messaging channel after setup is complete. Accepts `telegram`, `slack`, `
 3. Timeout 60s → fail
 4. Success → save SSID + password to config
 
+`connect-wifi` ends by running `device-sta-mode`, which is what tears the AP down.
+
+**Wired path** (`setupWired`, SSID empty):
+
+An empty `ssid` is a valid request meaning *"the device already reaches the network,
+don't join any Wi-Fi"* — the ethernet case. `SSID`/`Password` therefore carry no
+`validate:"required"` tag (an empty password with a non-empty SSID is likewise a valid
+open network, though the setup web UI still asks for one).
+
+1. `CheckInternet()` must succeed — the claim is verified, not trusted. The
+   provisioning AP has no uplink, so a device with neither ethernet nor Wi-Fi fails
+   here with *"no WiFi credentials given and the device has no working internet
+   connection"* and stays in AP mode.
+2. Publish `lan_ip` into setup state **before** touching the AP — teardown restarts
+   dhcpcd and can briefly interrupt the very connection the client is talking over, so
+   the address has to be readable from `GET /api/device/setup/status` first.
+3. `LeaveAPMode()` runs `device-sta-mode` — the same script the Wi-Fi path reaches via
+   `connect-wifi`, keeping one implementation of AP teardown. **This step is the whole
+   reason the wired path can't just skip the network phase:** nothing else would ever
+   stop `hostapd`/`dnsmasq`, and the device would keep broadcasting its open,
+   password-less setup hotspot with the captive-portal DNS wildcard forever. A failure
+   here is logged at error level but does not abort setup — aborting would leave that
+   same AP up anyway.
+
+`config.NetworkSSID`/`NetworkPassword` stay empty on this path.
+
+**Web UI.** `useWifiConnected` already probes `GET /api/network/check-internet` and
+`GET /api/network/current` (both public, no admin session needed). Internet **with** an
+SSID means "already on home Wi-Fi"; internet **without** one means a wired uplink, which
+marks the Wi-Fi step satisfied, shows a notice above the picker, and lets submit through
+with an empty SSID. Picking a network still works — the operator can add Wi-Fi on top of
+the cable.
+
+The offer is driven by **live connectivity, not by hardware**: nothing asks whether the
+device has an ethernet port. A device with no port, or with a port and no cable, simply
+fails `check-internet` while in AP mode (the provisioning AP has no uplink), so the
+notice never appears and the Wi-Fi step blocks exactly as before. Two consequences worth
+knowing:
+
+- `GET /api/network/current` returns `null` both for "associated to nothing" and when
+  the probe fails, so the hook keeps those outcomes apart and only treats a *successful*
+  empty answer as a wired uplink. A failed probe stays undecided and retries — undecided
+  means the step keeps asking for credentials, the safe default.
+- A USB modem or a phone tether is indistinguishable from ethernet here, and behaves the
+  same way (no Wi-Fi needed, AP torn down), which is why the copy says "online without
+  Wi-Fi" rather than asserting a cable.
+
+**Re-setup caveat.** `mergeMissingFromConfig` refills an empty `ssid` from
+`config.NetworkSSID`, so re-running setup on a device already provisioned over Wi-Fi
+takes the Wi-Fi path even if the operator leaves the field blank. Only devices with no
+saved SSID (fresh, or previously set up wired) reach the wired path that way.
+
 ## AP Mode
 
 - When not set up or setup fails → automatically switches to AP mode
 - Device broadcasts WiFi hotspot
 - Web UI serves setup page
 - `SwitchToAPMode()` in `system/network/service.go`
+- **AP mode owns `wlan0` only — the wired link keeps working.** `device-ap-mode` used to
+  `systemctl stop`/`disable dhcpcd`, but the golden image purges NetworkManager, so dhcpcd
+  is the DHCP client for *every* interface — disabling it also killed `eth0`/`end0`, and the
+  disable persisted across reboots until `device-sta-mode` ran (i.e. until someone supplied
+  WiFi credentials). It now appends `denyinterfaces wlan0` to `/etc/dhcpcd.conf` and keeps
+  dhcpcd running; `device-sta-mode` strips that line to hand `wlan0` back. Consequence: a
+  device in AP mode that is also plugged into ethernet holds a LAN address, and because
+  avahi advertises on every interface, the setup page is reachable from the wired LAN at
+  `http://<device_type>-<suffix>.local/` as well as at the AP's `192.168.100.1`.
+  That wired address is also what makes the ethernet-only setup below possible.
 - **LED indicator:** once HTTP server is listening, if `SetUpCompleted == false` the OS server spawns a background goroutine (`waitAndPaintSetupReady` in `server/server.go`) that polls HAL `GET /health` once per second up to 30s. As soon as `health.led == true`, it fires `POST /led/solid` with `{"color":[255,255,255]}` to paint the strip solid white. The poll exists because os-server typically binds :5000 before HAL's FastAPI is up on :5001 (Python loads `rpi_ws281x`, SPI, audio, camera) — a fire-and-forget paint would silently drop on `connection refused`. White stays on until setup completes (agent flash + ambient repaint it). The booting blue-breathing still shows during init.
 - **AP-mode LED suppression:** the openclaw WS reconnect loop (`runtimes/openclaw/service_ws.go`) skips `StateAgentDown` Set/Clear while `config.SetUpCompleted == false`, so the cyan disconnect overlay doesn't fight the setup-needed white during provisioning. WS still runs (`device.Setup` needs it ready to satisfy `WaitForAgentReady` before flipping `SetUpCompleted=true`), only the LED side-effect is gated.
 - **Wi-Fi association LED cue (`StateWifiConnecting`):** the moment the setup handler enters `device.Setup()`, it activates `statusled.StateWifiConnecting` (HAL preset `wifi_connecting` = blue `[0,135,255]` blink at speed 0.5) so the ring visibly switches from the setup-white to a blue blink while `wlan0` associates. A `defer` in `Setup()` clears it on every return path, so a failure that falls through to `SwitchToAPMode()` doesn't leave the strip blinking. Priority sits above `Booting` and below `OTA`/`Error`/`Connectivity` — the cue outranks residual boot state but never masks a real fault. Devices without the `light` capability short-circuit inside statusled (no-op).

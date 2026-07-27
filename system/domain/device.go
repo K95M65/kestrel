@@ -21,9 +21,13 @@ const (
 )
 
 type SetupRequest struct {
-	// setup network
-	SSID     string `json:"ssid" validate:"required"`
-	Password string `json:"password" validate:"required"`
+	// Network credentials. Neither is required:
+	//   - Empty SSID means "the device already has a working uplink, don't join
+	//     any WiFi" — the ethernet case. device.Setup verifies there really is
+	//     internet before accepting it, and tears down the provisioning AP.
+	//   - Empty Password with a non-empty SSID is an open network.
+	SSID     string `json:"ssid"`
+	Password string `json:"password"`
 
 	// channel type: "telegram" (default), "slack" or "discord".
 	// WhatsApp is intentionally not accepted here — it must be added
@@ -367,7 +371,7 @@ const (
 
 	KindSystemInfo    = "system.info"    // aggregate: versions + network + host
 	KindSystemVersion = "system.version" // lamp + bootstrap + hal + openclaw versions
-	KindSystemNetwork = "system.network" // wlan0 IP, MAC, SSID, gateway
+	KindSystemNetwork = "system.network" // IP, MAC, SSID, gateway of the default-route interface
 
 	// KindSkillsInstall installs a role's skill bundle. Data: {"role":"<role>"}.
 	KindSkillsInstall = "skills.install"
@@ -643,8 +647,9 @@ type MQTTVersionsData struct {
 	OpenClawDetected bool   `json:"openclaw_detected"`
 }
 
-// MQTTNetworkData carries wlan0 link facts. SSID/Gateway empty when the device
-// is in AP mode or otherwise not joined to upstream Wi-Fi.
+// MQTTNetworkData carries link facts for the interface holding the default route
+// (Interface names it — wlan0 on WiFi, eth0/end0 on ethernet). SSID is empty when
+// the device is in AP mode, wired, or otherwise not joined to upstream Wi-Fi.
 type MQTTNetworkData struct {
 	PrivateIP string `json:"private_ip"`
 	Interface string `json:"interface"`

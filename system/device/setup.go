@@ -3,6 +3,7 @@ package device
 import (
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -51,8 +52,9 @@ func (st *setupState) set(phase, ip, errMsg string) {
 
 // SetupStatus returns the current Setup phase + LAN IP so the web client
 // can poll progress through the AP→STA switch. When no Setup run has
-// happened (phase=idle) but the device is already on home Wi-Fi from a
-// previous session, fall back to the live wlan0 address so the web
+// happened (phase=idle) but the device is already on the home network from a
+// previous session, fall back to the live address of the default-route
+// interface (wlan0 on WiFi, eth0/end0 when wired) so the web
 // client can still detect "you're at the AP IP but the device lives at X"
 // and redirect.
 func (s *Service) SetupStatus() (phase, lanIP, errMsg string) {
@@ -65,26 +67,59 @@ func (s *Service) SetupStatus() (phase, lanIP, errMsg string) {
 	return phase, lanIP, errMsg
 }
 
-func (s *Service) Setup(data domain.SetupRequest) error {
-	slog.Info("starting setup", "component", "device")
-	data.LLMBaseURL = urlnorm.NormalizeBaseURL(data.LLMBaseURL)
-	data.STTBaseURL = urlnorm.NormalizeBaseURL(data.STTBaseURL)
-	data.TTSBaseURL = urlnorm.NormalizeBaseURL(data.TTSBaseURL)
-	s.setupState.set(SetupPhaseConnecting, "", "")
+// setupWired completes the network phase for a device that already reaches the
+// internet without WiFi — in practice an ethernet cable. There are no credentials
+// to apply, so the work is (1) proving the uplink is real, and (2) tearing down
+// the provisioning AP, which nothing else on this path would do: AP teardown
+// lives in device-sta-mode, and the WiFi path only gets there as the last step of
+// connect-wifi. Skipping it would leave the device broadcasting its open setup
+// hotspot forever.
+func (s *Service) setupWired() error {
+	if _, err := s.networkService.CheckInternet(); err != nil {
+		const msg = "no WiFi credentials given and the device has no working internet connection"
+		s.setupState.set(SetupPhaseFailed, "", msg)
+		return fmt.Errorf("%s: %w", msg, err)
+	}
 
+	// Publish the address BEFORE leaving AP mode. Tearing the AP down restarts
+	// dhcpcd, which can briefly interrupt the very connection the client is
+	// talking to us over; with lan_ip already in setupState, a client that loses
+	// the response can still find the device by polling /api/setup/status.
+	ip, ipErr := s.networkService.GetCurrentIP()
+	if ipErr != nil || ip == apSetupIP {
+		// apSetupIP means the route lookup fell back to wlan0 (the AP's own
+		// address) — not a usable LAN address to hand the client.
+		slog.Warn("setup: wired path could not resolve a LAN IP", "component", "device", "ip", ip, "error", ipErr)
+		ip = ""
+	}
+	s.setupState.set(SetupPhaseConnected, ip, "")
+	slog.Info("setup: existing uplink verified, skipping WiFi join", "component", "device", "lan_ip", ip)
+
+	if err := s.networkService.LeaveAPMode(); err != nil {
+		// Non-fatal: the device is on the network and the rest of setup can
+		// finish. Logged at error level because a surviving AP is an open
+		// hotspot, not a cosmetic leftover — but failing here would abort setup
+		// and leave that same AP up anyway, so continuing is strictly better.
+		slog.Error("setup: failed to tear down provisioning AP", "component", "device", "error", err)
+	}
+	return nil
+}
+
+// setupWiFi runs the classic provisioning path: push credentials to
+// wpa_supplicant, wait for association, and hand the resulting STA address to the
+// web client before the AP disappears underneath it.
+func (s *Service) setupWiFi(data domain.SetupRequest) error {
 	// Blue-blink cue while wlan0 associates with the target Wi-Fi. Mirrors the
 	// intern-v1 behavior (openclaw-lobster's led.ConnectionMode on setup entry).
-	// Cleared on every return path below so a re-run after a failed setup starts
-	// from the neutral status instead of a stuck blinking strip. No-op on devices
-	// without the `light` capability (statusled short-circuits).
+	// Only on this path — a wired setup never associates, so the cue would be a
+	// lie that stays lit for the ~2 min the rest of setup takes.
 	s.statusLED.Set(statusled.StateWifiConnecting)
-	defer s.statusLED.Clear(statusled.StateWifiConnecting)
 
 	// Early LAN-IP capture: SetupNetwork() blocks up to 60s waiting for
 	// internet, but the AP (192.168.100.1) tears down within ~2s of the
 	// AP→STA switch — so by the time SetupNetwork returns and we'd normally
 	// read the IP, the web client can no longer poll us over the AP. This
-	// goroutine polls wlan0 while SetupNetwork runs and publishes the new STA
+	// goroutine polls while SetupNetwork runs and publishes the new STA
 	// IP into setupState the instant it appears (before internet is even up),
 	// giving the FE the largest possible window to read lan_ip during the
 	// brief overlap where it's still polling. Phase stays "connecting" — a
@@ -138,6 +173,33 @@ func (s *Service) Setup(data domain.SetupRequest) error {
 	} else {
 		s.setupState.set(SetupPhaseConnected, "", "")
 		slog.Warn("setup: WiFi associated but no IP detected", "component", "device", "error", ipErr)
+	}
+	return nil
+}
+
+func (s *Service) Setup(data domain.SetupRequest) error {
+	slog.Info("starting setup", "component", "device")
+	data.LLMBaseURL = urlnorm.NormalizeBaseURL(data.LLMBaseURL)
+	data.STTBaseURL = urlnorm.NormalizeBaseURL(data.STTBaseURL)
+	data.TTSBaseURL = urlnorm.NormalizeBaseURL(data.TTSBaseURL)
+	s.setupState.set(SetupPhaseConnecting, "", "")
+
+	// Cleared on every return path below so a re-run after a failed setup starts
+	// from the neutral status instead of a stuck blinking strip. Safe to call
+	// when the cue was never set (the wired path) — Clear on an inactive state
+	// is a no-op. No-op too on devices without the `light` capability.
+	defer s.statusLED.Clear(statusled.StateWifiConnecting)
+
+	// Network phase, one of two shapes. An empty SSID means the operator is
+	// telling us the device already has a working uplink and needs no WiFi —
+	// the ethernet case — so we verify that claim and leave the AP instead of
+	// running a join. Everything after this block is identical either way.
+	if strings.TrimSpace(data.SSID) == "" {
+		if err := s.setupWired(); err != nil {
+			return err
+		}
+	} else if err := s.setupWiFi(data); err != nil {
+		return err
 	}
 
 	// Persist the user's model selection so SetupAgent (run below, AFTER the full

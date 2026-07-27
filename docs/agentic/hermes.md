@@ -378,7 +378,7 @@ times out, `SetUpCompleted` stays `false`, the device falls back to AP mode, and
 symptom reads as "**WiFi won't connect**" even though the WiFi association itself
 succeeded. Two layers close this gap:
 
-- **A — image pre-bake** (`scripts/imager/build-orangepi.sh`): right after pre-baking the
+- **A — image pre-bake** (`scripts/imager/build-orangepi.sh`, `scripts/imager/build.sh`): right after pre-baking the
   Hermes CLI binary, the image runs `hermes gateway install --system` to write the
   unit file, then `systemctl disable hermes-gateway` so it does **not** auto-start at
   boot (OpenClaw is the default active runtime; enabling both would run two agents).

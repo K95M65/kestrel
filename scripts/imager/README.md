@@ -47,7 +47,7 @@ After placing the file, run `make build DEVICE_TYPE=lamp OTA_METADATA_URL=…` a
 
 | Config | Owner | How it gets on the Pi |
 |---|---|---|
-| `hal.env` | **OS team** | Written into the image by build-orangepi.sh Phase 2 |
+| `hal.env` | **OS team** | Written into the image by the device rootfs overlay — build-orangepi.sh Phase 3, build.sh Phase 2 |
 | `asound.conf` | **Hardware team** | Baked into base image — not shipped in device profile |
 | udev rules | **Hardware team** | Baked into base image |
 | SPI3 overlay | **Hardware team** | Baked into base image |
@@ -102,6 +102,39 @@ Phase 5  Finalize
 
 **Typical sizes**: base .img.xz ≈ 1–2 GB, expanded image 14 GB, final `.img.xz` ≈ 190 MB.
 
+## Raspberry Pi build flow
+
+Different shape from OPi: the source is the **stock Raspberry Pi OS Lite arm64** image
+downloaded from `downloads.raspberrypi.com` (Pi 5 → Trixie/Debian 13, Pi 4 → Bookworm/
+Debian 12), the root filesystem is converted to **Btrfs**, and the build is split into a
+slow cached base phase and a fast overlay phase.
+
+```
+Phase 1  BASE — runs only when /output/base.img is absent (~20 min)
+         - download/extract stock RPi OS Lite → new 8 GB image, FAT32 boot + Btrfs root (@ subvol)
+         - user, SSH, disable NetworkManager, WiFi country, hostname, locale, fstab, cmdline
+         - chroot qemu-arm64: apt install, systemd units, PulseAudio, uv, nginx,
+           hostapd/dnsmasq/dhcpcd + device-ap/sta-mode + connect-wifi + software-update
+         - Node.js 22 + openclaw + Discord/Slack plugins
+         - agent runtime pre-bake: hermes CLI + its (disabled) gateway unit always;
+           codex / claude / picoclaw / opencode for lamp + intern-v2
+         - btrfs-resize-once, fr-snapshot, fr-rollback  → /output/base.img
+Phase 2  OVERLAY — always runs (~1 min)
+         - OTA metadata → bootstrap-server + os-server binaries, HAL + uv sync
+         - device profile (devices/<type>) → /opt/devices/<type>/,
+           then its rootfs/ overlay copied onto / (this is where /opt/hal/.env lands)
+         - f_r_default_agent + SSH policy (both follow DEFAULT_AGENT)
+         - web UI, Claude Desktop Buddy
+         - @factory Btrfs snapshot + QC checks → /output/golden-<type>.img
+```
+
+**base.img is cached but not generic.** Phase 1 bakes both device-type-specific content
+(nginx conf name, hostapd SSID, dnsmasq drop-in, `Environment=DEVICE_TYPE`, the pre-baked
+runtime CLIs) and board-specific content (Debian release, Pi-5-only stages). The builder
+stamps `/output/base.img.built-for` with `<device_type>/rpi<model>` and **aborts** if a
+later build asks for a different combination — delete `base.img` (and the stamp) to
+rebuild. Anything that must follow `DEFAULT_AGENT` lives in Phase 2 for this reason.
+
 ### First boot on the device
 
 1. `resize-once.service` runs once: `growpart + resize2fs` → ext4 fills real SD size. Self-disables.
@@ -125,7 +158,9 @@ Phase 5  Finalize
 | Variable | Default | Effect |
 |----------|---------|--------|
 | `TARGET` | `opi` | `opi`, `rpi` — picks builder script |
+| `RPI_MODEL` | `5` | `rpi` only — `5` = Trixie source image, `4` = Bookworm |
 | `DEVICE_TYPE` | **(required)** | `lamp`, `intern-v2`, … — one image per device class |
+| `DEFAULT_AGENT` | *(unset)* | Bakes `/root/config/f_r_default_agent` (survives factory reset, wins over `DEVICE.md` `gateway.default`) and gates SSH for `intern-v2`. Unset = unchanged behavior |
 | `OTA_METADATA_URL` | **(required)** | Baked into `/root/config/bootstrap.json` |
 | `OUT_IMG_SIZE` | `14G` | OPi partition size after expansion |
 | `OPI_FILE_ID` | `1CYfOaY6f5DozJBNvPJ0Gx1jBIFlGe8fn` | Google Drive ID for stock OPi .7z |
@@ -233,6 +268,20 @@ xz -dc output/lamp/golden-opi-lamp.img.xz | head -c 16M | hexdump -C | head -20
 Expected: non-zero bytes near offsets `0x2000` (SPL) and `0x20000` (U-Boot).
 
 ## Recent changes
+
+**2026-07-27** — `build.sh` (Pi) brought to parity with `build-orangepi.sh`:
+- Device `rootfs/` overlay is now copied onto `/` — both at build time and in
+  `software-update device`. Previously the Pi image installed the device profile but
+  never applied its overlay, so `/opt/hal/.env` held only `DEVICE_TYPE`/`DEVICES_DIR`
+  and every HAL tuning value (ALSA device names, VAD/camera thresholds) fell back to
+  its code default
+- Agent runtime pre-bake: hermes CLI + its disabled `hermes-gateway.service` unit
+  (always), and codex / claude / picoclaw / opencode CLIs (lamp + intern-v2)
+- `DEFAULT_AGENT` honored: bakes `/root/config/f_r_default_agent` and gates SSH for
+  intern-v2 — the Makefile already passed the variable, only `build.sh` ignored it
+- `base.img` cache is stamped with `<device_type>/rpi<model>` and a mismatched reuse
+  now aborts instead of silently shipping the wrong image
+- QC checks extended to cover all of the above
 
 **2026-06-17** — Config ownership clarified, per-device base image:
 - `asound.conf` removed from device profile overlay — hardware team bakes it into base image

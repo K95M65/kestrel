@@ -297,7 +297,7 @@ optional `error`, and an optional `data` payload.
 | `channel.refresh_config` | Re-apply a channel's canonical config block (async; acks `configuring`) | `channel` |
 | `system.info` | Aggregate snapshot: versions + network + host | _(none)_ |
 | `system.version` | Component versions only (cheaper than `system.info`) | _(none)_ |
-| `system.network` | wlan0 network facts only | _(none)_ |
+| `system.network` | network facts of the default-route interface only | _(none)_ |
 
 **`system.info` response:** synchronous (no `starting` intermediate); each probe
 falls back to its zero value on failure.
@@ -335,6 +335,14 @@ falls back to its zero value on failure.
 
 The `host.timezone` field is the device's **live** IANA zone, read fresh from the
 system (`/etc/timezone`, falling back to config); omitted when it can't be resolved.
+
+The `network` block describes **the interface holding the default route**, not `wlan0`
+specifically — `network.PrimaryInterface()` reads it from `ip route show default`, so a
+device wired over ethernet reports `"interface": "end0"` with that link's `private_ip`
+and `mac`, and an empty `ssid` (it is not associated to any WiFi). When there is no
+default route at all — AP/provisioning mode — it falls back to `wlan0`, which then holds
+the AP's own `192.168.100.1`. Previously the interface was hardcoded, so an
+ethernet-only device reported a blank IP and MAC despite being perfectly reachable.
 
 `system.version` returns just the `versions` block as `data`; `system.network`
 returns just the `network` block. Version probes: `os-server` from the ldflags build

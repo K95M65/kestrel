@@ -14,6 +14,9 @@
 #
 #   To force a full rebuild: delete /output/base.img
 #   To iterate on backend/web: just re-run — only Phase 2 executes.
+#   base.img is stamped with the DEVICE_TYPE + RPI_MODEL it was built for
+#   (/output/base.img.built-for); a build for a different one aborts with
+#   instructions rather than silently reusing the wrong cache.
 #
 # PHASE 1 — BASE IMAGE (skipped when /output/base.img exists)
 #   1.  Download or use cached Raspberry Pi OS Lite (arm64, Trixie/Debian 13)
@@ -46,6 +49,10 @@
 #         - stage_nginx: write nginx config with backend/hal/openclaw upstreams
 #         - stage_ap: hostapd, dnsmasq, dhcpcd, device-ap/sta-mode scripts
 #         - stage_nodejs_openclaw: Node.js 22 + OpenClaw gateway
+#         - stage_agent_runtimes: pre-bake the Hermes CLI + its (disabled)
+#           gateway unit, and — for lamp / intern-v2 — the codex, claude,
+#           picoclaw and opencode CLIs, so switch-runtime skips the slow
+#           download on device
 #  20.  Install btrfs-resize-once service
 #  21.  Install fr-snapshot + fr-rollback
 #       → Save as /output/base.img
@@ -55,6 +62,10 @@
 #         - stage_ota_metadata: fetch build versions from GCS
 #         - stage_backend: download bootstrap-server + os-server binaries
 #         - stage_hal: download HAL Python app + uv sync
+#         - stage_device_profile: install devices.<type> artifact, then copy its
+#           rootfs/ overlay onto / (this is where /opt/hal/.env tuning lives)
+#         - stage_default_agent: bake f_r_default_agent + apply the SSH policy
+#           that follows DEFAULT_AGENT
 #         - stage_web: download web UI zip
 #   Take initial @factory snapshot (baked into image at build time)
 #   QC checks (verify binaries, configs, services, subvolumes)
@@ -128,6 +139,17 @@ OTA_METADATA_URL="${OTA_METADATA_URL:?OTA_METADATA_URL is required — build via
 # REQUIRED, no default — a golden image must declare which device class it is.
 DEVICE_TYPE="${DEVICE_TYPE:?DEVICE_TYPE is required — build via 'make build DEVICE_TYPE=...'}"
 DEVICES_DIR="${DEVICES_DIR:-/opt/devices}"
+# Per-image default agent runtime — bakes /root/config/f_r_default_agent, read
+# by SeedAgentRuntimeFromGateway (system/device/runtime.go) with PRIORITY over
+# DEVICE.md gateway.default, and — unlike gateway.default — it survives a
+# Factory Reset (not in factoryreset.go's deviceWipePaths). So an image built
+# with DEFAULT_AGENT re-seeds to the SAME runtime after an F_R instead of
+# falling back to the device-type-wide DEVICE.md value shared by every build.
+# Also gates SSH for intern-v2 — see the SSH stage in the overlay phase.
+# OPTIONAL — unset (the default) bakes nothing and behavior is unchanged:
+# seeding falls through to DEVICE.md gateway.default exactly as before.
+# Mirrors build-orangepi.sh; forwarded by the Makefile (-e) for both targets.
+DEFAULT_AGENT="${DEFAULT_AGENT:-}"
 AP_BAND="${AP_BAND:-2.4}"   # 2.4 or 5 (5 GHz needs supported regulatory domain + chip)
 AP_CHANNEL="${AP_CHANNEL:-}" # default: 6 for 2.4 GHz, 36 for 5 GHz
 COUNTRY_CODE="US"           # Regulatory country code for hostapd
@@ -194,6 +216,26 @@ mkdir -p ${MNT} ${ORIG_ROOT} ${ORIG_BOOT} /output /work
 #   fr-rollback. Excludes: OTA metadata fetch, backend binary downloads,
 #   web UI download — those are applied in Phase 2 (overlay).
 # ══════════════════════════════════════════════════════════════════════════════
+# ── base.img cache guard ─────────────────────────────────────────────────────
+# base.img is a single cached file, but Phase 1 bakes both DEVICE_TYPE-specific
+# content (nginx conf name, hostapd SSID, dnsmasq drop-in, os-server
+# Environment=DEVICE_TYPE, the pre-baked runtime CLIs) and board-specific content
+# (Pi 4 = Bookworm, Pi 5 = Trixie, plus the Pi-5-only stages). Reusing a cache
+# built for a different device type or board silently ships a wrong image, so
+# stamp what it was built for and refuse a mismatched reuse.
+BASE_STAMP="${BASE_IMG}.built-for"
+BASE_STAMP_WANT="${DEVICE_TYPE}/rpi${RPI_MODEL}"
+if [[ -f "${BASE_IMG}" ]]; then
+  BASE_STAMP_HAVE="$(cat "${BASE_STAMP}" 2>/dev/null || echo unknown)"
+  if [[ "${BASE_STAMP_HAVE}" != "${BASE_STAMP_WANT}" ]]; then
+    echo "ERROR: cached ${BASE_IMG} was built for '${BASE_STAMP_HAVE}', this build wants '${BASE_STAMP_WANT}'." >&2
+    echo "       base.img is device-type- and board-specific. Delete it and rebuild:" >&2
+    echo "         rm -f ${BASE_IMG} ${BASE_STAMP}" >&2
+    exit 1
+  fi
+  echo "==> Reusing cached base.img (built for ${BASE_STAMP_HAVE})"
+fi
+
 if [[ ! -f "${BASE_IMG}" ]]; then
 echo "==> base.img not found — building base image from scratch..."
 
@@ -996,6 +1038,10 @@ elif [ "\$KIND" = "device" ]; then
   mkdir -p "\$DEST"
   unzip -o -q /tmp/device.zip -d "\$DEST"
   rm -f /tmp/device.zip
+  # Re-apply the device rootfs overlay onto / before services restart — the
+  # profile's /opt/hal/.env (ALSA names, VAD/camera tuning) lives there, so an
+  # OTA that only unzipped into \$DEST would leave HAL running the old tuning.
+  [ -d "\$DEST/rootfs" ] && cp -a "\$DEST/rootfs/." /
   systemctl restart os-server 2>/dev/null || true
   systemctl restart hal 2>/dev/null || true
 fi
@@ -1497,6 +1543,141 @@ WantedBy=multi-user.target
 OCUNIT
 systemctl enable openclaw
 
+# ── stage: Hermes CLI binary pre-bake ────────────────────────────────────────
+# Run the same installer stages as Hermes' install.sh, minus gateway/config/
+# migrate. Baking the binary + venv here means switch-runtime's install.sh skips
+# the slow git-clone + uv-sync on the device (its stages fast-path because they
+# detect the existing install). Everything else (service unit, presync, claw
+# migrate) stays owned by install.sh at actual switch time via Go switch-runtime.
+# Mirrors build-orangepi.sh — keep the two in sync.
+echo "[stage] hermes CLI binary pre-bake"
+HERMES_INSTALLER=\$(mktemp)
+retry "curl -fsSL https://hermes-agent.nousresearch.com/install.sh -o '\$HERMES_INSTALLER'" 5
+for stage in prerequisites repository venv python-deps path config; do
+  echo "[hermes-prebake] stage: \${stage}"
+  bash "\$HERMES_INSTALLER" --stage "\$stage" --non-interactive
+done
+rm -f "\$HERMES_INSTALLER"
+echo "git" >/usr/local/lib/hermes-agent/.install_method 2>/dev/null || true
+hermes --version || true
+
+# ── stage: Hermes gateway unit pre-bake (created, left DISABLED) ─────────────
+# Pre-baking the binary above is not enough: IsReady()/device setup wait on the
+# hermes-gateway HTTP /health, which needs the hermes-gateway.service unit to
+# exist. switch-runtime/install.sh creates it on the first switch to hermes — but
+# a hand-edited config.json agent_runtime=hermes flip never runs that path, so the
+# unit is absent, the gateway never starts, WaitForAgentReady times out,
+# SetUpCompleted stays false, the device falls back to AP mode, and the symptom
+# reads as "WiFi won't connect". Create the unit here so it is ready to start.
+# We do NOT enable it at boot: openclaw is the default active runtime and enabling
+# both would run two agents. os-server's EnsureOnboarding and switch-runtime
+# enable+start it when hermes actually becomes active. Best-effort: chroot has no
+# running systemd, so if the CLI cannot write the unit here, EnsureOnboarding
+# installs it at runtime instead — that is why we ship both.
+echo "[stage] hermes-gateway.service unit pre-bake (created, left disabled)"
+if command -v hermes >/dev/null 2>&1; then
+  # Seed .env with API server keys before gateway install — mirrors install.sh.
+  # Without this the gateway starts with API_SERVER_ENABLED unset and os-server's
+  # Bearer auth fails (401 on every turn).
+  HERMES_DIR="/root/.hermes"
+  ENV_FILE="\$HERMES_DIR/.env"
+  HERMES_API_SERVER_KEY="hermes-local-api-key"
+  mkdir -p "\$HERMES_DIR"
+  touch "\$ENV_FILE"
+  for k in API_SERVER_ENABLED API_SERVER_KEY API_SERVER_CORS_ORIGINS; do
+    sed -i "/^\${k}=/d" "\$ENV_FILE"
+  done
+  [ -s "\$ENV_FILE" ] && [ -n "\$(tail -c1 "\$ENV_FILE")" ] && printf '\n' >>"\$ENV_FILE"
+  printf '%s\n' \\
+    "API_SERVER_ENABLED=true" \\
+    "API_SERVER_KEY=\$HERMES_API_SERVER_KEY" \\
+    "API_SERVER_CORS_ORIGINS=http://localhost:3000" >>"\$ENV_FILE"
+  echo "[stage] hermes .env pre-seeded (API_SERVER_ENABLED + API_SERVER_KEY + CORS)"
+  set +o pipefail
+  yes y | hermes gateway install --system --run-as-user root \\
+    || echo "WARN: hermes gateway unit write returned non-zero (chroot has no systemd; os-server EnsureOnboarding installs it at runtime)"
+  set -o pipefail
+  systemctl disable hermes-gateway 2>/dev/null || true
+  if systemctl cat hermes-gateway >/dev/null 2>&1 || [ -f /etc/systemd/system/hermes-gateway.service ]; then
+    echo "[stage] hermes-gateway unit present — declaring for switch-runtime"
+    mkdir -p /usr/local/lib/os-runtimes/hermes
+    echo "hermes-gateway" >/usr/local/lib/os-runtimes/hermes/service
+    cat >/usr/local/lib/os-runtimes/hermes/verify <<'VERIFY'
+#!/usr/bin/env bash
+command -v hermes >/dev/null 2>&1
+VERIFY
+    chmod +x /usr/local/lib/os-runtimes/hermes/verify
+  else
+    echo "WARN: hermes-gateway unit not created in chroot — switch-runtime / EnsureOnboarding will install on first hermes activation"
+  fi
+fi
+
+# ── stage: Codex + Claude Code + PicoClaw + OpenCode CLI pre-bake ────────────
+# Same fast-path trick as the Hermes binary pre-bake above: bake ONLY the raw
+# CLI binaries — no systemd unit, no presync/onboard, no enable/start. Those
+# stay owned entirely by each backend's own install.sh (runtimes/codex,
+# runtimes/claudecode, runtimes/picoclaw, runtimes/opencode — embedded in
+# os-server, fetched by switch-runtime on the first real switch to that runtime);
+# each detects the binary already present and skips its own download. Versions
+# are pinned here just like CODEX_VERSION/PICO_VERSION/OPENCODE_VERSION in their
+# respective install.sh — bump both places together when upgrading. Gated to
+# lamp + intern-v2, the two device types whose "Select frameworks" web UI
+# actually offers these as switchable runtimes; other DEVICE_TYPEs stay unbaked
+# until their own UI exposes the picker. Same gate as build-orangepi.sh.
+if [ "${DEVICE_TYPE}" = "intern-v2" ] || [ "${DEVICE_TYPE}" = "lamp" ]; then
+  echo "[stage] codex CLI binary pre-bake (${DEVICE_TYPE})"
+  CODEX_VERSION="\${CODEX_VERSION:-rust-v0.142.5}"
+  CODEX_ASSET="codex-aarch64-unknown-linux-musl.tar.gz"
+  CODEX_TMP=\$(mktemp -d)
+  retry "curl -fsSL 'https://github.com/openai/codex/releases/download/\${CODEX_VERSION}/\${CODEX_ASSET}' -o '\$CODEX_TMP/\$CODEX_ASSET'" 5
+  tar -xzf "\$CODEX_TMP/\$CODEX_ASSET" -C "\$CODEX_TMP"
+  install -m 0755 "\$CODEX_TMP/\${CODEX_ASSET%.tar.gz}" /usr/local/bin/codex
+  rm -rf "\$CODEX_TMP"
+  codex --version || true
+
+  echo "[stage] Claude Code CLI binary pre-bake (${DEVICE_TYPE})"
+  retry "curl -fsSL https://claude.ai/install.sh | bash" 3 10
+  [ -x /root/.local/bin/claude ] && ln -sf /root/.local/bin/claude /usr/local/bin/claude
+  claude --version || true
+
+  echo "[stage] picoclaw CLI binary pre-bake (${DEVICE_TYPE})"
+  PICO_VERSION="\${PICO_VERSION:-v0.3.1-fixvision}"
+  PICO_ASSET="picoclaw-linux-arm64"
+  PICO_TMP=\$(mktemp)
+  retry "curl -fsSL 'https://github.com/autonomous-ai/picoclaw/releases/download/\${PICO_VERSION}/\${PICO_ASSET}' -o '\$PICO_TMP'" 5
+  install -m 0755 "\$PICO_TMP" /usr/local/bin/picoclaw
+  rm -f "\$PICO_TMP"
+  # picoclaw has no --version flag (errors "unknown flag") — version is a
+  # subcommand that also prints an ANSI banner.
+  picoclaw --no-color version || true
+
+  echo "[stage] opencode CLI binary pre-bake (${DEVICE_TYPE})"
+  # Mirrors runtimes/opencode/install.sh exactly (same pinned version, same
+  # official installer, same forced install dir) so switch-runtime's install.sh
+  # detects the binary already present at the expected version and skips its own
+  # download. OPENCODE_INSTALL_DIR must prefix the bash process running the
+  # installer, not curl — env vars only bind to the command they prefix.
+  OPENCODE_VERSION="\${OPENCODE_VERSION:-1.18.4}"
+  OPENCODE_BIN=/usr/local/bin/opencode
+  retry "curl -fsSL https://opencode.ai/install | OPENCODE_INSTALL_DIR=/usr/local/bin bash -s -- --version '\${OPENCODE_VERSION#v}'" 3 10
+  # Belt-and-suspenders, same as install.sh: the official installer has a history
+  # of ignoring OPENCODE_INSTALL_DIR and dropping the binary at its own default
+  # (~/.opencode/bin) while only patching PATH into ~/.bashrc — which a
+  # non-interactive shell like this one never sources.
+  if [ ! -x "\$OPENCODE_BIN" ]; then
+    echo "[stage] \$OPENCODE_BIN missing — locating installer output"
+    SRC="\$(command -v opencode 2>/dev/null || true)"
+    [ -x "\$SRC" ] || SRC="/root/.opencode/bin/opencode"
+    if [ -x "\$SRC" ]; then
+      install -m 0755 "\$SRC" "\$OPENCODE_BIN"
+      echo "[stage] copied \$SRC → \$OPENCODE_BIN"
+    fi
+  fi
+  "\$OPENCODE_BIN" --version || true
+else
+  echo "[stage] DEVICE_TYPE=${DEVICE_TYPE} — skipping codex/claudecode/picoclaw/opencode pre-bake (no runtime picker in its web UI)"
+fi
+
 systemctl daemon-reload
 echo "[stage] All stages complete"
 CHROOT_STAGES
@@ -1821,7 +2002,8 @@ sync
 losetup -d ${OUT_LOOP_ROOT} 2>/dev/null || true; OUT_LOOP_ROOT=""
 losetup -d ${OUT_LOOP_BOOT} 2>/dev/null || true; OUT_LOOP_BOOT=""
 losetup -d ${OUT_LOOP_DEV}  2>/dev/null || true; OUT_LOOP_DEV=""
-echo "==> base.img ready ($(du -h ${BASE_IMG} | cut -f1))"
+echo "${BASE_STAMP_WANT}" > "${BASE_STAMP}"
+echo "==> base.img ready ($(du -h ${BASE_IMG} | cut -f1), built for ${BASE_STAMP_WANT})"
 
 else
   echo "==> Using cached ${BASE_IMG}, skipping base build..."
@@ -1869,6 +2051,7 @@ export DEBIAN_FRONTEND=noninteractive
 export OTA_METADATA_URL="${OTA_METADATA_URL}"
 export DEVICE_TYPE="${DEVICE_TYPE}"
 export DEVICES_DIR="${DEVICES_DIR}"
+export DEFAULT_AGENT="${DEFAULT_AGENT}"
 
 retry() {
   local cmd="\$1" max="\${2:-5}" delay="\${3:-2}" n=0
@@ -2037,9 +2220,65 @@ if [ -n "\${DEVICES_URL:-}" ]; then
   unzip -o -q /tmp/device.zip -d "\$DEVICE_DEST"
   rm -f /tmp/device.zip
   echo "[overlay] Device profile '\$DEVICE_TYPE' installed at \$DEVICE_DEST"
+  # Device rootfs overlay: devices/<type>/rootfs/ mirrors the target filesystem,
+  # so copying it onto / lands each file at its real path. This is where the
+  # device's HAL tuning lives (/opt/hal/.env — ALSA device names, VAD/camera
+  # thresholds, realtime flags); without this copy HAL boots with only the two
+  # keys seeded above and every tuned value falls back to its code default.
+  # Runs AFTER the seed so the profile's .env wins, then re-asserts the two
+  # keys idempotently for profiles that ship a rootfs/ without them.
+  if [ -d "\$DEVICE_DEST/rootfs" ]; then
+    cp -a "\$DEVICE_DEST/rootfs/." /
+    echo "[overlay] Device rootfs overlay applied from \$DEVICE_DEST/rootfs"
+    touch "\$HAL_DIR/.env"
+    grep -q "^DEVICE_TYPE=" "\$HAL_DIR/.env" \
+      || echo "DEVICE_TYPE=\$DEVICE_TYPE" >> "\$HAL_DIR/.env"
+    grep -q "^DEVICES_DIR=" "\$HAL_DIR/.env" \
+      || echo "DEVICES_DIR=\$DEVICES_DIR" >> "\$HAL_DIR/.env"
+  else
+    echo "[overlay] WARN: device profile has no rootfs/ overlay"
+  fi
 else
   echo "[overlay] ERROR: no devices.\$DEVICE_TYPE url in OTA metadata — device profile is required (one image = one device type). Run 'make upload-device \$DEVICE_TYPE' before building." >&2
   exit 1
+fi
+
+# ── stage: default agent runtime + SSH policy ────────────────────────────────
+# Baked in the OVERLAY phase, not the base: base.img is cached and reused across
+# rebuilds, so baking a DEFAULT_AGENT-dependent value into Phase 1 would silently
+# keep whatever the previous build used. The overlay always runs, so this always
+# matches the DEFAULT_AGENT this build was invoked with.
+if [ -n "\${DEFAULT_AGENT:-}" ]; then
+  mkdir -p /root/config
+  echo "\${DEFAULT_AGENT}" > /root/config/f_r_default_agent
+  echo "[overlay] f_r_default_agent baked: \${DEFAULT_AGENT}"
+else
+  echo "[overlay] DEFAULT_AGENT unset — no f_r_default_agent baked (runtime seeding falls through to DEVICE.md gateway.default)"
+fi
+
+# SSH: gated by DEFAULT_AGENT, but ONLY for intern-v2 — every other DEVICE_TYPE
+# (lamp included) keeps today's behavior (SSH always enabled), regardless of
+# DEFAULT_AGENT. claudecode (black case, Developer Edition) ships SSH open;
+# every other default agent (hermes, openclaw, codex, picoclaw, opencode) ships
+# it closed. Unset DEFAULT_AGENT → unchanged: SSH enabled. Mirrors the same gate
+# in build-orangepi.sh, but must also clear /boot/firmware/ssh: Phase 1 enables
+# SSH two ways (RPi OS boot flag file + systemd wants symlink) and leaving the
+# flag file behind would let RPi OS re-enable sshd on first boot despite the
+# masked unit.
+if [ "\$DEVICE_TYPE" = "intern-v2" ] && [ -n "\${DEFAULT_AGENT:-}" ] && [ "\${DEFAULT_AGENT}" != "claudecode" ]; then
+  echo "[overlay] DEFAULT_AGENT=\${DEFAULT_AGENT} (intern-v2 consumer edition) — SSH stays closed"
+  rm -f /boot/firmware/ssh
+  rm -f /etc/systemd/system/multi-user.target.wants/ssh.service
+  systemctl disable ssh 2>/dev/null || true
+  systemctl mask ssh 2>/dev/null || true
+else
+  echo "[overlay] SSH enabled (DEVICE_TYPE=\$DEVICE_TYPE DEFAULT_AGENT=\${DEFAULT_AGENT:-<unset>})"
+  # unmask before enable: a stale base.img may carry the masked state from a
+  # previous consumer-edition build of the same base.
+  systemctl unmask ssh 2>/dev/null || true
+  touch /boot/firmware/ssh
+  ln -sf /lib/systemd/system/ssh.service \\
+         /etc/systemd/system/multi-user.target.wants/ssh.service 2>/dev/null || true
 fi
 
 # ── stage: web UI ────────────────────────────────────────────────────────────
@@ -2199,6 +2438,53 @@ if [ -f "${MNT}/usr/share/nginx/html/setup/index.html" ]; then
 else
   echo "  [FAIL] web UI missing"; QC_FAIL=1
 fi
+
+# Verify the device rootfs overlay actually landed on / — this is where the
+# device's /opt/hal/.env tuning lives (ALSA names, VAD/camera thresholds), and a
+# silent miss ships an image whose HAL runs on code defaults.
+DEV_ROOTFS="${MNT}${DEVICES_DIR}/${DEVICE_TYPE}/rootfs"
+if [ -d "${DEV_ROOTFS}" ]; then
+  OVERLAY_MISS=0
+  while IFS= read -r f; do
+    REL="${f#${DEV_ROOTFS}}"
+    [ -e "${MNT}${REL}" ] || { echo "  [FAIL] rootfs overlay not applied: ${REL}"; OVERLAY_MISS=1; }
+  done < <(find "${DEV_ROOTFS}" -type f)
+  if [ ${OVERLAY_MISS} -eq 0 ]; then
+    echo "  [OK] device rootfs overlay applied"
+  else
+    QC_FAIL=1
+  fi
+else
+  echo "  [WARN] device profile '${DEVICE_TYPE}' ships no rootfs/ overlay"
+fi
+
+# Verify the baked default agent runtime matches what this build was invoked with
+if [ -n "${DEFAULT_AGENT}" ]; then
+  if [ "$(cat "${MNT}/root/config/f_r_default_agent" 2>/dev/null)" = "${DEFAULT_AGENT}" ]; then
+    echo "  [OK] f_r_default_agent=${DEFAULT_AGENT}"
+  else
+    echo "  [FAIL] f_r_default_agent missing or != ${DEFAULT_AGENT}"; QC_FAIL=1
+  fi
+fi
+
+# Verify pre-baked agent runtime CLIs. Hermes is baked for every device type;
+# the rest only for the ones whose web UI exposes the runtime picker.
+if [ -d "${MNT}/usr/local/lib/hermes-agent" ]; then
+  echo "  [OK] hermes pre-baked"
+else
+  echo "  [FAIL] hermes not pre-baked"; QC_FAIL=1
+fi
+case "${DEVICE_TYPE}" in
+  lamp|intern-v2)
+    for RTBIN in codex claude picoclaw opencode; do
+      if [ -e "${MNT}/usr/local/bin/${RTBIN}" ]; then
+        echo "  [OK] ${RTBIN} pre-baked"
+      else
+        echo "  [FAIL] ${RTBIN} not pre-baked"; QC_FAIL=1
+      fi
+    done
+    ;;
+esac
 
 btrfs filesystem sync /mnt/btrfs-top 2>/dev/null || true
 sync

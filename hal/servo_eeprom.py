@@ -29,14 +29,31 @@ then reads them back to prove the write landed. Compared to `hal.calibrate`:
 
 Only servo configuration registers are touched. This never commands a movement.
 
+This does NOT replace hand calibration. `homing_offset` depends on which spline tooth a
+horn landed on, so it belongs to one physical arm — writing another arm's file moves the
+servos to visibly wrong poses. New arms are calibrated by hand
+(`python -m hal.calibrate --id <device>`, press `c`), and so is any arm that had a servo
+replaced: the new servo's horn lands on its own tooth, so the old numbers no longer fit it.
+
+What this is actually for:
+
+  * `--dry-run` — read what the servos hold. This is the only way to see the EEPROM side;
+    the file on disk says nothing about it.
+  * restoring a unit to numbers you captured from it earlier, e.g. undoing a push of the
+    wrong file (the `BEFORE` table this prints is the only record — keep it).
+
+There is deliberately no default source — `--file` or `--id` is required.
+
 Usage (on the device, HAL stopped so the serial port is free):
 
     sudo systemctl stop hal
     cd /opt/hal
-    sudo ./.venv/bin/python3 -m hal.apply_calibration --port /dev/ttyACM0
+    # inspect only — never writes
+    sudo ./.venv/bin/python3 -m hal.servo_eeprom --dry-run --id hal
+    # restore a unit from its own file
+    sudo ./.venv/bin/python3 -m hal.servo_eeprom \
+        --file /var/lib/hal/calibration/robots/hal_follower/lamp-abcd.json
     sudo systemctl start hal
-
-Add `--dry-run` to only report what would change.
 """
 
 import argparse
@@ -168,9 +185,9 @@ def main() -> int:
         help="Serial port of the servo bus (default: /dev/ttyACM0)",
     )
     parser.add_argument(
-        "--id", type=str, default="hal", dest="calib_id",
-        help="Calibration id to resolve the file from (default: 'hal' = the shared repo "
-             "reference file). Use the device id to pick up its per-device file instead.",
+        "--id", type=str, default=None, dest="calib_id",
+        help="Resolve the calibration file from this id, the same way the runtime does "
+             "(a device id reads its per-device file; 'hal' reads the shared repo file).",
     )
     parser.add_argument(
         "--file", type=str, default=None,
@@ -181,6 +198,17 @@ def main() -> int:
         help="Only report what would change; write nothing.",
     )
     args = parser.parse_args()
+
+    # No default source on purpose. homing_offset is per-unit, so the dangerous action —
+    # pushing the shared hal.json onto some other arm — must never be the easiest thing to
+    # type. Make the caller name what they are writing.
+    if not args.file and not args.calib_id:
+        parser.error(
+            "pass --file <path> (usually this unit's own calibration) or --id <device>.\n"
+            "There is no default: homing_offset belongs to one physical arm, and writing "
+            "another arm's file moves the servos to the wrong poses.\n"
+            "To inspect without writing: --dry-run --id hal"
+        )
 
     try:
         return apply_calibration(args.port, args.calib_id, args.file, args.dry_run)
