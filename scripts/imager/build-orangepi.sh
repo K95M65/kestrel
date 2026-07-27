@@ -106,8 +106,8 @@ err() { echo "ERROR: $*" >&2; exit 1; }
 
 if [ -n "${DEFAULT_AGENT}" ]; then
   case "${DEFAULT_AGENT}" in
-    openclaw|hermes|picoclaw|codex|claudecode) ;;
-    *) err "invalid DEFAULT_AGENT=${DEFAULT_AGENT} — must be one of: openclaw hermes picoclaw codex claudecode" ;;
+    openclaw|hermes|picoclaw|codex|claudecode|opencode) ;;
+    *) err "invalid DEFAULT_AGENT=${DEFAULT_AGENT} — must be one of: openclaw hermes picoclaw codex claudecode opencode" ;;
   esac
 fi
 
@@ -420,19 +420,20 @@ VERIFY
   fi
 fi
 
-# ── Codex + Claude Code + PicoClaw CLI binary pre-bake (lamp + intern-v2) ───
+# ── Codex + Claude Code + PicoClaw + OpenCode CLI binary pre-bake (lamp + intern-v2) ───
 # Same fast-path trick as the Hermes binary pre-bake above: bake ONLY the raw
 # CLI binaries here — no systemd unit, no presync/onboard, no enable/start.
 # Those stay owned entirely by each backend's own install.sh (runtimes/codex,
-# runtimes/claudecode, runtimes/picoclaw — embedded in os-server, fetched by
-# switch-runtime on the first real switch to that runtime); each detects the
-# binary already present and skips its own download, same as hermes above.
-# Versions are pinned here just like CODEX_VERSION/PICO_VERSION in their
-# respective install.sh — bump both places together when upgrading. Gated to
-# lamp + intern-v2 — the two device types whose "Select frameworks" web UI
-# actually offers these as switchable runtimes (see the Lamp screenshot in the
-# PR — the picker is per-device, not intern-v2-only as first assumed). Other
-# future DEVICE_TYPEs stay unbaked until their own UI exposes the picker.
+# runtimes/claudecode, runtimes/picoclaw, runtimes/opencode — embedded in
+# os-server, fetched by switch-runtime on the first real switch to that
+# runtime); each detects the binary already present and skips its own
+# download, same as hermes above. Versions are pinned here just like
+# CODEX_VERSION/PICO_VERSION/OPENCODE_VERSION in their respective install.sh —
+# bump both places together when upgrading. Gated to lamp + intern-v2 — the
+# two device types whose "Select frameworks" web UI actually offers these as
+# switchable runtimes (see the Lamp screenshot in the PR — the picker is
+# per-device, not intern-v2-only as first assumed). Other future DEVICE_TYPEs
+# stay unbaked until their own UI exposes the picker.
 #
 # Checklist — "Select frameworks" web UI tiles vs. what's baked/available here:
 #   [x] OpenClaw  — baked above (npm install -g openclaw), always (all devices)
@@ -443,11 +444,10 @@ fi
 #                      runtimes/picoclaw + AgentGateway registered — UI badge
 #                      is "coming soon" only pending product flip, not a
 #                      missing backend)
-#   [ ] OpenCode  — NOT baked: no runtimes/opencode package, no AgentGateway
-#                    case, no install.sh, not in adding-agent-runtime.md's
-#                    adapter list. The UI tile is a placeholder for a backend
-#                    that doesn't exist server-side yet — nothing to pull
-#                    until that lands. Revisit this block once it does.
+#   [x] OpenCode    — baked here, lamp + intern-v2 (backend now exists —
+#                      runtimes/opencode + AgentGateway registered, same as
+#                      PicoClaw's situation above; previously a placeholder
+#                      with no server-side code, now shipped)
 if [ "\${DEVICE_TYPE}" = "intern-v2" ] || [ "\${DEVICE_TYPE}" = "lamp" ]; then
   echo "[stage] codex CLI binary pre-bake (\${DEVICE_TYPE})"
   CODEX_VERSION="\${CODEX_VERSION:-rust-v0.142.5}"
@@ -479,10 +479,40 @@ if [ "\${DEVICE_TYPE}" = "intern-v2" ] || [ "\${DEVICE_TYPE}" = "lamp" ]; then
   picoclaw --no-color version || true
   picoclaw --no-color version 2>/dev/null | sed -n 's/.*picoclaw \([^ ]*\).*/\1/p' | head -1 > /tmp/baked-picoclaw-version
   [ -s /tmp/baked-picoclaw-version ] || echo "unknown" > /tmp/baked-picoclaw-version
+
+  echo "[stage] opencode CLI binary pre-bake (\${DEVICE_TYPE})"
+  # Mirrors runtimes/opencode/install.sh's own install step exactly (same
+  # pinned version, same official installer, same forced install dir) — the
+  # goal is switch-runtime's install.sh detecting this binary already present
+  # at the expected version and skipping its own download, not a parallel
+  # install mechanism. OPENCODE_INSTALL_DIR must prefix \`bash\` (the process
+  # running the installer), not \`curl\`, in the \`curl … | bash\` pipeline —
+  # env vars only bind to the command they prefix.
+  OPENCODE_VERSION="\${OPENCODE_VERSION:-1.18.4}"
+  OPENCODE_BIN=/usr/local/bin/opencode
+  retry "curl -fsSL https://opencode.ai/install | OPENCODE_INSTALL_DIR=/usr/local/bin bash -s -- --version '\${OPENCODE_VERSION#v}'" 3 10
+  # Belt-and-suspenders, same as install.sh: the official installer has a
+  # history of ignoring OPENCODE_INSTALL_DIR and dropping the binary at its
+  # own default (~/.opencode/bin) while only patching PATH into ~/.bashrc —
+  # which a non-interactive/non-login shell like this one never sources. Skip
+  # only if the installer actually respected OPENCODE_INSTALL_DIR this time.
+  if [ ! -x "\$OPENCODE_BIN" ]; then
+    echo "[stage] \$OPENCODE_BIN missing — locating installer output"
+    SRC="\$(command -v opencode 2>/dev/null || true)"
+    [ -x "\$SRC" ] || SRC="/root/.opencode/bin/opencode"
+    if [ -x "\$SRC" ]; then
+      install -m 0755 "\$SRC" "\$OPENCODE_BIN"
+      echo "[stage] copied \$SRC → \$OPENCODE_BIN"
+    fi
+  fi
+  "\$OPENCODE_BIN" --version || true
+  "\$OPENCODE_BIN" --version 2>/dev/null | tr -d '[:space:]' > /tmp/baked-opencode-version
+  [ -s /tmp/baked-opencode-version ] || echo "unknown" > /tmp/baked-opencode-version
 else
   echo "unbaked" > /tmp/baked-codex-version
   echo "unbaked" > /tmp/baked-claudecode-version
   echo "unbaked" > /tmp/baked-picoclaw-version
+  echo "unbaked" > /tmp/baked-opencode-version
 fi
 
 # ── uv (Python pkg mgr for HAL) ───────────────────────────────────────────
@@ -1188,6 +1218,7 @@ BAKED_HERMES_VERSION=$(cat "${MNT}/tmp/baked-hermes-version" 2>/dev/null | tr -d
 BAKED_CODEX_VERSION=$(cat "${MNT}/tmp/baked-codex-version" 2>/dev/null | tr -d '[:space:]' || echo "unbaked")
 BAKED_CLAUDECODE_VERSION=$(cat "${MNT}/tmp/baked-claudecode-version" 2>/dev/null | tr -d '[:space:]' || echo "unbaked")
 BAKED_PICOCLAW_VERSION=$(cat "${MNT}/tmp/baked-picoclaw-version" 2>/dev/null | tr -d '[:space:]' || echo "unbaked")
+BAKED_OPENCODE_VERSION=$(cat "${MNT}/tmp/baked-opencode-version" 2>/dev/null | tr -d '[:space:]' || echo "unbaked")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Phase 3 — OTA bake: backend binaries + hal + web UI + buddy
@@ -1449,13 +1480,14 @@ if [ -f "${METADATA_FOR_SNAPSHOT}" ]; then
     --arg codex_version "${BAKED_CODEX_VERSION:-unbaked}" \
     --arg claudecode_version "${BAKED_CLAUDECODE_VERSION:-unbaked}" \
     --arg picoclaw_version "${BAKED_PICOCLAW_VERSION:-unbaked}" \
+    --arg opencode_version "${BAKED_OPENCODE_VERSION:-unbaked}" \
     --argjson hw_manifest "${HW_MANIFEST_JSON}" \
     --slurpfile ota_metadata "${METADATA_FOR_SNAPSHOT}" \
     '{
       build_date: $build_date,
       git_commit: $git_commit,
       hardware_manifest: $hw_manifest,
-      baked_runtimes: { hermes: $hermes_version, openclaw: $openclaw_version, codex: $codex_version, claudecode: $claudecode_version, picoclaw: $picoclaw_version },
+      baked_runtimes: { hermes: $hermes_version, openclaw: $openclaw_version, codex: $codex_version, claudecode: $claudecode_version, picoclaw: $picoclaw_version, opencode: $opencode_version },
       ota_metadata: $ota_metadata[0]
     }' > "${MNT}/etc/autonomous-build.json"
   rm -f "${METADATA_FOR_SNAPSHOT}"
