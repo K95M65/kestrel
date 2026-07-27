@@ -20,10 +20,10 @@
 - `leader/` — LeLamp leader arm (not relevant)
 - `livekit-agents`, `openai` dependencies — replaced by OpenClaw
 - `calibrate.py`, `record.py`, `replay.py` — CLI tools, not imported by server
-- `apply_calibration.py` — ours, not upstream. CLI that writes a calibration file into the
-  servos' EEPROM non-interactively and verifies it. For restoring a unit to its OWN file —
-  `homing_offset` is per-unit, so never push the shared `hal.json` to another arm. See
-  `calibration/calibration.md`
+- `servo_eeprom.py` — ours, not upstream. CLI for the servos' stored calibration:
+  `--dry-run` reads what they actually hold (nothing else can), and it can write a file
+  back with read-back verification. `homing_offset` is per-unit, so never push the shared
+  `hal.json` to another arm. See `calibration/calibration.md`
 
 ## What we changed (Lamp-only additions to animation_service.py)
 

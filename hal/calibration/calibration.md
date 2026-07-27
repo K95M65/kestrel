@@ -19,7 +19,7 @@ spline — the horn mounts on discrete teeth (~14° per tooth), so it is **speci
 physically-assembled arm**. One arm's value does not fit another.
 
 **The runtime never writes it to the motors.** The services call `connect(calibrate=False)`,
-and `write_calibration()` is only reachable from `hal.calibrate` / `hal.apply_calibration`.
+and `write_calibration()` is only reachable from `hal.calibrate` / `hal.servo_eeprom`.
 So the number in a JSON file has **no effect on the servo's zero** — only the copy inside
 the servo's EEPROM does, and a JSON on the SD card cannot change it.
 
@@ -45,7 +45,7 @@ Replace `lamp-abcd` with the unit's id — matching the hostname keeps it easy t
 Interactive steps:
 
 1. Press `c` to run a fresh calibration (ENTER instead just writes the existing file to the
-   motors — see `apply_calibration` below, which does the same thing but verified).
+   motors — see `hal.servo_eeprom` below, which does the same thing but verified).
 2. Torque is disabled — the servos go limp so you can move them by hand.
 3. Move all joints to the middle of their range, press ENTER. **This sets
    `homing_offset`** and writes it into the servos' EEPROM immediately.
@@ -70,30 +70,39 @@ every unit playing the same animation library has to normalize against the same 
 per-device file that calibration produced simply sits unused — treat it as a backup of that
 unit's numbers.
 
-## `apply_calibration` — restoring a unit, not provisioning one
+## `servo_eeprom` — reading the servos, and restoring a unit
 
-`hal/apply_calibration.py` writes a calibration file into the motors' EEPROM
+`hal/servo_eeprom.py` writes a calibration file into the motors' EEPROM
 non-interactively and verifies the write by reading it back:
 
 ```bash
 sudo systemctl stop hal
 cd /opt/hal
-sudo ./.venv/bin/python3 -m hal.apply_calibration --file /var/lib/hal/calibration/robots/hal_follower/lamp-abcd.json
+sudo ./.venv/bin/python3 -m hal.servo_eeprom --file /var/lib/hal/calibration/robots/hal_follower/lamp-abcd.json
 sudo systemctl start hal
 ```
 
-Use it to **put a unit's own numbers back** — after a servo swap, or if someone recalibrated
-and the result was worse. To inspect the servos without writing anything:
+Two real uses:
+
+- **`--dry-run` — read what the servos hold.** The only way to see the EEPROM side; the
+  file on disk tells you nothing about it. Reach for this first when an arm moves oddly.
+- **Restoring numbers you captured from that same unit earlier** — e.g. undoing a push of
+  the wrong file.
+
+It is **not** the fix after replacing a servo: the new servo's horn lands on its own spline
+tooth, so the old numbers no longer fit it — that arm has to be hand-calibrated again.
+
+To inspect without writing anything:
 
 ```bash
-sudo ./.venv/bin/python3 -m hal.apply_calibration --dry-run --id hal
+sudo ./.venv/bin/python3 -m hal.servo_eeprom --dry-run --id hal
 ```
 
 `--file` or `--id` is **required**; there is no default source. Pushing the shared
 `hal.json` onto an arm other than the one it was recorded from replaces that arm's zero
 with the reference unit's, and the servos move to visibly wrong poses — so the tool refuses
 to guess. Check the `source :` line it prints before letting it write.
->
+
 > The tool does not back up what it overwrites — the `BEFORE` table it prints is the only
 > record of the previous values. Keep it.
 
@@ -138,7 +147,7 @@ journalctl -u hal -b | grep -i calib
 # calibration: loading id=hal from /opt/hal/calibration/robots/hal_follower/hal.json (exists=True)
 ```
 
-To see the EEPROM side, run `apply_calibration --dry-run --id hal` and read its `BEFORE`
+To see the EEPROM side, run `hal.servo_eeprom --dry-run --id hal` and read its `BEFORE`
 table.
 
 ## Servos
@@ -159,7 +168,7 @@ touches the calibration registers.
 
 **Can**: `hal.calibrate` with `c` (it calls `reset_calibration()` internally before
 recording new values — the only reset path in the codebase), `hal.calibrate` with ENTER,
-`hal.apply_calibration`, or physically replacing a servo
+`hal.servo_eeprom`, or physically replacing a servo
 (a new servo arrives with factory `Homing_Offset = 0`).
 
 ## Field notes (2026-07-27, lamp-ac82)
@@ -176,6 +185,6 @@ Two lessons:
 
 - `homing_offset` in a file is effectively **write-only** from the runtime's point of view.
   It can drift from the hardware indefinitely with no symptom. Never assume the file
-  reflects the servos — check with `apply_calibration --dry-run --id hal`.
+  reflects the servos — check with `hal.servo_eeprom --dry-run --id hal`.
 - Pushing that same file to a *different* arm was tried and produced visibly wrong poses,
   which is what confirmed `homing_offset` cannot be shared between units.
