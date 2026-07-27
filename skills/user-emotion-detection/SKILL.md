@@ -30,7 +30,7 @@ This skill does NOT:
 
 - Fire `[HW:/emotion:…]` markers. Emotion expression is `emotion/SKILL.md`'s job, driven by conversation context — not auto-mapped from a sensor reading.
 - Require a spoken reply. Whether to speak is decided by the normal reply rules (SOUL + sensing SKILL), not by this skill.
-- Write to the wellbeing log. Wellbeing is for physical activity (drink/break/sedentary); emotions live in the mood log.
+- Write to the wellbeing log. Wellbeing is for physical activity (drink/break/celebrate/sedentary); emotions live in the mood log.
 
 ## Trigger
 

@@ -1012,6 +1012,22 @@
   color: var(--lm-amber);
   font-weight: 600;
 }
+/* The active row's font-weight:600 widens the label, which used to push a
+   two-word step ("My Voice") sitting next to the OPTIONAL badge onto a second
+   line — the row grew taller and the icon/badge visibly shifted the moment it
+   was selected. Keep the label on one line (ellipsizing if it ever outgrows the
+   192px sidebar) so selecting a step never changes the layout, and stop the
+   icon / trailing badge from being squeezed by a long label. */
+.lm-setup .lm-nav-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.lm-setup .lm-nav-item > svg,
+.lm-setup .lm-nav-badge {
+  flex-shrink: 0;
+}
 .lm-setup .lm-nav-item--active::before { transform: translateY(-50%) scaleY(1); }
 
 /* Step progress bar in the topbar. */

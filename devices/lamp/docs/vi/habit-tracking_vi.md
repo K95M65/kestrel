@@ -31,7 +31,8 @@ Camera phát hiện hành động → HAL tự ghi vào wellbeing JSONL.
 |--------|-------|
 | `drink` | Camera phát hiện uống nước |
 | `break` | Camera phát hiện nghỉ |
-| `using computer`, `writing`, `reading book`, `texting`, `drawing` | Camera phát hiện ngồi yên |
+| `celebrate` | Camera phát hiện ăn mừng |
+| `using computer`, `writing`, `reading`, `texting`, `drawing` | Camera phát hiện ngồi yên |
 | `enter` / `leave` | Phát hiện hiện diện (backend) |
 
 ### 2. Intent từ hội thoại (qua SOUL)

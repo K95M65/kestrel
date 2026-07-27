@@ -860,10 +860,10 @@ func (h *SensingHandler) PostMoodLog(c *gin.Context) {
 
 // WellbeingLogRequest is the payload for logging a wellbeing activity.
 // Accepted actions:
-//   - Bucket names (agent writes from motion.activity hybrid output): drink, break
+//   - Bucket names (agent writes from motion.activity hybrid output): drink, break, celebrate
 //   - Raw Kinetics sedentary labels (agent writes verbatim from motion.activity):
-//     using computer, writing, texting, reading book, reading newspaper, drawing,
-//     playing controller
+//     using computer, writing, texting, reading, drawing, playing controller
+//     (reading book + reading newspaper are collapsed to "reading" in HAL)
 //   - Nudge records (agent writes after speaking): nudge_hydration, nudge_break
 //   - Presence markers (backend writes internally): enter, leave
 //

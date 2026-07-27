@@ -63,7 +63,6 @@ var eatLabels = map[string]bool{
 	"eating burger":     true,
 	"eating cake":       true,
 	"eating carrots":    true,
-	"eating chips":      true,
 	"eating doughnuts":  true,
 	"eating hotdog":     true,
 	"eating ice cream":  true,

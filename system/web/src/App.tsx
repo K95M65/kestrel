@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-route
 import { Toaster } from "@/components/ui/sonner";
 import { SourceFooter } from "@/components/SourceFooter";
 import Setup from "@/pages/setup";
+import { SetupSkeleton } from "@/pages/setup/SetupSkeleton";
 import Login from "@/pages/Login";
 import Monitor from "@/pages/monitor";
 import GwConfig from "@/pages/GwConfig";
@@ -55,7 +56,14 @@ function SetupGate() {
         // continue mode rehydrates them from saved config (has_llm_api_key),
         // so dropping them here is safe and avoids leaking secrets in the bar.
         if (s.lan_ip && s.lan_ip !== here && !isTailscaleHost(here)) {
-          window.location.replace(`http://${s.lan_ip}${window.location.pathname}${safeSearch()}`);
+          // Carry the hash across the origin hop. It names the step the parent
+          // deep-linked to (#voice / #face / …); dropping it lands the operator
+          // on Wi-Fi with no way to recover the requested tab, since the hash is
+          // the only record of it. scrubLocationSecrets() preserves it for the
+          // same reason — see lib/api.ts.
+          window.location.replace(
+            `http://${s.lan_ip}${window.location.pathname}${safeSearch()}${window.location.hash}`,
+          );
           return;
         }
       } catch { /* keep showing continue mode if status endpoint fails */ }
@@ -63,7 +71,10 @@ function SetupGate() {
     })();
     return () => { cancelled = true; };
   }, [force]);
-  if (provisioned === null) return null;
+  // Mode still resolving. Render the skeleton rather than null: the deep-link
+  // hash (#voice / #face) can only be honored once `mode` decides which steps
+  // exist, so this is exactly the window where guessing a tab would be wrong.
+  if (provisioned === null) return <SetupSkeleton />;
   return <Setup mode={provisioned ? "continue" : "initial"} />;
 }
 

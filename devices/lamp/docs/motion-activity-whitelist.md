@@ -1,20 +1,26 @@
 # Motion Activity Whitelist
 
-Only these Kinect action classes are forwarded to OpenClaw as `motion.activity` events. All others are filtered at HAL level to save tokens.
+Only these Kinetics action classes are forwarded to OpenClaw as `motion.activity` events. All others are filtered at HAL level to save tokens.
 
 Chỉ những action classes dưới đây được forward lên OpenClaw dạng `motion.activity`. Còn lại bị filter ở HAL để tiết kiệm token.
 
 HAL does the categorisation before sending. On the `Activity detected:` line:
 - Drink actions (listed below) collapse to the bucket name `drink`.
 - Break actions (listed below) collapse to the bucket name `break`.
-- Sedentary actions are emitted as raw Kinetics labels (no collapsing) so the agent can ground nudge phrasing + music genre in the specific activity.
+- Celebrate actions (listed below) collapse to the bucket name `celebrate`.
+- Eat actions are emitted as raw Kinetics labels (no collapsing) so the agent can ground the reaction phrasing + per-food UI icon in the specific food.
+- Sedentary actions are emitted as raw Kinetics labels (no collapsing), EXCEPT `reading book` + `reading newspaper` which both collapse to the generic label `reading` (a phone misread as "reading newspaper" is still truthfully "reading" — the collapse avoids asserting the wrong medium).
 - Emotional actions are filtered out entirely — they do not appear on `motion.activity`. A dedicated `motion.emotional` event will carry them later.
 
 HAL đã categorize trước khi gửi. Trên dòng `Activity detected:`:
 - Action drink (liệt kê dưới) gộp thành bucket name `drink`.
 - Action break (liệt kê dưới) gộp thành bucket name `break`.
-- Action sedentary giữ raw Kinetics label (không gộp) để agent có context cụ thể cho nudge + music genre.
+- Action celebrate (liệt kê dưới) gộp thành bucket name `celebrate`.
+- Action eat giữ raw Kinetics label (không gộp) để agent có context món ăn cụ thể cho reaction + icon UI.
+- Action sedentary giữ raw Kinetics label (không gộp), TRỪ `reading book` + `reading newspaper` gộp thành label chung `reading`.
 - Action cảm xúc bị filter hoàn toàn — không xuất hiện trên `motion.activity`. Sẽ có event `motion.emotional` riêng sau.
+
+> Selection rule / Quy tắc chọn label: a class earns its place only if it is **not a magnet** for a look-alike action with no Kinetics class of its own. Collapsed buckets (`drink`, `break`, `celebrate`) carry the whole assertion the agent will speak, so any wrong member = a confident false statement — prune aggressively. Classes removed for this reason: `making tea`, `eating chips` (nail biting), and the reflex/social noise `sneezing`, `sniffing`, `hugging`, `kissing`, `headbanging`, `sticking tongue out`.
 
 ## drink — reset hydration timer / Reset timer nhắc uống nước
 
@@ -23,36 +29,35 @@ HAL đã categorize trước khi gửi. Trên dòng `Activity detected:`:
 - drinking shots — uống shot
 - tasting beer — nếm bia
 - opening bottle — mở chai
-- making tea — pha trà
 
-## break — reset break timer / Reset timer nhắc nghỉ (ăn, vận động, tương tác)
+## break — reset break timer / Reset timer nhắc nghỉ
 
-- tasting food — nếm đồ ăn
 - stretching arm — vươn tay
 - stretching leg — vươn chân
-- dining — ăn cơm
-- eating burger, eating cake, eating carrots, eating chips, eating doughnuts, eating hotdog, eating ice cream, eating spaghetti, eating watermelon
-- applauding — vỗ tay (khen)
-- clapping — vỗ tay
+
+## celebrate — upbeat reaction / Phản ứng ăn mừng
+
 - celebrating — ăn mừng
-- sneezing — hắt xì
-- sniffing — hít mũi
-- hugging — ôm
-- kissing — hôn
-- headbanging — lắc đầu theo nhạc
-- sticking tongue out — lè lưỡi
+- clapping — vỗ tay
+- applauding — vỗ tay (khen)
+
+## eat — meal signal (raw labels kept) / Tín hiệu bữa ăn (giữ raw label)
+
+- tasting food — nếm đồ ăn
+- dining — ăn cơm
+- eating burger, eating cake, eating carrots, eating doughnuts, eating hotdog, eating ice cream, eating spaghetti, eating watermelon
 
 ## sedentary — create wellbeing crons + trigger Music suggestion / Ngồi yên, tạo wellbeing crons + kích hoạt Music suggestion
 
 - using computer — dùng máy tính
 - writing — viết
 - texting — nhắn tin
-- reading book — đọc sách
-- reading newspaper — đọc báo
+- reading book — đọc sách → emitted as `reading`
+- reading newspaper — đọc báo → emitted as `reading`
 - drawing — vẽ
 - playing controller — chơi game
 
-## emotional — always speak, log mood / Cảm xúc, luôn nói, ghi mood
+## emotional — filtered out (future `motion.emotional`) / Bị filter (event `motion.emotional` sau)
 
 - laughing — cười
 - crying — khóc

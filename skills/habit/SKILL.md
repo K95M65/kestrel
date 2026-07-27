@@ -15,7 +15,7 @@ All data lives in `/root/local/users/{name}/`:
 
 | Folder | File pattern | What it contains |
 |---|---|---|
-| `wellbeing/` | `YYYY-MM-DD.jsonl` | `drink`, `break`, sedentary labels, `enter`/`leave`, `nudge_*` events with timestamps |
+| `wellbeing/` | `YYYY-MM-DD.jsonl` | `drink`, `break`, `celebrate`, sedentary labels, `enter`/`leave`, `nudge_*` events with timestamps |
 | `mood/` | `YYYY-MM-DD.jsonl` | `signal` + `decision` rows with moods |
 | `music-suggestions/` | `YYYY-MM-DD.jsonl` | suggestion history + accepted/rejected status |
 | `posture/` | `YYYY-MM-DD.jsonl` | `posture_alert` (ergo-risk events from camera) + `nudge_posture` / `praise_posture` rows |

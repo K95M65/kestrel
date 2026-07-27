@@ -139,7 +139,7 @@ HAL streams every camera frame to perception-service `/api/dl/pose-estimation/ws
 
 ### Tumbling window (when does the summary inject)
 
-A window opens on the **first sedentary motion-activity flush** — `MotionPerception` calls `pose.start_window()` the moment any of the sedentary labels (`using computer`, `writing`, `reading book`, …) show up. Pose samples that arrived before that point (e.g. user was standing or stretching but still present) are cleared so the window's bad_ratio reflects only the sitting period. Once open, the window runs purely on time: it stays open for the full `POSE_WINDOW_DURATION_S` regardless of whether the user later breaks sedentary state — later stretch breaks just leave the bad_ratio honest. Default **600 s = 10 min** for testing; flip to 3600 for production — one variable, no test/prod code paths.
+A window opens on the **first sedentary motion-activity flush** — `MotionPerception` calls `pose.start_window()` the moment any of the sedentary labels (`using computer`, `writing`, `reading`, …) show up. Pose samples that arrived before that point (e.g. user was standing or stretching but still present) are cleared so the window's bad_ratio reflects only the sitting period. Once open, the window runs purely on time: it stays open for the full `POSE_WINDOW_DURATION_S` regardless of whether the user later breaks sedentary state — later stretch breaks just leave the bad_ratio honest. Default **600 s = 10 min** for testing; flip to 3600 for production — one variable, no test/prod code paths.
 
 When the window completes, `MotionPerception` performs exactly one decision and **always calls `reset_window()`** — no carry-over of stale samples into the next cycle. If the user is still sedentary on the next flush, `start_window()` opens a fresh cycle immediately; if not, the window stays unanchored until the next sedentary flush. Detection misses (perception-service returns no `ergo`, occlusion, low confidence) don't extend the window; they simply lower the in-window sample count.
 
@@ -313,13 +313,13 @@ Wellbeing is **event-driven**. There are NO wellbeing cron jobs. On every `motio
 | Action | Written by | Purpose |
 |---|---|---|
 | `drink`, `break` | **HAL** (`motion.py` POSTs `/api/wellbeing/log` right before firing `motion.activity`) | Reset point for the corresponding nudge timer |
-| `using computer`, `writing`, `texting`, `reading book`, `reading newspaper`, `drawing`, `playing controller` | **HAL** (`motion.py`, same path) | Timeline + nudge phrasing. **Not** a reset point. |
+| `using computer`, `writing`, `texting`, `reading`, `drawing`, `playing controller` | **HAL** (`motion.py`, same path) | Timeline + nudge phrasing. **Not** a reset point. (`reading book` + `reading newspaper` both collapse to the generic `reading` label.) |
 | `enter`, `leave` | **HAL** (`FaceRecognizer._post_wellbeing`, called from `_check_impl` on fresh detection and `_check_leaves` on forget expiry) | Session boundary — per-friend rows go to each friend's own timeline; strangers collapse to a single `"unknown"` timeline gated by the `_any_stranger_logged` flag (one enter on first stranger, one leave when the last one is forgotten). |
 | `nudge_hydration`, `nudge_break` | Agent (after speaking a reminder) | Records when Lamp actually reminded — purely for timeline visibility. Only the agent knows when it actually spoke, so only the agent writes these. |
 
 **Dedup lives in two places.**
 
-*Activity dedup (5-min window).* `hal/drivers/sensing/perceptions/motion.py` keeps a `_last_sent_key = (current_user, frozenset(labels))` and a `_last_sent_ts`, where `labels` matches the outbound message (bucket names for drink/break, raw Kinetics labels for sedentary). Before emitting `motion.activity` **and before POSTing the rows to `/api/wellbeing/log`**, it drops the cycle if the key hasn't changed **and** the gap since the last send is still under `MOTION_DEDUP_WINDOW_S = 300` seconds (5 min). So `eating burger → eating cake` collapses to the same `break` key and is dropped, while `writing → drawing` flips the key (sedentary is raw) and passes through.
+*Activity dedup (5-min window).* `hal/drivers/sensing/perceptions/motion.py` keeps a `_last_sent_key = (current_user, frozenset(labels))` and a `_last_sent_ts`, where `labels` matches the outbound message (bucket names for drink/break/celebrate, raw Kinetics labels for sedentary). Before emitting `motion.activity` **and before POSTing the rows to `/api/wellbeing/log`**, it drops the cycle if the key hasn't changed **and** the gap since the last send is still under `MOTION_DEDUP_WINDOW_S = 300` seconds (5 min). So `eating burger → eating cake` collapses to the same `break` key and is dropped, while `writing → drawing` flips the key (sedentary is raw) and passes through.
 
 - User change (owner→owner, owner→unknown, unknown→owner) flips the key immediately → event passes through.
 - Different strangers (e.g. `stranger_46` → `stranger_54`) collapse to `"unknown"` via `FaceRecognizer.current_user()`, so swapping strangers alone doesn't break dedup.
@@ -437,7 +437,7 @@ The agent uses the camera snapshot to make a judgment call — it does NOT alway
 Music suggestions are **fully AI-driven** — no cron jobs, no backend triggers. The agent decides when to suggest based on two triggers:
 
 - **Mood trigger:** After logging a suggestion-worthy mood (`sad`, `stressed`, `tired`, `excited`, `happy`, `bored`), the agent follows the Music skill to suggest music matching that mood — this includes the music branch of the emotion router (see "Agent behavior" below), as well as moods logged from conversation, wellbeing, or explicit asks.
-- **Sedentary trigger:** When `motion.activity` carries a sedentary raw label (`using computer`, `writing`, `texting`, `reading book`, `reading newspaper`, `drawing`, `playing controller`), the agent suggests background music (lo-fi, ambient, instrumental).
+- **Sedentary trigger:** When `motion.activity` carries a sedentary raw label (`using computer`, `writing`, `texting`, `reading`, `drawing`, `playing controller`), the agent suggests background music (lo-fi, ambient, instrumental).
 - **Data-driven decisions:** Before suggesting, the agent queries:
   - `GET /audio/status` — is music already playing?
   - `GET /api/openclaw/music-suggestion-history` — the last entry is the reset point; fire only when `minutes_since_last_suggestion >= SUGGESTION_INTERVAL_MIN` (7 min test / 30 min prod)
@@ -523,7 +523,7 @@ When the user is already present (PRESENT state), foreground motion triggers a `
 
 `MotionPerception` buffers snapshots and action names, flushing them periodically (`MOTION_FLUSH_S`). On flush it checks `PresenceService.state`:
 - **PRESENT** → sends a single `motion.activity` event. Message format:
-  - `Activity detected: <labels>.` — HAL already categorises: physical actions collapse to the bucket name (`drink`, `break`), sedentary activities keep the raw Kinetics label (`using computer`, `writing`, `texting`, `reading book`, `reading newspaper`, `drawing`, `playing controller`). The agent logs each label verbatim — no mapping required at the agent level.
+  - `Activity detected: <labels>.` — HAL already categorises: physical actions collapse to the bucket name (`drink`, `break`, `celebrate`), sedentary activities keep the raw Kinetics label (`using computer`, `writing`, `texting`, `reading`, `drawing`, `playing controller`). One exception to "keep the raw label": `reading book` + `reading newspaper` both collapse to the single generic `reading` label. The agent logs each label verbatim — no mapping required at the agent level.
   - Emotional X3D actions (`laughing`, `crying`, `yawning`, `singing`) are **intentionally dropped** here. A dedicated `motion.emotional` event type will be added later; until then emotional detections are silently ignored. `motion.activity` stays purely physical.
   - No images attached — saves tokens. Friend recognition is **not** required.
 - **Otherwise** → event is **skipped** (logged, not sent). Lamp only expects `motion.activity` — plain `motion` from X3D/pose has no handler and wastes agent tokens.
@@ -532,7 +532,7 @@ Example messages:
 ```
 Activity detected: drink, using computer.
 Activity detected: break.
-Activity detected: writing, reading book.
+Activity detected: writing, reading.
 ```
 
 ### Wellbeing nudge flow (event-driven)
@@ -625,7 +625,7 @@ Lamp detects the **user's** emotional state via three channels:
 
 1. **Facial expression** (primary) — `emotion.detected` event from `hal/drivers/sensing/perceptions/emotion.py`. Uses a dedicated emotion classifier running on self-hosted perception-service via WebSocket. Detects 7 emotions: Angry, Disgust, Fear, Happy, Sad, Surprise, Neutral. Configurable confidence threshold (`EMOTION_CONFIDENCE_THRESHOLD`).
 2. **Speech emotion** (secondary) — `speech_emotion.detected` event from `hal/drivers/voice/speech_emotion/`. Runs at the end of every speaker-identified STT session against the same WAV used for speaker recognition. Uses `emotion2vec_plus_large` on perception-service via HTTP. See [Speech Emotion Recognition](../../../docs/speech-emotion.md) for the full pipeline.
-3. **Body action** (tertiary) — emotional X3D actions from action recognition are **intentionally dropped** from `motion.activity` (which is purely physical: sedentary/drink/break). A dedicated `motion.emotional` event type is planned for these.
+3. **Body action** (tertiary) — emotional X3D actions from action recognition are **intentionally dropped** from `motion.activity` (which is purely physical: sedentary/drink/break/celebrate). A dedicated `motion.emotional` event type is planned for these.
 
 > **Not to be confused with Emotion Expression** (`emotion/SKILL.md`) — which controls Lamp's own emotional output (servo + LED + eyes). Emotion Detection is about sensing what the *user* feels; Emotion Expression is how *Lamp* shows its feelings.
 
