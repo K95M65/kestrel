@@ -39,20 +39,6 @@ PERSISTENT_CALIBRATION_DIR = Path(
     os.environ.get("HAL_CALIBRATION_DIR", "/var/lib/hal/calibration/robots/hal_follower")
 )
 
-# Push the calibration file into the servos' EEPROM at startup when they disagree with it.
-# homing_offset only takes effect from the servo's own EEPROM and nothing on the runtime
-# path writes it, so a unit whose motors disagree with its file runs on a different zero
-# than the animation library assumes — silently, since that field is never read back.
-# When on, connect() writes the file the moment it sees the mismatch; the next start sees
-# a match and writes nothing, so the EEPROM is not rewritten every boot.
-#
-# Default OFF: turning it on rewrites the EEPROM of every unit that has drifted, which
-# visibly changes how those units sit. That should be a deliberate rollout, not a side
-# effect of an update. Until then, provision units with `python -m hal.apply_calibration`.
-AUTO_APPLY_CALIBRATION: bool = os.environ.get(
-    "HAL_AUTO_APPLY_CALIBRATION", "false"
-).strip().lower() in ("1", "true", "yes", "on")
-
 
 @RobotConfig.register_subclass("hal_follower")
 @dataclass
