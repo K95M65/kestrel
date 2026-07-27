@@ -114,31 +114,28 @@ This command set up each motor of LeLamp with an unique ID.
 uv run -m lelamp.setup_motors --id your_lamp_name --port the_port_found_in_previous_step
 ```
 
-3. **Push the calibration into the motors**:
+3. **Calibrate motors**:
 
-For a normal build, do **not** hand-calibrate. The servo's zero (`homing_offset`) lives in
-the servo's own EEPROM and the runtime never writes it, so a new unit must have the shared
-reference calibration pushed into it once — non-interactively:
+Every arm needs this once. The servo's zero (`homing_offset`) depends on which spline tooth
+its horn landed on, so it is specific to that physical arm — it cannot be copied in from
+another unit, and it lives in the servo's own EEPROM rather than in any file.
 
 ```bash
 sudo systemctl stop hal          # frees the serial port
-sudo uv run -m hal.apply_calibration --port the_port_found_in_previous_step
+sudo uv run -m hal.calibrate --id your_lamp_name --port the_port_found_in_previous_step --follower-only
+#   press 'c', jog to the middle, then sweep each joint through its full range
 sudo systemctl start hal
 ```
 
-It prints a before/after table and verifies the write; `5/5 motors` means it landed. Add
-`--dry-run` to preview without writing.
+Do **not** set `HAL_DEVICE_ID` afterwards: the zero is already in the servos, and leaving it
+unset keeps the unit normalizing against the shared ranges the animation library was
+recorded with.
 
-Only re-record a calibration when the mechanics actually changed (replaced servo, horn
-remounted) — hand-calibrating creates a frame that no longer matches the shared animation
-library:
+Calibration survives power-off, reflash and OTA, so it only needs redoing if a servo is
+replaced or a horn remounted.
 
-```bash
-sudo uv run -m hal.calibrate --id your_lamp_name --port the_port_found_in_previous_step
-```
-
-See [calibration/calibration.md](calibration/calibration.md) for the full picture — why the
-JSON alone cannot fix an uncalibrated arm, and what each field actually controls.
+See [calibration/calibration.md](calibration/calibration.md) for the full picture — what
+each field controls, and why a JSON file alone cannot change an arm's zero.
 
 ### 2. Unit Testing
 
