@@ -1081,6 +1081,24 @@ server {
   add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;
   add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' blob:; connect-src 'self' ws: wss: http:; frame-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'; form-action 'self'" always;
 
+  # SPA cache policy. Vite fingerprints every asset (index-<hash>.js), so those
+  # are safe to cache forever — the name changes whenever the content does. But
+  # index.html is the pointer TO those names and must never be cached: a browser
+  # holding a stale index.html asks for a bundle filename that the last web
+  # deploy already deleted, gets a 404, and renders a blank page until the
+  # operator hard-reloads. That is exactly what the setup popup hit.
+  #
+  # Uses `expires` rather than `add_header Cache-Control`: an add_header inside a
+  # location cancels inheritance of ALL server-level add_header directives, which
+  # would silently drop the CSP and the security headers above for these very
+  # requests. `expires` sets Cache-Control without touching that inheritance.
+  #
+  # try_files below internal-redirects to /index.html, which re-runs location
+  # matching, so the exact-match block covers the SPA-route case too — not just a
+  # direct request for /index.html.
+  location = /index.html { expires -1; }
+  location /assets/      { expires 1y; }
+
   location / { try_files \$uri /index.html; }
 
   location = /api/system/shell {
