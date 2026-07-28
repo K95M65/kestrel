@@ -182,6 +182,13 @@ type AgentGateway interface {
 	// device-writable skills dir return ErrNotSupportedByRuntime.
 	InstallSkillArchive(archivePath, fallbackName string) (dir string, err error)
 
+	// ListSkills returns the skills currently present in this runtime's skills
+	// dir, each with its file tree. Same per-backend split as SaveSkill: only
+	// the directory differs (skills.ListInstalled does the walk). Backends with
+	// no device-readable skills dir return ErrNotSupportedByRuntime; a runtime
+	// that has one but hasn't been provisioned yet returns an empty list.
+	ListSkills() ([]InstalledSkill, error)
+
 	// FetchChatHistory sends a chat.history RPC and returns the raw messages array.
 	// Best-effort: returns nil on error or timeout without failing the caller.
 	FetchChatHistory(sessionKey string, limit int) (json.RawMessage, error)

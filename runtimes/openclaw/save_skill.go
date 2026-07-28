@@ -38,6 +38,13 @@ func (s *OpenclawService) InstallSkillArchive(archivePath, fallbackName string) 
 	return dir, nil
 }
 
+// ListSkills returns what is currently installed in workspace/skills —
+// authored, store-installed, role-bundled and OTA-pushed skills alike, since
+// they all land in the same tree.
+func (s *OpenclawService) ListSkills() ([]domain.InstalledSkill, error) {
+	return skills.ListInstalled(s.skillsDir())
+}
+
 // skillsDir is the tree OpenClaw loads skills from — the same one
 // InstallRoleSkills and EnsureMCPSkill write into.
 func (s *OpenclawService) skillsDir() string {

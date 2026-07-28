@@ -150,3 +150,13 @@ func (s *PicoclawService) SaveSkill(_ domain.SkillDraft) (string, error) {
 func (s *PicoclawService) InstallSkillArchive(_, _ string) (string, error) {
 	return "", domain.ErrNotSupportedByRuntime
 }
+
+// ListSkills — TODO: not implemented for this backend. Completes the trio with
+// SaveSkill / InstallSkillArchive above: this runtime keeps a skills dir at
+// {picoclawWorkspaceDir}/skills (skill_watcher.go), so an implementation is
+// `skills.ListInstalled(<that dir>)`. Until then the Manage-skills UI reports
+// that this runtime can't list skills rather than showing a misleading empty
+// tree.
+func (s *PicoclawService) ListSkills() ([]domain.InstalledSkill, error) {
+	return nil, domain.ErrNotSupportedByRuntime
+}

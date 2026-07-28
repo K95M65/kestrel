@@ -140,3 +140,13 @@ func (s *OpenCodeService) SaveSkill(_ domain.SkillDraft) (string, error) {
 func (s *OpenCodeService) InstallSkillArchive(_, _ string) (string, error) {
 	return "", domain.ErrNotSupportedByRuntime
 }
+
+// ListSkills — TODO: not implemented for this backend. Completes the trio with
+// SaveSkill / InstallSkillArchive above: this runtime keeps a skills dir at
+// opencodeSkillsDir (onboarding.go), so an implementation is
+// `skills.ListInstalled(<that dir>)`. Until then the Manage-skills UI reports
+// that this runtime can't list skills rather than showing a misleading empty
+// tree.
+func (s *OpenCodeService) ListSkills() ([]domain.InstalledSkill, error) {
+	return nil, domain.ErrNotSupportedByRuntime
+}
