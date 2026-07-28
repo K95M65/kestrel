@@ -1,21 +1,8 @@
 // Shared types for the chat composer's "+" menu → Skills flows.
 //
-// Three surfaces, three data shapes:
-//   • WriteSkillModal   — SkillDraft (local form state, POSTed later)
-//   • BrowseSkillsModal — StoreSkill[] from the Autonomous skill store, fetched
-//                         through the Go proxy (GET /api/agent/skills/browse)
-//   • ManageSkillsModal — InstalledSkill[] from the agentic runtime's skills dir
-
-/** The three-field form of "Write skill". Mirrors a SKILL.md front-matter +
- *  body: name + description become front-matter, instructions become the body. */
-export interface SkillDraft {
-  name: string;
-  description: string;
-  instructions: string;
-}
-
-// StoreSkill (the skill-store listing entry) lives in lib/api.ts next to its
-// fetch, mirroring how HFSpace sits beside searchHFPlugins.
+// SkillDraft (Write skill) and StoreSkill (Browse skills) live in lib/api.ts
+// next to their requests, mirroring how HFSpace sits beside searchHFPlugins.
+// What's left here is the Manage-skills shape, which has no endpoint yet.
 
 /** A node in an installed skill's file tree. `children` is only set on dirs;
  *  a leaf with no children is a file. */

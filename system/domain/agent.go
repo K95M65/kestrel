@@ -164,6 +164,24 @@ type AgentGateway interface {
 	// EnsureOnboarding seeds personality/identity files into the agent workspace.
 	EnsureOnboarding() error
 
+	// SaveSkill writes a user-authored skill (the web UI's "Write skill" form)
+	// into this runtime's skills dir as <name>/SKILL.md, and returns the path
+	// it wrote. Only the target directory differs per backend — the rendering
+	// and the write itself are shared (skills.WriteAuthoredSkill).
+	//
+	// Backends with no device-writable skills dir return
+	// ErrNotSupportedByRuntime, and nothing is stored. The runtime is NOT
+	// restarted; backends that have a skills dir pick new files up per session.
+	SaveSkill(draft SkillDraft) (path string, err error)
+
+	// InstallSkillArchive extracts a downloaded `.skill` archive into this
+	// runtime's skills dir and returns the directory it wrote. fallbackName
+	// names the skill when the archive has no single wrapping directory.
+	// Same per-backend split as SaveSkill: only the target dir differs
+	// (skills.InstallSkillArchive does the work), and backends with no
+	// device-writable skills dir return ErrNotSupportedByRuntime.
+	InstallSkillArchive(archivePath, fallbackName string) (dir string, err error)
+
 	// FetchChatHistory sends a chat.history RPC and returns the raw messages array.
 	// Best-effort: returns nil on error or timeout without failing the caller.
 	FetchChatHistory(sessionKey string, limit int) (json.RawMessage, error)

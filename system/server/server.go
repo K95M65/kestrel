@@ -421,6 +421,10 @@ func (s *Server) Serve(closeFn func()) error {
 	// takes the skill id as a query param so it can't collide with `browse`.
 	agent.GET("skills/browse", adminAuthMiddleware(s.config), s.agentHandler.BrowseSkills)
 	agent.GET("skills/bundle", adminAuthMiddleware(s.config), s.agentHandler.SkillBundle)
+	// Authoring: writes into the ACTIVE runtime's skills dir via the gateway;
+	// backends that haven't implemented it answer 501 and store nothing.
+	agent.POST("skills", adminAuthMiddleware(s.config), s.agentHandler.SaveSkill)
+	agent.POST("skills/install", adminAuthMiddleware(s.config), s.agentHandler.InstallSkill)
 
 	logs := api.Group("logs")
 	logs.GET("tail", adminAuthMiddleware(s.config), s.logTail)

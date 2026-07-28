@@ -5,6 +5,35 @@ package domain
 // endpoints so the web UI never talks to it directly — see
 // system/server/agent/delivery/http/handler_skills.go.
 
+// SkillDraft is a user-authored skill submitted by the web UI's "Write skill"
+// form. It maps onto a SKILL.md: Name + Description become the YAML
+// front-matter, Instructions becomes the markdown body.
+type SkillDraft struct {
+	Name         string `json:"name" binding:"required"`
+	Description  string `json:"description" binding:"required"`
+	Instructions string `json:"instructions" binding:"required"`
+}
+
+// SkillNode is one entry in an installed skill's file tree. children is set
+// only on directories; a node with no children is a file.
+type SkillNode struct {
+	Name string `json:"name"`
+	// Path is relative to the skills root, e.g. "music/reference/tempo.md".
+	Path     string      `json:"path"`
+	Dir      bool        `json:"dir,omitempty"`
+	Size     int64       `json:"size,omitempty"`
+	Children []SkillNode `json:"children,omitempty"`
+}
+
+// InstalledSkill is one skill present in the active runtime's skills dir.
+// Name is the directory name (rendered as "/music" in the UI), Description is
+// read from the SKILL.md front-matter when present.
+type InstalledSkill struct {
+	Name        string      `json:"name"`
+	Description string      `json:"description,omitempty"`
+	Files       []SkillNode `json:"files"`
+}
+
 // StoreSkillChangelog is one released version's entry in a skill's changelog.
 type StoreSkillChangelog struct {
 	Version string   `json:"version"`

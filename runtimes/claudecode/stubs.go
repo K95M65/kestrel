@@ -126,3 +126,23 @@ func (s *ClaudeCodeService) GetConfiguredChannel() string {
 
 // WriteMCPEntry + RemoveMCPEntry live in mcp.go — Claude Code natively reads
 // workspace/.mcp.json, so MCP connector writes are real on this backend.
+
+// SaveSkill — TODO: not implemented for this backend, so nothing is stored.
+// The wiring is small when someone wants it: this runtime already keeps a
+// skills dir at claudecodeSkillsDir (onboarding.go), so an implementation is
+// `skills.WriteAuthoredSkill(<that dir>, draft.Name, draft.Description,
+// draft.Instructions)` — the same one-liner openclaw's save_skill.go uses.
+// Until then ErrNotSupportedByRuntime tells the caller the skill was NOT
+// written, rather than silently dropping it.
+func (s *ClaudeCodeService) SaveSkill(_ domain.SkillDraft) (string, error) {
+	return "", domain.ErrNotSupportedByRuntime
+}
+
+// InstallSkillArchive — TODO: not implemented for this backend, so nothing is
+// installed. Same shape as SaveSkill above: this runtime keeps a skills dir at
+// claudecodeSkillsDir (onboarding.go), so an implementation is
+// `skills.InstallSkillArchive(archivePath, <that dir>, fallbackName)` — see
+// openclaw's save_skill.go.
+func (s *ClaudeCodeService) InstallSkillArchive(_, _ string) (string, error) {
+	return "", domain.ErrNotSupportedByRuntime
+}

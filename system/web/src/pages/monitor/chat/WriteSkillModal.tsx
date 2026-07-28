@@ -1,55 +1,48 @@
 import { useState } from "react";
-import { PenLine } from "lucide-react";
+import { PenLine, Check } from "lucide-react";
+import { saveSkill } from "@/lib/api";
 import { ModalShell } from "./ModalShell";
 import { fieldLabel, inputStyle, btnStyle } from "./styles";
-import type { SkillDraft } from "./types";
 
 // "Write skill" — three-field authoring form (name / description /
 // instructions), the same shape as a SKILL.md: name + description become the
 // front-matter, instructions become the body.
 //
-// UI ONLY for now: onSubmit is not wired to a backend yet. When the Go endpoint
-// lands, replace the `onSubmit` prop's implementation in ChatSection — the form
-// already validates the name shape and reports server errors through `error`.
+// Saving POSTs to /api/agent/skills, which writes into whichever skills dir the
+// ACTIVE agent runtime owns (AgentGateway.SaveSkill). A runtime that hasn't
+// implemented it answers 501, and the message surfaces inline here — the skill
+// is not stored, and the form stays open with the draft intact.
 
 // Skill dir names must be filesystem- and prompt-safe: the runtime addresses a
 // skill as "/<name>", so the same lowercase/digit/dash/underscore rule the Go
-// side enforces (roleNamePattern) applies here for instant feedback.
+// side enforces (skills.ValidateSkillName) applies here for instant feedback.
 const NAME_PATTERN = /^[a-z0-9_-]+$/;
+const NAME_MAX = 64;
 
-export function WriteSkillModal({
-  onClose, onSubmit,
-}: {
-  onClose: () => void;
-  /** Resolves when the skill is saved. Rejects with a message to show inline. */
-  onSubmit?: (draft: SkillDraft) => Promise<void>;
-}) {
+export function WriteSkillModal({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [instructions, setInstructions] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [savedPath, setSavedPath] = useState("");
 
-  const nameOk = NAME_PATTERN.test(name.trim());
+  const nameOk = NAME_PATTERN.test(name.trim()) && name.trim().length <= NAME_MAX;
   const canSave = nameOk && description.trim() !== "" && instructions.trim() !== "" && !saving;
 
   const submit = async () => {
     if (!canSave) return;
-    const draft: SkillDraft = {
-      name: name.trim(),
-      description: description.trim(),
-      instructions: instructions.trim(),
-    };
-    if (!onSubmit) {
-      // No backend wired yet — surface that instead of silently doing nothing.
-      setError("Saving isn't wired up yet — the backend endpoint is still to come.");
-      return;
-    }
     setSaving(true);
     setError("");
     try {
-      await onSubmit(draft);
-      onClose();
+      const res = await saveSkill({
+        name: name.trim(),
+        description: description.trim(),
+        instructions: instructions.trim(),
+      });
+      // Confirm where it landed rather than closing instantly — the path tells
+      // the user which runtime's skills dir received it.
+      setSavedPath(res.path);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save skill");
     } finally {
@@ -64,7 +57,9 @@ export function WriteSkillModal({
       subtitle="Author a new skill for this agent"
       width={560}
       onClose={onClose}
-      footer={
+      footer={savedPath ? (
+        <button type="button" className="lm-u-btn lm-u-btn-primary" style={btnStyle} onClick={onClose}>Done</button>
+      ) : (
         <>
           <button type="button" className="lm-u-btn" style={btnStyle} onClick={onClose}>Cancel</button>
           <button
@@ -75,8 +70,23 @@ export function WriteSkillModal({
             onClick={submit}
           >{saving ? "Saving…" : "Save skill"}</button>
         </>
-      }
+      )}
     >
+      {savedPath ? (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, padding: "36px 12px", textAlign: "center" }}>
+          <Check size={28} style={{ color: "var(--lm-amber)" }} />
+          <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--lm-text)" }}>
+            /{name.trim()} saved
+          </div>
+          <div style={{
+            fontSize: 10.5, color: "var(--lm-text-muted)",
+            fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", wordBreak: "break-all",
+          }}>{savedPath}</div>
+          <div style={{ fontSize: 11, color: "var(--lm-text-dim)", marginTop: 4, maxWidth: 380, lineHeight: 1.5 }}>
+            The agent picks it up on its next session — no restart needed.
+          </div>
+        </div>
+      ) : (
       <div style={{ display: "flex", flexDirection: "column", gap: 15 }}>
         <div>
           <label htmlFor="skill-name" style={fieldLabel}>Skill name</label>
@@ -139,6 +149,7 @@ export function WriteSkillModal({
           }}>{error}</div>
         )}
       </div>
+      )}
     </ModalShell>
   );
 }

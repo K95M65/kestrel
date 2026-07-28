@@ -114,3 +114,23 @@ func (s *HermesService) CompactSession(sessionKey string) error {
 // WriteMCPEntry + RemoveMCPEntry live in mcp.go — they upsert/delete
 // mcp_servers.<name> in ~/.hermes/config.yaml and restart the gateway, mirroring
 // runtimes/openclaw/mcp.go (which edits openclaw.json mcp.servers).
+
+// SaveSkill — TODO: not implemented for this backend, so nothing is stored.
+// The wiring is small when someone wants it: this runtime already keeps a
+// skills dir at ~/.hermes/skills/openclaw-imports (see skill_watcher.go), so an implementation is
+// `skills.WriteAuthoredSkill(<that dir>, draft.Name, draft.Description,
+// draft.Instructions)` — the same one-liner openclaw's save_skill.go uses.
+// Until then ErrNotSupportedByRuntime tells the caller the skill was NOT
+// written, rather than silently dropping it.
+func (s *HermesService) SaveSkill(_ domain.SkillDraft) (string, error) {
+	return "", domain.ErrNotSupportedByRuntime
+}
+
+// InstallSkillArchive — TODO: not implemented for this backend, so nothing is
+// installed. Same shape as SaveSkill above: this runtime keeps a skills dir at
+// ~/.hermes/skills/openclaw-imports (skill_watcher.go), so an implementation is
+// `skills.InstallSkillArchive(archivePath, <that dir>, fallbackName)` — see
+// openclaw's save_skill.go.
+func (s *HermesService) InstallSkillArchive(_, _ string) (string, error) {
+	return "", domain.ErrNotSupportedByRuntime
+}

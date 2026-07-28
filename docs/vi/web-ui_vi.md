@@ -368,7 +368,7 @@ Giao diện chat tương tác với agent. Layout: sidebar (danh sách hội tho
 
 | Mục | File | Trạng thái hiện tại |
 |-----|------|---------------------|
-| **Write skill** | `chat/WriteSkillModal.tsx` | Form 3 field — Skill name / Description / Instructions — đúng cấu trúc một `SKILL.md` (name + description → front-matter, instructions → body). Field name ép cùng pattern `^[a-z0-9_-]+$` mà bên Go dùng cho thư mục skill. **Chỉ UI**: chưa có endpoint lưu, nên submit khi không truyền `onSubmit` sẽ báo là chưa nối backend. |
+| **Write skill** | `chat/WriteSkillModal.tsx` | Form 3 field — Skill name / Description / Instructions — đúng cấu trúc một `SKILL.md` (name + description → front-matter, instructions → body). Lưu qua `POST /api/agent/skills`; thành công thì modal hiện đường dẫn đã ghi. Xem "Viết + cài skill" bên dưới. |
 | **Browse skills** | `chat/BrowseSkillsModal.tsx` | Chạy thật với catalog Autonomous Agent Skills — xem "Catalog skill" bên dưới. |
 | **Manage skills** | `chat/ManageSkillsModal.tsx` | Skills đang cài trên agentic runtime, hiển thị dạng `/music`, `/voice`, … Click một cái thì bung cây file (`music/SKILL.md`, `music/reference/…`). **Chỉ UI**: `loadInstalledSkills()` trả sample data — khi có endpoint thì thay ruột hàm đó, phần còn lại của file không đổi. |
 
@@ -385,7 +385,24 @@ Catalog trả lỗi nghiệp vụ dưới dạng **HTTP 200 với `status` khác
 
 Phần giải nén được siết: chặn zip-slip (bất kỳ entry `..` hoặc absolute nào cũng làm hỏng cả bundle), lọc `.DS_Store` / `__MACOSX/`, và giới hạn 16 MB mỗi archive, 2 MB mỗi file, 512 KB inline text (file dài hơn bị đánh dấu `truncated`), 500 file. Entry không phải UTF-8 trả về với cờ `binary`, chỉ có metadata.
 
-UI: modal có 2 view. View **list** search phía server (debounce 300 ms trên param `keyword`, 50 item/trang), hiện name / version / chip plan / description / author / compatibility. Click một dòng mở view **detail** — shell rộng hơn, bên trái là danh sách file trong archive, bên phải là nội dung file đang chọn, mặc định chọn `SKILL.md`. Nút back ở header (và Escape) quay lại list chứ không đóng modal.
+UI: modal có 2 view. View **list** search phía server (debounce 300 ms trên param `keyword`, 50 item/trang), xếp kết quả thành lưới co giãn — 2 card mỗi hàng, tự rớt về 1 khi cột hẹp dưới ~250 px — mỗi card hiện name / version / chip plan / description / author / compatibility. Click một card mở view **detail** — shell rộng hơn, bên trái là danh sách file trong archive, bên phải là nội dung file đang chọn, mặc định chọn `SKILL.md`, và nút **Install** ở footer. Nút back ở header (và Escape) quay lại list chứ không đóng modal.
+
+**Viết + cài skill (theo từng runtime, qua AgentGateway)**
+
+Cả hai đường ghi đều đi qua abstraction của agent — tầng device không bao giờ hardcode thư mục skill, vì mỗi agentic runtime giữ thư mục riêng:
+
+| Endpoint device | Method gateway | Hành vi |
+|-----------------|----------------|---------|
+| `POST /api/agent/skills` | `SaveSkill(domain.SkillDraft) (path, error)` | Ghi `<name>/SKILL.md` do người dùng soạn. **Từ chối ghi đè** skill đã tồn tại (`skills.ErrSkillExists` → 400) để một lỗi soạn thảo không phá skill cài từ store/OTA. |
+| `POST /api/agent/skills/install` | `InstallSkillArchive(archivePath, fallbackName) (dir, error)` | Device tải file `.skill` từ catalog về temp, rồi runtime giải nén vào thư mục skill của nó. **Cố ý thay thế** skill trùng tên — cài là hành động chủ động của người dùng. |
+
+Phần dùng chung nằm ở `system/skills` (`authored.go` render + ghi SKILL.md, `install.go` giải nén archive); chỉ **thư mục đích** là khác nhau giữa các backend, đúng lý do khiến skill watcher của từng runtime gần như là bản sao của nhau. `runtimes/openclaw/save_skill.go` là bản tham chiếu — cả hai method chỉ 3 dòng dựa trên `s.skillsDir()`.
+
+Mọi runtime còn lại (hermes, picoclaw, codex, claudecode, opencode) trả `ErrNotSupportedByRuntime` cho cả hai, handler đẩy ra thành **HTTP 501** kèm tên runtime đang chạy. Không lưu gì cả, và UI nói thẳng điều đó thay vì báo thành công giả. Mỗi stub có sẵn TODO ghi rõ thư mục skill của backend đó — nối vào chỉ là một lời gọi `skills.WriteAuthoredSkill` / `skills.InstallSkillArchive`.
+
+Xử lý archive trong `skills.InstallSkillArchive`: nếu archive có đúng một thư mục top-level chung thì đó là tên skill và bị strip (bundle `.skill` của catalog có dạng `<name>/SKILL.md`); nếu file nằm ngay gốc archive thì dùng fallback name của caller (zip kiểu OTA). Giải nén được stage ở `<skill>.new` và chỉ swap vào khi thành công trọn vẹn, bản cũ dời sang `<skill>.old` và được khôi phục nếu swap lỗi — một bản tải hỏng không bao giờ để lại skill cài dở hay phá skill đang chạy. Chặn zip-slip, lọc `.DS_Store` / `__MACOSX/`, giới hạn 500 file và 4 MB mỗi entry (ép bằng `LimitReader` nên `UncompressedSize64` khai gian cũng không làm đầy đĩa).
+
+Cả hai đường đều KHÔNG restart runtime: backend nào có thư mục skill thì nhặt file mới theo từng session, đúng contract mà `InstallRoleSkills` dựa vào.
 
 **Streaming real-time**
 - **Thinking indicator**: khối tím thu gọn được, hiển thị reasoning tokens của LLM khi stream (`thinking` events). Click mở rộng toàn bộ (max-height 200px, scroll). Tự ẩn khi response hoàn tất.

@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Store, Search, Loader2, RefreshCw, AlertCircle, FileText, ChevronRight, Download,
+  Store, Search, Loader2, RefreshCw, AlertCircle, FileText, ChevronRight, Download, Check,
 } from "lucide-react";
-import { browseStoreSkills, fetchSkillBundle } from "@/lib/api";
+import { browseStoreSkills, fetchSkillBundle, installStoreSkill } from "@/lib/api";
 import type { StoreSkill, SkillBundle, SkillBundleFile } from "@/lib/api";
 import { ModalShell } from "./ModalShell";
-import { inputStyle } from "./styles";
+import { inputStyle, btnStyle } from "./styles";
 
 // "Browse skills" — the Autonomous Agent Skills catalog, two views in one modal:
 //
@@ -110,7 +110,13 @@ function SkillList({
       ) : skills.length === 0 ? (
         <Centered>{keyword ? `No skill matches “${keyword}”.` : "The store returned no skills."}</Centered>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        // Two per row (auto-fit collapses to one on a narrow viewport) — a
+        // one-per-row list wastes the modal's width on short skill names.
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
+          gap: 8,
+        }}>
           {skills.map((s) => <StoreRow key={s.id} skill={s} onOpen={() => onOpen(s)} />)}
         </div>
       )}
@@ -171,6 +177,24 @@ function SkillDetail({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [active, setActive] = useState<string | null>(null);
+  // Install state — separate from the preview fetch above so a failed install
+  // doesn't wipe the file browser the user is reading.
+  const [installing, setInstalling] = useState(false);
+  const [installed, setInstalled] = useState("");
+  const [installError, setInstallError] = useState("");
+
+  const install = async () => {
+    setInstalling(true);
+    setInstallError("");
+    try {
+      const res = await installStoreSkill(skill.id, skill.slug || skill.name);
+      setInstalled(res.name);
+    } catch (e) {
+      setInstallError(e instanceof Error ? e.message : "Failed to install the skill");
+    } finally {
+      setInstalling(false);
+    }
+  };
 
   useEffect(() => {
     let alive = true;
@@ -199,6 +223,41 @@ function SkillDetail({
       onClose={onClose}
       onBack={onBack}
       bodyPadding={0}
+      footer={
+        <div style={{ display: "flex", alignItems: "center", gap: 12, width: "100%" }}>
+          <div style={{ flex: 1, minWidth: 0, fontSize: 11, lineHeight: 1.45 }}>
+            {installError ? (
+              <span style={{ color: "var(--lm-red)" }}>{installError}</span>
+            ) : installed ? (
+              <span style={{ color: "var(--lm-text-dim)" }}>
+                Installed as <strong>/{installed}</strong> — the agent picks it up on its next session.
+              </span>
+            ) : (
+              <span style={{ color: "var(--lm-text-muted)" }}>
+                Installs into the active runtime's skills dir. Replaces an existing skill of the same name.
+              </span>
+            )}
+          </div>
+          <button
+            type="button"
+            className="lm-u-btn lm-u-btn-primary"
+            style={{
+              ...btnStyle, flexShrink: 0,
+              display: "inline-flex", alignItems: "center", gap: 6,
+              opacity: installing || installed || loading || Boolean(error) ? 0.55 : 1,
+              cursor: installing || installed || loading || Boolean(error) ? "not-allowed" : "pointer",
+            }}
+            disabled={installing || Boolean(installed) || loading || Boolean(error)}
+            onClick={() => void install()}
+          >
+            {installed
+              ? <><Check size={14} /> Installed</>
+              : installing
+                ? <><Loader2 size={14} className="lm-spin-ico" /> Installing…</>
+                : <><Download size={14} /> Install</>}
+          </button>
+        </div>
+      }
     >
       {loading ? (
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 12.5, color: "var(--lm-text-muted)" }}>

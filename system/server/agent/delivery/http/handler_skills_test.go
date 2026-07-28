@@ -11,6 +11,9 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+
+	"go.autonomous.ai/os/system/domain"
+	"go.autonomous.ai/os/system/skills"
 )
 
 // writeZip builds a zip at path from name→content pairs.
@@ -255,5 +258,169 @@ func TestSkillBundleRejectsBadID(t *testing.T) {
 		if rec.Code != http.StatusBadRequest {
 			t.Errorf("id %q: want 400, got %d", id, rec.Code)
 		}
+	}
+}
+
+// ─── Authoring + install (per-runtime via AgentGateway) ──────────────────────
+
+// fakeGateway implements only the two skill methods the handlers touch; the
+// rest of domain.AgentGateway is unused here, so the handler is exercised
+// through the same abstraction a real runtime sits behind.
+type fakeGateway struct {
+	domain.AgentGateway
+	name        string
+	saveErr     error
+	savePath    string
+	gotDraft    domain.SkillDraft
+	installErr  error
+	installDir  string
+	gotArchive  string
+	gotFallback string
+}
+
+func (f *fakeGateway) Name() string { return f.name }
+
+func (f *fakeGateway) SaveSkill(d domain.SkillDraft) (string, error) {
+	f.gotDraft = d
+	return f.savePath, f.saveErr
+}
+
+func (f *fakeGateway) InstallSkillArchive(archivePath, fallbackName string) (string, error) {
+	f.gotArchive, f.gotFallback = archivePath, fallbackName
+	return f.installDir, f.installErr
+}
+
+func postJSON(t *testing.T, path, body string) (*httptest.ResponseRecorder, *gin.Context) {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	return rec, c
+}
+
+func TestSaveSkill(t *testing.T) {
+	gw := &fakeGateway{name: "OpenClaw", savePath: "/root/.openclaw/workspace/skills/x/SKILL.md"}
+	rec, c := postJSON(t, "/api/agent/skills",
+		`{"name":"  x  ","description":" d ","instructions":" i "}`)
+
+	(&AgentHandler{agentGateway: gw}).SaveSkill(c)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	// Fields must reach the runtime trimmed.
+	if gw.gotDraft != (domain.SkillDraft{Name: "x", Description: "d", Instructions: "i"}) {
+		t.Errorf("draft not trimmed: %+v", gw.gotDraft)
+	}
+	if !strings.Contains(rec.Body.String(), gw.savePath) {
+		t.Errorf("path not echoed: %s", rec.Body.String())
+	}
+}
+
+// A runtime with no skills dir must fail loudly (501) rather than look like a
+// successful save.
+func TestSaveSkillNotSupported(t *testing.T) {
+	gw := &fakeGateway{name: "Hermes", saveErr: domain.ErrNotSupportedByRuntime}
+	rec, c := postJSON(t, "/api/agent/skills", `{"name":"x","description":"d","instructions":"i"}`)
+
+	(&AgentHandler{agentGateway: gw}).SaveSkill(c)
+
+	if rec.Code != http.StatusNotImplemented {
+		t.Fatalf("want 501, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "Hermes") {
+		t.Errorf("runtime name not surfaced: %s", rec.Body.String())
+	}
+}
+
+func TestSaveSkillValidationErrorsAre400(t *testing.T) {
+	for _, err := range []error{skills.ErrInvalidSkillName, skills.ErrSkillExists} {
+		gw := &fakeGateway{name: "OpenClaw", saveErr: err}
+		rec, c := postJSON(t, "/api/agent/skills", `{"name":"x","description":"d","instructions":"i"}`)
+
+		(&AgentHandler{agentGateway: gw}).SaveSkill(c)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("%v: want 400, got %d", err, rec.Code)
+		}
+	}
+}
+
+func TestSaveSkillRequiresAllFields(t *testing.T) {
+	gw := &fakeGateway{name: "OpenClaw"}
+	rec, c := postJSON(t, "/api/agent/skills", `{"name":"x"}`)
+
+	(&AgentHandler{agentGateway: gw}).SaveSkill(c)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if gw.gotDraft.Name != "" {
+		t.Error("gateway must not be called on a malformed body")
+	}
+}
+
+func TestInstallSkill(t *testing.T) {
+	// Fake catalog serving a real archive from /download.
+	dir := t.TempDir()
+	zipPath := filepath.Join(dir, "skill.zip")
+	writeZip(t, zipPath, map[string]string{"design-critique/SKILL.md": "body"})
+	archive, err := os.ReadFile(zipPath)
+	if err != nil {
+		t.Fatalf("read zip: %v", err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(archive)
+	}))
+	defer srv.Close()
+	t.Setenv("SKILL_STORE_BASE_URL", srv.URL)
+
+	gw := &fakeGateway{name: "OpenClaw", installDir: "/root/.openclaw/workspace/skills/design-critique"}
+	rec, c := postJSON(t, "/api/agent/skills/install", `{"id":"abc123","name":"design-critique"}`)
+
+	(&AgentHandler{agentGateway: gw}).InstallSkill(c)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	// The runtime receives a real on-disk archive, not the raw bytes.
+	if gw.gotArchive == "" {
+		t.Fatal("gateway did not receive an archive path")
+	}
+	if gw.gotFallback != "design-critique" {
+		t.Errorf("fallback name = %q", gw.gotFallback)
+	}
+	if !strings.Contains(rec.Body.String(), "design-critique") {
+		t.Errorf("installed name not echoed: %s", rec.Body.String())
+	}
+	// Temp dir is cleaned up once the response is built.
+	if _, err := os.Stat(gw.gotArchive); !os.IsNotExist(err) {
+		t.Error("temp archive was not removed after the response")
+	}
+}
+
+func TestInstallSkillNotSupported(t *testing.T) {
+	dir := t.TempDir()
+	zipPath := filepath.Join(dir, "skill.zip")
+	writeZip(t, zipPath, map[string]string{"x/SKILL.md": "body"})
+	archive, _ := os.ReadFile(zipPath)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(archive)
+	}))
+	defer srv.Close()
+	t.Setenv("SKILL_STORE_BASE_URL", srv.URL)
+
+	gw := &fakeGateway{name: "Codex", installErr: domain.ErrNotSupportedByRuntime}
+	rec, c := postJSON(t, "/api/agent/skills/install", `{"id":"abc"}`)
+
+	(&AgentHandler{agentGateway: gw}).InstallSkill(c)
+
+	if rec.Code != http.StatusNotImplemented {
+		t.Fatalf("want 501, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "Codex") {
+		t.Errorf("runtime name not surfaced: %s", rec.Body.String())
 	}
 }

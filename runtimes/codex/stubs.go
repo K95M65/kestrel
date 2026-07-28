@@ -106,3 +106,23 @@ func (s *CodexService) GetConfiguredChannel() string {
 
 // WriteMCPEntry + RemoveMCPEntry live in mcp.go — Codex keeps MCP servers in
 // config.toml [mcp_servers.<name>], so they do real work.
+
+// SaveSkill — TODO: not implemented for this backend, so nothing is stored.
+// The wiring is small when someone wants it: this runtime already keeps a
+// skills dir at codexSkillsDir (onboarding.go), so an implementation is
+// `skills.WriteAuthoredSkill(<that dir>, draft.Name, draft.Description,
+// draft.Instructions)` — the same one-liner openclaw's save_skill.go uses.
+// Until then ErrNotSupportedByRuntime tells the caller the skill was NOT
+// written, rather than silently dropping it.
+func (s *CodexService) SaveSkill(_ domain.SkillDraft) (string, error) {
+	return "", domain.ErrNotSupportedByRuntime
+}
+
+// InstallSkillArchive — TODO: not implemented for this backend, so nothing is
+// installed. Same shape as SaveSkill above: this runtime keeps a skills dir at
+// codexSkillsDir (onboarding.go), so an implementation is
+// `skills.InstallSkillArchive(archivePath, <that dir>, fallbackName)` — see
+// openclaw's save_skill.go.
+func (s *CodexService) InstallSkillArchive(_, _ string) (string, error) {
+	return "", domain.ErrNotSupportedByRuntime
+}

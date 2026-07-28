@@ -586,6 +586,38 @@ export async function fetchSkillBundle(id: string): Promise<SkillBundle> {
     `${API_BASE}/api/agent/skills/bundle?id=${encodeURIComponent(id)}`);
 }
 
+/** A skill authored in the web UI's "Write skill" form. */
+export interface SkillDraft {
+  name: string;
+  description: string;
+  instructions: string;
+}
+
+/** POST /api/agent/skills — writes <name>/SKILL.md into the ACTIVE agent
+ *  runtime's skills dir. Returns the path written. Rejects with the backend's
+ *  message when the runtime can't store authored skills (HTTP 501) or the name
+ *  is taken. */
+export async function saveSkill(draft: SkillDraft): Promise<{ name: string; path: string }> {
+  return apiRequest<{ name: string; path: string }>(`${API_BASE}/api/agent/skills`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(draft),
+  });
+}
+
+/** POST /api/agent/skills/install — device downloads the catalog's `.skill`
+ *  archive and extracts it into the ACTIVE runtime's skills dir. Rejects with
+ *  the backend's message when the runtime can't install skills (HTTP 501). */
+export async function installStoreSkill(
+  id: string, name?: string,
+): Promise<{ name: string; path: string }> {
+  return apiRequest<{ name: string; path: string }>(`${API_BASE}/api/agent/skills/install`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id, name }),
+  });
+}
+
 export async function logout(): Promise<boolean> {
   setApiToken("");
   return apiRequest<boolean>(`${API_BASE}/api/logout`, { method: "POST" });

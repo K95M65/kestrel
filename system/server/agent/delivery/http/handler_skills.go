@@ -3,6 +3,7 @@ package http
 import (
 	"archive/zip"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -18,6 +19,7 @@ import (
 
 	"go.autonomous.ai/os/system/domain"
 	"go.autonomous.ai/os/system/server/serializers"
+	"go.autonomous.ai/os/system/skills"
 )
 
 // Device-side wrapper around the Autonomous Agent Skills catalog (public read
@@ -100,6 +102,47 @@ func storeGet(path string, query url.Values, timeout time.Duration, maxBytes int
 		return nil, fmt.Errorf("read response: %w", err)
 	}
 	return body, nil
+}
+
+// SaveSkill handles POST /api/agent/skills. Writes a user-authored skill (the
+// web UI's "Write skill" form) into the ACTIVE runtime's skills dir via the
+// AgentGateway — each backend owns its own directory, so the device layer never
+// hardcodes one.
+//
+// A backend that hasn't implemented it returns ErrNotSupportedByRuntime, which
+// surfaces as 501: nothing was stored, and the UI says so rather than pretending
+// the skill was saved.
+func (h *AgentHandler) SaveSkill(c *gin.Context) {
+	var draft domain.SkillDraft
+	if err := c.ShouldBindJSON(&draft); err != nil {
+		c.JSON(http.StatusBadRequest, serializers.ResponseError(err.Error()))
+		return
+	}
+	draft.Name = strings.TrimSpace(draft.Name)
+	draft.Description = strings.TrimSpace(draft.Description)
+	draft.Instructions = strings.TrimSpace(draft.Instructions)
+
+	path, err := h.agentGateway.SaveSkill(draft)
+	switch {
+	case errors.Is(err, domain.ErrNotSupportedByRuntime):
+		c.JSON(http.StatusNotImplemented, serializers.ResponseError(
+			"the active agent runtime ("+h.agentGateway.Name()+") cannot store authored skills yet"))
+		return
+	case errors.Is(err, skills.ErrInvalidSkillName), errors.Is(err, skills.ErrSkillExists):
+		c.JSON(http.StatusBadRequest, serializers.ResponseError(err.Error()))
+		return
+	case err != nil:
+		slog.Error("[skills] save failed", "component", "agent-http", "skill", draft.Name, "error", err)
+		c.JSON(http.StatusInternalServerError, serializers.ResponseError(err.Error()))
+		return
+	}
+
+	slog.Info("[skills] saved", "component", "agent-http",
+		"skill", draft.Name, "runtime", h.agentGateway.Name(), "path", path)
+	c.JSON(http.StatusOK, serializers.ResponseSuccess(gin.H{
+		"name": draft.Name,
+		"path": path,
+	}))
 }
 
 // BrowseSkills handles GET /api/agent/skills/browse. Thin pass-through of the
@@ -204,6 +247,69 @@ func (h *AgentHandler) SkillBundle(c *gin.Context) {
 
 	slog.Info("[skills] bundle ready", "component", "agent-http", "id", id, "files", len(bundle.Files))
 	c.JSON(http.StatusOK, serializers.ResponseSuccess(bundle))
+}
+
+// InstallSkill handles POST /api/agent/skills/install with body {id, name}.
+// Downloads the catalog's `.skill` archive to a temp dir and hands it to the
+// ACTIVE runtime, which extracts it into its own skills dir. Same per-backend
+// split as SaveSkill — a runtime that hasn't implemented it answers 501 and
+// nothing is installed.
+func (h *AgentHandler) InstallSkill(c *gin.Context) {
+	var req struct {
+		ID   string `json:"id" binding:"required"`
+		Name string `json:"name"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, serializers.ResponseError(err.Error()))
+		return
+	}
+	req.ID = strings.TrimSpace(req.ID)
+	if strings.ContainsAny(req.ID, "/\\?#") {
+		c.JSON(http.StatusBadRequest, serializers.ResponseError("invalid skill id"))
+		return
+	}
+
+	tmpDir, err := os.MkdirTemp("", "skill-install-*")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, serializers.ResponseError("cannot create temp dir"))
+		return
+	}
+	defer os.RemoveAll(tmpDir)
+
+	archive, err := storeGet("/api/v1/agent-skills/"+url.PathEscape(req.ID)+"/download",
+		nil, skillDownloadTimeout, maxBundleBytes)
+	if err != nil {
+		slog.Error("[skills] install download failed", "component", "agent-http", "id", req.ID, "error", err)
+		c.JSON(http.StatusBadGateway, serializers.ResponseError("failed to download the skill"))
+		return
+	}
+	zipPath := filepath.Join(tmpDir, "skill.zip")
+	if err := os.WriteFile(zipPath, archive, 0600); err != nil {
+		c.JSON(http.StatusInternalServerError, serializers.ResponseError("cannot write temp file"))
+		return
+	}
+
+	dir, err := h.agentGateway.InstallSkillArchive(zipPath, strings.TrimSpace(req.Name))
+	switch {
+	case errors.Is(err, domain.ErrNotSupportedByRuntime):
+		c.JSON(http.StatusNotImplemented, serializers.ResponseError(
+			"the active agent runtime ("+h.agentGateway.Name()+") cannot install skills yet"))
+		return
+	case errors.Is(err, skills.ErrInvalidSkillName), errors.Is(err, skills.ErrEmptyArchive):
+		c.JSON(http.StatusBadRequest, serializers.ResponseError(err.Error()))
+		return
+	case err != nil:
+		slog.Error("[skills] install failed", "component", "agent-http", "id", req.ID, "error", err)
+		c.JSON(http.StatusInternalServerError, serializers.ResponseError(err.Error()))
+		return
+	}
+
+	slog.Info("[skills] installed", "component", "agent-http",
+		"id", req.ID, "runtime", h.agentGateway.Name(), "dir", dir)
+	c.JSON(http.StatusOK, serializers.ResponseSuccess(gin.H{
+		"name": filepath.Base(dir),
+		"path": dir,
+	}))
 }
 
 // extractSkillBundle unzips zipPath into destDir and returns the extracted
