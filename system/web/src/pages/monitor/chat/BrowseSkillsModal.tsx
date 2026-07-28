@@ -1,0 +1,347 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Store, Search, Loader2, RefreshCw, AlertCircle, FileText, ChevronRight, Download,
+} from "lucide-react";
+import { browseStoreSkills, fetchSkillBundle } from "@/lib/api";
+import type { StoreSkill, SkillBundle, SkillBundleFile } from "@/lib/api";
+import { ModalShell } from "./ModalShell";
+import { inputStyle } from "./styles";
+
+// "Browse skills" — the Autonomous Agent Skills catalog, two views in one modal:
+//
+//   list   → GET /api/agent/skills/browse   (catalog listing, keyword-searchable)
+//   detail → GET /api/agent/skills/bundle   (device downloads the .skill archive
+//            to a temp dir, unzips it, and returns the files with text inlined)
+//
+// Both hops go through os-server, never the browser: no CORS round-trip, and
+// the catalog host stays server-side. Opening a skill is a PREVIEW — the temp
+// dir is deleted server-side once the response is built, nothing is installed.
+
+const PAGE_LIMIT = 50;
+
+export function BrowseSkillsModal({ onClose }: { onClose: () => void }) {
+  const [selected, setSelected] = useState<StoreSkill | null>(null);
+  return selected
+    // key: a detail view is bound to one skill for its whole lifetime, so its
+    // fetch effect never has to reset state for a different id.
+    ? <SkillDetail key={selected.id} skill={selected} onBack={() => setSelected(null)} onClose={onClose} />
+    : <SkillList onOpen={setSelected} onClose={onClose} />;
+}
+
+// ─── List view ───────────────────────────────────────────────────────────────
+
+function SkillList({
+  onOpen, onClose,
+}: {
+  onOpen: (s: StoreSkill) => void;
+  onClose: () => void;
+}) {
+  const [skills, setSkills] = useState<StoreSkill[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [query, setQuery] = useState("");
+  // Debounced copy of `query` — the catalog does the keyword match, so every
+  // keystroke would otherwise be a request.
+  const [keyword, setKeyword] = useState("");
+
+  useEffect(() => {
+    const t = setTimeout(() => setKeyword(query.trim()), 300);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  const load = useCallback(async (kw: string) => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await browseStoreSkills({ keyword: kw || undefined, page: 1, limit: PAGE_LIMIT });
+      setSkills(res.data ?? []);
+      setTotal(res.total ?? 0);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to reach the skill store");
+      setSkills([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void load(keyword); }, [load, keyword]);
+
+  const subtitle = useMemo(() => {
+    if (loading || error) return "Autonomous skill store";
+    const shown = skills.length;
+    return total > shown ? `${shown} of ${total} skills` : `${shown} skill${shown === 1 ? "" : "s"}`;
+  }, [loading, error, skills.length, total]);
+
+  return (
+    <ModalShell icon={Store} title="Browse skills" subtitle={subtitle} width={640} onClose={onClose}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+        <div style={{ position: "relative", flex: 1 }}>
+          <Search size={14} style={{
+            position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)",
+            color: "var(--lm-text-muted)", pointerEvents: "none",
+          }} />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search skills…"
+            className="lm-u-input"
+            style={{ ...inputStyle, paddingLeft: 30 }}
+          />
+        </div>
+        <button
+          type="button"
+          className="lm-u-btn"
+          onClick={() => void load(keyword)}
+          disabled={loading}
+          title="Reload"
+          aria-label="Reload"
+          style={{
+            width: 36, borderRadius: 9, display: "flex",
+            alignItems: "center", justifyContent: "center", flexShrink: 0,
+          }}
+        ><RefreshCw size={14} className={loading ? "lm-spin-ico" : undefined} /></button>
+      </div>
+
+      {loading ? (
+        <Centered><Loader2 size={18} className="lm-spin-ico" /> Loading skills…</Centered>
+      ) : error ? (
+        <Centered tone="error"><AlertCircle size={18} /> {error}</Centered>
+      ) : skills.length === 0 ? (
+        <Centered>{keyword ? `No skill matches “${keyword}”.` : "The store returned no skills."}</Centered>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {skills.map((s) => <StoreRow key={s.id} skill={s} onOpen={() => onOpen(s)} />)}
+        </div>
+      )}
+    </ModalShell>
+  );
+}
+
+function StoreRow({ skill, onOpen }: { skill: StoreSkill; onOpen: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      style={{
+        display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left",
+        padding: "10px 12px", borderRadius: 10, cursor: "pointer",
+        background: "var(--lm-card)", border: "1px solid var(--lm-border)",
+        color: "var(--lm-text)", transition: "background 0.12s, border-color 0.12s",
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--lm-border-hi)"; }}
+      onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--lm-border)"; }}
+    >
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>{skill.name}</span>
+          {skill.version && (
+            <span style={{ fontSize: 10, color: "var(--lm-text-muted)", fontFamily: "monospace" }}>v{skill.version}</span>
+          )}
+          {skill.plan_required && skill.plan_required !== "free" && (
+            <Chip tone="amber">{skill.plan_required.toUpperCase()}</Chip>
+          )}
+        </div>
+        {skill.description && (
+          <div style={{
+            fontSize: 11.5, color: "var(--lm-text-dim)", marginTop: 3, lineHeight: 1.45,
+            display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
+          }}>{skill.description}</div>
+        )}
+        <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap", alignItems: "center" }}>
+          {skill.author && <span style={{ fontSize: 10, color: "var(--lm-text-muted)" }}>by {skill.author}</span>}
+          {(skill.compatibility ?? []).map((t) => <Chip key={t}>{t}</Chip>)}
+        </div>
+      </div>
+      <ChevronRight size={15} style={{ color: "var(--lm-text-muted)", flexShrink: 0 }} />
+    </button>
+  );
+}
+
+// ─── Detail view ─────────────────────────────────────────────────────────────
+
+function SkillDetail({
+  skill, onBack, onClose,
+}: {
+  skill: StoreSkill;
+  onBack: () => void;
+  onClose: () => void;
+}) {
+  const [bundle, setBundle] = useState<SkillBundle | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [active, setActive] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    fetchSkillBundle(skill.id)
+      .then((b) => {
+        if (!alive) return;
+        setBundle(b);
+        // Open SKILL.md by default — it's the entry point of every skill.
+        const entry = b.files.find((f) => f.path.toLowerCase().endsWith("skill.md")) ?? b.files[0];
+        setActive(entry?.path ?? null);
+      })
+      .catch((e) => { if (alive) setError(e instanceof Error ? e.message : "Failed to download the skill"); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [skill.id]);
+
+  const activeFile = bundle?.files.find((f) => f.path === active) ?? null;
+
+  return (
+    <ModalShell
+      icon={FileText}
+      title={skill.name}
+      subtitle={[skill.version && `v${skill.version}`, skill.author && `by ${skill.author}`]
+        .filter(Boolean).join(" · ") || undefined}
+      width={940}
+      onClose={onClose}
+      onBack={onBack}
+      bodyPadding={0}
+    >
+      {loading ? (
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 12.5, color: "var(--lm-text-muted)" }}>
+          <Download size={16} className="lm-spin-ico" /> Downloading and unpacking…
+        </div>
+      ) : error ? (
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 12.5, color: "var(--lm-red)" }}>
+          <AlertCircle size={16} /> {error}
+        </div>
+      ) : (
+        <div style={{ flex: 1, display: "flex", minHeight: 0, minWidth: 0 }}>
+          {/* Left: files in the archive */}
+          <div style={{
+            width: 250, flexShrink: 0, overflowY: "auto",
+            borderRight: "1px solid var(--lm-border)", background: "var(--lm-bg)",
+            padding: 8,
+          }}>
+            {(bundle?.files ?? []).map((f) => (
+              <FileRow key={f.path} file={f} active={f.path === active} onClick={() => setActive(f.path)} />
+            ))}
+            {(bundle?.skipped ?? 0) > 0 && (
+              <div style={{ fontSize: 10, color: "var(--lm-text-muted)", padding: "6px 8px" }}>
+                +{bundle?.skipped} more file(s) not shown
+              </div>
+            )}
+          </div>
+
+          {/* Right: the selected file's content */}
+          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+            {activeFile ? (
+              <>
+                <div style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+                  padding: "8px 14px", borderBottom: "1px solid var(--lm-border)", flexShrink: 0,
+                }}>
+                  <span style={{
+                    fontSize: 11, color: "var(--lm-text-dim)", fontFamily: "monospace",
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  }}>{activeFile.path}</span>
+                  <span style={{ fontSize: 10, color: "var(--lm-text-muted)", flexShrink: 0 }}>
+                    {formatBytes(activeFile.size)}
+                  </span>
+                </div>
+                <div style={{ flex: 1, minHeight: 0, overflow: "auto", padding: 14 }}>
+                  {activeFile.binary ? (
+                    <div style={{ fontSize: 12, color: "var(--lm-text-muted)" }}>
+                      Binary file — no preview.
+                    </div>
+                  ) : (
+                    <pre style={{
+                      margin: 0, fontSize: 11.5, lineHeight: 1.6,
+                      fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                      color: "var(--lm-text)", whiteSpace: "pre-wrap", wordBreak: "break-word",
+                    }}>{activeFile.text}</pre>
+                  )}
+                  {activeFile.truncated && (
+                    <div style={{ fontSize: 10.5, color: "var(--lm-text-muted)", marginTop: 10 }}>
+                      … truncated — this preview shows the first 512 KB.
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12.5, color: "var(--lm-text-muted)" }}>
+                Select a file
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </ModalShell>
+  );
+}
+
+function FileRow({
+  file, active, onClick,
+}: {
+  file: SkillBundleFile;
+  active: boolean;
+  onClick: () => void;
+}) {
+  // Show the basename prominently with the containing dir dimmed above it —
+  // archives nest everything under a <skill-name>/ root, so the full path on one
+  // line is mostly noise.
+  const slash = file.path.lastIndexOf("/");
+  const dir = slash >= 0 ? file.path.slice(0, slash + 1) : "";
+  const base = slash >= 0 ? file.path.slice(slash + 1) : file.path;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={file.path}
+      style={{
+        display: "flex", alignItems: "center", gap: 7, width: "100%", textAlign: "left",
+        padding: "6px 8px", borderRadius: 7, border: "none", cursor: "pointer",
+        background: active ? "color-mix(in srgb, var(--lm-amber) 12%, transparent)" : "transparent",
+        color: active ? "var(--lm-text)" : "var(--lm-text-dim)",
+        transition: "background 0.12s",
+      }}
+      onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = "color-mix(in srgb, var(--lm-text) 6%, transparent)"; }}
+      onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "transparent"; }}
+    >
+      <FileText size={13} style={{ color: active ? "var(--lm-amber)" : "var(--lm-text-muted)", flexShrink: 0 }} />
+      <span style={{ minWidth: 0, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 11 }}>
+        {dir && (
+          <span style={{
+            display: "block", fontSize: 9.5, color: "var(--lm-text-muted)",
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          }}>{dir}</span>
+        )}
+        <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{base}</span>
+      </span>
+    </button>
+  );
+}
+
+// ─── Bits ────────────────────────────────────────────────────────────────────
+
+function Chip({ children, tone }: { children: React.ReactNode; tone?: "amber" }) {
+  return (
+    <span style={{
+      fontSize: 9.5, padding: "2px 6px", borderRadius: 999,
+      color: tone === "amber" ? "var(--lm-amber)" : "var(--lm-text-muted)",
+      background: tone === "amber" ? "color-mix(in srgb, var(--lm-amber) 12%, transparent)" : "var(--lm-bg)",
+      border: `1px solid ${tone === "amber" ? "transparent" : "var(--lm-border)"}`,
+      fontWeight: tone === "amber" ? 600 : 400,
+    }}>{children}</span>
+  );
+}
+
+function Centered({ children, tone }: { children: React.ReactNode; tone?: "error" }) {
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+      padding: "44px 12px", textAlign: "center",
+      fontSize: 12.5, color: tone === "error" ? "var(--lm-red)" : "var(--lm-text-muted)",
+    }}>{children}</div>
+  );
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}

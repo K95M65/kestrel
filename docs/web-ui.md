@@ -363,8 +363,34 @@ Interactive chat interface for communicating with the agent. Layout: sidebar (co
 
 **Message Input**
 - Textarea with Shift+Enter for multi-line, Enter to send
-- File/image attachment (max 10 MB): button, drag-drop, clipboard paste
+- **"+" menu** (`chat/PlusMenu.tsx`) at the composer's left edge. Opens upward (the composer is pinned to the bottom); closes on outside click / Escape, and is derived closed while a turn is sending. Entries:
+  - **Attach file** — the former paperclip button, now folded into the menu. Drag-drop and clipboard paste still attach directly without going through the menu.
+  - **Skills** ▸ — fly-out sub-menu with the three surfaces below. Each opens a portalled modal (`chat/ModalShell.tsx`, shared shell + `chat/styles.ts` field styles).
+- File/image attachment (max 10 MB): "+" → Attach file, drag-drop, clipboard paste
 - Messages sent via `POST /api/sensing/event` with `type: "web_chat"`. The handler tags the run via `MarkWebChatRun(runID)` so the agent reply is suppressed at TTS (rendered in this UI only) and skips the physical wake greeting / opening filler. An image attachment rides the payload's `image` field (raw base64); the handler (1) saves it to `/tmp/web-chat-*.jpg` and appends an `[image: <path>]` tag so tools can read the file directly (e.g. face enrollment), and (2) runs the describe-first gate in `system/vision` (see `docs/realtime-voice.md`, "Frame handoff"): a text-only main model gets an `[image description]` line produced by the catalog's vision model, a vision-capable one gets the raw attachment. Both steps run BEFORE the agent-busy queue fork, so a queued turn replays with the description already inlined.
+
+**Skills menu (composer "+" → Skills)**
+
+| Item | File | State today |
+|------|------|-------------|
+| **Write skill** | `chat/WriteSkillModal.tsx` | Three-field form — Skill name / Description / Instructions — matching a `SKILL.md` (name + description → front-matter, instructions → body). The name field enforces the same `^[a-z0-9_-]+$` shape the Go side uses for skill dirs. **UI only**: no save endpoint yet, so submitting without an `onSubmit` handler reports that saving is not wired up. |
+| **Browse skills** | `chat/BrowseSkillsModal.tsx` | Live against the Autonomous Agent Skills catalog — see "Skill catalog" below. |
+| **Manage skills** | `chat/ManageSkillsModal.tsx` | Skills installed in the active agentic runtime, rendered as `/music`, `/voice`, … Clicking one expands its file tree (`music/SKILL.md`, `music/reference/…`). **UI only**: `loadInstalledSkills()` returns sample data — swap its body for the real fetch when the endpoint exists; nothing else in the file changes. |
+
+**Skill catalog (Browse skills)**
+
+The catalog is the public read API of `bff-web-service` (`agent-skills-public-api.md`), wrapped device-side by `system/server/agent/delivery/http/handler_skills.go`. Both hops go through os-server, never the browser — same rationale as `GET /api/plugin/browse`: no CORS round-trip and the catalog host stays server-side. Base URL defaults to `https://apiv2.autonomous.ai`, overridable with `SKILL_STORE_BASE_URL`; every upstream call carries the `location: en-US` header the catalog's middleware requires.
+
+| Device endpoint | Upstream | Notes |
+|-----------------|----------|-------|
+| `GET /api/agent/skills/browse` | `GET /api/v1/agent-skills` | Forwards `keyword` / `category_id` / `plan` / `page` / `limit`. `status` is deliberately **not** forwarded — upstream can't tell "unset" from `0`, so sending it would silently filter the listing. Returns `{data: [Skill], total}` (`domain.StoreSkillList`). |
+| `GET /api/agent/skills/bundle?id=<id>` | `GET /api/v1/agent-skills/:id/download` | Downloads the `.skill` archive to a temp dir, unzips it there, and returns `domain.SkillBundle` — the file list with UTF-8 contents inlined. The temp dir is removed before the response is written: this is a **preview**, nothing is installed. |
+
+The catalog returns business failures as **HTTP 200 with a non-1 `status`**, so the proxy checks the envelope status, not just the HTTP code, and surfaces the upstream message as a `502`. The id rides a query param rather than a path segment so the route can't collide with the sibling static `skills/browse`.
+
+Extraction is hardened: zip-slip guarded (any `..` or absolute entry fails the whole bundle), `.DS_Store` / `__MACOSX/` filtered, and capped at 16 MB per archive, 2 MB per file, 512 KB inlined as text (longer files are marked `truncated`), 500 files. Non-UTF-8 entries come back flagged `binary` with metadata only.
+
+UI: the modal is two views. The **list** searches server-side (300 ms debounce on the `keyword` param, 50 per page) and shows name / version / plan chip / description / author / compatibility. Clicking a row opens the **detail** view — a wider shell with the archive's files on the left and the selected file's content on the right, `SKILL.md` selected by default. The header's back arrow (and Escape) returns to the list instead of closing the modal.
 
 **Real-time Streaming**
 - **Thinking indicator**: collapsible purple block showing LLM reasoning tokens as they stream in (`thinking` events). Click to expand full text (max-height 200px scrollable). Auto-hides on response completion.

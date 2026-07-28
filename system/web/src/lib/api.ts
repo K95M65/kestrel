@@ -525,6 +525,67 @@ export async function searchHFPlugins(): Promise<HFSpace[]> {
   return apiRequest<HFSpace[]>(`${API_BASE}/api/plugin/browse`);
 }
 
+// Autonomous Agent Skills catalog — proxied through the backend (same reason as
+// /api/plugin/browse: avoids CORS and keeps the catalog host server-side).
+// Shapes mirror system/domain/skillstore.go.
+export interface StoreSkill {
+  id: string;
+  name: string;
+  slug?: string;
+  description?: string;
+  version?: string;
+  category_id?: string;
+  plan_required?: string;
+  author?: string;
+  license?: string;
+  size?: string;
+  icon_url?: string;
+  compatibility?: string[];
+  download_count?: number;
+  creator_type?: string;
+  source?: string;
+}
+
+export interface StoreSkillList {
+  data: StoreSkill[];
+  total: number;
+}
+
+/** One file unpacked from a downloaded `.skill` archive. `text` is inlined for
+ *  UTF-8 files; binary or oversized entries carry metadata only. */
+export interface SkillBundleFile {
+  path: string;
+  size: number;
+  text?: string;
+  binary?: boolean;
+  truncated?: boolean;
+}
+
+export interface SkillBundle {
+  id: string;
+  files: SkillBundleFile[];
+  skipped?: number;
+}
+
+/** GET /api/agent/skills/browse — catalog listing with optional filters. */
+export async function browseStoreSkills(
+  opts: { keyword?: string; page?: number; limit?: number } = {},
+): Promise<StoreSkillList> {
+  const q = new URLSearchParams();
+  if (opts.keyword) q.set("keyword", opts.keyword);
+  if (opts.page) q.set("page", String(opts.page));
+  if (opts.limit) q.set("limit", String(opts.limit));
+  const qs = q.toString();
+  return apiRequest<StoreSkillList>(`${API_BASE}/api/agent/skills/browse${qs ? `?${qs}` : ""}`);
+}
+
+/** GET /api/agent/skills/bundle — downloads + unzips the skill server-side and
+ *  returns its files. Preview only; nothing is installed. */
+export async function fetchSkillBundle(id: string): Promise<SkillBundle> {
+  return apiRequest<SkillBundle>(
+    `${API_BASE}/api/agent/skills/bundle?id=${encodeURIComponent(id)}`);
+}
+
 export async function logout(): Promise<boolean> {
   setApiToken("");
   return apiRequest<boolean>(`${API_BASE}/api/logout`, { method: "POST" });

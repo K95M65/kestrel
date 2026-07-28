@@ -416,6 +416,11 @@ func (s *Server) Serve(closeFn func()) error {
 	// channel (Telegram/Slack/…) turns surface in Flow Monitor. Loopback-only.
 	agent.POST("channel-turn", localOnlyMiddleware(), s.agentHandler.ChannelTurn)
 	agent.GET("compaction-latest", adminAuthMiddleware(s.config), s.agentHandler.CompactionLatest)
+	// Skill store discovery for the chat composer's "+" → Skills → Browse.
+	// Proxied server-side (no CORS, store host stays off the browser). `bundle`
+	// takes the skill id as a query param so it can't collide with `browse`.
+	agent.GET("skills/browse", adminAuthMiddleware(s.config), s.agentHandler.BrowseSkills)
+	agent.GET("skills/bundle", adminAuthMiddleware(s.config), s.agentHandler.SkillBundle)
 
 	logs := api.Group("logs")
 	logs.GET("tail", adminAuthMiddleware(s.config), s.logTail)

@@ -358,8 +358,34 @@ Giao diện chat tương tác với agent. Layout: sidebar (danh sách hội tho
 
 **Nhập tin nhắn**
 - Textarea, Shift+Enter xuống dòng, Enter gửi
-- Đính kèm file/ảnh (tối đa 10 MB): nút, kéo thả, dán từ clipboard
+- **Menu "+"** (`chat/PlusMenu.tsx`) ở mép trái ô nhập. Mở hướng lên trên (ô nhập ghim đáy); đóng khi click ra ngoài / Escape, và luôn ở trạng thái đóng khi đang gửi turn. Các mục:
+  - **Attach file** — nút paperclip cũ, nay nằm trong menu. Kéo thả và dán clipboard vẫn đính kèm trực tiếp, không cần qua menu.
+  - **Skills** ▸ — sub-menu bay ra, chứa 3 màn hình bên dưới. Mỗi cái mở một modal portal (`chat/ModalShell.tsx` shell dùng chung + `chat/styles.ts` style field).
+- Đính kèm file/ảnh (tối đa 10 MB): "+" → Attach file, kéo thả, dán từ clipboard
 - Gửi qua `POST /api/sensing/event` với `type: "web_chat"`. Handler mark run qua `MarkWebChatRun(runID)` để reply của agent bị suppress TTS (chỉ hiện trong UI này) và bỏ qua wake greeting / opening filler. Ảnh đính kèm đi trong field `image` của payload (raw base64); handler (1) lưu vào `/tmp/web-chat-*.jpg` và chèn tag `[image: <path>]` để tool đọc file trực tiếp (vd face enrollment), và (2) chạy gate describe-first trong `system/vision` (xem `docs/realtime-voice.md`, phần "Bàn giao frame"): main model text-only nhận dòng `[image description]` do vision model của catalog tả, model có vision nhận attachment thô. Cả hai bước chạy TRƯỚC fork queue lúc agent bận, nên turn bị queue replay với description đã nằm sẵn trong message.
+
+**Menu Skills (ô nhập "+" → Skills)**
+
+| Mục | File | Trạng thái hiện tại |
+|-----|------|---------------------|
+| **Write skill** | `chat/WriteSkillModal.tsx` | Form 3 field — Skill name / Description / Instructions — đúng cấu trúc một `SKILL.md` (name + description → front-matter, instructions → body). Field name ép cùng pattern `^[a-z0-9_-]+$` mà bên Go dùng cho thư mục skill. **Chỉ UI**: chưa có endpoint lưu, nên submit khi không truyền `onSubmit` sẽ báo là chưa nối backend. |
+| **Browse skills** | `chat/BrowseSkillsModal.tsx` | Chạy thật với catalog Autonomous Agent Skills — xem "Catalog skill" bên dưới. |
+| **Manage skills** | `chat/ManageSkillsModal.tsx` | Skills đang cài trên agentic runtime, hiển thị dạng `/music`, `/voice`, … Click một cái thì bung cây file (`music/SKILL.md`, `music/reference/…`). **Chỉ UI**: `loadInstalledSkills()` trả sample data — khi có endpoint thì thay ruột hàm đó, phần còn lại của file không đổi. |
+
+**Catalog skill (Browse skills)**
+
+Catalog là public read API của `bff-web-service` (`agent-skills-public-api.md`), được bọc phía device bởi `system/server/agent/delivery/http/handler_skills.go`. Cả hai chặng đều đi qua os-server, không bao giờ từ browser — cùng lý do với `GET /api/plugin/browse`: khỏi CORS và host catalog nằm phía server. Base URL mặc định `https://apiv2.autonomous.ai`, override bằng `SKILL_STORE_BASE_URL`; mọi call upstream đều kèm header `location: en-US` mà middleware của catalog bắt buộc.
+
+| Endpoint device | Upstream | Ghi chú |
+|-----------------|----------|---------|
+| `GET /api/agent/skills/browse` | `GET /api/v1/agent-skills` | Forward `keyword` / `category_id` / `plan` / `page` / `limit`. `status` **cố ý không** forward — upstream không phân biệt được "chưa set" với `0`, gửi lên là lọc mất listing. Trả `{data: [Skill], total}` (`domain.StoreSkillList`). |
+| `GET /api/agent/skills/bundle?id=<id>` | `GET /api/v1/agent-skills/:id/download` | Tải file `.skill` về thư mục temp, unzip tại đó, rồi trả `domain.SkillBundle` — danh sách file kèm nội dung UTF-8 inline. Thư mục temp bị xoá trước khi ghi response: đây là **preview**, không cài gì cả. |
+
+Catalog trả lỗi nghiệp vụ dưới dạng **HTTP 200 với `status` khác 1**, nên proxy kiểm tra status trong envelope chứ không chỉ nhìn HTTP code, và đẩy message upstream ra thành `502`. Id đi bằng query param thay vì path segment để route không đụng route tĩnh anh em `skills/browse`.
+
+Phần giải nén được siết: chặn zip-slip (bất kỳ entry `..` hoặc absolute nào cũng làm hỏng cả bundle), lọc `.DS_Store` / `__MACOSX/`, và giới hạn 16 MB mỗi archive, 2 MB mỗi file, 512 KB inline text (file dài hơn bị đánh dấu `truncated`), 500 file. Entry không phải UTF-8 trả về với cờ `binary`, chỉ có metadata.
+
+UI: modal có 2 view. View **list** search phía server (debounce 300 ms trên param `keyword`, 50 item/trang), hiện name / version / chip plan / description / author / compatibility. Click một dòng mở view **detail** — shell rộng hơn, bên trái là danh sách file trong archive, bên phải là nội dung file đang chọn, mặc định chọn `SKILL.md`. Nút back ở header (và Escape) quay lại list chứ không đóng modal.
 
 **Streaming real-time**
 - **Thinking indicator**: khối tím thu gọn được, hiển thị reasoning tokens của LLM khi stream (`thinking` events). Click mở rộng toàn bộ (max-height 200px, scroll). Tự ẩn khi response hoàn tất.

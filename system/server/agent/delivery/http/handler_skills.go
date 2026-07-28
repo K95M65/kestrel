@@ -1,0 +1,317 @@
+package http
+
+import (
+	"archive/zip"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+	"unicode/utf8"
+
+	"github.com/gin-gonic/gin"
+
+	"go.autonomous.ai/os/system/domain"
+	"go.autonomous.ai/os/system/server/serializers"
+)
+
+// Device-side wrapper around the Autonomous Agent Skills catalog (public read
+// API, see agent-skills-public-api.md). The web UI's chat composer
+// ("+" → Skills → Browse skills) goes through here rather than calling the
+// catalog directly — same rationale as GET /api/plugin/browse: no CORS
+// round-trip, and the catalog host stays a server-side concern.
+
+const (
+	// skillStoreBaseURL is the catalog host. Overridable via SKILL_STORE_BASE_URL
+	// so a device can be pointed at a local/staging BFF without a rebuild.
+	skillStoreBaseURL = "https://apiv2.autonomous.ai"
+
+	// skillStoreLocation fills the `location` header the catalog's
+	// LocationHandler middleware requires on every /api/v1 route. en-US is the
+	// documented default/fallback.
+	skillStoreLocation = "en-US"
+
+	// skillStoreTimeout bounds a listing fetch, skillDownloadTimeout an archive
+	// download (bigger body, so a longer budget).
+	skillStoreTimeout    = 10 * time.Second
+	skillDownloadTimeout = 30 * time.Second
+)
+
+// Bundle extraction caps. Skills are small (a SKILL.md plus a handful of
+// reference files), so these are generous ceilings that exist to keep a hostile
+// or broken archive from exhausting device memory/disk, not to constrain real
+// content.
+const (
+	maxBundleBytes  = 16 << 20 // downloaded archive
+	maxFileBytes    = 2 << 20  // one extracted file
+	maxInlineBytes  = 512 << 10
+	maxBundleFiles  = 500
+	binarySniffSize = 8000
+)
+
+// storeEnvelope is the catalog's JSON wrapper. Business failures come back with
+// HTTP 200 and a non-1 status, so every caller must check Status — not just the
+// HTTP code.
+type storeEnvelope struct {
+	Status  int             `json:"status"`
+	Message string          `json:"message"`
+	Data    json.RawMessage `json:"data"`
+}
+
+// storeBaseURL returns the configured catalog host without a trailing slash.
+func storeBaseURL() string {
+	if env := strings.TrimSpace(os.Getenv("SKILL_STORE_BASE_URL")); env != "" {
+		return strings.TrimRight(env, "/")
+	}
+	return skillStoreBaseURL
+}
+
+// storeGet performs a GET against the catalog with the required location
+// header and returns the raw body. Non-200 responses are an error — the caller
+// still has to inspect the envelope's status for HTTP-200 business failures.
+func storeGet(path string, query url.Values, timeout time.Duration, maxBytes int64) ([]byte, error) {
+	u := storeBaseURL() + path
+	if len(query) > 0 {
+		u += "?" + query.Encode()
+	}
+	req, err := http.NewRequest(http.MethodGet, u, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("location", skillStoreLocation)
+
+	client := &http.Client{Timeout: timeout}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request %s: %w", path, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("skill store returned %s", resp.Status)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes))
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+	return body, nil
+}
+
+// BrowseSkills handles GET /api/agent/skills/browse. Thin pass-through of the
+// catalog's GET /api/v1/agent-skills listing, forwarding the optional filters
+// the web UI exposes (keyword / category_id / plan / page / limit).
+func (h *AgentHandler) BrowseSkills(c *gin.Context) {
+	q := url.Values{}
+	// `status` is deliberately not forwarded: the catalog can't distinguish
+	// "unset" from 0, so sending it would silently filter the listing.
+	for _, k := range []string{"keyword", "category_id", "plan", "page", "limit"} {
+		if v := strings.TrimSpace(c.Query(k)); v != "" {
+			q.Set(k, v)
+		}
+	}
+
+	body, err := storeGet("/api/v1/agent-skills", q, skillStoreTimeout, maxBundleBytes)
+	if err != nil {
+		slog.Error("[skills] browse failed", "component", "agent-http", "error", err)
+		c.JSON(http.StatusBadGateway, serializers.ResponseError("failed to reach the skill store"))
+		return
+	}
+
+	var env storeEnvelope
+	if err := json.Unmarshal(body, &env); err != nil {
+		slog.Error("[skills] browse: invalid envelope", "component", "agent-http", "error", err)
+		c.JSON(http.StatusBadGateway, serializers.ResponseError("invalid JSON from the skill store"))
+		return
+	}
+	if env.Status != 1 {
+		msg := env.Message
+		if msg == "" {
+			msg = fmt.Sprintf("skill store returned status %d", env.Status)
+		}
+		c.JSON(http.StatusBadGateway, serializers.ResponseError(msg))
+		return
+	}
+
+	var list domain.StoreSkillList
+	if err := json.Unmarshal(env.Data, &list); err != nil {
+		slog.Error("[skills] browse: invalid payload", "component", "agent-http", "error", err)
+		c.JSON(http.StatusBadGateway, serializers.ResponseError("unexpected payload from the skill store"))
+		return
+	}
+	if list.Data == nil {
+		list.Data = []domain.StoreSkill{}
+	}
+
+	c.JSON(http.StatusOK, serializers.ResponseSuccess(list))
+}
+
+// SkillBundle handles GET /api/agent/skills/bundle?id=<skillID>. Downloads the
+// skill's `.skill` archive to a temp dir, unzips it there, and returns the file
+// list with text contents inlined so the web UI can render a file browser
+// without a round-trip per file. The temp dir is removed before returning —
+// this is a preview, not an install.
+//
+// The id rides a query param rather than a path segment so the route never
+// collides with the sibling static `skills/browse` route.
+func (h *AgentHandler) SkillBundle(c *gin.Context) {
+	id := strings.TrimSpace(c.Query("id"))
+	if id == "" {
+		c.JSON(http.StatusBadRequest, serializers.ResponseError("id is required"))
+		return
+	}
+	// The id goes into the upstream path — reject anything that could escape it.
+	if strings.ContainsAny(id, "/\\?#") {
+		c.JSON(http.StatusBadRequest, serializers.ResponseError("invalid skill id"))
+		return
+	}
+
+	tmpDir, err := os.MkdirTemp("", "skill-bundle-*")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, serializers.ResponseError("cannot create temp dir"))
+		return
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// 1. Download the archive. `/download` returns a raw zip, NOT the JSON
+	//    envelope — so a JSON body here means the catalog failed.
+	archive, err := storeGet("/api/v1/agent-skills/"+url.PathEscape(id)+"/download",
+		nil, skillDownloadTimeout, maxBundleBytes)
+	if err != nil {
+		slog.Error("[skills] bundle download failed", "component", "agent-http", "id", id, "error", err)
+		c.JSON(http.StatusBadGateway, serializers.ResponseError("failed to download the skill"))
+		return
+	}
+
+	zipPath := filepath.Join(tmpDir, "skill.zip")
+	if err := os.WriteFile(zipPath, archive, 0600); err != nil {
+		c.JSON(http.StatusInternalServerError, serializers.ResponseError("cannot write temp file"))
+		return
+	}
+
+	// 2. Unzip into the temp dir and read what came out.
+	bundle, err := extractSkillBundle(zipPath, filepath.Join(tmpDir, "unpacked"))
+	if err != nil {
+		slog.Error("[skills] bundle extract failed", "component", "agent-http", "id", id, "error", err)
+		c.JSON(http.StatusBadGateway, serializers.ResponseError(err.Error()))
+		return
+	}
+	bundle.ID = id
+
+	slog.Info("[skills] bundle ready", "component", "agent-http", "id", id, "files", len(bundle.Files))
+	c.JSON(http.StatusOK, serializers.ResponseSuccess(bundle))
+}
+
+// extractSkillBundle unzips zipPath into destDir and returns the extracted
+// files with text contents inlined. Path-traversal guarded; per-file and
+// file-count caps applied.
+func extractSkillBundle(zipPath, destDir string) (domain.SkillBundle, error) {
+	var bundle domain.SkillBundle
+
+	r, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return bundle, fmt.Errorf("the downloaded skill is not a valid archive")
+	}
+	defer r.Close()
+
+	if err := os.MkdirAll(destDir, 0700); err != nil {
+		return bundle, fmt.Errorf("cannot create unpack dir")
+	}
+	cleanDest, err := filepath.Abs(destDir)
+	if err != nil {
+		return bundle, fmt.Errorf("cannot resolve unpack dir")
+	}
+	cleanDest = filepath.Clean(cleanDest) + string(os.PathSeparator)
+
+	for _, f := range r.File {
+		if f.FileInfo().IsDir() {
+			continue
+		}
+		name := filepath.ToSlash(f.Name)
+		if strings.HasPrefix(name, "/") || strings.Contains(name, "..") {
+			return bundle, fmt.Errorf("archive contains an unsafe path")
+		}
+		// Editor/OS cruft that would only clutter the file list.
+		if base := filepath.Base(name); base == ".DS_Store" || strings.HasPrefix(name, "__MACOSX/") {
+			continue
+		}
+		if len(bundle.Files) >= maxBundleFiles {
+			bundle.Skipped++
+			continue
+		}
+
+		target := filepath.Join(destDir, filepath.FromSlash(name))
+		absTarget, err := filepath.Abs(target)
+		if err != nil || !strings.HasPrefix(absTarget+string(os.PathSeparator), cleanDest) {
+			return bundle, fmt.Errorf("archive contains an unsafe path")
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0700); err != nil {
+			return bundle, fmt.Errorf("cannot unpack the skill")
+		}
+
+		content, err := readZipEntry(f, target)
+		if err != nil {
+			return bundle, err
+		}
+		bundle.Files = append(bundle.Files, buildBundleFile(name, content, int64(f.UncompressedSize64)))
+	}
+
+	if len(bundle.Files) == 0 {
+		return bundle, fmt.Errorf("the skill archive is empty")
+	}
+	return bundle, nil
+}
+
+// readZipEntry writes one entry to disk (the "unzip into temp" step) and
+// returns the bytes it wrote, capped at maxFileBytes.
+func readZipEntry(f *zip.File, target string) ([]byte, error) {
+	rc, err := f.Open()
+	if err != nil {
+		return nil, fmt.Errorf("cannot read %s from the archive", f.Name)
+	}
+	defer rc.Close()
+
+	content, err := io.ReadAll(io.LimitReader(rc, maxFileBytes))
+	if err != nil {
+		return nil, fmt.Errorf("cannot read %s from the archive", f.Name)
+	}
+	if err := os.WriteFile(target, content, 0600); err != nil {
+		return nil, fmt.Errorf("cannot unpack the skill")
+	}
+	return content, nil
+}
+
+// buildBundleFile decides how a file is presented: valid UTF-8 without NUL
+// bytes is inlined as text (truncated at maxInlineBytes), anything else is
+// reported as binary with metadata only.
+func buildBundleFile(path string, content []byte, declaredSize int64) domain.SkillBundleFile {
+	size := declaredSize
+	if size <= 0 {
+		size = int64(len(content))
+	}
+	file := domain.SkillBundleFile{Path: path, Size: size}
+
+	sniff := content
+	if len(sniff) > binarySniffSize {
+		sniff = sniff[:binarySniffSize]
+	}
+	if !utf8.Valid(sniff) || strings.IndexByte(string(sniff), 0) >= 0 {
+		file.Binary = true
+		return file
+	}
+
+	if len(content) > maxInlineBytes {
+		content = content[:maxInlineBytes]
+		file.Truncated = true
+		// Don't cut a multi-byte rune in half.
+		for len(content) > 0 && !utf8.Valid(content) {
+			content = content[:len(content)-1]
+		}
+	}
+	file.Text = string(content)
+	return file
+}
