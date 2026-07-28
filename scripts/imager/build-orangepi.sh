@@ -1042,6 +1042,33 @@ no-resolv
 EOF
 [ -f /etc/dnsmasq.conf ] && sed -i 's/^interface=wlan0/#&/' /etc/dnsmasq.conf || true
 
+# Keep the captive portal pointed at AP clients ONLY — never at ourselves.
+#
+# Debian's dnsmasq package registers itself with resolvconf as the system
+# nameserver on start, which rewrites /etc/resolv.conf to "nameserver 127.0.0.1".
+# Combined with the address=/#/ wildcard above, that means every hostname the
+# DEVICE looks up resolves to 192.168.100.1 — itself. The symptom is brutal to
+# read: `ping cdn.autonomous.ai` succeeds (it is pinging its own AP address) while
+# `curl https://cdn.autonomous.ai` fails to connect, because nginx only listens on
+# port 80. Everything that travels by name is dead: OTA / software-update, the LLM
+# API, the MQTT broker, agent onboarding, the backend ping.
+#
+# It stayed invisible for as long as AP mode had no uplink at all, and the WiFi
+# path never trips it because connect-wifi runs device-sta-mode — stopping
+# dnsmasq — before the rest of setup needs a name. A device provisioned over
+# ethernet keeps the AP (and dnsmasq) up while setup runs, so for it this is a
+# hard blocker.
+#
+# DNSMASQ_EXCEPT="lo" is Debian's documented switch for exactly this: dnsmasq
+# stops claiming loopback and stops registering as the system resolver, so the
+# device resolves through its real upstream (the DHCP-supplied DNS, or the
+# 1.1.1.1/8.8.8.8 fallback in resolvconf.conf). AP clients still get the full
+# captive-portal wildcard on wlan0 — unchanged.
+if [ -f /etc/default/dnsmasq ]; then
+  sed -i '/^[[:space:]]*#*[[:space:]]*DNSMASQ_EXCEPT=/d' /etc/default/dnsmasq
+fi
+echo 'DNSMASQ_EXCEPT="lo"' >> /etc/default/dnsmasq
+
 systemctl mask wpa_supplicant.service 2>/dev/null || true
 
 # Advertise _autonomous._tcp via mDNS so the Autonomous Buddy (macOS) auto-finds
