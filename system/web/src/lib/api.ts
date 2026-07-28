@@ -628,6 +628,14 @@ export async function listInstalledSkills(): Promise<InstalledSkill[]> {
   return apiRequest<InstalledSkill[]>(`${API_BASE}/api/agent/skills`);
 }
 
+/** GET /api/agent/skills/files — one installed skill's files with text inlined.
+ *  Same `SkillBundle` shape the store preview returns, so both detail views
+ *  render through the same component. 404 when the skill is gone (stale list). */
+export async function readSkillFiles(name: string): Promise<SkillBundle> {
+  return apiRequest<SkillBundle>(
+    `${API_BASE}/api/agent/skills/files?name=${encodeURIComponent(name)}`);
+}
+
 /** POST /api/agent/skills/install — device downloads the catalog's `.skill`
  *  archive and extracts it into the ACTIVE runtime's skills dir. Rejects with
  *  the backend's message when the runtime can't install skills (HTTP 501). */

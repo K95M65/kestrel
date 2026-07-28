@@ -42,3 +42,9 @@ func (s *ClaudeCodeService) InstallSkillArchive(archivePath, fallbackName string
 func (s *ClaudeCodeService) ListSkills() ([]domain.InstalledSkill, error) {
 	return skills.ListInstalled(claudecodeSkillsDir)
 }
+
+// ReadSkillFiles returns one installed skill's files with text inlined, for the
+// Manage-skills detail view.
+func (s *ClaudeCodeService) ReadSkillFiles(name string) ([]domain.SkillBundleFile, error) {
+	return skills.ReadSkillFiles(claudecodeSkillsDir, name)
+}

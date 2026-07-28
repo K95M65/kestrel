@@ -42,3 +42,9 @@ func (s *CodexService) InstallSkillArchive(archivePath, fallbackName string) (st
 func (s *CodexService) ListSkills() ([]domain.InstalledSkill, error) {
 	return skills.ListInstalled(codexSkillsDir)
 }
+
+// ReadSkillFiles returns one installed skill's files with text inlined, for the
+// Manage-skills detail view.
+func (s *CodexService) ReadSkillFiles(name string) ([]domain.SkillBundleFile, error) {
+	return skills.ReadSkillFiles(codexSkillsDir, name)
+}

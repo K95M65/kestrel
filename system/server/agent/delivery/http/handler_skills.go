@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 
@@ -49,11 +48,9 @@ const (
 // or broken archive from exhausting device memory/disk, not to constrain real
 // content.
 const (
-	maxBundleBytes  = 16 << 20 // downloaded archive
-	maxFileBytes    = 2 << 20  // one extracted file
-	maxInlineBytes  = 512 << 10
-	maxBundleFiles  = 500
-	binarySniffSize = 8000
+	maxBundleBytes = 16 << 20 // downloaded archive
+	maxFileBytes   = 2 << 20  // one extracted file
+	maxBundleFiles = 500
 )
 
 // storeEnvelope is the catalog's JSON wrapper. Business failures come back with
@@ -123,6 +120,39 @@ func (h *AgentHandler) ListSkills(c *gin.Context) {
 		list = []domain.InstalledSkill{}
 	}
 	c.JSON(http.StatusOK, serializers.ResponseSuccess(list))
+}
+
+// ReadSkillFiles handles GET /api/agent/skills/files?name=<skill>. Returns one
+// installed skill's files with text inlined — the Manage-skills detail view,
+// deliberately the same `domain.SkillBundle` shape the store preview returns so
+// both render through one component.
+func (h *AgentHandler) ReadSkillFiles(c *gin.Context) {
+	name := strings.TrimSpace(c.Query("name"))
+	if name == "" {
+		c.JSON(http.StatusBadRequest, serializers.ResponseError("name is required"))
+		return
+	}
+
+	files, err := h.agentGateway.ReadSkillFiles(name)
+	switch {
+	case errors.Is(err, domain.ErrNotSupportedByRuntime):
+		c.JSON(http.StatusNotImplemented, serializers.ResponseError(
+			"the active agent runtime ("+h.agentGateway.Name()+") cannot read skills yet"))
+		return
+	case errors.Is(err, skills.ErrInvalidSkillName):
+		c.JSON(http.StatusBadRequest, serializers.ResponseError(err.Error()))
+		return
+	case err != nil:
+		// A missing skill is the common case here (stale listing), so this is a
+		// 404 rather than a 500.
+		c.JSON(http.StatusNotFound, serializers.ResponseError(err.Error()))
+		return
+	}
+
+	if files == nil {
+		files = []domain.SkillBundleFile{}
+	}
+	c.JSON(http.StatusOK, serializers.ResponseSuccess(domain.SkillBundle{ID: name, Files: files}))
 }
 
 // SaveSkill handles POST /api/agent/skills. Writes a user-authored skill (the
@@ -384,7 +414,7 @@ func extractSkillBundle(zipPath, destDir string) (domain.SkillBundle, error) {
 		if err != nil {
 			return bundle, err
 		}
-		bundle.Files = append(bundle.Files, buildBundleFile(name, content, int64(f.UncompressedSize64)))
+		bundle.Files = append(bundle.Files, skills.BuildFilePreview(name, content, int64(f.UncompressedSize64)))
 	}
 
 	if len(bundle.Files) == 0 {
@@ -410,35 +440,4 @@ func readZipEntry(f *zip.File, target string) ([]byte, error) {
 		return nil, fmt.Errorf("cannot unpack the skill")
 	}
 	return content, nil
-}
-
-// buildBundleFile decides how a file is presented: valid UTF-8 without NUL
-// bytes is inlined as text (truncated at maxInlineBytes), anything else is
-// reported as binary with metadata only.
-func buildBundleFile(path string, content []byte, declaredSize int64) domain.SkillBundleFile {
-	size := declaredSize
-	if size <= 0 {
-		size = int64(len(content))
-	}
-	file := domain.SkillBundleFile{Path: path, Size: size}
-
-	sniff := content
-	if len(sniff) > binarySniffSize {
-		sniff = sniff[:binarySniffSize]
-	}
-	if !utf8.Valid(sniff) || strings.IndexByte(string(sniff), 0) >= 0 {
-		file.Binary = true
-		return file
-	}
-
-	if len(content) > maxInlineBytes {
-		content = content[:maxInlineBytes]
-		file.Truncated = true
-		// Don't cut a multi-byte rune in half.
-		for len(content) > 0 && !utf8.Valid(content) {
-			content = content[:len(content)-1]
-		}
-	}
-	file.Text = string(content)
-	return file
 }

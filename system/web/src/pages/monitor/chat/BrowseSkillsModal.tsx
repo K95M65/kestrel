@@ -3,8 +3,9 @@ import {
   Store, Search, Loader2, RefreshCw, AlertCircle, FileText, ChevronRight, Download, Check,
 } from "lucide-react";
 import { browseStoreSkills, fetchSkillBundle, installStoreSkill } from "@/lib/api";
-import type { StoreSkill, SkillBundle, SkillBundleFile } from "@/lib/api";
+import type { StoreSkill, SkillBundle } from "@/lib/api";
 import { ModalShell } from "./ModalShell";
+import { SkillFilesView } from "./SkillFilesView";
 import { inputStyle, btnStyle } from "./styles";
 
 // "Browse skills" — the Autonomous Agent Skills catalog, two views in one modal:
@@ -176,7 +177,6 @@ function SkillDetail({
   const [bundle, setBundle] = useState<SkillBundle | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [active, setActive] = useState<string | null>(null);
   // Install state — separate from the preview fetch above so a failed install
   // doesn't wipe the file browser the user is reading.
   const [installing, setInstalling] = useState(false);
@@ -202,16 +202,11 @@ function SkillDetail({
       .then((b) => {
         if (!alive) return;
         setBundle(b);
-        // Open SKILL.md by default — it's the entry point of every skill.
-        const entry = b.files.find((f) => f.path.toLowerCase().endsWith("skill.md")) ?? b.files[0];
-        setActive(entry?.path ?? null);
       })
       .catch((e) => { if (alive) setError(e instanceof Error ? e.message : "Failed to download the skill"); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, [skill.id]);
-
-  const activeFile = bundle?.files.find((f) => f.path === active) ?? null;
 
   return (
     <ModalShell
@@ -268,110 +263,9 @@ function SkillDetail({
           <AlertCircle size={16} /> {error}
         </div>
       ) : (
-        <div style={{ flex: 1, display: "flex", minHeight: 0, minWidth: 0 }}>
-          {/* Left: files in the archive */}
-          <div style={{
-            width: 250, flexShrink: 0, overflowY: "auto",
-            borderRight: "1px solid var(--lm-border)", background: "var(--lm-bg)",
-            padding: 8,
-          }}>
-            {(bundle?.files ?? []).map((f) => (
-              <FileRow key={f.path} file={f} active={f.path === active} onClick={() => setActive(f.path)} />
-            ))}
-            {(bundle?.skipped ?? 0) > 0 && (
-              <div style={{ fontSize: 10, color: "var(--lm-text-muted)", padding: "6px 8px" }}>
-                +{bundle?.skipped} more file(s) not shown
-              </div>
-            )}
-          </div>
-
-          {/* Right: the selected file's content */}
-          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-            {activeFile ? (
-              <>
-                <div style={{
-                  display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
-                  padding: "8px 14px", borderBottom: "1px solid var(--lm-border)", flexShrink: 0,
-                }}>
-                  <span style={{
-                    fontSize: 11, color: "var(--lm-text-dim)", fontFamily: "monospace",
-                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                  }}>{activeFile.path}</span>
-                  <span style={{ fontSize: 10, color: "var(--lm-text-muted)", flexShrink: 0 }}>
-                    {formatBytes(activeFile.size)}
-                  </span>
-                </div>
-                <div style={{ flex: 1, minHeight: 0, overflow: "auto", padding: 14 }}>
-                  {activeFile.binary ? (
-                    <div style={{ fontSize: 12, color: "var(--lm-text-muted)" }}>
-                      Binary file — no preview.
-                    </div>
-                  ) : (
-                    <pre style={{
-                      margin: 0, fontSize: 11.5, lineHeight: 1.6,
-                      fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-                      color: "var(--lm-text)", whiteSpace: "pre-wrap", wordBreak: "break-word",
-                    }}>{activeFile.text}</pre>
-                  )}
-                  {activeFile.truncated && (
-                    <div style={{ fontSize: 10.5, color: "var(--lm-text-muted)", marginTop: 10 }}>
-                      … truncated — this preview shows the first 512 KB.
-                    </div>
-                  )}
-                </div>
-              </>
-            ) : (
-              <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12.5, color: "var(--lm-text-muted)" }}>
-                Select a file
-              </div>
-            )}
-          </div>
-        </div>
+        <SkillFilesView files={bundle?.files ?? []} skipped={bundle?.skipped} />
       )}
     </ModalShell>
-  );
-}
-
-function FileRow({
-  file, active, onClick,
-}: {
-  file: SkillBundleFile;
-  active: boolean;
-  onClick: () => void;
-}) {
-  // Show the basename prominently with the containing dir dimmed above it —
-  // archives nest everything under a <skill-name>/ root, so the full path on one
-  // line is mostly noise.
-  const slash = file.path.lastIndexOf("/");
-  const dir = slash >= 0 ? file.path.slice(0, slash + 1) : "";
-  const base = slash >= 0 ? file.path.slice(slash + 1) : file.path;
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={file.path}
-      style={{
-        display: "flex", alignItems: "center", gap: 7, width: "100%", textAlign: "left",
-        padding: "6px 8px", borderRadius: 7, border: "none", cursor: "pointer",
-        background: active ? "color-mix(in srgb, var(--lm-amber) 12%, transparent)" : "transparent",
-        color: active ? "var(--lm-text)" : "var(--lm-text-dim)",
-        transition: "background 0.12s",
-      }}
-      onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = "color-mix(in srgb, var(--lm-text) 6%, transparent)"; }}
-      onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "transparent"; }}
-    >
-      <FileText size={13} style={{ color: active ? "var(--lm-amber)" : "var(--lm-text-muted)", flexShrink: 0 }} />
-      <span style={{ minWidth: 0, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 11 }}>
-        {dir && (
-          <span style={{
-            display: "block", fontSize: 9.5, color: "var(--lm-text-muted)",
-            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-          }}>{dir}</span>
-        )}
-        <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{base}</span>
-      </span>
-    </button>
   );
 }
 
@@ -397,10 +291,4 @@ function Centered({ children, tone }: { children: React.ReactNode; tone?: "error
       fontSize: 12.5, color: tone === "error" ? "var(--lm-red)" : "var(--lm-text-muted)",
     }}>{children}</div>
   );
-}
-
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }

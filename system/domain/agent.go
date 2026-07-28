@@ -189,6 +189,12 @@ type AgentGateway interface {
 	// that has one but hasn't been provisioned yet returns an empty list.
 	ListSkills() ([]InstalledSkill, error)
 
+	// ReadSkillFiles returns one installed skill's files as a flat list with
+	// UTF-8 contents inlined — the Manage-skills detail view, which renders the
+	// same two-pane browser as the store preview. Same per-backend split as
+	// ListSkills (skills.ReadSkillFiles does the walk).
+	ReadSkillFiles(name string) ([]SkillBundleFile, error)
+
 	// FetchChatHistory sends a chat.history RPC and returns the raw messages array.
 	// Best-effort: returns nil on error or timeout without failing the caller.
 	FetchChatHistory(sessionKey string, limit int) (json.RawMessage, error)

@@ -375,7 +375,7 @@ Interactive chat interface for communicating with the agent. Layout: sidebar (co
 |------|------|-------------|
 | **Write skill** | `chat/WriteSkillModal.tsx` | Three-field form — Skill name / Description / Instructions — matching a `SKILL.md` (name + description → front-matter, instructions → body). Saves via `POST /api/agent/skills`; on success the modal shows the path it wrote. See "Writing + installing skills" below. |
 | **Browse skills** | `chat/BrowseSkillsModal.tsx` | Live against the Autonomous Agent Skills catalog — see "Skill catalog" below. |
-| **Manage skills** | `chat/ManageSkillsModal.tsx` | Skills present in the active agentic runtime's skills dir, read from `GET /api/agent/skills` and rendered as `/music`, `/voice`, … Clicking one expands its file tree (`music/SKILL.md`, `music/reference/…`). Everything the runtime has appears regardless of origin — authored, store-installed, role-bundled and OTA-pushed skills share one tree. Reload button; an empty list reads "no skills installed yet", distinct from the 501 a runtime that can't list returns. |
+| **Manage skills** | `chat/ManageSkillsModal.tsx` | Skills present in the active agentic runtime's skills dir (`GET /api/agent/skills`), in the **same two-view layout as Browse skills**: a two-per-row card grid (`/music`, `/voice`, … with description + file count), then a detail view rendering the same two-pane file browser. Everything the runtime has appears regardless of origin — authored, store-installed, role-bundled and OTA-pushed skills share one tree. Reload button; an empty list reads "no skills installed yet", distinct from the 501 a runtime that can't list returns. |
 
 **Skill catalog (Browse skills)**
 
@@ -399,10 +399,13 @@ All three paths go through the agent abstraction — the device layer never hard
 | Device endpoint | Gateway method | Behaviour |
 |-----------------|----------------|-----------|
 | `GET /api/agent/skills` | `ListSkills() ([]InstalledSkill, error)` | Walks the runtime's skills dir: one entry per skill directory with its file tree, sorted by name, dirs before files. Description is read from the SKILL.md front-matter. A **missing** skills dir (un-provisioned runtime) is an empty list, not an error. |
+| `GET /api/agent/skills/files?name=<skill>` | `ReadSkillFiles(name) ([]SkillBundleFile, error)` | One installed skill's files, flat, with UTF-8 text inlined. Returns the **same `domain.SkillBundle` envelope** as the store preview so both detail views render through one component. A skill that's gone (stale listing) is a 404. |
 | `POST /api/agent/skills` | `SaveSkill(domain.SkillDraft) (path, error)` | Writes an authored `<name>/SKILL.md`. **Refuses to overwrite** an existing skill (`skills.ErrSkillExists` → 400) so a store- or OTA-installed skill can't be destroyed by an authoring mistake. |
 | `POST /api/agent/skills/install` | `InstallSkillArchive(archivePath, fallbackName) (dir, error)` | Device downloads the catalog `.skill` archive to a temp dir, then the runtime extracts it into its skills dir. **Deliberately replaces** an existing skill of that name — installing is an explicit user action. |
 
-The shared work lives in `system/skills`: `list.go` walks a skills dir, `authored.go` renders + writes the SKILL.md, `install.go` extracts an archive. Only the **target directory** differs per backend, the same reason the per-runtime skill watchers are near-copies — so each backend's `save_skill.go` is three one-liners over its own path:
+Both detail views — store preview and installed skill — are the same component, `chat/SkillFilesView.tsx`: files on the left (containing dir dimmed above the basename), the selected file's content on the right, `SKILL.md` open by default, binary entries shown as "no preview". The backend makes that possible by returning one shape for both sources; `skills.BuildFilePreview` is the single place that decides text-vs-binary and truncation, whether the bytes came from a zip entry or off disk.
+
+The shared work lives in `system/skills`: `list.go` walks a skills dir, `read.go` reads one skill's files, `authored.go` renders + writes the SKILL.md, `install.go` extracts an archive. Only the **target directory** differs per backend, the same reason the per-runtime skill watchers are near-copies — so each backend's `save_skill.go` is three one-liners over its own path:
 
 | Runtime | Skills directory |
 |---------|------------------|

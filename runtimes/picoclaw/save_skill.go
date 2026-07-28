@@ -46,3 +46,9 @@ func (s *PicoclawService) ListSkills() ([]domain.InstalledSkill, error) {
 func picoclawSkillsDir() string {
 	return filepath.Join(picoclawWorkspaceDir, "skills")
 }
+
+// ReadSkillFiles returns one installed skill's files with text inlined, for the
+// Manage-skills detail view.
+func (s *PicoclawService) ReadSkillFiles(name string) ([]domain.SkillBundleFile, error) {
+	return skills.ReadSkillFiles(picoclawSkillsDir(), name)
+}

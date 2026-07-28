@@ -42,3 +42,9 @@ func (s *OpenCodeService) InstallSkillArchive(archivePath, fallbackName string) 
 func (s *OpenCodeService) ListSkills() ([]domain.InstalledSkill, error) {
 	return skills.ListInstalled(opencodeSkillsDir)
 }
+
+// ReadSkillFiles returns one installed skill's files with text inlined, for the
+// Manage-skills detail view.
+func (s *OpenCodeService) ReadSkillFiles(name string) ([]domain.SkillBundleFile, error) {
+	return skills.ReadSkillFiles(opencodeSkillsDir, name)
+}

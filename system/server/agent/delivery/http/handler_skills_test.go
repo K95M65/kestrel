@@ -3,6 +3,7 @@ package http
 import (
 	"archive/zip"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -278,6 +279,9 @@ type fakeGateway struct {
 	gotFallback string
 	list        []domain.InstalledSkill
 	listErr     error
+	readFiles   []domain.SkillBundleFile
+	readErr     error
+	gotReadName string
 }
 
 func (f *fakeGateway) Name() string { return f.name }
@@ -480,5 +484,78 @@ func TestListSkillsEmptyIsArray(t *testing.T) {
 
 	if !strings.Contains(rec.Body.String(), `"data":[]`) {
 		t.Errorf("empty list must serialize as []: %s", rec.Body.String())
+	}
+}
+
+func (f *fakeGateway) ReadSkillFiles(name string) ([]domain.SkillBundleFile, error) {
+	f.gotReadName = name
+	return f.readFiles, f.readErr
+}
+
+func getReq(t *testing.T, path string) (*httptest.ResponseRecorder, *gin.Context) {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, path, nil)
+	return rec, c
+}
+
+func TestReadSkillFilesHandler(t *testing.T) {
+	gw := &fakeGateway{name: "OpenClaw", readFiles: []domain.SkillBundleFile{
+		{Path: "music/SKILL.md", Size: 12, Text: "# Music"},
+	}}
+	rec, c := getReq(t, "/api/agent/skills/files?name=music")
+
+	(&AgentHandler{agentGateway: gw}).ReadSkillFiles(c)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if gw.gotReadName != "music" {
+		t.Errorf("name = %q", gw.gotReadName)
+	}
+	// Same SkillBundle envelope the store preview returns, so one component
+	// renders both detail views.
+	if !strings.Contains(rec.Body.String(), `"id":"music"`) ||
+		!strings.Contains(rec.Body.String(), `"music/SKILL.md"`) {
+		t.Errorf("unexpected body: %s", rec.Body.String())
+	}
+}
+
+func TestReadSkillFilesHandlerRequiresName(t *testing.T) {
+	gw := &fakeGateway{name: "OpenClaw"}
+	rec, c := getReq(t, "/api/agent/skills/files")
+
+	(&AgentHandler{agentGateway: gw}).ReadSkillFiles(c)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d", rec.Code)
+	}
+	if gw.gotReadName != "" {
+		t.Error("gateway must not be called without a name")
+	}
+}
+
+// A stale listing pointing at a deleted skill is a 404, not a 500.
+func TestReadSkillFilesHandlerMissingIs404(t *testing.T) {
+	gw := &fakeGateway{name: "OpenClaw", readErr: errors.New("skill \"gone\" not found")}
+	rec, c := getReq(t, "/api/agent/skills/files?name=gone")
+
+	(&AgentHandler{agentGateway: gw}).ReadSkillFiles(c)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("want 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestReadSkillFilesHandlerInvalidNameIs400(t *testing.T) {
+	gw := &fakeGateway{name: "OpenClaw", readErr: skills.ErrInvalidSkillName}
+	rec, c := getReq(t, "/api/agent/skills/files?name=../etc")
+
+	(&AgentHandler{agentGateway: gw}).ReadSkillFiles(c)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d: %s", rec.Code, rec.Body.String())
 	}
 }

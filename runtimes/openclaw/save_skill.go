@@ -50,3 +50,9 @@ func (s *OpenclawService) ListSkills() ([]domain.InstalledSkill, error) {
 func (s *OpenclawService) skillsDir() string {
 	return filepath.Join(s.config.OpenclawConfigDir, "workspace", "skills")
 }
+
+// ReadSkillFiles returns one installed skill's files with text inlined, for the
+// Manage-skills detail view.
+func (s *OpenclawService) ReadSkillFiles(name string) ([]domain.SkillBundleFile, error) {
+	return skills.ReadSkillFiles(s.skillsDir(), name)
+}

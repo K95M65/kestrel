@@ -65,3 +65,10 @@ func (s *HermesService) InstallSkillArchive(archivePath, fallbackName string) (s
 func (s *HermesService) ListSkills() ([]domain.InstalledSkill, error) {
 	return skills.ListInstalledFrom(hermesAuthoredSkillsDir, hermesImportedSkillsDir)
 }
+
+// ReadSkillFiles searches the device-owned root first, then the migrate-owned
+// one — same precedence as ListSkills, so the detail view opens the same skill
+// the listing showed.
+func (s *HermesService) ReadSkillFiles(name string) ([]domain.SkillBundleFile, error) {
+	return skills.ReadSkillFilesFrom(name, hermesAuthoredSkillsDir, hermesImportedSkillsDir)
+}

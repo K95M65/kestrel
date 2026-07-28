@@ -370,7 +370,7 @@ Giao diện chat tương tác với agent. Layout: sidebar (danh sách hội tho
 |-----|------|---------------------|
 | **Write skill** | `chat/WriteSkillModal.tsx` | Form 3 field — Skill name / Description / Instructions — đúng cấu trúc một `SKILL.md` (name + description → front-matter, instructions → body). Lưu qua `POST /api/agent/skills`; thành công thì modal hiện đường dẫn đã ghi. Xem "Viết + cài skill" bên dưới. |
 | **Browse skills** | `chat/BrowseSkillsModal.tsx` | Chạy thật với catalog Autonomous Agent Skills — xem "Catalog skill" bên dưới. |
-| **Manage skills** | `chat/ManageSkillsModal.tsx` | Skills đang có trong thư mục skill của runtime đang chạy, đọc từ `GET /api/agent/skills`, hiển thị dạng `/music`, `/voice`, … Click một cái thì bung cây file (`music/SKILL.md`, `music/reference/…`). Mọi skill runtime đang có đều hiện, bất kể từ đâu ra — soạn tay, cài từ store, role bundle, OTA push đều chung một cây. Có nút reload; list rỗng ghi "chưa cài skill nào", khác với 501 khi runtime không list được. |
+| **Manage skills** | `chat/ManageSkillsModal.tsx` | Skills đang có trong thư mục skill của runtime đang chạy (`GET /api/agent/skills`), **bố cục 2 view giống hệt Browse skills**: lưới card 2 cột (`/music`, `/voice`, … kèm description + số file), click vào mở view detail dùng đúng trình duyệt file 2 pane đó. Mọi skill runtime đang có đều hiện, bất kể từ đâu ra — soạn tay, cài từ store, role bundle, OTA push đều chung một cây. Có nút reload; list rỗng ghi "chưa cài skill nào", khác với 501 khi runtime không list được. |
 
 **Catalog skill (Browse skills)**
 
@@ -394,10 +394,13 @@ Cả ba đường đều đi qua abstraction của agent — tầng device khôn
 | Endpoint device | Method gateway | Hành vi |
 |-----------------|----------------|---------|
 | `GET /api/agent/skills` | `ListSkills() ([]InstalledSkill, error)` | Duyệt thư mục skill của runtime: mỗi thư mục skill là một entry kèm cây file, sort theo tên, thư mục trước file. Description đọc từ front-matter của SKILL.md. Thư mục skill **không tồn tại** (runtime chưa provision) trả list rỗng, không phải lỗi. |
+| `GET /api/agent/skills/files?name=<skill>` | `ReadSkillFiles(name) ([]SkillBundleFile, error)` | File của một skill đã cài, dạng phẳng, nội dung UTF-8 inline. Trả **cùng envelope `domain.SkillBundle`** với preview từ store để hai view detail render bằng chung một component. Skill không còn (list cũ) trả 404. |
 | `POST /api/agent/skills` | `SaveSkill(domain.SkillDraft) (path, error)` | Ghi `<name>/SKILL.md` do người dùng soạn. **Từ chối ghi đè** skill đã tồn tại (`skills.ErrSkillExists` → 400) để một lỗi soạn thảo không phá skill cài từ store/OTA. |
 | `POST /api/agent/skills/install` | `InstallSkillArchive(archivePath, fallbackName) (dir, error)` | Device tải file `.skill` từ catalog về temp, rồi runtime giải nén vào thư mục skill của nó. **Cố ý thay thế** skill trùng tên — cài là hành động chủ động của người dùng. |
 
-Phần dùng chung nằm ở `system/skills`: `list.go` duyệt thư mục skill, `authored.go` render + ghi SKILL.md, `install.go` giải nén archive. Chỉ **thư mục đích** là khác nhau giữa các backend, đúng lý do khiến skill watcher của từng runtime gần như là bản sao của nhau — nên `save_skill.go` của mỗi backend chỉ là 3 hàm một dòng trỏ vào path của nó:
+Cả hai view detail — preview từ store và skill đã cài — đều là cùng một component, `chat/SkillFilesView.tsx`: danh sách file bên trái (thư mục cha hiện mờ phía trên basename), nội dung file đang chọn bên phải, mặc định mở `SKILL.md`, file nhị phân báo "no preview". Backend làm được vậy vì trả cùng một shape cho cả hai nguồn; `skills.BuildFilePreview` là nơi duy nhất quyết định text-hay-binary và cắt bớt, bất kể byte đến từ entry zip hay từ đĩa.
+
+Phần dùng chung nằm ở `system/skills`: `list.go` duyệt thư mục skill, `read.go` đọc file của một skill, `authored.go` render + ghi SKILL.md, `install.go` giải nén archive. Chỉ **thư mục đích** là khác nhau giữa các backend, đúng lý do khiến skill watcher của từng runtime gần như là bản sao của nhau — nên `save_skill.go` của mỗi backend chỉ là 3 hàm một dòng trỏ vào path của nó:
 
 | Runtime | Thư mục skill |
 |---------|---------------|
