@@ -72,6 +72,37 @@ func ListInstalled(skillsDir string) ([]domain.InstalledSkill, error) {
 	return out, nil
 }
 
+// ListInstalledFrom merges the listings of several skill roots, for runtimes
+// that namespace their skills dir instead of keeping one flat tree (Hermes:
+// skills/openclaw-imports + skills/authored). Roots are scanned in the order
+// given and the FIRST occurrence of a name wins — pass the device-owned root
+// first so a skill the user created isn't masked by an imported one of the same
+// name. A root that doesn't exist contributes nothing.
+func ListInstalledFrom(dirs ...string) ([]domain.InstalledSkill, error) {
+	seen := make(map[string]bool)
+	var out []domain.InstalledSkill
+
+	for _, dir := range dirs {
+		list, err := ListInstalled(dir)
+		if err != nil {
+			return nil, err
+		}
+		for _, s := range list {
+			if seen[s.Name] {
+				continue
+			}
+			seen[s.Name] = true
+			out = append(out, s)
+		}
+	}
+
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	if out == nil {
+		out = []domain.InstalledSkill{}
+	}
+	return out, nil
+}
+
 // walkSkillTree builds the node list for dir. relBase is the path prefix used
 // for each node's Path (relative to the skills root, so "music/SKILL.md").
 // Directories sort before files, each group alphabetically — the order a file

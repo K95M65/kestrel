@@ -423,6 +423,7 @@ func (s *Server) Serve(closeFn func()) error {
 	agent.GET("skills/bundle", adminAuthMiddleware(s.config), s.agentHandler.SkillBundle)
 	// Authoring: writes into the ACTIVE runtime's skills dir via the gateway;
 	// backends that haven't implemented it answer 501 and store nothing.
+	agent.GET("skills", adminAuthMiddleware(s.config), s.agentHandler.ListSkills)
 	agent.POST("skills", adminAuthMiddleware(s.config), s.agentHandler.SaveSkill)
 	agent.POST("skills/install", adminAuthMiddleware(s.config), s.agentHandler.InstallSkill)
 

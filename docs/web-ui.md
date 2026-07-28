@@ -375,7 +375,7 @@ Interactive chat interface for communicating with the agent. Layout: sidebar (co
 |------|------|-------------|
 | **Write skill** | `chat/WriteSkillModal.tsx` | Three-field form — Skill name / Description / Instructions — matching a `SKILL.md` (name + description → front-matter, instructions → body). Saves via `POST /api/agent/skills`; on success the modal shows the path it wrote. See "Writing + installing skills" below. |
 | **Browse skills** | `chat/BrowseSkillsModal.tsx` | Live against the Autonomous Agent Skills catalog — see "Skill catalog" below. |
-| **Manage skills** | `chat/ManageSkillsModal.tsx` | Skills installed in the active agentic runtime, rendered as `/music`, `/voice`, … Clicking one expands its file tree (`music/SKILL.md`, `music/reference/…`). **UI only**: `loadInstalledSkills()` returns sample data — swap its body for the real fetch when the endpoint exists; nothing else in the file changes. |
+| **Manage skills** | `chat/ManageSkillsModal.tsx` | Skills present in the active agentic runtime's skills dir, read from `GET /api/agent/skills` and rendered as `/music`, `/voice`, … Clicking one expands its file tree (`music/SKILL.md`, `music/reference/…`). Everything the runtime has appears regardless of origin — authored, store-installed, role-bundled and OTA-pushed skills share one tree. Reload button; an empty list reads "no skills installed yet", distinct from the 501 a runtime that can't list returns. |
 
 **Skill catalog (Browse skills)**
 
@@ -392,18 +392,32 @@ Extraction is hardened: zip-slip guarded (any `..` or absolute entry fails the w
 
 UI: the modal is two views. The **list** searches server-side (300 ms debounce on the `keyword` param, 50 per page) and lays results out as a responsive grid — two cards per row, collapsing to one below ~250 px per column — each showing name / version / plan chip / description / author / compatibility. Clicking a card opens the **detail** view — a wider shell with the archive's files on the left and the selected file's content on the right, `SKILL.md` selected by default, and an **Install** button in the footer. The header's back arrow (and Escape) returns to the list instead of closing the modal.
 
-**Writing + installing skills (per-runtime, via the AgentGateway)**
+**Reading, writing + installing skills (per-runtime, via the AgentGateway)**
 
-Both write paths go through the agent abstraction — the device layer never hardcodes a skills directory, because each agentic runtime keeps its own:
+All three paths go through the agent abstraction — the device layer never hardcodes a skills directory, because each agentic runtime keeps its own:
 
 | Device endpoint | Gateway method | Behaviour |
 |-----------------|----------------|-----------|
+| `GET /api/agent/skills` | `ListSkills() ([]InstalledSkill, error)` | Walks the runtime's skills dir: one entry per skill directory with its file tree, sorted by name, dirs before files. Description is read from the SKILL.md front-matter. A **missing** skills dir (un-provisioned runtime) is an empty list, not an error. |
 | `POST /api/agent/skills` | `SaveSkill(domain.SkillDraft) (path, error)` | Writes an authored `<name>/SKILL.md`. **Refuses to overwrite** an existing skill (`skills.ErrSkillExists` → 400) so a store- or OTA-installed skill can't be destroyed by an authoring mistake. |
 | `POST /api/agent/skills/install` | `InstallSkillArchive(archivePath, fallbackName) (dir, error)` | Device downloads the catalog `.skill` archive to a temp dir, then the runtime extracts it into its skills dir. **Deliberately replaces** an existing skill of that name — installing is an explicit user action. |
 
-The shared work lives in `system/skills` (`authored.go` renders + writes the SKILL.md, `install.go` extracts an archive); only the **target directory** differs per backend, the same reason the per-runtime skill watchers are near-copies. `runtimes/openclaw/save_skill.go` is the reference implementation — both methods are three lines over `s.skillsDir()`.
+The shared work lives in `system/skills`: `list.go` walks a skills dir, `authored.go` renders + writes the SKILL.md, `install.go` extracts an archive. Only the **target directory** differs per backend, the same reason the per-runtime skill watchers are near-copies — so each backend's `save_skill.go` is three one-liners over its own path:
 
-Every other runtime (hermes, picoclaw, codex, claudecode, opencode) returns `ErrNotSupportedByRuntime` from both, which the handlers surface as **HTTP 501** naming the active runtime. Nothing is stored, and the UI says so rather than reporting a phantom success. Each stub carries a TODO naming that backend's existing skills dir — wiring one up is a single `skills.WriteAuthoredSkill` / `skills.InstallSkillArchive` call.
+| Runtime | Skills directory |
+|---------|------------------|
+| openclaw | `{OpenclawConfigDir}/workspace/skills` — shared with `InstallRoleSkills` / `EnsureMCPSkill` |
+| picoclaw | `{picoclawWorkspaceDir}/skills` |
+| codex | `codexSkillsDir` (`~/.codex/skills`) |
+| claudecode | `claudecodeSkillsDir` (`~/.claude/skills`) |
+| opencode | `opencodeSkillsDir` (`$XDG_CONFIG_HOME/opencode/skills`) |
+| hermes | **writes** → `~/.hermes/skills/authored`; **lists** → that plus `~/.hermes/skills/openclaw-imports` |
+
+Hermes is the only backend that namespaces its skills dir, so it is the only one that needs more than one path. Device writes deliberately stay **out of `openclaw-imports`**: `presync.sh` §0 restores the imported platform skills by running `claw migrate` *only when that dir is empty*, so an authored skill dropped in there would make the guard permanently see a populated dir and a factory reset would silently never restore them. `ListSkills` merges both roots via `skills.ListInstalledFrom`, device-owned root first so a user's skill isn't masked by an import of the same name. Hermes discovers skills anywhere under `~/.hermes/skills`, so the new root needs no config change.
+
+The listing skips `<name>.new` / `<name>.old` (InstallSkillArchive staging + backup) and dot-directories: implementation detail, not skills. The tree walk is bounded at depth 6 and 200 entries per directory so a pathological tree can't produce an unbounded response, and one unreadable skill degrades to an empty tree instead of blanking the whole list.
+
+`ErrNotSupportedByRuntime` → **HTTP 501** naming the active runtime remains the contract for a backend that can't do one of these, and the UI renders it inline — but as of now every shipped runtime implements all three, so 501 is only reachable by a future backend.
 
 Archive handling in `skills.InstallSkillArchive`: a single common top-level directory in the archive names the skill and is stripped (the catalog's `.skill` bundles are shaped `<name>/SKILL.md`); files at the archive root instead use the caller's fallback name (OTA-style zips). The extract is staged in `<skill>.new` and swapped in only on full success, with the previous version moved to `<skill>.old` and restored if the swap fails — a corrupt download can never leave a half-installed skill or destroy a working one. Zip-slip guarded, `.DS_Store` / `__MACOSX/` filtered, capped at 500 files and 4 MB per entry (enforced with a `LimitReader`, so a lying `UncompressedSize64` can't fill the disk).
 

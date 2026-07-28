@@ -130,33 +130,3 @@ func (s *PicoclawService) NewSession(sessionKey string) error {
 
 // WriteMCPEntry + RemoveMCPEntry live in mcp.go — PicoClaw writes tools.mcp.servers
 // in config.json (nested, gated by tools.mcp.enabled), so they do real work.
-
-// SaveSkill — TODO: not implemented for this backend, so nothing is stored.
-// The wiring is small when someone wants it: this runtime already keeps a
-// skills dir at {picoclawWorkspaceDir}/skills (see skill_watcher.go), so an implementation is
-// `skills.WriteAuthoredSkill(<that dir>, draft.Name, draft.Description,
-// draft.Instructions)` — the same one-liner openclaw's save_skill.go uses.
-// Until then ErrNotSupportedByRuntime tells the caller the skill was NOT
-// written, rather than silently dropping it.
-func (s *PicoclawService) SaveSkill(_ domain.SkillDraft) (string, error) {
-	return "", domain.ErrNotSupportedByRuntime
-}
-
-// InstallSkillArchive — TODO: not implemented for this backend, so nothing is
-// installed. Same shape as SaveSkill above: this runtime keeps a skills dir at
-// {picoclawWorkspaceDir}/skills (skill_watcher.go), so an implementation is
-// `skills.InstallSkillArchive(archivePath, <that dir>, fallbackName)` — see
-// openclaw's save_skill.go.
-func (s *PicoclawService) InstallSkillArchive(_, _ string) (string, error) {
-	return "", domain.ErrNotSupportedByRuntime
-}
-
-// ListSkills — TODO: not implemented for this backend. Completes the trio with
-// SaveSkill / InstallSkillArchive above: this runtime keeps a skills dir at
-// {picoclawWorkspaceDir}/skills (skill_watcher.go), so an implementation is
-// `skills.ListInstalled(<that dir>)`. Until then the Manage-skills UI reports
-// that this runtime can't list skills rather than showing a misleading empty
-// tree.
-func (s *PicoclawService) ListSkills() ([]domain.InstalledSkill, error) {
-	return nil, domain.ErrNotSupportedByRuntime
-}

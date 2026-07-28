@@ -370,7 +370,7 @@ Giao diện chat tương tác với agent. Layout: sidebar (danh sách hội tho
 |-----|------|---------------------|
 | **Write skill** | `chat/WriteSkillModal.tsx` | Form 3 field — Skill name / Description / Instructions — đúng cấu trúc một `SKILL.md` (name + description → front-matter, instructions → body). Lưu qua `POST /api/agent/skills`; thành công thì modal hiện đường dẫn đã ghi. Xem "Viết + cài skill" bên dưới. |
 | **Browse skills** | `chat/BrowseSkillsModal.tsx` | Chạy thật với catalog Autonomous Agent Skills — xem "Catalog skill" bên dưới. |
-| **Manage skills** | `chat/ManageSkillsModal.tsx` | Skills đang cài trên agentic runtime, hiển thị dạng `/music`, `/voice`, … Click một cái thì bung cây file (`music/SKILL.md`, `music/reference/…`). **Chỉ UI**: `loadInstalledSkills()` trả sample data — khi có endpoint thì thay ruột hàm đó, phần còn lại của file không đổi. |
+| **Manage skills** | `chat/ManageSkillsModal.tsx` | Skills đang có trong thư mục skill của runtime đang chạy, đọc từ `GET /api/agent/skills`, hiển thị dạng `/music`, `/voice`, … Click một cái thì bung cây file (`music/SKILL.md`, `music/reference/…`). Mọi skill runtime đang có đều hiện, bất kể từ đâu ra — soạn tay, cài từ store, role bundle, OTA push đều chung một cây. Có nút reload; list rỗng ghi "chưa cài skill nào", khác với 501 khi runtime không list được. |
 
 **Catalog skill (Browse skills)**
 
@@ -387,18 +387,32 @@ Phần giải nén được siết: chặn zip-slip (bất kỳ entry `..` hoặ
 
 UI: modal có 2 view. View **list** search phía server (debounce 300 ms trên param `keyword`, 50 item/trang), xếp kết quả thành lưới co giãn — 2 card mỗi hàng, tự rớt về 1 khi cột hẹp dưới ~250 px — mỗi card hiện name / version / chip plan / description / author / compatibility. Click một card mở view **detail** — shell rộng hơn, bên trái là danh sách file trong archive, bên phải là nội dung file đang chọn, mặc định chọn `SKILL.md`, và nút **Install** ở footer. Nút back ở header (và Escape) quay lại list chứ không đóng modal.
 
-**Viết + cài skill (theo từng runtime, qua AgentGateway)**
+**Đọc, viết + cài skill (theo từng runtime, qua AgentGateway)**
 
-Cả hai đường ghi đều đi qua abstraction của agent — tầng device không bao giờ hardcode thư mục skill, vì mỗi agentic runtime giữ thư mục riêng:
+Cả ba đường đều đi qua abstraction của agent — tầng device không bao giờ hardcode thư mục skill, vì mỗi agentic runtime giữ thư mục riêng:
 
 | Endpoint device | Method gateway | Hành vi |
 |-----------------|----------------|---------|
+| `GET /api/agent/skills` | `ListSkills() ([]InstalledSkill, error)` | Duyệt thư mục skill của runtime: mỗi thư mục skill là một entry kèm cây file, sort theo tên, thư mục trước file. Description đọc từ front-matter của SKILL.md. Thư mục skill **không tồn tại** (runtime chưa provision) trả list rỗng, không phải lỗi. |
 | `POST /api/agent/skills` | `SaveSkill(domain.SkillDraft) (path, error)` | Ghi `<name>/SKILL.md` do người dùng soạn. **Từ chối ghi đè** skill đã tồn tại (`skills.ErrSkillExists` → 400) để một lỗi soạn thảo không phá skill cài từ store/OTA. |
 | `POST /api/agent/skills/install` | `InstallSkillArchive(archivePath, fallbackName) (dir, error)` | Device tải file `.skill` từ catalog về temp, rồi runtime giải nén vào thư mục skill của nó. **Cố ý thay thế** skill trùng tên — cài là hành động chủ động của người dùng. |
 
-Phần dùng chung nằm ở `system/skills` (`authored.go` render + ghi SKILL.md, `install.go` giải nén archive); chỉ **thư mục đích** là khác nhau giữa các backend, đúng lý do khiến skill watcher của từng runtime gần như là bản sao của nhau. `runtimes/openclaw/save_skill.go` là bản tham chiếu — cả hai method chỉ 3 dòng dựa trên `s.skillsDir()`.
+Phần dùng chung nằm ở `system/skills`: `list.go` duyệt thư mục skill, `authored.go` render + ghi SKILL.md, `install.go` giải nén archive. Chỉ **thư mục đích** là khác nhau giữa các backend, đúng lý do khiến skill watcher của từng runtime gần như là bản sao của nhau — nên `save_skill.go` của mỗi backend chỉ là 3 hàm một dòng trỏ vào path của nó:
 
-Mọi runtime còn lại (hermes, picoclaw, codex, claudecode, opencode) trả `ErrNotSupportedByRuntime` cho cả hai, handler đẩy ra thành **HTTP 501** kèm tên runtime đang chạy. Không lưu gì cả, và UI nói thẳng điều đó thay vì báo thành công giả. Mỗi stub có sẵn TODO ghi rõ thư mục skill của backend đó — nối vào chỉ là một lời gọi `skills.WriteAuthoredSkill` / `skills.InstallSkillArchive`.
+| Runtime | Thư mục skill |
+|---------|---------------|
+| openclaw | `{OpenclawConfigDir}/workspace/skills` — dùng chung với `InstallRoleSkills` / `EnsureMCPSkill` |
+| picoclaw | `{picoclawWorkspaceDir}/skills` |
+| codex | `codexSkillsDir` (`~/.codex/skills`) |
+| claudecode | `claudecodeSkillsDir` (`~/.claude/skills`) |
+| opencode | `opencodeSkillsDir` (`$XDG_CONFIG_HOME/opencode/skills`) |
+| hermes | **ghi** → `~/.hermes/skills/authored`; **list** → thư mục đó cộng `~/.hermes/skills/openclaw-imports` |
+
+Hermes là backend duy nhất namespace thư mục skill, nên cũng là cái duy nhất cần nhiều hơn một path. Device cố ý ghi **ra ngoài `openclaw-imports`**: `presync.sh` §0 khôi phục skill nền tảng đã import bằng cách chạy `claw migrate` *chỉ khi thư mục đó rỗng*, nên một skill soạn tay nằm trong đó sẽ khiến guard mãi mãi thấy thư mục có nội dung và factory reset sẽ âm thầm không bao giờ khôi phục lại. `ListSkills` merge cả hai root qua `skills.ListInstalledFrom`, root của device đứng trước để skill người dùng không bị skill import trùng tên che mất. Hermes tìm skill ở bất kỳ đâu dưới `~/.hermes/skills` nên root mới không cần đổi config.
+
+Listing bỏ qua `<name>.new` / `<name>.old` (thư mục staging + backup của InstallSkillArchive) và thư mục bắt đầu bằng dấu chấm: đó là chi tiết cài đặt, không phải skill. Cây file giới hạn độ sâu 6 và 200 entry mỗi thư mục để một cây bất thường không tạo response vô hạn, và một skill đọc lỗi chỉ trả cây rỗng thay vì làm trắng cả list.
+
+`ErrNotSupportedByRuntime` → **HTTP 501** kèm tên runtime đang chạy vẫn là contract cho backend không làm được một trong ba việc này, UI hiển thị inline — nhưng tính đến giờ mọi runtime đang ship đều implement đủ cả ba, nên 501 chỉ còn khả dĩ với backend mới trong tương lai.
 
 Xử lý archive trong `skills.InstallSkillArchive`: nếu archive có đúng một thư mục top-level chung thì đó là tên skill và bị strip (bundle `.skill` của catalog có dạng `<name>/SKILL.md`); nếu file nằm ngay gốc archive thì dùng fallback name của caller (zip kiểu OTA). Giải nén được stage ở `<skill>.new` và chỉ swap vào khi thành công trọn vẹn, bản cũ dời sang `<skill>.old` và được khôi phục nếu swap lỗi — một bản tải hỏng không bao giờ để lại skill cài dở hay phá skill đang chạy. Chặn zip-slip, lọc `.DS_Store` / `__MACOSX/`, giới hạn 500 file và 4 MB mỗi entry (ép bằng `LimitReader` nên `UncompressedSize64` khai gian cũng không làm đầy đĩa).
 

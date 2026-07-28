@@ -1,49 +1,86 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   FolderTree, ChevronRight, ChevronDown, Folder, FolderOpen, FileText, Loader2,
+  RefreshCw, AlertCircle,
 } from "lucide-react";
+import { listInstalledSkills } from "@/lib/api";
+import type { InstalledSkill, SkillNode } from "@/lib/api";
 import { ModalShell } from "./ModalShell";
-import type { InstalledSkill, SkillNode } from "./types";
 
-// "Manage skills" — the skills currently installed in the active agentic
-// runtime. Click a skill to expand its file tree (SKILL.md, reference/, …).
+// "Manage skills" — the skills currently present in the ACTIVE agentic
+// runtime's skills dir (GET /api/agent/skills → AgentGateway.ListSkills).
+// Click a skill to expand its file tree (SKILL.md, reference/, …).
 //
-// UI ONLY for now: `loadInstalledSkills` returns a fixed sample so the layout
-// can be reviewed. Swap its body for an apiRequest call once the Go endpoint
-// exists — nothing else in this file changes.
-
-async function loadInstalledSkills(): Promise<InstalledSkill[]> {
-  return SAMPLE_SKILLS;
-}
+// Everything the runtime has shows up here regardless of how it got there:
+// authored, store-installed, role-bundled and OTA-pushed skills all land in the
+// same tree. A runtime that can't list skills answers 501 and the message is
+// shown inline — an empty list means "provisioned but empty", not "unsupported".
 
 export function ManageSkillsModal({ onClose }: { onClose: () => void }) {
   const [skills, setSkills] = useState<InstalledSkill[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  useEffect(() => {
-    let alive = true;
-    void loadInstalledSkills().then((list) => {
-      if (!alive) return;
-      setSkills(list);
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      setSkills(await listInstalledSkills());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to list skills");
+      setSkills([]);
+    } finally {
       setLoading(false);
-    });
-    return () => { alive = false; };
+    }
   }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const subtitle = loading
+    ? "Loading…"
+    : error
+      ? "Could not read the runtime's skills"
+      : `${skills.length} installed on this runtime`;
 
   return (
     <ModalShell
       icon={FolderTree}
       title="Manage skills"
-      subtitle={loading ? "Loading…" : `${skills.length} installed on this runtime`}
+      subtitle={subtitle}
       width={560}
       onClose={onClose}
     >
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+        <button
+          type="button"
+          className="lm-u-btn"
+          onClick={() => void load()}
+          disabled={loading}
+          title="Reload"
+          aria-label="Reload"
+          style={{
+            width: 32, height: 30, borderRadius: 8, display: "flex",
+            alignItems: "center", justifyContent: "center",
+          }}
+        ><RefreshCw size={13} className={loading ? "lm-spin-ico" : undefined} /></button>
+      </div>
+
       {loading ? (
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
           padding: "44px 12px", fontSize: 12.5, color: "var(--lm-text-muted)",
         }}><Loader2 size={18} className="lm-spin-ico" /> Loading skills…</div>
+      ) : error ? (
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+          padding: "44px 12px", textAlign: "center", fontSize: 12.5, color: "var(--lm-red)",
+        }}><AlertCircle size={16} /> {error}</div>
+      ) : skills.length === 0 ? (
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "center",
+          padding: "44px 12px", textAlign: "center", fontSize: 12.5, color: "var(--lm-text-muted)",
+        }}>No skills installed on this runtime yet.</div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {skills.map((s) => {
@@ -142,37 +179,3 @@ function TreeNode({ node, depth }: { node: SkillNode; depth: number }) {
     </>
   );
 }
-
-// ─── Sample data (UI preview only — replace with the real listing) ───────────
-
-const SAMPLE_SKILLS: InstalledSkill[] = [
-  {
-    name: "music",
-    description: "Play, queue and control music on the device speaker.",
-    files: [
-      { name: "SKILL.md", path: "music/SKILL.md" },
-      {
-        name: "reference", path: "music/reference", dir: true,
-        children: [
-          { name: "providers.md", path: "music/reference/providers.md" },
-          { name: "playlists.md", path: "music/reference/playlists.md" },
-        ],
-      },
-      {
-        name: "scripts", path: "music/scripts", dir: true,
-        children: [{ name: "resolve_track.py", path: "music/scripts/resolve_track.py" }],
-      },
-    ],
-  },
-  {
-    name: "voice",
-    description: "Speak, change voice and tune TTS behaviour.",
-    files: [
-      { name: "SKILL.md", path: "voice/SKILL.md" },
-      {
-        name: "reference", path: "voice/reference", dir: true,
-        children: [{ name: "voices.md", path: "voice/reference/voices.md" }],
-      },
-    ],
-  },
-];

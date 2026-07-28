@@ -276,6 +276,8 @@ type fakeGateway struct {
 	installDir  string
 	gotArchive  string
 	gotFallback string
+	list        []domain.InstalledSkill
+	listErr     error
 }
 
 func (f *fakeGateway) Name() string { return f.name }
@@ -422,5 +424,61 @@ func TestInstallSkillNotSupported(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "Codex") {
 		t.Errorf("runtime name not surfaced: %s", rec.Body.String())
+	}
+}
+
+func (f *fakeGateway) ListSkills() ([]domain.InstalledSkill, error) {
+	return f.list, f.listErr
+}
+
+func TestListSkills(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	gw := &fakeGateway{name: "OpenClaw", list: []domain.InstalledSkill{
+		{Name: "music", Description: "Play music.", Files: []domain.SkillNode{{Name: "SKILL.md", Path: "music/SKILL.md"}}},
+	}}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/agent/skills", nil)
+
+	(&AgentHandler{agentGateway: gw}).ListSkills(c)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"music/SKILL.md"`) {
+		t.Errorf("tree not serialized: %s", rec.Body.String())
+	}
+}
+
+// A runtime with no skills dir must be distinguishable from an empty one.
+func TestListSkillsNotSupported(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	gw := &fakeGateway{name: "PicoClaw", listErr: domain.ErrNotSupportedByRuntime}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/agent/skills", nil)
+
+	(&AgentHandler{agentGateway: gw}).ListSkills(c)
+
+	if rec.Code != http.StatusNotImplemented {
+		t.Fatalf("want 501, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "PicoClaw") {
+		t.Errorf("runtime name not surfaced: %s", rec.Body.String())
+	}
+}
+
+// A nil slice must serialize as [] so the UI doesn't have to handle null.
+func TestListSkillsEmptyIsArray(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	gw := &fakeGateway{name: "OpenClaw"}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/agent/skills", nil)
+
+	(&AgentHandler{agentGateway: gw}).ListSkills(c)
+
+	if !strings.Contains(rec.Body.String(), `"data":[]`) {
+		t.Errorf("empty list must serialize as []: %s", rec.Body.String())
 	}
 }

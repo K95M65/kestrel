@@ -104,6 +104,27 @@ func storeGet(path string, query url.Values, timeout time.Duration, maxBytes int
 	return body, nil
 }
 
+// ListSkills handles GET /api/agent/skills. Returns the skills present in the
+// ACTIVE runtime's skills dir, each with its file tree — the Manage-skills UI.
+// A runtime with no device-readable skills dir answers 501.
+func (h *AgentHandler) ListSkills(c *gin.Context) {
+	list, err := h.agentGateway.ListSkills()
+	if errors.Is(err, domain.ErrNotSupportedByRuntime) {
+		c.JSON(http.StatusNotImplemented, serializers.ResponseError(
+			"the active agent runtime ("+h.agentGateway.Name()+") cannot list skills yet"))
+		return
+	}
+	if err != nil {
+		slog.Error("[skills] list failed", "component", "agent-http", "error", err)
+		c.JSON(http.StatusInternalServerError, serializers.ResponseError(err.Error()))
+		return
+	}
+	if list == nil {
+		list = []domain.InstalledSkill{}
+	}
+	c.JSON(http.StatusOK, serializers.ResponseSuccess(list))
+}
+
 // SaveSkill handles POST /api/agent/skills. Writes a user-authored skill (the
 // web UI's "Write skill" form) into the ACTIVE runtime's skills dir via the
 // AgentGateway — each backend owns its own directory, so the device layer never

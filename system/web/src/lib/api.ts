@@ -605,6 +605,29 @@ export async function saveSkill(draft: SkillDraft): Promise<{ name: string; path
   });
 }
 
+/** One node in an installed skill's file tree. `children` is set only on dirs. */
+export interface SkillNode {
+  name: string;
+  path: string;
+  dir?: boolean;
+  size?: number;
+  children?: SkillNode[];
+}
+
+/** A skill present in the active runtime's skills dir. */
+export interface InstalledSkill {
+  name: string;
+  description?: string;
+  files: SkillNode[];
+}
+
+/** GET /api/agent/skills — what the ACTIVE runtime currently has installed.
+ *  Rejects with the backend's message when the runtime can't list skills
+ *  (HTTP 501). An un-provisioned runtime returns an empty list, not an error. */
+export async function listInstalledSkills(): Promise<InstalledSkill[]> {
+  return apiRequest<InstalledSkill[]>(`${API_BASE}/api/agent/skills`);
+}
+
 /** POST /api/agent/skills/install — device downloads the catalog's `.skill`
  *  archive and extracts it into the ACTIVE runtime's skills dir. Rejects with
  *  the backend's message when the runtime can't install skills (HTTP 501). */
