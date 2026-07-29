@@ -609,7 +609,19 @@ async def lifespan(app: FastAPI):
                 return
             svc = SensingService(
                 camera_capture=state.camera_capture,
-                input_device=AUDIO_SENSING_DEVICE if AUDIO_SENSING_DEVICE is not None else state.audio_input_device,
+                # Declared or absent, never guessed. This used to fall back to
+                # the voice mic, which is only ever right by luck: on a device
+                # whose speaker and mic are one card, sound sensing then opened
+                # the raw PortAudio index for a card the 16 kHz capture already
+                # held, exclusively and at 44100 Hz. It failed several times a
+                # minute, filled the journal with pa_linux_alsa "AlsaOpen
+                # failed", and reported no sound the whole time — a feature that
+                # looks configured and does nothing. Passing None instead lets
+                # the orchestrator's existing gate skip SoundPerception and say
+                # so, matching DEVICE-SPEC.md: undeclared is not a default, it
+                # is an absence. Every shipping device declares
+                # HAL_AUDIO_SENSING_DEVICE, so none of them loses the feature.
+                input_device=AUDIO_SENSING_DEVICE,
                 poll_interval=float(os.environ.get("HAL_SENSING_INTERVAL", "2.0")),
                 rgb_service=state.rgb_service,
                 tts_service=state.tts_service,
