@@ -131,6 +131,19 @@ Các hướng, theo thứ tự đáng thử:
 Đây là quyết định driver, không phải giá trị config; `HAL_CAMERA_INDEX` trong
 `.env` của device vô tác dụng cho tới khi một trong ba hướng trên được làm.
 
+## Deploy: cài chồng, không bao giờ flash
+
+Reachy Mini ship kèm **OS Pollen** trên Pi, chứa daemon own serial bus, control
+loop, inverse kinematics và safety clamp. **Flash golden image = xoá daemon =
+cục gạch.** Autonomous luôn được cài chồng lên.
+
+- **Spike đầu tiên**: `bash devices/reachy-mini/spike-hal.sh` — chỉ HAL. Rsync
+  HAL, cài `.env` của device và `/etc/asound.conf`, mượn camera/audio từ daemon,
+  chạy uvicorn trong tmux. `--stop` trả media lại.
+- **Spike kèm os-server**: `REACHY_HOST=pollen@reachy-mini.local bash devices/reachy-mini/spike.sh`
+  — build thêm web UI và os-server. Lưu ý os-server bind `127.0.0.1:5000` và
+  không serve static, nên web UI cần nginx mới truy cập được.
+
 ## Motion Driver
 
 Reachy chọn motion backend của HAL qua:
@@ -302,9 +315,8 @@ network stack, port/API của daemon. Còn lại:
 - verify bảng map emotion→HF move chạy đúng cảm giác trên robot
 - test lại echo cancellation / barge-in (chung clock USB, khác Lamp)
 - thermal limits trước khi bật `SAFETY.md` `thermal`
-- `spike.sh` chạy `mkdir /opt/autonomous` và `apt-get install` mà không có `sudo`,
-  và pane status probe os-server ở `:5000` trong khi service listen chỗ khác —
-  phải sửa cả hai trước lần deploy đầu
-- Pollen OS chưa cài `uv`; `spike.sh` tự cài, nhưng `setup.sh` production cũng phải cài
+- Pollen OS chưa cài `uv`; cả hai script spike đều tự cài, nhưng `setup.sh`
+  production cũng phải cài
+- cả hai script spike đều không phải production: không systemd, không nginx, không OTA
 - `setup.sh` phải đi nhánh NetworkManager (`nmcli`), và có thể tái dùng profile
   `Hotspot` sẵn có (`reachy-mini-ap`, `ipv4=shared`) thay vì cài hostapd/dnsmasq

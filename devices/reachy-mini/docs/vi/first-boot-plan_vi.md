@@ -398,17 +398,29 @@ Sau Giai đoạn 1, giải quyết các `TODO(spike)` trong `reachy_service.py`:
 
 ### 3.1 Spike Deploy
 
+Bắt đầu bằng script chỉ-HAL — đây là thứ nhỏ nhất đủ để validate phần thân máy,
+và nó cài đúng hai mảnh config mà script đầy đủ bỏ qua:
+
+```bash
+bash devices/reachy-mini/spike-hal.sh          # deploy + chạy HAL
+bash devices/reachy-mini/spike-hal.sh --stop   # dừng và trả media lại cho daemon
+```
+
+Nó rsync HAL, cài `.env` **và** `/etc/asound.conf` từ rootfs overlay, gọi
+`POST /api/media/release` để mở được ALSA, rồi chạy uvicorn trong tmux. Script
+`spike.sh` đầy đủ (bên dưới) build thêm os-server và web UI — hai thứ chưa truy
+cập được cho tới khi body này có nginx:
+
 ```bash
 REACHY_HOST=pollen@reachy-mini.local bash devices/reachy-mini/spike.sh
 ```
 
-Lỗ hổng đã biết trong `spike.sh` cần sửa trước khi chạy (phát hiện 2026-07-29,
-chưa sửa): nó tạo `/opt/autonomous` và chạy `apt-get install` mà không có `sudo`
-nên fail khi đăng nhập bằng `pollen`; pane status probe os-server ở `:5000` trong
-khi docs ghi nhầm là `:8080`. Probe mới đúng còn docs sai — os-server bind
-`127.0.0.1:5000` (`system/server/config/config.go`, `system/server/server.go`),
-nên chỉ truy cập được từ chính con Pi cho tới khi có nginx đứng trước.
-Pollen OS chưa có `uv` — script tự cài, nhưng
+Hai thứ phát hiện ngày 2026-07-29 và đã sửa: `spike.sh` tạo `/opt/autonomous` và
+chạy `apt-get install` mà không có `sudo` (fail khi đăng nhập bằng `pollen`), và
+docs ghi nhầm os-server ở `:8080`. Probe `:5000` của script mới đúng còn docs sai
+— os-server bind `127.0.0.1:5000` (`system/server/config/config.go`,
+`system/server/server.go`), nên chỉ truy cập được từ chính con Pi cho tới khi có
+nginx đứng trước. Pollen OS chưa có `uv`; cả hai script spike đều tự cài, nhưng
 `setup.sh` production cũng phải cài.
 
 Board gate cũng phải được dạy phần cứng này: máy báo

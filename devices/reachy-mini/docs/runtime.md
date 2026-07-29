@@ -52,8 +52,12 @@ safety clamps. **Flashing a golden image wipes the daemon and bricks the robot.*
 
 Autonomous OS is always **installed on top** of Pollen's OS:
 
-- **Spike/dev**: `REACHY_HOST=pollen@reachy-mini.local bash devices/reachy-mini/spike.sh` — builds
-  on Mac, rsync to Pi, starts HAL + os-server in tmux.
+- **First spike**: `bash devices/reachy-mini/spike-hal.sh` — HAL only. Rsyncs
+  HAL, installs the device `.env` and `/etc/asound.conf`, borrows camera/audio
+  from the daemon, runs uvicorn in tmux. `--stop` gives the media back.
+- **Spike with os-server**: `REACHY_HOST=pollen@reachy-mini.local bash devices/reachy-mini/spike.sh`
+  — also builds the web UI and os-server. Note os-server binds `127.0.0.1:5000`
+  and serves no static files, so the UI needs nginx before it is reachable.
 - **Production**: `DEVICE_TYPE=reachy-mini bash <(curl -fsSL .../install.sh)` —
   runs `setup.sh` on the existing OS, adds systemd units, nginx, WiFi AP, OTA.
 
@@ -256,17 +260,20 @@ profile is measured.
 2. **Quick deploy (recommended for first spike):**
 
    ```bash
-   REACHY_HOST=pollen@reachy-mini.local bash devices/reachy-mini/spike.sh
+   bash devices/reachy-mini/spike-hal.sh            # HAL only
+   bash devices/reachy-mini/spike-hal.sh --no-deps  # redeploy without uv sync
+   bash devices/reachy-mini/spike-hal.sh --stop     # stop + return media
    ```
 
-   The login is `pollen` (password `root`); direct `root@` SSH is refused, so the
-   script's `apt-get`/`mkdir /opt` steps need `sudo` — see Spike TODOs.
+   Defaults to `pollen@reachy-mini.local` (password `root`); direct `root@` SSH
+   is refused, so the script sudo's its `apt-get` and `/opt` steps. It rsyncs
+   HAL, installs `.env` and `/etc/asound.conf`, syncs the venv (including the
+   system libs for pygobject/pycairo), releases the daemon's media, and starts
+   uvicorn in tmux. Subsequent runs only sync changed files.
 
-   This builds on Mac, rsync to Pi, installs all deps (including system libs
-   for pygobject/pycairo), and starts HAL + os-server in a tmux session.
-   Subsequent runs only sync changed files.
+   Use `spike.sh` instead when you also want os-server and the web UI built.
 
-3. **Manual install** (if not using spike.sh):
+3. **Manual install** (if not using the spike scripts):
 
    ```bash
    # System libs for pygobject/pycairo (reachy SDK transitive deps)
@@ -317,8 +324,8 @@ profile is measured.
 
 The production `.env` lives at `devices/reachy-mini/rootfs/opt/hal/.env` (rootfs
 overlay pattern — same as Lamp). It sets `DEVICE_TYPE=reachy-mini` and tuning
-defaults. `spike.sh` copies it on first deploy; OTA/setup.sh copies the rootfs
-overlay onto `/`.
+defaults. `spike-hal.sh` copies it — and `/etc/asound.conf` — on first deploy;
+`spike.sh` copies only the `.env`; OTA/setup.sh copies the rootfs overlay onto `/`.
 
 Audio names are filled in from recon. Mic and speaker are the **same** USB card
 (`card 0: Audio [Reachy Mini Audio], device 0`), so
@@ -377,11 +384,9 @@ network stack, daemon port/API. Still open:
 - verify emotion→HF move mapping looks/feels right on the robot
 - re-test acoustic echo cancellation / barge-in (shared USB clock, unlike Lamp)
 - thermal limits before enabling `SAFETY.md` `thermal`
-- `spike.sh` runs `mkdir /opt/autonomous` and `apt-get install` without `sudo`,
-  and its status pane probes os-server on `:5000` while the service listens
-  elsewhere — both need fixing before the first deploy
-- `uv` is not installed on Pollen OS; `spike.sh` installs it, but production
-  `setup.sh` must too
+- `uv` is not installed on Pollen OS; both spike scripts install it, but
+  production `setup.sh` must too
+- neither spike script is production: no systemd, no nginx, no OTA
 - `setup.sh` must take the NetworkManager branch (`nmcli`), and can reuse the
   existing `Hotspot` profile (`reachy-mini-ap`, `ipv4=shared`) instead of
   installing hostapd/dnsmasq

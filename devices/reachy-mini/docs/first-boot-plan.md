@@ -399,18 +399,30 @@ After Phase 1, resolve `TODO(spike)` items in `reachy_service.py`:
 
 ### 3.1 Spike Deploy
 
+Start with the HAL-only script — it is the smallest thing that validates the
+body, and it installs the two pieces of device config the full script skips:
+
+```bash
+bash devices/reachy-mini/spike-hal.sh          # deploy + run HAL
+bash devices/reachy-mini/spike-hal.sh --stop   # stop and return media to the daemon
+```
+
+It rsyncs HAL, installs `.env` **and** `/etc/asound.conf` from the rootfs
+overlay, calls `POST /api/media/release` so ALSA is openable, then runs uvicorn
+in tmux. The full `spike.sh` (below) additionally builds os-server and the web
+UI, which cannot be reached until nginx exists on this body:
+
 ```bash
 REACHY_HOST=pollen@reachy-mini.local bash devices/reachy-mini/spike.sh
 ```
 
-Known gaps to fix in `spike.sh` before this runs (found 2026-07-29, not yet
-fixed): it creates `/opt/autonomous` and runs `apt-get install` without `sudo`,
-which fails as `pollen`; and its status pane probes os-server on `:5000` while
-the docs wrongly said `:8080`. The probe was right and the docs were wrong —
-os-server binds `127.0.0.1:5000` (`system/server/config/config.go`,
-`system/server/server.go`), so it is only reachable from the Pi until nginx
-fronts it. `uv` is absent on Pollen OS — the script does
-install it, but production `setup.sh` must too.
+Two things found on 2026-07-29 and already fixed: `spike.sh` created
+`/opt/autonomous` and ran `apt-get install` without `sudo` (fails as `pollen`),
+and the docs claimed os-server listens on `:8080`. The script's `:5000` probe was
+right and the docs were wrong — os-server binds `127.0.0.1:5000`
+(`system/server/config/config.go`, `system/server/server.go`), so it is reachable
+only from the Pi until nginx fronts it. `uv` is absent on Pollen OS; both spike
+scripts install it, but production `setup.sh` must too.
 
 The board gate also had to be taught this hardware: the unit reports
 `Raspberry Pi Compute Module 4 Rev 1.1`, which matched no `boards.json` entry, so
