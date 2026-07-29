@@ -207,15 +207,15 @@ BASE="$REMOTE_BASE"
 # strangers, face/pose models, agent workspaces, OS_CONFIG_PATH), and only the
 # first of them surfaces as a crash — overriding them one env var at a time is a
 # game of whack-a-mole that diverges from how the device really runs.
-# Footprint outside our tree: /root/local/** (see the uninstall note below).
-# Logs stay in our tree via HAL_LOG_DIR so they are easy to read and to delete.
-mkdir -p "\$BASE/logs"
+# Footprint outside our tree: /root/local/** and /var/log/hal (uninstall note below).
+# No HAL_LOG_DIR override: logging goes to the production path /var/log/hal,
+# which only needed redirecting back when this script ran HAL as the login user.
 
 tmux kill-session -t $SESSION 2>/dev/null || true
 tmux new-session -d -s $SESSION -n hal
 
 tmux send-keys -t $SESSION:hal.0 \
-  "cd \$BASE/hal && sudo -E env DEVICE_TYPE=reachy-mini DEVICES_DIR=\$BASE/devices HAL_LOG_DIR=\$BASE/logs .venv/bin/uvicorn hal.server:app --host 0.0.0.0 --port 5001 2>&1 | tee /tmp/hal.log" Enter
+  "cd \$BASE/hal && sudo -E env DEVICE_TYPE=reachy-mini DEVICES_DIR=\$BASE/devices .venv/bin/uvicorn hal.server:app --host 0.0.0.0 --port 5001 2>&1 | tee /tmp/hal.log" Enter
 
 tmux split-window -t $SESSION:hal -v
 tmux send-keys -t $SESSION:hal.1 \
@@ -237,7 +237,7 @@ The daemon's camera and audio are on loan to HAL until you run --stop.
 
 Full uninstall (leaves Pollen OS as it was):
   bash devices/reachy-mini/spike-hal.sh --stop
-  ssh $REACHY_HOST 'sudo rm -rf $REMOTE_BASE /root/local && sudo rm -f /etc/asound.conf'
+  ssh $REACHY_HOST 'sudo rm -rf $REMOTE_BASE /root/local /var/log/hal && sudo rm -f /etc/asound.conf'
   # /root/local is HAL state (users, strangers, models) — it runs as root here,
   # same as the production systemd unit, so it writes outside our tree.
   # if a backup exists: sudo mv /etc/asound.conf.pre-autonomous /etc/asound.conf
