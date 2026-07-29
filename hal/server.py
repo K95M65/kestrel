@@ -806,12 +806,20 @@ async def lifespan(app: FastAPI):
         t.join(timeout=3)
 
     if state.animation_service:
-        state.animation_service._running.clear()
-        if (
-                state.animation_service._event_thread
-                and state.animation_service._event_thread.is_alive()
-        ):
-            state.animation_service._event_thread.join(timeout=3.0)
+        # MotionService.stop(), not the AnimationService internals this used to
+        # clear by hand: `_running` and `_event_thread` belong to the feetech
+        # backend, so on any other one the teardown died here with
+        # AttributeError and uvicorn logged "Application shutdown failed.
+        # Exiting." — abandoning every line below it. On a Reachy that cost the
+        # SDK its goto_sleep and client.disconnect, left the daemon holding a
+        # dead client socket, and skipped the media handover entirely, so
+        # Pollen's stack stayed deaf and blind after every HAL restart.
+        # Wrapped because shutdown must not raise: whatever a driver does here,
+        # the LEDs, the camera and the handover below still have to run.
+        try:
+            state.animation_service.stop(timeout=3.0)
+        except Exception as e:
+            logger.warning(f"Motion service stop failed: {e}")
     if state.rgb_service:
         state.rgb_service.stop()
     if state.camera_capture:
