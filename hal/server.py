@@ -197,6 +197,26 @@ if "camera" in _declared:
 else:
     logger.info("Camera drivers skipped — 'camera' not declared in DEVICE.md")
 
+# --- Media owners: processes that hold this device's hardware ---------------
+# A body that ships its own vendor runtime has that runtime holding the camera
+# and the audio PCMs before HAL exists, and HAL cannot open what it does not
+# own. Capabilities in that position declare `owner:` in DEVICE.md and this
+# resolves each declared name to a handover class — same selector shape as
+# `driver:` on motion and vision, so nothing here knows which body is running.
+# One owner typically holds several capabilities (audio and vision both), so
+# resolve by distinct name and release once each rather than once per
+# capability.
+_media_owners = []
+for _owner_name in dict.fromkeys(
+    c.owner for c in _profile.capabilities.values() if c.owner
+):
+    from hal.drivers.media_owner.factory import resolve_media_owner
+
+    _owner_cls = resolve_media_owner(_owner_name)
+    if _owner_cls is not None:
+        _media_owners.append(_owner_cls())
+        logger.info("Media owner '%s' declared — HAL will borrow the hardware", _owner_name)
+
 SensingService = None
 FacePerception = None
 if "sensing" in _declared:
@@ -259,6 +279,17 @@ _lifespan_stopping = threading.Event()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _gpio_button_handler, _ttp223_handler
+
+    # --- Phase 0: Borrow the hardware from whoever owns it ---
+    # Empty unless DEVICE.md declares an `owner:`. Where one exists it holds
+    # /dev/video* and both ALSA PCMs, and nothing below can succeed until it
+    # lets go — the camera opens "busy", and PortAudio cannot probe a sample
+    # rate, which resurfaces much later as TTS on output device -1 while every
+    # status endpoint still reads healthy. Blocking, and first: a vendor SDK may
+    # release as a side effect of connecting, but that runs in the motion-init
+    # thread and races the audio detection in Phase 2.
+    for _owner in _media_owners:
+        _owner.release()
 
     # --- Phase 1: Fire slow hardware init in background threads ---
 
@@ -785,6 +816,12 @@ async def lifespan(app: FastAPI):
         state.rgb_service.stop()
     if state.camera_capture:
         state.camera_capture.stop()
+
+    # Give the hardware back last — after voice, sensing and the camera have all
+    # closed their handles, so the owner can actually reopen them. Restarting
+    # HAL without this leaves the vendor runtime deaf and blind.
+    for _owner in _media_owners:
+        _owner.acquire()
 
 
 app = FastAPI(
