@@ -173,6 +173,27 @@ section "1.8 Bluetooth  [BLE recovery path]"
 run "systemctl status bluetooth 2>/dev/null | head -8"
 run "hciconfig -a 2>/dev/null"
 
+# --- 1.9 Media ownership ----------------------------------------------------
+# The daemon holds the camera and BOTH ALSA PCMs while it runs, so HAL cannot
+# open them until it calls POST /api/media/release. Probing this is read-only:
+# fuser/lsof only report holders, and the arecord below is expected to FAIL with
+# "Device or resource busy" — that failure IS the finding. Nothing is released
+# here; doing so is a state change and belongs in the deploy phase, not recon.
+
+section "1.9 Media Ownership  [who holds camera + audio — decides HAL startup]"
+step "camera holders"
+run "fuser -v /dev/video0 /dev/video1 2>&1 | head -12"
+step "ALSA holders"
+run "fuser -v /dev/snd/* 2>&1 | head -16"
+step "can a second process open the mic? (expected: busy while media is held)"
+run "arecord -D plughw:0,0 -f S16_LE -r 16000 -c 1 -d 1 /tmp/_recon_mic.wav 2>&1 | head -3"
+rm -f /tmp/_recon_mic.wav 2>/dev/null
+step "daemon media status"
+run "curl -s --max-time 3 http://localhost:8000/api/media/status"
+printf '\n'
+step "daemon media handover endpoints (do NOT call them during recon)"
+run "curl -s --max-time 3 http://localhost:8000/openapi.json | grep -o '/api/media/[a-z_]*' | sort -u"
+
 # --- fill-in summary --------------------------------------------------------
 
 section "SUMMARY — copy these into runtime.md / .env / setup.sh"
@@ -185,6 +206,7 @@ Speaker ALSA   : plughw:__,__                                  (from 1.4)
 Camera         : /dev/video__   V4L2|libcamera   maxres:_____  (from 1.5)
 Ports free     : 5001 __  8080 __  80 __                       (from 1.6)
 Cairo deps     : present | missing                             (from 1.7)
+Media held by daemon : yes | no   release endpoint: yes | no   (from 1.9)
 SUMMARY
 
 printf '\nrecon complete.\n'
