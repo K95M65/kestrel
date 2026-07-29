@@ -97,8 +97,12 @@ tmux new-session -d -s $SESSION -n os
 # systemd; DEVICE_TYPE also passed explicitly so a missing config still boots.
 # The cd must happen INSIDE sudo — /root is 0700, so the login shell cannot
 # enter it before elevating.
+# DEVICES_DIR must be passed too: device.DevicesDir() falls back to /opt/devices
+# (devicemd.go), which the spike layout does not create — os-server then finds no
+# DEVICE.md and reports an empty capability list, so the web Overview renders
+# blank tiles while every service looks healthy.
 tmux send-keys -t $SESSION:os.0 \
-  "sudo sh -c 'cd /root && DEVICE_TYPE=reachy-mini exec $REMOTE_BASE/os-server' 2>&1 | tee /tmp/os-server.log" Enter
+  "sudo sh -c 'cd /root && DEVICE_TYPE=reachy-mini DEVICES_DIR=$REMOTE_BASE/devices exec $REMOTE_BASE/os-server' 2>&1 | tee /tmp/os-server.log" Enter
 
 tmux split-window -t $SESSION:os -v
 tmux send-keys -t $SESSION:os.1 \
