@@ -44,6 +44,93 @@ hay màn hình có thể điều khiển như một capability của device. N�
 có LED/screen addressable, chỉ thêm capability khi đã có HAL driver và hành vi
 safety tương ứng.
 
+## Recon Máy Thật (đo ngày 2026-07-29)
+
+Các số liệu dưới đây đo trên con Wireless đầu tiên (`hardware_id
+e4a0ef5f04fafb94`) bằng [`../../recon.sh`](../../recon.sh) cộng vài probe bổ
+sung. Chúng thay thế phần phỏng đoán mà tài liệu này từng ghi.
+
+| Hạng mục | Đo được |
+|----------|---------|
+| Board | `Raspberry Pi Compute Module 4 Rev 1.1`, RAM 3.7 GiB, 46 °C lúc idle |
+| OS / kernel | Debian 13.3 (trixie), `6.12.62+rpt-rpi-v8`, aarch64 |
+| Ổ đĩa | eMMC 14 GB, dùng 7.7 GB / trống 5.5 GB (59 %) |
+| Boot config | `/boot/firmware/config.txt` — `imx708` cam0+cam1, `uart3`, quạt i2c (`emc2301`), IMU trên i2c4 |
+| Network stack | **NetworkManager** active (`wpa_supplicant` active, `dhcpcd` inactive) |
+| Profile NM | `Glinks` (STA) + `Hotspot` (`mode=ap`, ssid `reachy-mini-ap`, `ipv4=shared`, `autoconnect=false`) |
+| Unit của Pollen | `reachy-mini-daemon.service` (AP launcher → daemon), `reachy-mini-bluetooth.service` (GATT), `gpio-shutdown-daemon.service` |
+| Daemon | `reachy_mini` 1.9.0 trong `/venvs/mini_daemon` (Python 3.12), chạy dưới user `pollen` |
+| Port daemon | `:8000` REST+WS, `:8443`. Port của mình (`5001`, `8080`, `80`) đều trống |
+| WS path daemon | `/ws/sdk`, `/ws/daemon`, `/ws/full`, `/ws/raw`, `/ws/set_target`, `/ws/apps`, `/ws/logs`, `/ws/updates` |
+| Control loop | đo được ~**49 Hz** (`/api/daemon/status`), không phải 100 Hz như hay được nhắc |
+| Audio | một card USB duy nhất: `card 0: Audio [Reachy Mini Audio], device 0` — vừa thu vừa phát |
+| Camera | CSI `imx708_wide` (4608×2592 10-bit RGGB) qua unicam/libcamera; có `rpicam-apps` + `gstreamer1.0-libcamera`, **chưa** có `python3-picamera2` |
+| Python hệ thống | 3.13.5; **chưa** cài `uv`; `libcairo2-dev` + `libgirepository1.0-dev` + `pkg-config` đã có sẵn |
+| SSH | `pollen@reachy-mini.local` (mật khẩu `root`); SSH thẳng bằng `root@` bị từ chối |
+| Recovery | có `/restore/venvs/`; BLE GATT đang chạy (`bluetoothd`, tên `reachy-mini`) |
+
+Hai hệ quả không có trong plan port ban đầu, mô tả ngay bên dưới: daemon giữ
+media, và camera không phải thiết bị UVC.
+
+## Quyền Sở Hữu Media: daemon giữ camera và audio
+
+Mặc định daemon Pollen mở sẵn `/dev/video0`, `/dev/video1`, các node ISP, và
+**cả hai** PCM ALSA (`pcmC0D0c` thu, `pcmC0D0p` phát). Tiến trình khác không
+giành được:
+
+```bash
+arecord -D plughw:0,0 -f S16_LE -r 16000 -c 1 -d 1 /tmp/t.wav
+# arecord: main:850: audio open error: Device or resource busy
+```
+
+Daemon có sẵn API bàn giao đúng cho tình huống này:
+
+```bash
+curl -s -X POST http://localhost:8000/api/media/release   # {"status":"ok"}
+curl -s        http://localhost:8000/api/media/status     # {"available":false,"released":true,"no_media":false}
+# ... HAL sở hữu mic, loa, camera ...
+curl -s -X POST http://localhost:8000/api/media/acquire   # trả lại
+```
+
+Đã verify trên máy: sau `release`, `arecord` thu được và `rpicam-jpeg` chụp được
+khung 1280×720; sau `acquire`, media status trở lại
+`{"available":true,"released":false}`. Daemon vẫn `active` và trả HTTP suốt quá
+trình — nhả media **không** ảnh hưởng điều khiển motion.
+
+**Hợp đồng cho HAL**: gọi `POST /api/media/release` trước khi mở bất kỳ thiết bị
+audio/camera nào, và `POST /api/media/acquire` khi shutdown. Chừng nào chưa nối
+vào startup của HAL, route audio/camera sẽ fail "device busy" trên máy vừa boot.
+Việc này đi kèm — chứ không thay thế — `media_backend="no_media"` của SDK, vì
+tham số đó chỉ ngăn *SDK client* giành media.
+
+## Camera Stack: libcamera, không phải UVC
+
+Camera trong đầu là **CSI `imx708_wide`** (Camera Module 3 wide) chạy qua pipeline
+unicam + libcamera của Raspberry Pi. `/dev/video0` là node unicam Bayer thô, không
+phải luồng YUV đọc thẳng được:
+
+| Probe | Kết quả |
+|-------|---------|
+| `cv2.VideoCapture(0)` | `isOpened() == True`, `read() -> False` (`select() timeout`) |
+| `cv2.getBuildInformation()` | `GStreamer: NO` — bản `opencv-python` từ wheel không dùng được pipeline `libcamerasrc` |
+| `rpicam-jpeg -o t.jpg --width 1280 --height 720` | chạy được (JPEG 216 KB) |
+| `python3-picamera2` | chưa cài; apt có candidate `0.3.33-1` |
+
+Nghĩa là đường camera theo index OpenCV của HAL không dùng được trên body này.
+Các hướng, theo thứ tự đáng thử:
+
+1. **`python3-picamera2`** — đường native của Pi. Cần gói apt, HAL venv thấy được
+   system site-packages, và một nhánh picamera2 trong camera driver của HAL.
+2. **Camera qua daemon** — daemon đã stream camera và công bố intrinsics tại
+   `GET /api/camera/specs` (ma trận K/D, mode mặc định 1280×720@30, thêm
+   1920×1080@30, 1280×720@60, tối đa 3840×2592@10). Tận dụng ISP đã tune của
+   Pollen nhưng buộc HAL phụ thuộc quyền media của daemon.
+3. **Subprocess `rpicam-vid`/GStreamer** — đẩy frame vào HAL. Không thêm
+   dependency Python, nhưng phải qua ranh giới process và tốn copy.
+
+Đây là quyết định driver, không phải giá trị config; `HAL_CAMERA_INDEX` trong
+`.env` của device vô tác dụng cho tới khi một trong ba hướng trên được làm.
+
 ## Motion Driver
 
 Reachy chọn motion backend của HAL qua:
@@ -159,15 +246,65 @@ trên bản Wireless thật.
    curl -s -X POST http://localhost:5001/servo/release
    ```
 
+## File .env và ALSA Của Device
+
+`.env` production nằm ở `devices/reachy-mini/rootfs/opt/hal/.env` (pattern rootfs
+overlay, giống Lamp). Mic và loa là **cùng một** card USB
+(`card 0: Audio [Reachy Mini Audio], device 0`), nên
+`devices/reachy-mini/rootfs/etc/asound.conf` alias cả hai về đó, địa chỉ theo
+**tên** card để hai card HDMI không làm lệch index:
+
+```
+pcm.device_mic     { type plug; slave.pcm "hw:CARD=Audio,DEV=0" }
+pcm.device_speaker { type plug; slave.pcm "hw:CARD=Audio,DEV=0" }
+```
+
+```bash
+HAL_AUDIO_INPUT_ALSA=plug:device_mic
+HAL_AUDIO_OUTPUT_ALSA=plug:device_speaker
+```
+
+File đó cố ý không set `pcm.!default` — daemon Pollen dùng chung phần cứng và
+phải giữ nguyên default mà nó cần.
+
+Một khác biệt hành vi so với Lamp: vì thu và phát là cùng một thiết bị USB, chúng
+dùng chung clock domain. Mic và loa của Lamp nằm trên hai bus USB khác nhau nên
+trôi clock — đó là lý do barge-in bị tắt ở Lamp. Reachy không có kiểu trôi đó,
+nên cần test lại echo cancellation trên body này thay vì bê nguyên mặc định
+"barge-in off" của Lamp.
+
+## Board Gate
+
+Con Wireless báo `Raspberry Pi Compute Module 4 Rev 1.1`, chuỗi này không chứa
+`pi 4` — nên trước ngày 2026-07-29 `assert_board_supported()` từ chối boot HAL:
+
+```
+RuntimeError: Unknown board: device-tree model 'raspberry pi compute module 4 rev 1.1'
+matches no entry in boards.json ... Refusing to boot on unidentified hardware
+```
+
+Đã sửa bằng cách thêm entry `raspberry_pi_cm4` (`match: ["compute module 4"]`) vào
+`hal/board/boards.json` và khai nó trong `boards` của `DEVICE.md`. Phần wiring
+`led`/`button` của entry này kế thừa từ `raspberry_pi_4` và **chưa được verify** —
+Reachy không khai `light` lẫn GPIO button nên hiện chưa ai đọc tới. Phải verify
+trước khi đấu hai peripheral đó trên CM4.
+
 ## TODO Khi Spike Hardware
 
-Cập nhật tài liệu này sau session chạy trên máy thật đầu tiên:
+Recon ngày 2026-07-29 đã chốt xong: tên ALSA, loại phần cứng camera, board id,
+network stack, port/API của daemon. Còn lại:
 
-- board id thực tế của bản Wireless (`DEVICE.md` hiện cho phép
-  `raspberry_pi_4` và `raspberry_pi_5`)
-- camera device id/name và resolution mặc định dùng được
-- microphone ALSA device name và hành vi echo cancellation
+- nối `POST /api/media/release` / `acquire` vào startup/shutdown của HAL
+- chọn đường camera (picamera2 vs qua daemon vs subprocess `rpicam-vid`)
 - sign convention cho `head_yaw.pos`, `head_pitch.pos`, và thứ tự antenna
 - `wake_up` / `goto_sleep` có phát âm thanh không khi dùng `media_backend="no_media"`
 - first-run behavior của `pollen-robotics/reachy-mini-emotions-library`
+- verify bảng map emotion→HF move chạy đúng cảm giác trên robot
+- test lại echo cancellation / barge-in (chung clock USB, khác Lamp)
 - thermal limits trước khi bật `SAFETY.md` `thermal`
+- `spike.sh` chạy `mkdir /opt/autonomous` và `apt-get install` mà không có `sudo`,
+  và pane status probe os-server ở `:5000` trong khi service listen chỗ khác —
+  phải sửa cả hai trước lần deploy đầu
+- Pollen OS chưa cài `uv`; `spike.sh` tự cài, nhưng `setup.sh` production cũng phải cài
+- `setup.sh` phải đi nhánh NetworkManager (`nmcli`), và có thể tái dùng profile
+  `Hotspot` sẵn có (`reachy-mini-ap`, `ipv4=shared`) thay vì cài hostapd/dnsmasq

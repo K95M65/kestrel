@@ -57,7 +57,7 @@ installed on top.
 
 | Method | Use case |
 |--------|----------|
-| `REACHY_HOST=pi@<IP> bash devices/reachy-mini/spike.sh` | Dev spike: build on Mac, rsync, tmux |
+| `REACHY_HOST=pollen@reachy-mini.local bash devices/reachy-mini/spike.sh` | Dev spike: build on Mac, rsync, tmux |
 | `DEVICE_TYPE=reachy-mini install.sh` | Production: full setup.sh with systemd, nginx, OTA |
 
 See [docs/runtime.md](docs/runtime.md) for architecture details and bring-up checklist.
