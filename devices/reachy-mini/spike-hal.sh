@@ -68,6 +68,13 @@ say "0/5  Preflight: disk space"
 # add as much again. The robot ships a 14 GB eMMC that is already ~60% full, and
 # filling it would hurt the Pollen daemon (journal, state writes) far more than
 # anything else this script does. Refuse rather than wedge the robot.
+#
+# Only gate the path that actually downloads: with --no-deps the venv already
+# exists and nothing new is fetched, so a full disk is not this run's problem.
+if [ "$SKIP_DEPS" = "1" ]; then
+  echo "[spike-hal] --no-deps: skipping the disk gate (no downloads this run)"
+  ssh "$REACHY_HOST" "df -h / | awk 'NR==2 {print \"[spike-hal] free space on /: \" \$4}'"
+else
 ssh "$REACHY_HOST" bash <<'REMOTE_DISK'
 set -e
 avail_kb=$(df -Pk / | awk 'NR==2 {print $4}')
@@ -80,6 +87,7 @@ if [ "$avail_kb" -lt 4194304 ]; then
   exit 1
 fi
 REMOTE_DISK
+fi
 
 say "1/5  Copy HAL + device profile"
 # /opt is root-owned; create the tree with sudo once, then own it as the login
@@ -109,7 +117,9 @@ fi
 # Pollen OS ships no /etc/asound.conf, so this creates rather than replaces. Back
 # up anyway: a future Pollen image may add one, and this script must never be the
 # reason their audio config disappeared.
-if [ -f /etc/asound.conf ] && [ ! -f /etc/asound.conf.pre-autonomous ]; then
+if [ -f /etc/asound.conf ] \
+   && ! cmp -s /etc/asound.conf "\$BASE/devices/reachy-mini/rootfs/etc/asound.conf" \
+   && [ ! -f /etc/asound.conf.pre-autonomous ]; then
   sudo cp /etc/asound.conf /etc/asound.conf.pre-autonomous
   echo "[spike-hal] backed up the existing /etc/asound.conf -> .pre-autonomous"
 fi
@@ -192,11 +202,20 @@ set -e
 export PATH="\$HOME/.local/bin:\$PATH"
 BASE="$REMOTE_BASE"
 
+# HAL runs as root here, exactly like the production systemd unit. It is not a
+# preference: config.py hardcodes a dozen state paths under /root (users,
+# strangers, face/pose models, agent workspaces, OS_CONFIG_PATH), and only the
+# first of them surfaces as a crash — overriding them one env var at a time is a
+# game of whack-a-mole that diverges from how the device really runs.
+# Footprint outside our tree: /root/local/** (see the uninstall note below).
+# Logs stay in our tree via HAL_LOG_DIR so they are easy to read and to delete.
+mkdir -p "\$BASE/logs"
+
 tmux kill-session -t $SESSION 2>/dev/null || true
 tmux new-session -d -s $SESSION -n hal
 
 tmux send-keys -t $SESSION:hal.0 \
-  "cd \$BASE/hal && DEVICE_TYPE=reachy-mini DEVICES_DIR=\$BASE/devices .venv/bin/uvicorn hal.server:app --host 0.0.0.0 --port 5001 2>&1 | tee /tmp/hal.log" Enter
+  "cd \$BASE/hal && sudo -E env DEVICE_TYPE=reachy-mini DEVICES_DIR=\$BASE/devices HAL_LOG_DIR=\$BASE/logs .venv/bin/uvicorn hal.server:app --host 0.0.0.0 --port 5001 2>&1 | tee /tmp/hal.log" Enter
 
 tmux split-window -t $SESSION:hal -v
 tmux send-keys -t $SESSION:hal.1 \
@@ -218,6 +237,8 @@ The daemon's camera and audio are on loan to HAL until you run --stop.
 
 Full uninstall (leaves Pollen OS as it was):
   bash devices/reachy-mini/spike-hal.sh --stop
-  ssh $REACHY_HOST 'sudo rm -rf $REMOTE_BASE && sudo rm -f /etc/asound.conf'
+  ssh $REACHY_HOST 'sudo rm -rf $REMOTE_BASE /root/local && sudo rm -f /etc/asound.conf'
+  # /root/local is HAL state (users, strangers, models) — it runs as root here,
+  # same as the production systemd unit, so it writes outside our tree.
   # if a backup exists: sudo mv /etc/asound.conf.pre-autonomous /etc/asound.conf
 EOF
