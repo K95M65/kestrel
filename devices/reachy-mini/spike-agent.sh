@@ -53,11 +53,22 @@ if [ "$avail_kb" -lt 1572864 ]; then
   exit 1
 fi
 
-if command -v npm >/dev/null 2>&1; then
+# NodeSource, not apt: Debian trixie ships node 20, and openclaw hard-refuses to
+# start on anything below 22.19 ("Node.js v22.19+ is required") — npm only WARNs
+# at install time, so the failure surfaces as a systemd crash-loop instead.
+# Same source and major as the lamp (scripts/provision/setup.sh, build-orangepi.sh).
+need_node=1
+if command -v node >/dev/null 2>&1; then
+  major=$(node --version | sed 's/^v//; s/\..*//')
+  [ "$major" -ge 22 ] && need_node=0
+fi
+
+if [ "$need_node" = "0" ]; then
   echo "[spike-agent] node $(node --version), npm $(npm --version) already present"
 else
-  sudo apt-get update -qq
-  sudo apt-get install -y --no-install-recommends nodejs npm
+  echo "[spike-agent] installing Node.js 22 (NodeSource)..."
+  curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+  sudo apt-get install -y nodejs
   echo "[spike-agent] installed node $(node --version), npm $(npm --version)"
 fi
 REMOTE_NODE
