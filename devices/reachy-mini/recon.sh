@@ -143,11 +143,11 @@ printf '    may need a gstreamer pipeline or picamera2 — see first-boot-plan.m
 
 # --- 1.6 Ports & running services -------------------------------------------
 
-section "1.6 Ports & Services  [our ports: HAL 5001, os-server 8080, nginx 80]"
+section "1.6 Ports & Services  [our ports: HAL 5001, os-server 5000 (loopback), nginx 80]"
 step "listening TCP ports"
 run "ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null"
 step "our ports free?"
-for p in 5001 8080 80; do
+for p in 5001 5000 80; do
   if ss -tln 2>/dev/null | grep -q ":$p " || netstat -tln 2>/dev/null | grep -q ":$p "; then
     printf 'port %-5s: IN USE  <-- conflict, inspect owner above\n' "$p"
   else
@@ -204,7 +204,7 @@ Daemon port    : ____________________                          (from 1.3)
 Mic ALSA       : plughw:__,__   channels:__                    (from 1.4)
 Speaker ALSA   : plughw:__,__                                  (from 1.4)
 Camera         : /dev/video__   V4L2|libcamera   maxres:_____  (from 1.5)
-Ports free     : 5001 __  8080 __  80 __                       (from 1.6)
+Ports free     : 5001 __  5000 __  80 __                       (from 1.6)
 Cairo deps     : present | missing                             (from 1.7)
 Media held by daemon : yes | no   release endpoint: yes | no   (from 1.9)
 SUMMARY

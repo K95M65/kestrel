@@ -172,12 +172,12 @@ nên pipeline `libcamerasrc` cũng không dùng được. Các hướng chọn c
 ss -tlnp                        # tất cả cổng TCP đang lắng nghe
 systemctl list-units --type=service --state=running
 # Kiểm tra xung đột cổng với dịch vụ của mình
-# HAL: 5001, os-server: 8080, nginx: 80
+# HAL: 5001, os-server: 5000 (chỉ bind 127.0.0.1), nginx: 80
 ```
 
 **Ghi lại** (2026-07-29):
 - [x] Cổng 5001 trống: **có**
-- [x] Cổng 8080 trống: **có**
+- [x] Cổng 5000 trống: **có** (os-server, chỉ loopback)
 - [x] Cổng 80 trống: **có** — Pollen không ship nginx
 
 Daemon (tiến trình `python` của `/venvs/mini_daemon`) chiếm `8000` và `8443`, cộng
@@ -291,7 +291,7 @@ Bất kể network stack nào, setup.sh phải:
 1. **Không bao giờ dừng hoặc restart Pollen daemon** trong quá trình cài
 2. **Cài vào venv riêng** (`/opt/hal/.venv/`, không phải `/venvs/`)
 3. **Cài system deps**: `libcairo2-dev`, `libgirepository1.0-dev`, `pkg-config`
-4. **Không xung đột cổng**: kiểm tra 5001, 8080, 80 trống trước khi bind
+4. **Không xung đột cổng**: kiểm tra 5001, 5000, 80 trống trước khi bind
 5. **Đặt hostname** thành `reachy-mini-<suffix>` không phá mDNS của Pollen
 6. **Tạo systemd units** cho `hal.service` và `os-server.service`
 7. **Cài nginx** với config captive portal (hoặc bỏ qua nếu Pollen đã chạy nginx)
@@ -405,7 +405,10 @@ REACHY_HOST=pollen@reachy-mini.local bash devices/reachy-mini/spike.sh
 Lỗ hổng đã biết trong `spike.sh` cần sửa trước khi chạy (phát hiện 2026-07-29,
 chưa sửa): nó tạo `/opt/autonomous` và chạy `apt-get install` mà không có `sudo`
 nên fail khi đăng nhập bằng `pollen`; pane status probe os-server ở `:5000` trong
-khi plan/docs đặt nó ở `:8080`. Pollen OS chưa có `uv` — script tự cài, nhưng
+khi docs ghi nhầm là `:8080`. Probe mới đúng còn docs sai — os-server bind
+`127.0.0.1:5000` (`system/server/config/config.go`, `system/server/server.go`),
+nên chỉ truy cập được từ chính con Pi cho tới khi có nginx đứng trước.
+Pollen OS chưa có `uv` — script tự cài, nhưng
 `setup.sh` production cũng phải cài.
 
 Board gate cũng phải được dạy phần cứng này: máy báo

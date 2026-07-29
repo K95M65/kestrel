@@ -60,7 +60,7 @@ sung. Chúng thay thế phần phỏng đoán mà tài liệu này từng ghi.
 | Profile NM | `Glinks` (STA) + `Hotspot` (`mode=ap`, ssid `reachy-mini-ap`, `ipv4=shared`, `autoconnect=false`) |
 | Unit của Pollen | `reachy-mini-daemon.service` (AP launcher → daemon), `reachy-mini-bluetooth.service` (GATT), `gpio-shutdown-daemon.service` |
 | Daemon | `reachy_mini` 1.9.0 trong `/venvs/mini_daemon` (Python 3.12), chạy dưới user `pollen` |
-| Port daemon | `:8000` REST+WS, `:8443`. Port của mình (`5001`, `8080`, `80`) đều trống |
+| Port daemon | `:8000` REST+WS, `:8443`. Port của mình — `5001` (HAL), `5000` (os-server, chỉ loopback), `80` — đều trống |
 | WS path daemon | `/ws/sdk`, `/ws/daemon`, `/ws/full`, `/ws/raw`, `/ws/set_target`, `/ws/apps`, `/ws/logs`, `/ws/updates` |
 | Control loop | đo được ~**49 Hz** (`/api/daemon/status`), không phải 100 Hz như hay được nhắc |
 | Audio | một card USB duy nhất: `card 0: Audio [Reachy Mini Audio], device 0` — vừa thu vừa phát |

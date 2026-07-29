@@ -172,12 +172,12 @@ strategy options are compared in
 ss -tlnp                        # all listening TCP ports
 systemctl list-units --type=service --state=running
 # Check for port conflicts with our services
-# HAL: 5001, os-server: 8080, nginx: 80
+# HAL: 5001, os-server: 5000 (binds 127.0.0.1 only), nginx: 80
 ```
 
 **Record** (2026-07-29):
 - [x] Port 5001 free: **yes**
-- [x] Port 8080 free: **yes**
+- [x] Port 5000 free: **yes** (os-server, loopback-only)
 - [x] Port 80 free: **yes** — Pollen ships no nginx
 
 Occupied by the daemon (pid of `python` from `/venvs/mini_daemon`): `8000` and
@@ -292,7 +292,7 @@ Regardless of network stack, setup.sh must:
 1. **Never stop or restart the Pollen daemon** during install
 2. **Install into a separate venv** (`/opt/hal/.venv/`, not `/venvs/`)
 3. **Install system deps**: `libcairo2-dev`, `libgirepository1.0-dev`, `pkg-config`
-4. **Not conflict on ports**: verify 5001, 8080, 80 are free before binding
+4. **Not conflict on ports**: verify 5001, 5000, 80 are free before binding
 5. **Set hostname** to `reachy-mini-<suffix>` without breaking Pollen's mDNS
 6. **Create systemd units** for `hal.service` and `os-server.service`
 7. **Install nginx** with captive portal config (or skip if Pollen already runs nginx)
@@ -406,7 +406,10 @@ REACHY_HOST=pollen@reachy-mini.local bash devices/reachy-mini/spike.sh
 Known gaps to fix in `spike.sh` before this runs (found 2026-07-29, not yet
 fixed): it creates `/opt/autonomous` and runs `apt-get install` without `sudo`,
 which fails as `pollen`; and its status pane probes os-server on `:5000` while
-the plan/docs put it on `:8080`. `uv` is absent on Pollen OS — the script does
+the docs wrongly said `:8080`. The probe was right and the docs were wrong —
+os-server binds `127.0.0.1:5000` (`system/server/config/config.go`,
+`system/server/server.go`), so it is only reachable from the Pi until nginx
+fronts it. `uv` is absent on Pollen OS — the script does
 install it, but production `setup.sh` must too.
 
 The board gate also had to be taught this hardware: the unit reports

@@ -86,7 +86,7 @@ replace the guesses this doc previously carried.
 | NM profiles | `Glinks` (STA) + `Hotspot` (`mode=ap`, ssid `reachy-mini-ap`, `ipv4=shared`, `autoconnect=false`) |
 | Pollen units | `reachy-mini-daemon.service` (AP launcher → daemon), `reachy-mini-bluetooth.service` (GATT), `gpio-shutdown-daemon.service` |
 | Daemon | `reachy_mini` 1.9.0 in `/venvs/mini_daemon` (Python 3.12), runs as user `pollen` |
-| Daemon ports | `:8000` REST+WS, `:8443`. Our `5001`, `8080`, `80` are all free |
+| Daemon ports | `:8000` REST+WS, `:8443`. Our `5001` (HAL), `5000` (os-server, loopback-only) and `80` are all free |
 | Daemon WS paths | `/ws/sdk`, `/ws/daemon`, `/ws/full`, `/ws/raw`, `/ws/set_target`, `/ws/apps`, `/ws/logs`, `/ws/updates` |
 | Control loop | ~**49 Hz** measured (`/api/daemon/status`), not the 100 Hz commonly quoted |
 | Audio | one USB card: `card 0: Audio [Reachy Mini Audio], device 0` — capture **and** playback |
