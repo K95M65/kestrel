@@ -140,9 +140,15 @@ cục gạch.** Autonomous luôn được cài chồng lên.
 - **Spike đầu tiên**: `bash devices/reachy-mini/spike-hal.sh` — chỉ HAL. Rsync
   HAL, cài `.env` của device và `/etc/asound.conf`, mượn camera/audio từ daemon,
   chạy uvicorn trong tmux. `--stop` trả media lại.
-- **Spike kèm os-server**: `REACHY_HOST=pollen@reachy-mini.local bash devices/reachy-mini/spike.sh`
-  — build thêm web UI và os-server. Lưu ý os-server bind `127.0.0.1:5000` và
-  không serve static, nên web UI cần nginx mới truy cập được.
+- **Spike thứ hai**: `bash devices/reachy-mini/spike-os.sh` — chỉ os-server.
+  Cross-compile linux/arm64, seed `/root/config/config.json` tối thiểu, chạy API
+  trong tmux **dưới root với cwd=/root**: `config.Load` đọc đường tương đối
+  `config/config.json`, nên chạy từ thư mục khác sẽ khiến os-server và HAL đọc
+  hai file config khác nhau mà không báo lỗi.
+- **Spike kèm os-server + web**: `REACHY_HOST=pollen@reachy-mini.local bash devices/reachy-mini/spike.sh`
+  — build thêm web UI. Lưu ý os-server bind `127.0.0.1:5000` và không serve
+  static, nên web UI cần nginx mới truy cập được; trước đó thì gọi API từ chính
+  con Pi hoặc tunnel (`ssh -L 5000:localhost:5000`).
 
 ## Motion Driver
 

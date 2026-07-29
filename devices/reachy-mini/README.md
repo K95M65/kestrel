@@ -13,6 +13,7 @@ OS image and runtime contract as the other devices, with the body selected by
 | `SAFETY.md` | Deterministic safety bounds for motion and fail-safe behavior |
 | `SOUL.md` | Reachy's default persona, adapted from Lamp but mapped to head/body/antenna expression |
 | `spike-hal.sh` | HAL-only dev deploy: rsync HAL, install `.env` + ALSA aliases, borrow daemon media, run uvicorn in tmux |
+| `spike-os.sh` | os-server-only dev deploy: cross-compile, seed `/root/config/config.json`, run the API in tmux |
 | `spike.sh` | Full dev deploy from a Mac: build, rsync, install deps, run HAL + os-server in tmux |
 | `rootfs/opt/hal/.env` | Production HAL env, copied to `/opt/hal/.env` by the rootfs overlay |
 | `rootfs/etc/asound.conf` | ALSA aliases (`device_mic`, `device_speaker`) for the single USB audio card |
@@ -62,6 +63,7 @@ installed on top.
 | Method | Use case |
 |--------|----------|
 | `bash devices/reachy-mini/spike-hal.sh` | **First spike**: HAL only — validates body, audio, device profile |
+| `bash devices/reachy-mini/spike-os.sh` | Second spike: os-server API only (loopback `:5000`, no web UI) |
 | `REACHY_HOST=pollen@reachy-mini.local bash devices/reachy-mini/spike.sh` | Dev spike with os-server: build on Mac, rsync, tmux |
 | `DEVICE_TYPE=reachy-mini install.sh` | Production: full setup.sh with systemd, nginx, OTA |
 

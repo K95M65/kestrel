@@ -55,9 +55,15 @@ Autonomous OS is always **installed on top** of Pollen's OS:
 - **First spike**: `bash devices/reachy-mini/spike-hal.sh` — HAL only. Rsyncs
   HAL, installs the device `.env` and `/etc/asound.conf`, borrows camera/audio
   from the daemon, runs uvicorn in tmux. `--stop` gives the media back.
-- **Spike with os-server**: `REACHY_HOST=pollen@reachy-mini.local bash devices/reachy-mini/spike.sh`
-  — also builds the web UI and os-server. Note os-server binds `127.0.0.1:5000`
-  and serves no static files, so the UI needs nginx before it is reachable.
+- **Second spike**: `bash devices/reachy-mini/spike-os.sh` — os-server only.
+  Cross-compiles for linux/arm64, seeds a minimal `/root/config/config.json`,
+  and runs the API in tmux **as root with cwd=/root**: `config.Load` reads the
+  relative path `config/config.json`, so any other working directory silently
+  points os-server and HAL at different config files.
+- **Spike with os-server + web**: `REACHY_HOST=pollen@reachy-mini.local bash devices/reachy-mini/spike.sh`
+  — also builds the web UI. Note os-server binds `127.0.0.1:5000` and serves no
+  static files, so the UI needs nginx before it is reachable; until then, reach
+  the API from the Pi or tunnel it (`ssh -L 5000:localhost:5000`).
 - **Production**: `DEVICE_TYPE=reachy-mini bash <(curl -fsSL .../install.sh)` —
   runs `setup.sh` on the existing OS, adds systemd units, nginx, WiFi AP, OTA.
 
