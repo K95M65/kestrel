@@ -156,21 +156,43 @@ node, not a ready-to-read YUV stream:
 | `rpicam-jpeg -o t.jpg --width 1280 --height 720` | works (216 KB JPEG) |
 | `python3-picamera2` | not installed; apt candidate `0.3.33-1` |
 
-So HAL's OpenCV-index camera path does not work on this body. Options, in the
-order they are worth trying:
+**Resolved (2026-07-29)** by a second camera backend rather than a config value.
+`DEVICE.md` selects it the same way motion picks its driver:
 
-1. **`python3-picamera2`** — the Pi-native path. Needs the apt package plus a HAL
-   venv that can see system site-packages, and a picamera2 branch in HAL's camera
-   driver.
-2. **Daemon-mediated camera** — the daemon already streams the camera and
-   publishes intrinsics at `GET /api/camera/specs` (K/D matrices, modes
-   1280×720@30 default, 1920×1080@30, 1280×720@60, up to 3840×2592@10). Reuses
-   Pollen's tuned ISP but couples HAL to daemon media ownership.
-3. **`rpicam-vid`/GStreamer subprocess** — pipe frames into HAL. No new Python
-   dependency, but a process boundary and extra copies.
+```yaml
+vision:
+  routes: [camera]
+  driver: rpicam
+  required: true
+```
 
-This is a driver decision, not a config value; `HAL_CAMERA_INDEX` in the device
-`.env` is inert until one of the above lands.
+`hal/drivers/camera/factory.py` maps that to
+`RpicamVideoCaptureDevice`, which runs `rpicam-vid --codec mjpeg -o -` as a child
+process, splits the stream on JPEG markers and decodes the newest frame with
+`cv2.imdecode`. Both backends satisfy `VideoCaptureDeviceBase`, so routes,
+sensing and the tracker never learn which one is running. Lamp declares
+`driver: opencv` for the UVC path.
+
+Why not the alternatives:
+
+- **`python3-picamera2`** — the apt package is built for the system interpreter
+  (3.13 on trixie); HAL's venv runs 3.12, and libcamera's binary extension does
+  not load across versions. Using it would mean moving all of HAL to 3.13.
+- **Daemon-mediated camera** — `/api/media/release` hands over camera *and* audio
+  together, so taking frames from the daemon would mean routing audio through it
+  as well, replacing a path that already works.
+
+Measured on the unit: 1280×720 MJPEG at 15 fps requested delivers ~14 fps for
+~21% of one core, with the daemon's control loop running. The driver idles at 5
+fps and switches to 15 only while a consumer is registered
+(`acquire_consumer()`), which respawns the child because the rate is a launch
+argument. `HAL_CAMERA_INDEX` is unused by this backend — libcamera selects the
+sensor by pipeline — and `requires_v4l2_index = False` keeps boot from probing
+`/dev/video*` for a node it will never open.
+
+Known tuning gap: at the 5 fps idle rate libcamera may pick exposures long
+enough to smear moving subjects. Raise the idle rate or cap `--shutter` when
+sharp stills matter more than CPU.
 
 ## Motion Driver
 

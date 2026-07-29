@@ -116,20 +116,41 @@ phải luồng YUV đọc thẳng được:
 | `rpicam-jpeg -o t.jpg --width 1280 --height 720` | chạy được (JPEG 216 KB) |
 | `python3-picamera2` | chưa cài; apt có candidate `0.3.33-1` |
 
-Nghĩa là đường camera theo index OpenCV của HAL không dùng được trên body này.
-Các hướng, theo thứ tự đáng thử:
+**Đã giải quyết (2026-07-29)** bằng một camera backend thứ hai, không phải bằng
+giá trị config. `DEVICE.md` chọn backend giống hệt cách motion chọn driver:
 
-1. **`python3-picamera2`** — đường native của Pi. Cần gói apt, HAL venv thấy được
-   system site-packages, và một nhánh picamera2 trong camera driver của HAL.
-2. **Camera qua daemon** — daemon đã stream camera và công bố intrinsics tại
-   `GET /api/camera/specs` (ma trận K/D, mode mặc định 1280×720@30, thêm
-   1920×1080@30, 1280×720@60, tối đa 3840×2592@10). Tận dụng ISP đã tune của
-   Pollen nhưng buộc HAL phụ thuộc quyền media của daemon.
-3. **Subprocess `rpicam-vid`/GStreamer** — đẩy frame vào HAL. Không thêm
-   dependency Python, nhưng phải qua ranh giới process và tốn copy.
+```yaml
+vision:
+  routes: [camera]
+  driver: rpicam
+  required: true
+```
 
-Đây là quyết định driver, không phải giá trị config; `HAL_CAMERA_INDEX` trong
-`.env` của device vô tác dụng cho tới khi một trong ba hướng trên được làm.
+`hal/drivers/camera/factory.py` map tên đó tới `RpicamVideoCaptureDevice`: chạy
+`rpicam-vid --codec mjpeg -o -` như tiến trình con, tách luồng theo marker JPEG,
+decode frame mới nhất bằng `cv2.imdecode`. Cả hai backend đều thoả
+`VideoCaptureDeviceBase`, nên routes, sensing và tracker không hề biết đang chạy
+cái nào. Lamp khai `driver: opencv` cho đường UVC.
+
+Vì sao không chọn hai hướng kia:
+
+- **`python3-picamera2`** — gói apt build cho python hệ thống (3.13 trên trixie),
+  còn venv của HAL là 3.12; extension nhị phân của libcamera không nạp chéo
+  phiên bản. Dùng nó đồng nghĩa đẩy toàn bộ HAL sang 3.13.
+- **Camera qua daemon** — `/api/media/release` bàn giao camera **và** audio cùng
+  lúc, nên lấy frame từ daemon sẽ kéo theo phải cho audio đi qua daemon nốt,
+  thay thế một đường đang chạy tốt.
+
+Đo trên máy: 1280×720 MJPEG yêu cầu 15 fps cho ra ~14 fps, tốn ~21% một core,
+trong khi daemon vẫn chạy control loop. Driver idle ở 5 fps và chỉ lên 15 khi có
+consumer đăng ký (`acquire_consumer()`) — lúc đó nó respawn tiến trình con vì
+frame rate là tham số dòng lệnh. `HAL_CAMERA_INDEX` vô tác dụng với backend này
+(libcamera chọn sensor theo pipeline), và `requires_v4l2_index = False` giúp boot
+không đi dò `/dev/video*` cho node sẽ không bao giờ mở.
+
+Điểm còn phải tune: ở mức idle 5 fps, libcamera có thể chọn thời gian phơi sáng
+đủ dài để làm nhoè vật thể chuyển động. Nâng idle rate hoặc chặn trần
+`--shutter` khi cần ảnh tĩnh nét hơn là cần tiết kiệm CPU.
 
 ## Deploy: cài chồng, không bao giờ flash
 

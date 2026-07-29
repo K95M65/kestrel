@@ -56,6 +56,10 @@ class RpicamVideoCaptureDevice(VideoCaptureDeviceBase):
     """MJPEG-over-pipe capture from `rpicam-vid`, for CSI/libcamera sensors."""
 
     runable: bool = True
+    # libcamera selects the sensor through its own pipeline; there is no V4L2
+    # index to resolve (and /dev/video0 here is a raw Bayer node that would only
+    # mislead). See VideoCaptureDeviceBase.requires_v4l2_index.
+    requires_v4l2_index: bool = False
 
     # Idle frame rate. Sensing polls every couple of seconds and the tracker is
     # the only fast consumer, so the child runs slow until someone calls

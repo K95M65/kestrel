@@ -11,7 +11,7 @@ gateway:
   protocol: websocket
 capabilities:
   audio:      { routes: [audio, speaker, voice], required: true }
-  vision:     { routes: [camera], required: true }
+  vision:     { routes: [camera], driver: rpicam, required: true }
   sensing:    { routes: [sensing], required: false }
   presence:   { required: false }
   motion:     { routes: [servo], driver: reachy_sdk, required: true, safety: SAFETY.md#motion }
