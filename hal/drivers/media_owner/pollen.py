@@ -51,11 +51,49 @@ class PollenDaemonMediaOwner:
         logger.info("[media-owner] pollen %s -> %s", action, resp.text.strip()[:200])
         return True
 
+    def _restore_volume(self) -> None:
+        """Put the user's speaker level back after a release.
+
+        The daemon's release handler resets the card's mixer to its own level as
+        part of handing over — measured: 90% before the call, 62% after, with
+        HAL not running at all and `acquire` provably innocent. Nothing else
+        re-asserts it in time: HAL only ever WRITES the persisted level
+        (routes/audio.py), and os-server restores it once at its own startup,
+        so a plain HAL restart left the speaker at Pollen's level while the
+        slider, the persisted file, and the agent all still said the user's.
+
+        Best-effort and quiet when there is no persisted level yet (first boot):
+        the daemon's own default is a reasonable thing to be left with.
+        """
+        try:
+            from hal.config import VOLUME_STATE_PATH
+            with open(VOLUME_STATE_PATH) as f:
+                pct = int(f.read().strip())
+        except Exception:
+            return
+        if not 0 <= pct <= 100:
+            return
+        try:
+            # Through the route rather than a fresh amixer call: it owns the
+            # dB envelope and the DAC/BT-sink routing, and duplicating that
+            # here would drift from what every other volume path does.
+            from hal.models import VolumeRequest
+            from hal.routes.audio import set_volume
+
+            set_volume(VolumeRequest(volume=pct))
+            logger.info("[media-owner] pollen release reset the mixer — restored %d%%", pct)
+        except Exception as e:
+            logger.warning(
+                "[media-owner] could not restore volume %d%% after release: %s", pct, e
+            )
+
     def release(self) -> bool:
         """Take the camera and audio devices from the daemon."""
         for attempt in range(1, self._RELEASE_ATTEMPTS + 1):
             try:
-                return self._post("release")
+                ok = self._post("release")
+                self._restore_volume()
+                return ok
             except Exception as e:
                 if attempt == self._RELEASE_ATTEMPTS:
                     logger.warning(
