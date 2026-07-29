@@ -137,7 +137,23 @@ sudo apt-get install -y --no-install-recommends \
 export UV_CACHE_DIR=/opt/autonomous/.uv-cache
 
 cd /opt/autonomous/hal
-uv sync --python 3.12 --extra hardware --extra reachy
+
+# Retry the sync: pulling ~2 GB of wheels over office WiFi times out often enough
+# that a single attempt is not a real deploy step. uv resumes from its cache, so
+# a retry only fetches what is still missing. 30s is uv's default per-request
+# timeout — too tight for a 300 MB torch wheel on a shared link.
+export UV_HTTP_TIMEOUT=180
+sync_ok=0
+for attempt in 1 2 3; do
+  echo "[spike-hal] uv sync attempt $attempt/3"
+  if uv sync --python 3.12 --extra hardware --extra reachy; then
+    sync_ok=1
+    break
+  fi
+  echo "[spike-hal] attempt $attempt failed — retrying in 5s"
+  sleep 5
+done
+[ "$sync_ok" = "1" ] || { echo "[spike-hal] ABORT: uv sync failed 3 times (network?). Cache is kept — rerun to resume."; exit 1; }
 
 # Drop cache entries no longer referenced by the venv — the download cache is
 # dead weight on a 14 GB eMMC once the venv is built.
