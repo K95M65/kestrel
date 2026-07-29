@@ -17,6 +17,9 @@ capabilities:
   motion:     { routes: [servo], driver: reachy_sdk, required: true, safety: SAFETY.md#motion }
   expression: { routes: [emotion], required: true }
   system:     { routes: [system], required: true }
+  lifelike:     { required: false }
+  media:        { routes: [music], required: true }
+  companion:    { routes: [buddy], required: false }
 soul_ref:   SOUL.md
 safety_ref: SAFETY.md
 memory:     { backend: local }
