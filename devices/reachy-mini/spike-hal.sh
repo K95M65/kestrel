@@ -145,6 +145,22 @@ else
   cp "\$BASE/devices/reachy-mini/rootfs/opt/hal/.env" "\$BASE/hal/.env"
   echo "[spike-hal] installed .env from the rootfs overlay"
 fi
+
+# The overlay ships the production DEVICES_DIR=/opt/devices, but the spike keeps
+# everything under one tree so \`rm -rf $REMOTE_BASE\` reclaims it all. Point it
+# at what was actually deployed.
+#
+# This has to be the .env and not Environment= in the unit: systemd applies
+# EnvironmentFile= AFTER Environment=, so the file wins no matter which order
+# they appear in. Getting it wrong is silent in the worst way — HAL refuses to
+# boot with "DEVICE.md required but not loaded", or, if the path happens to
+# exist, every service reports healthy while the capability list comes back empty.
+if grep -q '^DEVICES_DIR=' "\$BASE/hal/.env"; then
+  sed -i "s|^DEVICES_DIR=.*|DEVICES_DIR=\$BASE/devices|" "\$BASE/hal/.env"
+else
+  echo "DEVICES_DIR=\$BASE/devices" >> "\$BASE/hal/.env"
+fi
+echo "[spike-hal] .env DEVICES_DIR -> \$BASE/devices"
 # Pollen OS ships no /etc/asound.conf, so this creates rather than replaces. Back
 # up anyway: a future Pollen image may add one, and this script must never be the
 # reason their audio config disappeared.
@@ -255,13 +271,13 @@ Wants=reachy-mini-daemon.service
 Type=simple
 User=root
 WorkingDirectory=$REMOTE_BASE/hal
+# DEVICE_TYPE and DEVICES_DIR live in this file, not in Environment= below:
+# systemd applies EnvironmentFile= after Environment=, so anything named in both
+# takes the file's value. Step 2 of this script is what makes DEVICES_DIR point
+# at the deployed tree.
 EnvironmentFile=$REMOTE_BASE/hal/.env
-# These come AFTER EnvironmentFile on purpose — later assignments win, and the
-# .env ships the production value DEVICES_DIR=/opt/devices, which does not exist
-# in the spike layout. Getting it wrong is silent: every service reports healthy
-# while the capability list comes back empty.
-Environment=DEVICE_TYPE=reachy-mini
-Environment=DEVICES_DIR=$REMOTE_BASE/devices
+# Safe as an Environment= line only because the .env does not set HF_HOME — if
+# it ever does, the file wins and this becomes dead weight.
 Environment=HF_HOME=$HF_HOME_PATH
 # Borrow the camera and microphone from the daemon before HAL opens them. On a
 # cold boot the daemon's HTTP port may not be listening yet, hence the retry.
