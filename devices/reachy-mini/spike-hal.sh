@@ -4,9 +4,14 @@
 # Runs FROM YOUR MAC. Unlike spike.sh (which also builds os-server + the web UI),
 # this script targets the body alone: rsync HAL, install the device .env and ALSA
 # aliases, sync the Python venv, borrow the media devices from the Pollen daemon,
-# and run uvicorn in tmux. Nothing here is production — no systemd, no nginx, no
-# OTA. Use it to validate motion, audio, and the device profile before any of the
-# agent stack exists on the robot.
+# and run uvicorn under a systemd unit. Use it to validate motion, audio, and the
+# device profile before any of the agent stack exists on the robot.
+#
+# Why a unit and not tmux: a tmux session dies with the SSH connection and never
+# comes back after a power cut, so the robot came up mute and blind every time it
+# was unplugged. The unit is still not production — it points at the spike layout
+# (/opt/autonomous), not the OTA layout (/opt/hal) that scripts/provision/setup.sh
+# installs — but the stack survives a reboot. No nginx, no OTA.
 #
 # Why HAL-only: os-server binds 127.0.0.1:5000 and does not serve static files —
 # the web UI needs nginx (see scripts/provision/setup.sh), which the Reachy
@@ -23,6 +28,7 @@
 #   bash devices/reachy-mini/spike-hal.sh --no-deps       # skip uv sync (fast redeploy)
 #   bash devices/reachy-mini/spike-hal.sh --keep-media    # do not release daemon media
 #   bash devices/reachy-mini/spike-hal.sh --stop          # stop HAL, give media back
+#   bash devices/reachy-mini/spike-hal.sh --uninstall     # stop + remove the unit
 #
 #   REACHY_HOST=pollen@172.168.20.208 bash devices/reachy-mini/spike-hal.sh
 set -euo pipefail
@@ -31,16 +37,24 @@ REACHY_HOST="${REACHY_HOST:-pollen@reachy-mini.local}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 REMOTE_BASE="/opt/autonomous"
 DAEMON="http://localhost:8000"
-SESSION="hal"
+SERVICE="hal"
+# HAL runs as root (config.py hardcodes state paths under /root), but the model
+# caches were all built under the login user, because this script used to run
+# uvicorn with `sudo -E`, which keeps HOME. systemd gives root HOME=/root, so
+# without pinning this the whole model set downloads again onto an eMMC that is
+# already ~86% full.
+HF_HOME_PATH="/home/pollen/.cache/huggingface"
 
 SKIP_DEPS=0
 KEEP_MEDIA=0
 STOP_ONLY=0
+UNINSTALL=0
 for arg in "$@"; do
   case "$arg" in
     --no-deps)    SKIP_DEPS=1 ;;
     --keep-media) KEEP_MEDIA=1 ;;
     --stop)       STOP_ONLY=1 ;;
+    --uninstall)  UNINSTALL=1 ;;
     *) echo "unknown flag: $arg" >&2; exit 2 ;;
   esac
 done
@@ -48,16 +62,33 @@ done
 say() { printf '\n========== %s ==========\n' "$1"; }
 
 # --- teardown ---------------------------------------------------------------
-# Killing HAL is not enough: the daemon must take its camera and audio back, or
-# Pollen's own app stack stays deaf and blind until someone calls acquire.
-if [ "$STOP_ONLY" = "1" ]; then
+# Stopping HAL is not enough: the daemon must take its camera and audio back, or
+# Pollen's own app stack stays deaf and blind until someone calls acquire. The
+# unit does that itself via ExecStopPost; the explicit call here covers a HAL
+# that was killed hard enough to skip it.
+if [ "$STOP_ONLY" = "1" ] || [ "$UNINSTALL" = "1" ]; then
   say "Stopping HAL on $REACHY_HOST"
-  ssh "$REACHY_HOST" "tmux kill-session -t $SESSION 2>/dev/null || true
-    curl -s -X POST $DAEMON/api/media/acquire || true
-    echo
-    curl -s $DAEMON/api/media/status"
+  ssh "$REACHY_HOST" bash <<REMOTE_STOP
+sudo systemctl stop $SERVICE 2>/dev/null || true
+# Legacy path: earlier versions of this script ran HAL in tmux.
+tmux kill-session -t $SERVICE 2>/dev/null || true
+if [ "$UNINSTALL" = "1" ]; then
+  sudo systemctl disable $SERVICE 2>/dev/null || true
+  sudo rm -f /etc/systemd/system/$SERVICE.service
+  sudo systemctl daemon-reload
+  echo "[spike-hal] unit removed"
+fi
+sleep 1
+curl -s -X POST $DAEMON/api/media/acquire >/dev/null || true
+echo -n "[spike-hal] media: "; curl -s $DAEMON/api/media/status; echo
+REMOTE_STOP
   echo
-  echo "HAL stopped, media handed back to the daemon."
+  if [ "$UNINSTALL" = "1" ]; then
+    echo "HAL stopped and the unit removed; media handed back to the daemon."
+  else
+    echo "HAL stopped, media handed back. Still enabled — it returns on the next boot."
+    echo "To keep it down: bash devices/reachy-mini/spike-hal.sh --uninstall"
+  fi
   exit 0
 fi
 
@@ -128,13 +159,12 @@ echo "[spike-hal] installed /etc/asound.conf"
 REMOTE_CONF
 
 if [ "$SKIP_DEPS" = "0" ]; then
-  say "3/5  Install deps (uv, tmux, cairo libs, HAL venv)"
+  say "3/5  Install deps (uv, cairo libs, HAL venv)"
   ssh "$REACHY_HOST" bash <<'REMOTE_DEPS'
 set -e
 export PATH="$HOME/.local/bin:$PATH"
 
 command -v uv &>/dev/null || { echo "[spike-hal] installing uv..."; curl -LsSf https://astral.sh/uv/install.sh | sh; }
-command -v tmux &>/dev/null || { echo "[spike-hal] installing tmux..."; sudo apt-get update && sudo apt-get install -y tmux; }
 
 # pygobject/pycairo build deps for the `reachy` extra. Pollen OS ships them, but
 # a fresh image or another unit may not.
@@ -196,47 +226,93 @@ rm -f /tmp/_spike_mic.wav
 REMOTE_MEDIA
 fi
 
-say "5/5  Start HAL in tmux"
+say "5/5  Install the systemd unit and start HAL"
 ssh "$REACHY_HOST" bash <<REMOTE_START
 set -e
-export PATH="\$HOME/.local/bin:\$PATH"
-BASE="$REMOTE_BASE"
 
-# HAL runs as root here, exactly like the production systemd unit. It is not a
-# preference: config.py hardcodes a dozen state paths under /root (users,
-# strangers, face/pose models, agent workspaces, OS_CONFIG_PATH), and only the
-# first of them surfaces as a crash — overriding them one env var at a time is a
-# game of whack-a-mole that diverges from how the device really runs.
-# Footprint outside our tree: /root/local/** and /var/log/hal (uninstall note below).
-# No HAL_LOG_DIR override: logging goes to the production path /var/log/hal,
-# which only needed redirecting back when this script ran HAL as the login user.
+# Legacy path: earlier versions ran HAL in tmux. Leaving that copy alive would
+# hold port 5001 and the unit would crash-loop on "address already in use",
+# which reads like a unit bug rather than a leftover session.
+tmux kill-session -t $SERVICE 2>/dev/null && echo "[spike-hal] killed the old tmux session" || true
+sudo pkill -f 'uvicorn hal.server:app' 2>/dev/null || true
+sleep 2
 
-tmux kill-session -t $SESSION 2>/dev/null || true
-tmux new-session -d -s $SESSION -n hal
+# HAL runs as root, exactly like the production unit. It is not a preference:
+# config.py hardcodes a dozen state paths under /root (users, strangers,
+# face/pose models, agent workspaces, OS_CONFIG_PATH), and only the first of
+# them surfaces as a crash — overriding them one env var at a time is a game of
+# whack-a-mole that diverges from how the device really runs.
+# Footprint outside our tree: /root/local/** and /var/log/hal (uninstall below).
+sudo tee /etc/systemd/system/$SERVICE.service >/dev/null <<'UNIT'
+[Unit]
+Description=HAL Hardware Runtime (Autonomous, spike layout)
+# The Pollen daemon owns the camera and both ALSA PCMs and must be up before HAL
+# asks for them; it is also where the motion driver connects (localhost:8000).
+After=network.target reachy-mini-daemon.service
+Wants=reachy-mini-daemon.service
 
-tmux send-keys -t $SESSION:hal.0 \
-  "cd \$BASE/hal && sudo -E env DEVICE_TYPE=reachy-mini DEVICES_DIR=\$BASE/devices .venv/bin/uvicorn hal.server:app --host 0.0.0.0 --port 5001 2>&1 | tee /tmp/hal.log" Enter
+[Service]
+Type=simple
+User=root
+WorkingDirectory=$REMOTE_BASE/hal
+EnvironmentFile=$REMOTE_BASE/hal/.env
+# These come AFTER EnvironmentFile on purpose — later assignments win, and the
+# .env ships the production value DEVICES_DIR=/opt/devices, which does not exist
+# in the spike layout. Getting it wrong is silent: every service reports healthy
+# while the capability list comes back empty.
+Environment=DEVICE_TYPE=reachy-mini
+Environment=DEVICES_DIR=$REMOTE_BASE/devices
+Environment=HF_HOME=$HF_HOME_PATH
+# Borrow the camera and microphone from the daemon before HAL opens them. On a
+# cold boot the daemon's HTTP port may not be listening yet, hence the retry.
+# TODO: this belongs in HAL's own lifespan (with acquire on shutdown) — it lives
+# here only until that code exists.
+ExecStartPre=/bin/sh -c 'for i in 1 2 3 4 5; do curl -sf -X POST $DAEMON/api/media/release >/dev/null && exit 0; sleep 2; done; echo "media release failed — camera/audio will report busy"; exit 0'
+# --timeout-graceful-shutdown: without it uvicorn waits forever for open
+# connections (an SSE/MJPEG stream holds SIGTERM until systemd's 90s SIGKILL).
+ExecStart=$REMOTE_BASE/hal/.venv/bin/uvicorn hal.server:app --host 0.0.0.0 --port 5001 --timeout-graceful-shutdown 5
+# Give the media back so Pollen's own stack is not left deaf and blind. Runs on
+# every stop, including a restart — where ExecStartPre takes it straight back.
+ExecStopPost=-/usr/bin/curl -sf -m 5 -X POST $DAEMON/api/media/acquire
+TimeoutStopSec=30
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=hal
 
-tmux split-window -t $SESSION:hal -v
-tmux send-keys -t $SESSION:hal.1 \
-  "echo 'waiting for HAL...'; for i in \\\$(seq 1 30); do curl -sf localhost:5001/health >/dev/null && break; sleep 2; done; echo '--- health ---'; curl -s localhost:5001/health; echo; echo '--- device ---'; curl -s localhost:5001/device; echo" Enter
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+sudo systemctl daemon-reload
+sudo systemctl enable $SERVICE >/dev/null 2>&1
+sudo systemctl restart $SERVICE
+
+# HAL boots slowly on a CM4 — torch and the model stack dominate.
+echo -n "[spike-hal] waiting for HAL "
+for i in \$(seq 1 60); do curl -sf localhost:5001/health >/dev/null 2>&1 && break; printf .; sleep 2; done; echo
+echo "--- health ---"; curl -s localhost:5001/health; echo
+echo "--- device ---"; curl -s localhost:5001/device; echo
 REMOTE_START
 
 cat <<EOF
 
 ========================================
-  HAL started on $REACHY_HOST
-    logs     : ssh $REACHY_HOST 'tmux attach -t $SESSION'   (or tail /tmp/hal.log)
+  HAL running under systemd on $REACHY_HOST
+    logs     : ssh $REACHY_HOST 'journalctl -u $SERVICE -f'
     health   : curl ${REACHY_HOST#*@}:5001/health
     routes   : curl ${REACHY_HOST#*@}:5001/device
+    restart  : ssh $REACHY_HOST 'sudo systemctl restart $SERVICE'
     redeploy : bash devices/reachy-mini/spike-hal.sh --no-deps
     stop     : bash devices/reachy-mini/spike-hal.sh --stop   <- also returns media
 ========================================
 
-The daemon's camera and audio are on loan to HAL until you run --stop.
+It now comes back on its own after a reboot. The daemon's camera and audio stay
+on loan to HAL for as long as the unit runs.
 
 Full uninstall (leaves Pollen OS as it was):
-  bash devices/reachy-mini/spike-hal.sh --stop
+  bash devices/reachy-mini/spike-hal.sh --uninstall
   ssh $REACHY_HOST 'sudo rm -rf $REMOTE_BASE /root/local /var/log/hal && sudo rm -f /etc/asound.conf'
   # /root/local is HAL state (users, strangers, models) — it runs as root here,
   # same as the production systemd unit, so it writes outside our tree.

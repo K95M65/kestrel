@@ -139,9 +139,10 @@ fi
 REMOTE_SEED
 
 say "4/4  systemd unit + start"
-# A systemd unit, not tmux like the other spikes: os-server restarts the gateway
-# with `systemctl restart openclaw.service` after onboarding writes config, so a
-# tmux-run gateway would be un-restartable by the very service that drives it.
+# The gateway was the first spike to need a unit rather than tmux: os-server
+# restarts it with `systemctl restart openclaw.service` after onboarding writes
+# config, so a tmux-run gateway would be un-restartable by the very service that
+# drives it. spike-hal.sh and spike-os.sh install units of their own now too.
 ssh "$REACHY_HOST" bash <<REMOTE_UNIT
 set -e
 OPENCLAW_BIN=\$(command -v openclaw)
