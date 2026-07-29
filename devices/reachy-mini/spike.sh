@@ -94,6 +94,10 @@ fi
 # --- install -----------------------------------------------------------------
 say "Reachy Mini — full spike"
 ensure_tools
+# One snapshot of the feed for the whole run: cleared here so the run is fresh,
+# then shared by all six steps so a publish landing mid-install cannot leave
+# os-server and hal on mismatched builds.
+clear_metadata_cache
 info "OTA feed : $(metadata_url)"
 info "device   : $DEVICE_TYPE"
 info "steps    : ${STEPS[*]}"

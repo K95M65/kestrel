@@ -73,11 +73,16 @@ ensure_tools() {
 }
 
 # --- OTA metadata ------------------------------------------------------------
-# One fetch per script run, cached in a temp file. The URL comes from
-# bootstrap.json when it exists, so a robot pointed at a staging feed keeps
-# using it instead of silently falling back to production.
-
-_METADATA_FILE=""
+# The URL comes from bootstrap.json when it exists, so a robot pointed at a
+# staging feed keeps using it instead of silently falling back to production.
+#
+# Cached in a FIXED path, not a shell variable: ota_field is called inside $( ),
+# which runs in a subshell, so a variable cache is discarded every time and the
+# feed gets re-fetched once per field read. A file survives that, and it also
+# means the six scripts spike.sh runs all install from ONE snapshot of the feed
+# — a publish landing mid-run cannot give os-server and hal mismatched builds.
+# spike.sh clears it at the start of a run so each run reads fresh.
+META_CACHE="${SPIKE_META_CACHE:-/tmp/.spike-ota-metadata.json}"
 
 metadata_url() {
   if [ -n "${OTA_METADATA_URL:-}" ]; then
@@ -92,17 +97,27 @@ metadata_url() {
 }
 
 fetch_metadata() {
-  [ -n "$_METADATA_FILE" ] && [ -f "$_METADATA_FILE" ] && return 0
+  [ -s "$META_CACHE" ] && return 0
   ensure_tools
-  local url
+  local url tmp
   url="$(metadata_url)"
-  _METADATA_FILE="$(mktemp)"
+  tmp="$(mktemp)"
   # no-cache: the CDN serves these with long-lived edge caching, and a stale
   # metadata read installs yesterday's build while reporting today's version.
-  retry "curl -fsSL -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' -o '$_METADATA_FILE' '$url'" 5 \
-    || die "could not fetch OTA metadata from $url"
+  retry "curl -fsSL -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' -o '$tmp' '$url'" 5 \
+    || { rm -f "$tmp"; die "could not fetch OTA metadata from $url"; }
+  # Validate before caching: a captive portal or an error page returns 200 with
+  # HTML, and caching that makes every later jq read come back empty with no
+  # hint as to why.
+  jq -e . "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; die "OTA metadata at $url is not valid JSON"; }
+  mv "$tmp" "$META_CACHE"
   info "OTA metadata: $url"
 }
+
+# Drop the snapshot so the next read re-fetches. spike.sh calls this once up
+# front; a single component script does not, so re-running one of them right
+# after a publish still needs the cache cleared by hand (or a new shell).
+clear_metadata_cache() { rm -f "$META_CACHE"; }
 
 # ota_field <component> <field>
 # Components are top-level keys ("hal", "os-server", "web", "bootstrap",
@@ -111,9 +126,9 @@ ota_field() {
   local component="$1" field="$2"
   fetch_metadata
   if [ "$component" = "device" ]; then
-    jq -r --arg t "$DEVICE_TYPE" --arg f "$field" '.devices[$t][$f] // empty' "$_METADATA_FILE"
+    jq -r --arg t "$DEVICE_TYPE" --arg f "$field" '.devices[$t][$f] // empty' "$META_CACHE"
   else
-    jq -r --arg c "$component" --arg f "$field" '.[$c][$f] // empty' "$_METADATA_FILE"
+    jq -r --arg c "$component" --arg f "$field" '.[$c][$f] // empty' "$META_CACHE"
   fi
 }
 

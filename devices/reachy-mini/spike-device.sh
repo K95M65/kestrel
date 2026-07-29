@@ -32,6 +32,10 @@ for arg in "$@"; do
   case "$arg" in
     --keep-env)  KEEP_ENV=1 ;;
     --uninstall) UNINSTALL=1 ;;
+    # Accepted and ignored: the profile is files on disk, not a service, so
+    # there is nothing to stop. spike.sh passes --stop to every step, and
+    # rejecting it here would make a clean teardown print a failure.
+    --stop)      info "nothing to stop — the device profile is not a service"; exit 0 ;;
     *) die "unknown flag: $arg" ;;
   esac
 done
@@ -70,7 +74,10 @@ if [ ! -d "$OVERLAY" ]; then
   # overlay there is no /etc/asound.conf, and the audio failure it causes shows
   # up much later as "TTS playback setup failed ... device -1".
   info "WARN: this package has no rootfs/ — audio config will be missing."
-  info "WARN: publish a newer device package (make upload-device DEVICE_TYPE=$DEVICE_TYPE)."
+  # Positional, not a variable: the Makefile target takes the device type as an
+  # argument (make upload-device lamp), so DEVICE_TYPE=... silently publishes
+  # nothing useful.
+  info "WARN: publish a newer device package (make upload-device $DEVICE_TYPE)."
   exit 0
 fi
 
