@@ -14,6 +14,7 @@ OS image and runtime contract as the other devices, with the body selected by
 | `SOUL.md` | Reachy's default persona, adapted from Lamp but mapped to head/body/antenna expression |
 | `spike-hal.sh` | HAL-only dev deploy: rsync HAL, install `.env` + ALSA aliases, borrow daemon media, run uvicorn in tmux |
 | `spike-os.sh` | os-server-only dev deploy: cross-compile, seed `/root/config/config.json`, run the API in tmux |
+| `spike-web.sh` | Web UI dev deploy: build the bundle, install nginx, write a spike vhost (`/api` → os-server, `/hw` → HAL, loopback-only) |
 | `spike.sh` | Full dev deploy from a Mac: build, rsync, install deps, run HAL + os-server in tmux |
 | `rootfs/opt/hal/.env` | Production HAL env, copied to `/opt/hal/.env` by the rootfs overlay |
 | `rootfs/etc/asound.conf` | ALSA aliases (`device_mic`, `device_speaker`) for the single USB audio card |
@@ -64,12 +65,16 @@ installed on top.
 |--------|----------|
 | `bash devices/reachy-mini/spike-hal.sh` | **First spike**: HAL only — validates body, audio, device profile |
 | `bash devices/reachy-mini/spike-os.sh` | Second spike: os-server API only (loopback `:5000`, no web UI) |
+| `bash devices/reachy-mini/spike-web.sh` | Third spike: nginx + web UI — makes the stack reachable from a browser |
 | `REACHY_HOST=pollen@reachy-mini.local bash devices/reachy-mini/spike.sh` | Dev spike with os-server: build on Mac, rsync, tmux |
 | `DEVICE_TYPE=reachy-mini install.sh` | Production: full setup.sh with systemd, nginx, OTA |
 
-Start with `spike-hal.sh`. The os-server/web half needs nginx to be reachable at
-all (os-server binds `127.0.0.1:5000` and serves no static files), and Reachy's
-provisioning path — a NetworkManager-based `setup.sh` — is not written yet.
+Run them in that order: `spike-hal.sh` (body) → `spike-os.sh` (API) →
+`spike-web.sh` (browser). The web UI is not optional plumbing you can skip —
+os-server binds `127.0.0.1:5000` and serves no static files, so nginx is what
+makes both the bundle and the API reachable. None of the three is production:
+Reachy's provisioning path — a NetworkManager-based `setup.sh` — is not written
+yet.
 
 See [docs/runtime.md](docs/runtime.md) for architecture details and bring-up checklist.
 

@@ -407,9 +407,22 @@ bash devices/reachy-mini/spike-hal.sh --stop   # dừng và trả media lại ch
 ```
 
 Nó rsync HAL, cài `.env` **và** `/etc/asound.conf` từ rootfs overlay, gọi
-`POST /api/media/release` để mở được ALSA, rồi chạy uvicorn trong tmux. Script
-`spike.sh` đầy đủ (bên dưới) build thêm os-server và web UI — hai thứ chưa truy
-cập được cho tới khi body này có nginx:
+`POST /api/media/release` để mở được ALSA, rồi chạy uvicorn trong tmux.
+
+Hai tầng còn lại đi sau, mỗi tầng một script:
+
+```bash
+bash devices/reachy-mini/spike-os.sh    # API os-server trên 127.0.0.1:5000
+bash devices/reachy-mini/spike-web.sh   # nginx + web UI trên :80
+```
+
+`spike-web.sh` mới là thứ làm cho trình duyệt truy cập được — os-server bind
+loopback và không serve static. Vhost của nó giữ `/hw/` chỉ loopback, giống
+production: phần cứng được chạm qua proxy có auth `/api/hardware/*` của
+os-server, không gọi thẳng HAL.
+
+Script cũ `spike.sh` gộp tất cả vẫn còn, nhưng không cài nginx lẫn alias ALSA
+nên audio và UI đều chết:
 
 ```bash
 REACHY_HOST=pollen@reachy-mini.local bash devices/reachy-mini/spike.sh

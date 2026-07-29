@@ -145,10 +145,14 @@ cục gạch.** Autonomous luôn được cài chồng lên.
   trong tmux **dưới root với cwd=/root**: `config.Load` đọc đường tương đối
   `config/config.json`, nên chạy từ thư mục khác sẽ khiến os-server và HAL đọc
   hai file config khác nhau mà không báo lỗi.
-- **Spike kèm os-server + web**: `REACHY_HOST=pollen@reachy-mini.local bash devices/reachy-mini/spike.sh`
-  — build thêm web UI. Lưu ý os-server bind `127.0.0.1:5000` và không serve
-  static, nên web UI cần nginx mới truy cập được; trước đó thì gọi API từ chính
-  con Pi hoặc tunnel (`ssh -L 5000:localhost:5000`).
+- **Spike thứ ba**: `bash devices/reachy-mini/spike-web.sh` — build bundle Vite,
+  cài nginx, viết vhost spike serve bundle và proxy `/api/` sang os-server.
+  `/hw/` **chỉ loopback** (`allow 127.0.0.1; deny all`), giống vhost production:
+  trình duyệt chạm phần cứng qua proxy có auth `/api/hardware/*` của os-server,
+  không bao giờ gọi thẳng HAL.
+- **Spike đầy đủ (cũ)**: `REACHY_HOST=pollen@reachy-mini.local bash devices/reachy-mini/spike.sh`
+  — build HAL + os-server + web một lượt, nhưng không cài nginx lẫn alias ALSA,
+  nên audio và UI đều chết. Ưu tiên ba script tách riêng.
 
 ## Motion Driver
 

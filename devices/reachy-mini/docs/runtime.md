@@ -60,10 +60,14 @@ Autonomous OS is always **installed on top** of Pollen's OS:
   and runs the API in tmux **as root with cwd=/root**: `config.Load` reads the
   relative path `config/config.json`, so any other working directory silently
   points os-server and HAL at different config files.
-- **Spike with os-server + web**: `REACHY_HOST=pollen@reachy-mini.local bash devices/reachy-mini/spike.sh`
-  — also builds the web UI. Note os-server binds `127.0.0.1:5000` and serves no
-  static files, so the UI needs nginx before it is reachable; until then, reach
-  the API from the Pi or tunnel it (`ssh -L 5000:localhost:5000`).
+- **Third spike**: `bash devices/reachy-mini/spike-web.sh` — builds the Vite
+  bundle, installs nginx, and writes a spike vhost that serves the bundle and
+  proxies `/api/` to os-server. `/hw/` stays **loopback-only** (`allow 127.0.0.1;
+  deny all`), matching the production vhost: the browser reaches hardware through
+  os-server's authenticated `/api/hardware/*` proxy, never HAL directly.
+- **Full spike (legacy)**: `REACHY_HOST=pollen@reachy-mini.local bash devices/reachy-mini/spike.sh`
+  — builds HAL + os-server + web in one shot, but installs no nginx and no ALSA
+  aliases, so audio and the UI stay dead. Prefer the three focused scripts.
 - **Production**: `DEVICE_TYPE=reachy-mini bash <(curl -fsSL .../install.sh)` —
   runs `setup.sh` on the existing OS, adds systemd units, nginx, WiFi AP, OTA.
 

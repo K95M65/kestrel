@@ -409,8 +409,22 @@ bash devices/reachy-mini/spike-hal.sh --stop   # stop and return media to the da
 
 It rsyncs HAL, installs `.env` **and** `/etc/asound.conf` from the rootfs
 overlay, calls `POST /api/media/release` so ALSA is openable, then runs uvicorn
-in tmux. The full `spike.sh` (below) additionally builds os-server and the web
-UI, which cannot be reached until nginx exists on this body:
+in tmux.
+
+The other two layers follow, each its own script:
+
+```bash
+bash devices/reachy-mini/spike-os.sh    # os-server API on 127.0.0.1:5000
+bash devices/reachy-mini/spike-web.sh   # nginx + web UI on :80
+```
+
+`spike-web.sh` is what makes anything reachable from a browser — os-server binds
+loopback and serves no static files. Its vhost keeps `/hw/` loopback-only, like
+production: hardware is reached through os-server's authenticated
+`/api/hardware/*` proxy, never HAL directly.
+
+The older all-in-one `spike.sh` still exists but installs neither nginx nor the
+ALSA aliases, so audio and the UI stay dead:
 
 ```bash
 REACHY_HOST=pollen@reachy-mini.local bash devices/reachy-mini/spike.sh
