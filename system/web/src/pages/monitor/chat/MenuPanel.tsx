@@ -41,7 +41,8 @@ export function MenuItem({
       onMouseEnter={(e) => { e.currentTarget.style.background = "color-mix(in srgb, var(--lm-text) 9%, transparent)"; }}
       onMouseLeave={(e) => { e.currentTarget.style.background = active ? "color-mix(in srgb, var(--lm-text) 7%, transparent)" : "transparent"; }}
     >
-      <Icon size={15} style={{ color: "var(--lm-amber)", flexShrink: 0 }} />
+      {/* Top-aligned so the icon sits on the label, not between label and hint. */}
+      <Icon size={15} style={{ color: "var(--lm-amber)", flexShrink: 0, alignSelf: "flex-start", marginTop: 1 }} />
       <span style={{ flex: 1, minWidth: 0 }}>
         <span style={{ display: "block", fontSize: 12.5, lineHeight: 1.3 }}>{label}</span>
         {hint && <span style={{ display: "block", fontSize: 10, color: "var(--lm-text-muted)", marginTop: 1 }}>{hint}</span>}

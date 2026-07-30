@@ -112,7 +112,9 @@ export function ModalShell({
                 }}
               ><ArrowLeft size={14} /></button>
             )}
-            <Icon size={16} style={{ color: "var(--lm-amber)", flexShrink: 0 }} />
+            {/* alignSelf, not alignItems on the row: the back button beside it
+                should stay vertically centred. */}
+            <Icon size={16} style={{ color: "var(--lm-amber)", flexShrink: 0, alignSelf: "flex-start", marginTop: 3 }} />
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 14.5, fontWeight: 600, color: "var(--lm-text)" }}>{title}</div>
               {subtitle && (

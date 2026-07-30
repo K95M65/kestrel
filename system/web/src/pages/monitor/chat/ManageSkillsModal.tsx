@@ -239,7 +239,9 @@ function SkillRow({ skill, onOpen }: { skill: InstalledSkill; onOpen: () => void
       onClick={onOpen}
       style={{
         ...skillGridCols,
-        alignItems: "center", width: "100%", textAlign: "left",
+        // start, not center: rows are two lines when the skill has a
+        // description, and every column should read off the same top line.
+        alignItems: "start", width: "100%", textAlign: "left",
         padding: "9px 12px", borderRadius: 10, cursor: "pointer",
         background: "var(--lm-card)", border: "1px solid var(--lm-border)",
         color: "var(--lm-text)", transition: "background 0.12s, border-color 0.12s",
@@ -248,8 +250,11 @@ function SkillRow({ skill, onOpen }: { skill: InstalledSkill; onOpen: () => void
       onMouseEnter={(e) => applyCardHover(e.currentTarget, true)}
       onMouseLeave={(e) => applyCardHover(e.currentTarget, false)}
     >
-      <span style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
-        <Folder size={15} style={{ color: "var(--lm-amber)", flexShrink: 0 }} />
+      {/* Top-aligned, not centred: the cell is two lines when the skill has a
+          description, and a centred icon then floats between them. marginTop
+          drops it onto the name's cap height. */}
+      <span style={{ display: "flex", alignItems: "flex-start", gap: 9, minWidth: 0 }}>
+        <Folder size={15} style={{ color: "var(--lm-amber)", flexShrink: 0, marginTop: 1 }} />
         <span style={{ minWidth: 0 }}>
           <span style={{
             display: "block", fontSize: 13, fontWeight: 600,
@@ -263,11 +268,11 @@ function SkillRow({ skill, onOpen }: { skill: InstalledSkill; onOpen: () => void
           )}
         </span>
       </span>
-      <span style={{ fontSize: 11.5, color: "var(--lm-text-dim)", textAlign: "right", whiteSpace: "nowrap" }}>
+      <span style={{ fontSize: 12, color: "var(--lm-text)", textAlign: "right", whiteSpace: "nowrap", marginTop: 1 }}>
         {files}
       </span>
       <span
-        style={{ fontSize: 11.5, color: "var(--lm-text-dim)", textAlign: "right", whiteSpace: "nowrap" }}
+        style={{ fontSize: 12, color: "var(--lm-text)", textAlign: "right", whiteSpace: "nowrap", marginTop: 1 }}
         title={skill.updated_at ? new Date(skill.updated_at * 1000).toLocaleString() : undefined}
       >{formatUpdated(skill.updated_at)}</span>
     </button>
@@ -285,7 +290,7 @@ const skillGridCols: CSSProperties = {
 
 const listHeadStyle: CSSProperties = {
   padding: "0 12px 6px", fontSize: 10, fontWeight: 600, letterSpacing: "0.04em",
-  textTransform: "uppercase", color: "var(--lm-text-muted)",
+  textTransform: "uppercase", color: "var(--lm-text-dim)",
 };
 
 // ─── Detail view ─────────────────────────────────────────────────────────────

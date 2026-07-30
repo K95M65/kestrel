@@ -137,7 +137,7 @@ export function UploadSkillModal({ onClose }: { onClose: () => void }) {
               padding: "10px 12px", borderRadius: 10,
               background: "var(--lm-card)", border: "1px solid var(--lm-border)",
             }}>
-              <FileArchive size={16} style={{ color: "var(--lm-amber)", flexShrink: 0 }} />
+              <FileArchive size={16} style={{ color: "var(--lm-amber)", flexShrink: 0, alignSelf: "flex-start", marginTop: 2 }} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{
                   fontSize: 12.5, color: "var(--lm-text)",
