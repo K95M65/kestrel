@@ -243,3 +243,112 @@ func TestInstallSkillArchiveEmpty(t *testing.T) {
 		t.Fatalf("err = %v, want ErrEmptyArchive", err)
 	}
 }
+
+// ─── Uninstall ───────────────────────────────────────────────────────────────
+
+func TestDeleteSkill(t *testing.T) {
+	dir := t.TempDir()
+	seedSkill(t, dir, "music", map[string]string{
+		"SKILL.md":           "body",
+		"reference/notes.md": "notes",
+	})
+	seedSkill(t, dir, "voice", map[string]string{"SKILL.md": "body"})
+
+	path, err := DeleteSkill(dir, "music")
+	if err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if want := filepath.Join(dir, "music"); path != want {
+		t.Errorf("path = %q, want %q", path, want)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "music")); !os.IsNotExist(err) {
+		t.Error("skill dir survived the delete")
+	}
+	// Neighbours untouched.
+	if _, err := os.Stat(filepath.Join(dir, "voice", "SKILL.md")); err != nil {
+		t.Errorf("unrelated skill was affected: %v", err)
+	}
+}
+
+// Not idempotent on purpose: a stale caller must see the mismatch instead of a
+// success for a deletion that never happened.
+func TestDeleteSkillMissing(t *testing.T) {
+	if _, err := DeleteSkill(t.TempDir(), "nope"); !errors.Is(err, ErrSkillNotFound) {
+		t.Fatalf("err = %v, want ErrSkillNotFound", err)
+	}
+}
+
+func TestDeleteSkillRejectsBadName(t *testing.T) {
+	dir := t.TempDir()
+	// A sibling of the skills dir that traversal must never reach.
+	outside := filepath.Join(dir, "outside.md")
+	if err := os.WriteFile(outside, []byte("keep"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, name := range []string{"", "..", "../", "a/b", "Music", strings.Repeat("a", 65)} {
+		if _, err := DeleteSkill(dir, name); !errors.Is(err, ErrInvalidSkillName) {
+			t.Errorf("name %q: err = %v, want ErrInvalidSkillName", name, err)
+		}
+	}
+	if _, err := os.Stat(outside); err != nil {
+		t.Errorf("traversal reached outside the skills dir: %v", err)
+	}
+}
+
+// A plain file where a skill dir should be is refused, not deleted — the caller
+// named something that isn't a skill.
+func TestDeleteSkillRefusesNonDirectory(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "music"), []byte("not a skill"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := DeleteSkill(dir, "music"); !errors.Is(err, ErrSkillNotFound) {
+		t.Fatalf("err = %v, want ErrSkillNotFound", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "music")); err != nil {
+		t.Error("the file was deleted despite not being a skill dir")
+	}
+}
+
+// Hermes namespaces its skills dir, so the delete walks roots in order.
+func TestDeleteSkillFrom(t *testing.T) {
+	base := t.TempDir()
+	authored := filepath.Join(base, "authored")
+	imported := filepath.Join(base, "openclaw-imports")
+	seedSkill(t, authored, "music", map[string]string{"SKILL.md": "MINE"})
+	seedSkill(t, imported, "music", map[string]string{"SKILL.md": "IMPORTED"})
+	seedSkill(t, imported, "voice", map[string]string{"SKILL.md": "VOICE"})
+
+	// First root wins — same precedence as ListInstalledFrom.
+	if _, err := DeleteSkillFrom("music", authored, imported); err != nil {
+		t.Fatalf("delete music: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(authored, "music")); !os.IsNotExist(err) {
+		t.Error("device-owned copy should have been deleted")
+	}
+	if _, err := os.Stat(filepath.Join(imported, "music")); err != nil {
+		t.Error("imported copy must be left alone when the first root had it")
+	}
+
+	// Only in the second root — still found.
+	if _, err := DeleteSkillFrom("voice", authored, imported); err != nil {
+		t.Fatalf("delete voice: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(imported, "voice")); !os.IsNotExist(err) {
+		t.Error("second root not searched")
+	}
+
+	if _, err := DeleteSkillFrom("absent", authored, imported); !errors.Is(err, ErrSkillNotFound) {
+		t.Errorf("err = %v, want ErrSkillNotFound", err)
+	}
+}
+
+// A bad name is fatal for every root — don't keep probing with it.
+func TestDeleteSkillFromRejectsBadNameOnce(t *testing.T) {
+	base := t.TempDir()
+	if _, err := DeleteSkillFrom("../evil", filepath.Join(base, "a"), filepath.Join(base, "b")); !errors.Is(err, ErrInvalidSkillName) {
+		t.Fatalf("err = %v, want ErrInvalidSkillName", err)
+	}
+}

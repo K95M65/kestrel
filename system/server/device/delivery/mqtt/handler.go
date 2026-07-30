@@ -258,6 +258,8 @@ func (h *DeviceMQTTHandler) dispatchData(env domain.MQTTDataCommand) error {
 		return h.handleSkillsInstallStore(env)
 	case domain.KindSkillsFiles:
 		return h.handleSkillsFiles(env)
+	case domain.KindSkillsUninstall:
+		return h.handleSkillsUninstall(env)
 	case domain.KindChannelRefreshConfig:
 		return h.handleChannelRefreshConfig(env)
 	default:

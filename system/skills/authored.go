@@ -70,6 +70,71 @@ func RenderSkillMarkdown(name, description, instructions string) string {
 	return b.String()
 }
 
+// ErrSkillNotFound is returned when a skill directory isn't there to remove.
+var ErrSkillNotFound = errors.New("skill not found")
+
+// DeleteSkill removes <skillsDir>/<name> and everything under it, returning the
+// path it deleted. Name is validated first, so a caller can never be tricked into
+// deleting outside the skills dir.
+//
+// Not idempotent on purpose: a missing skill returns ErrSkillNotFound rather than
+// success, so a stale UI or a double-send is visible to the caller instead of
+// silently reported as a deletion that never happened.
+//
+// The runtime is NOT restarted; every backend with a skills dir re-reads it per
+// session, the same contract the write paths rely on.
+func DeleteSkill(skillsDir, name string) (string, error) {
+	if err := ValidateSkillName(name); err != nil {
+		return "", err
+	}
+	if skillsDir == "" {
+		return "", errors.New("skills dir is not configured")
+	}
+
+	dir := filepath.Join(skillsDir, name)
+	info, err := os.Stat(dir)
+	if os.IsNotExist(err) {
+		return "", fmt.Errorf("%w: %s", ErrSkillNotFound, name)
+	}
+	if err != nil {
+		return "", fmt.Errorf("stat %s: %w", dir, err)
+	}
+	if !info.IsDir() {
+		// Something is at that path but it isn't a skill — refuse rather than
+		// delete a file the caller didn't mean to name.
+		return "", fmt.Errorf("%w: %s is not a skill directory", ErrSkillNotFound, name)
+	}
+
+	if err := os.RemoveAll(dir); err != nil {
+		return "", fmt.Errorf("remove %s: %w", dir, err)
+	}
+	return dir, nil
+}
+
+// DeleteSkillFrom removes a skill from the first root that has it, for runtimes
+// that namespace their skills dir (Hermes). Roots are tried in the order given —
+// pass the device-owned root first, matching ListInstalledFrom's precedence, so
+// an uninstall hits the same skill the listing showed.
+func DeleteSkillFrom(name string, dirs ...string) (string, error) {
+	var lastErr error
+	for _, dir := range dirs {
+		path, err := DeleteSkill(dir, name)
+		if err == nil {
+			return path, nil
+		}
+		// A name/config problem is fatal for every root — only keep looking when
+		// this particular root simply didn't have the skill.
+		if !errors.Is(err, ErrSkillNotFound) {
+			return "", err
+		}
+		lastErr = err
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("%w: %s", ErrSkillNotFound, name)
+	}
+	return "", lastErr
+}
+
 // WriteAuthoredSkill creates <skillsDir>/<name>/SKILL.md from an authored
 // draft and returns the path it wrote. Refuses to clobber an existing skill
 // directory (ErrSkillExists) so a store- or OTA-installed skill can never be

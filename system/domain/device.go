@@ -402,6 +402,10 @@ const (
 	// the file LIST with no contents; with `path` it returns that one file's text.
 	KindSkillsFiles = "skills.files"
 
+	// KindSkillsUninstall removes ONE installed skill. Data:
+	// MQTTSkillsUninstallData. The MQTT twin of DELETE /api/agent/skills.
+	KindSkillsUninstall = "skills.uninstall"
+
 	// KindChannelRefreshConfig re-applies the canonical channels.<channel> block on
 	// an already-onboarded device. Targets older customers whose openclaw.json
 	// predates schema additions (e.g. the socketMode block, object-form streaming,
@@ -837,6 +841,11 @@ type MQTTSkillsSaveData struct {
 type MQTTSkillsFilesData struct {
 	Name string `json:"name"`
 	Path string `json:"path"`
+}
+
+// MQTTSkillsUninstallData is the Data payload for kind:"skills.uninstall".
+type MQTTSkillsUninstallData struct {
+	Name string `json:"name"`
 }
 
 // MQTTSkillsInstallStoreData is the Data payload for kind:"skills.install_store" — ONE skill

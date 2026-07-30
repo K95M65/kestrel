@@ -114,6 +114,39 @@ func (h *AgentHandler) ReadSkillFiles(c *gin.Context) {
 	c.JSON(http.StatusOK, serializers.ResponseSuccess(domain.SkillBundle{ID: name, Files: files}))
 }
 
+// DeleteSkill handles DELETE /api/agent/skills?name=<skill>. Removes the skill
+// from the ACTIVE runtime's skills dir via the AgentGateway. A skill that isn't
+// installed is a 404, not a silent success — the caller's list was stale.
+func (h *AgentHandler) DeleteSkill(c *gin.Context) {
+	name := strings.TrimSpace(c.Query("name"))
+	if name == "" {
+		c.JSON(http.StatusBadRequest, serializers.ResponseError("name is required"))
+		return
+	}
+
+	path, err := h.agentGateway.DeleteSkill(name)
+	switch {
+	case errors.Is(err, domain.ErrNotSupportedByRuntime):
+		c.JSON(http.StatusNotImplemented, serializers.ResponseError(
+			"the active agent runtime ("+h.agentGateway.Name()+") cannot uninstall skills yet"))
+		return
+	case errors.Is(err, skills.ErrSkillNotFound):
+		c.JSON(http.StatusNotFound, serializers.ResponseError(err.Error()))
+		return
+	case errors.Is(err, skills.ErrInvalidSkillName):
+		c.JSON(http.StatusBadRequest, serializers.ResponseError(err.Error()))
+		return
+	case err != nil:
+		slog.Error("[skills] uninstall failed", "component", "agent-http", "skill", name, "error", err)
+		c.JSON(http.StatusInternalServerError, serializers.ResponseError(err.Error()))
+		return
+	}
+
+	slog.Info("[skills] uninstalled", "component", "agent-http",
+		"skill", name, "runtime", h.agentGateway.Name(), "path", path)
+	c.JSON(http.StatusOK, serializers.ResponseSuccess(gin.H{"name": name, "path": path}))
+}
+
 // SaveSkill handles POST /api/agent/skills. Writes a user-authored skill (the
 // web UI's "Write skill" form) into the ACTIVE runtime's skills dir via the
 // AgentGateway — each backend owns its own directory, so the device layer never

@@ -72,3 +72,16 @@ func (s *HermesService) ListSkills() ([]domain.InstalledSkill, error) {
 func (s *HermesService) ReadSkillFiles(name string) ([]domain.SkillBundleFile, error) {
 	return skills.ReadSkillFilesFrom(name, hermesAuthoredSkillsDir, hermesImportedSkillsDir)
 }
+
+// DeleteSkill removes the skill from whichever root has it, device-owned first —
+// same precedence as ListSkills, so an uninstall hits the skill the listing
+// showed. An imported skill CAN be removed this way; presync's `claw migrate`
+// guard only fires when openclaw-imports is left completely empty.
+func (s *HermesService) DeleteSkill(name string) (string, error) {
+	path, err := skills.DeleteSkillFrom(name, hermesAuthoredSkillsDir, hermesImportedSkillsDir)
+	if err != nil {
+		return "", err
+	}
+	slog.Info("[skills] uninstalled", "component", "hermes", "skill", name, "path", path)
+	return path, nil
+}

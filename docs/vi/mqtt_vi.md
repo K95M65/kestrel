@@ -322,6 +322,7 @@ metadata device/version chuẩn cộng với `kind`, `status` (`success|failure`
 | `channel.refresh_config` | Áp dụng lại block config chuẩn của một channel (bất đồng bộ; ack `configuring`) | `channel` |
 | `skills.install_store` | Cài MỘT skill từ catalog lên runtime đang chạy (bất đồng bộ; ack `starting`) | `id`, `name` tuỳ chọn |
 | `skills.files` | Đọc file của một skill đã cài — danh sách, hoặc nội dung một file (đồng bộ) | `name`, `path` tuỳ chọn |
+| `skills.uninstall` | Xoá một skill đã cài khỏi runtime đang chạy (đồng bộ) | `name` |
 | `skills.save` | Ghi một skill soạn sẵn vào thư mục skill của runtime đang chạy (đồng bộ) | `name`, `description`, `instructions` |
 | `system.info` | Snapshot tổng hợp: versions + network + host | _(không)_ |
 | `system.version` | Chỉ versions các thành phần (rẻ hơn `system.info`) | _(không)_ |
@@ -584,6 +585,42 @@ hợp lệ. Entry nhị phân chỉ mang metadata, không bao giờ mang bytes.
 | `unsupported_runtime` | runtime đang chạy không có thư mục skill đọc được |
 | `read` | skill không còn (list cũ) hoặc đọc lỗi |
 
+#### `skills.uninstall`
+
+Bản MQTT của `DELETE /api/agent/skills`. Xoá skill khỏi thư mục skill mà runtime
+**đang chạy** sở hữu, qua `AgentGateway.DeleteSkill`.
+
+**Nhận:** `{"cmd": "data", "kind": "skills.uninstall", "data": {"name": "music"}}`
+
+**Đồng bộ** — xoá một thư mục là đọc/ghi đĩa local, nên không có ack `starting`.
+
+```json
+{
+  "device": "lamp", "type": "data", "kind": "skills.uninstall",
+  "status": "success | failure",
+  "error": "<step>: <message>",
+  "data": { "name": "music", "runtime": "OpenClaw",
+            "path": "/root/.openclaw/workspace/skills/music" }
+}
+```
+
+**Cố ý không idempotent:** skill chưa cài sẽ trả `failed_step: "not_found"` chứ
+không phải success — để view cũ phía backend hoặc lệnh gửi trùng lộ ra, thay vì
+được báo là đã xoá thành công một thứ chưa từng bị xoá.
+
+| `failed_step` | Nghĩa |
+|---------------|-------|
+| `validate_name` | tên không phải slug hợp lệ — `..` hay `/` không bao giờ ra được ngoài thư mục skill |
+| `not_found` | không có skill đó (hoặc path đó không phải thư mục skill) |
+| `unsupported_runtime` | runtime đang chạy không có thư mục skill ghi được |
+| `remove` | lỗi filesystem |
+
+Đồng thời: dùng chung một mutex với các kind install/save, nên uninstall không xen
+vào giữa lúc đang giải nén vào cùng cây thư mục.
+
+Trên Hermes, các root được thử theo thứ tự device-owned trước, khớp với thứ tự của
+listing — nên uninstall xoá đúng skill mà uplink `skills` đã báo có.
+
 #### `skills.save`
 
 Ghi MỘT skill soạn sẵn vào thư mục skill mà agentic runtime **đang chạy** sở hữu.
@@ -661,6 +698,7 @@ Xử lý bởi bootstrap worker, không qua MQTT handler trực tiếp.
 | `system/server/device/delivery/mqtt/data_handler.go` | Handle `data` command kinds `oauth.set`/`oauth.remove` (+ access-token store) |
 | `system/server/device/delivery/mqtt/skills_install_store_handler.go` | Handle `skills.install_store` (async catalog download → `AgentGateway.InstallSkillArchive`) |
 | `system/server/device/delivery/mqtt/skills_files_handler.go` | Handle `skills.files` (đọc file của một skill đã cài: danh sách, hoặc nội dung một file) |
+| `system/server/device/delivery/mqtt/skills_uninstall_handler.go` | Handle `skills.uninstall` |
 | `system/server/device/delivery/mqtt/skills_save_handler.go` | Handle `skills.save` (ghi skill soạn sẵn, đồng bộ, qua `AgentGateway.SaveSkill`) |
 | `system/server/device/delivery/mqtt/connector_handler.go` | Handle `connector.set.<code>`/`connector.remove.<code>` (bất đồng bộ, dispatch writer qua `connectorWriterFor`) |
 | `system/server/device/delivery/mqtt/connector_writer.go` | Interface `ConnectorWriter` + file helpers `<code>_access_tokens.json` dùng chung |

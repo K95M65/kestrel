@@ -636,6 +636,14 @@ export async function readSkillFiles(name: string): Promise<SkillBundle> {
     `${API_BASE}/api/agent/skills/files?name=${encodeURIComponent(name)}`);
 }
 
+/** DELETE /api/agent/skills — removes the skill from the ACTIVE runtime's skills
+ *  dir. Rejects with the backend's message when it isn't installed (HTTP 404) or
+ *  the runtime can't uninstall (HTTP 501). */
+export async function deleteSkill(name: string): Promise<{ name: string; path: string }> {
+  return apiRequest<{ name: string; path: string }>(
+    `${API_BASE}/api/agent/skills?name=${encodeURIComponent(name)}`, { method: "DELETE" });
+}
+
 /** POST /api/agent/skills/install — device downloads the catalog's `.skill`
  *  archive and extracts it into the ACTIVE runtime's skills dir. Rejects with
  *  the backend's message when the runtime can't install skills (HTTP 501). */

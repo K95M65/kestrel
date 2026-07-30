@@ -180,3 +180,33 @@ func TestValidateStoreSkillIDGuardsPath(t *testing.T) {
 		}
 	}
 }
+
+func TestClassifySkillsUninstallError(t *testing.T) {
+	cases := []struct {
+		err  error
+		want string
+	}{
+		{domain.ErrNotSupportedByRuntime, "unsupported_runtime"},
+		{skills.ErrSkillNotFound, "not_found"},
+		{skills.ErrInvalidSkillName, "validate_name"},
+		{fmt.Errorf("device busy"), "remove"},
+		// DeleteSkill wraps with %w — sentinels must survive.
+		{fmt.Errorf("remove: %w", skills.ErrSkillNotFound), "not_found"},
+	}
+	for _, tc := range cases {
+		if got := classifySkillsUninstallError(tc.err); got != tc.want {
+			t.Errorf("classify(%v) = %q, want %q", tc.err, got, tc.want)
+		}
+	}
+}
+
+func TestSkillsUninstallKindIsDistinct(t *testing.T) {
+	if domain.KindSkillsUninstall != "skills.uninstall" {
+		t.Errorf("kind = %q, want skills.uninstall", domain.KindSkillsUninstall)
+	}
+	for _, other := range []string{domain.KindSkillsInstall, domain.KindSkillsInstallStore, domain.KindSkillsSave, domain.KindSkillsFiles} {
+		if domain.KindSkillsUninstall == other {
+			t.Errorf("skills.uninstall collides with %q", other)
+		}
+	}
+}

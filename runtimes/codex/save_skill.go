@@ -48,3 +48,13 @@ func (s *CodexService) ListSkills() ([]domain.InstalledSkill, error) {
 func (s *CodexService) ReadSkillFiles(name string) ([]domain.SkillBundleFile, error) {
 	return skills.ReadSkillFiles(codexSkillsDir, name)
 }
+
+// DeleteSkill removes an installed skill and returns the directory it deleted.
+func (s *CodexService) DeleteSkill(name string) (string, error) {
+	path, err := skills.DeleteSkill(codexSkillsDir, name)
+	if err != nil {
+		return "", err
+	}
+	slog.Info("[skills] uninstalled", "component", "codex", "skill", name, "path", path)
+	return path, nil
+}

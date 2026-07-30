@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  FolderTree, Folder, FileText, Loader2, RefreshCw, AlertCircle, ChevronRight,
+  FolderTree, Folder, FileText, Loader2, RefreshCw, AlertCircle, ChevronRight, Search, Trash2,
 } from "lucide-react";
-import { listInstalledSkills, readSkillFiles } from "@/lib/api";
+import { listInstalledSkills, readSkillFiles, deleteSkill } from "@/lib/api";
 import type { InstalledSkill, SkillBundleFile } from "@/lib/api";
 import { ModalShell } from "./ModalShell";
 import { SkillFilesView } from "./SkillFilesView";
+import { inputStyle, btnStyle } from "./styles";
 
 // "Manage skills" — the skills present in the ACTIVE agentic runtime's skills
 // dir. Two views, deliberately the same shape as Browse skills:
@@ -24,11 +25,21 @@ import { SkillFilesView } from "./SkillFilesView";
 
 export function ManageSkillsModal({ onClose }: { onClose: () => void }) {
   const [selected, setSelected] = useState<InstalledSkill | null>(null);
+  // Bumped when a skill is uninstalled, so returning to the list refetches
+  // instead of showing the one that was just removed.
+  const [listEpoch, setListEpoch] = useState(0);
+
   return selected
     // key: a detail view is bound to one skill for its whole lifetime, so its
     // fetch effect never has to reset state for a different name.
-    ? <SkillDetail key={selected.name} skill={selected} onBack={() => setSelected(null)} onClose={onClose} />
-    : <SkillList onOpen={setSelected} onClose={onClose} />;
+    ? <SkillDetail
+        key={selected.name}
+        skill={selected}
+        onBack={() => setSelected(null)}
+        onUninstalled={() => { setListEpoch((n) => n + 1); setSelected(null); }}
+        onClose={onClose}
+      />
+    : <SkillList key={listEpoch} onOpen={setSelected} onClose={onClose} />;
 }
 
 // ─── List view ───────────────────────────────────────────────────────────────
@@ -42,6 +53,7 @@ function SkillList({
   const [skills, setSkills] = useState<InstalledSkill[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [query, setQuery] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -58,15 +70,41 @@ function SkillList({
 
   useEffect(() => { void load(); }, [load]);
 
+  // Filtered client-side, unlike Browse skills: ListSkills already returned the
+  // whole set, so there is nothing to ask the device for. Matches on the skill
+  // name and its description.
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return skills;
+    return skills.filter((s) =>
+      s.name.toLowerCase().includes(q) ||
+      (s.description ?? "").toLowerCase().includes(q));
+  }, [skills, query]);
+
   const subtitle = loading
     ? "Loading…"
     : error
       ? "Could not read the runtime's skills"
-      : `${skills.length} installed on this runtime`;
+      : query.trim() && filtered.length !== skills.length
+        ? `${filtered.length} of ${skills.length} installed`
+        : `${skills.length} installed on this runtime`;
 
   return (
     <ModalShell icon={FolderTree} title="Manage skills" subtitle={subtitle} width={640} onClose={onClose}>
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+        <div style={{ position: "relative", flex: 1 }}>
+          <Search size={14} style={{
+            position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)",
+            color: "var(--lm-text-muted)", pointerEvents: "none",
+          }} />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search installed skills…"
+            className="lm-u-input"
+            style={{ ...inputStyle, paddingLeft: 30 }}
+          />
+        </div>
         <button
           type="button"
           className="lm-u-btn"
@@ -75,10 +113,10 @@ function SkillList({
           title="Reload"
           aria-label="Reload"
           style={{
-            width: 32, height: 30, borderRadius: 8, display: "flex",
-            alignItems: "center", justifyContent: "center",
+            width: 36, borderRadius: 9, display: "flex",
+            alignItems: "center", justifyContent: "center", flexShrink: 0,
           }}
-        ><RefreshCw size={13} className={loading ? "lm-spin-ico" : undefined} /></button>
+        ><RefreshCw size={14} className={loading ? "lm-spin-ico" : undefined} /></button>
       </div>
 
       {loading ? (
@@ -87,6 +125,8 @@ function SkillList({
         <Centered tone="error"><AlertCircle size={16} /> {error}</Centered>
       ) : skills.length === 0 ? (
         <Centered>No skills installed on this runtime yet.</Centered>
+      ) : filtered.length === 0 ? (
+        <Centered>{`No installed skill matches \u201C${query.trim()}\u201D.`}</Centered>
       ) : (
         // Same two-per-row grid as Browse skills.
         <div style={{
@@ -94,7 +134,7 @@ function SkillList({
           gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
           gap: 8,
         }}>
-          {skills.map((s) => <SkillRow key={s.name} skill={s} onOpen={() => onOpen(s)} />)}
+          {filtered.map((s) => <SkillRow key={s.name} skill={s} onOpen={() => onOpen(s)} />)}
         </div>
       )}
     </ModalShell>
@@ -136,15 +176,36 @@ function SkillRow({ skill, onOpen }: { skill: InstalledSkill; onOpen: () => void
 // ─── Detail view ─────────────────────────────────────────────────────────────
 
 function SkillDetail({
-  skill, onBack, onClose,
+  skill, onBack, onUninstalled, onClose,
 }: {
   skill: InstalledSkill;
   onBack: () => void;
+  onUninstalled: () => void;
   onClose: () => void;
 }) {
   const [files, setFiles] = useState<SkillBundleFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  // Uninstall is destructive and irreversible, so it takes two clicks: the first
+  // arms it, the second commits. Separate state from the read above so a failed
+  // uninstall doesn't wipe the files the user is looking at.
+  const [confirming, setConfirming] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const [removeError, setRemoveError] = useState("");
+
+  const uninstall = async () => {
+    setRemoving(true);
+    setRemoveError("");
+    try {
+      await deleteSkill(skill.name);
+      onUninstalled();
+    } catch (e) {
+      setRemoveError(e instanceof Error ? e.message : "Failed to uninstall");
+      setConfirming(false);
+    } finally {
+      setRemoving(false);
+    }
+  };
 
   useEffect(() => {
     let alive = true;
@@ -164,6 +225,50 @@ function SkillDetail({
       onClose={onClose}
       onBack={onBack}
       bodyPadding={0}
+      footer={
+        <div style={{ display: "flex", alignItems: "center", gap: 12, width: "100%" }}>
+          <div style={{ flex: 1, minWidth: 0, fontSize: 11, lineHeight: 1.45 }}>
+            {removeError ? (
+              <span style={{ color: "var(--lm-red)" }}>{removeError}</span>
+            ) : confirming ? (
+              <span style={{ color: "var(--lm-red)" }}>
+                Delete <strong>/{skill.name}</strong> and all its files? This can't be undone.
+              </span>
+            ) : (
+              <span style={{ color: "var(--lm-text-muted)" }}>
+                Removes the skill from this runtime's skills dir.
+              </span>
+            )}
+          </div>
+          {confirming && !removing && (
+            <button
+              type="button" className="lm-u-btn" style={{ ...btnStyle, flexShrink: 0 }}
+              onClick={() => setConfirming(false)}
+            >Cancel</button>
+          )}
+          <button
+            type="button"
+            className="lm-u-btn"
+            style={{
+              ...btnStyle, flexShrink: 0,
+              display: "inline-flex", alignItems: "center", gap: 6,
+              borderColor: "var(--lm-red-glow)",
+              color: "var(--lm-red)",
+              background: confirming ? "var(--lm-red-dim)" : undefined,
+              opacity: removing ? 0.6 : 1,
+              cursor: removing ? "not-allowed" : "pointer",
+            }}
+            disabled={removing}
+            onClick={() => (confirming ? void uninstall() : setConfirming(true))}
+          >
+            {removing
+              ? <><Loader2 size={14} className="lm-spin-ico" /> Uninstalling…</>
+              : confirming
+                ? <><Trash2 size={14} /> Confirm uninstall</>
+                : <><Trash2 size={14} /> Uninstall</>}
+          </button>
+        </div>
+      }
     >
       {loading ? (
         <Filler><Loader2 size={16} className="lm-spin-ico" /> Reading files…</Filler>

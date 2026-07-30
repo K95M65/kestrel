@@ -48,3 +48,13 @@ func (s *ClaudeCodeService) ListSkills() ([]domain.InstalledSkill, error) {
 func (s *ClaudeCodeService) ReadSkillFiles(name string) ([]domain.SkillBundleFile, error) {
 	return skills.ReadSkillFiles(claudecodeSkillsDir, name)
 }
+
+// DeleteSkill removes an installed skill and returns the directory it deleted.
+func (s *ClaudeCodeService) DeleteSkill(name string) (string, error) {
+	path, err := skills.DeleteSkill(claudecodeSkillsDir, name)
+	if err != nil {
+		return "", err
+	}
+	slog.Info("[skills] uninstalled", "component", "claudecode", "skill", name, "path", path)
+	return path, nil
+}

@@ -282,6 +282,9 @@ type fakeGateway struct {
 	readFiles   []domain.SkillBundleFile
 	readErr     error
 	gotReadName string
+	deleteErr   error
+	deletePath  string
+	gotDelName  string
 }
 
 func (f *fakeGateway) Name() string { return f.name }
@@ -557,5 +560,72 @@ func TestReadSkillFilesHandlerInvalidNameIs400(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("want 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func (f *fakeGateway) DeleteSkill(name string) (string, error) {
+	f.gotDelName = name
+	return f.deletePath, f.deleteErr
+}
+
+func TestDeleteSkillHandler(t *testing.T) {
+	gw := &fakeGateway{name: "OpenClaw", deletePath: "/root/.openclaw/workspace/skills/music"}
+	rec, c := getReq(t, "/api/agent/skills?name=music")
+
+	(&AgentHandler{agentGateway: gw}).DeleteSkill(c)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if gw.gotDelName != "music" {
+		t.Errorf("name = %q", gw.gotDelName)
+	}
+	if !strings.Contains(rec.Body.String(), gw.deletePath) {
+		t.Errorf("deleted path not echoed: %s", rec.Body.String())
+	}
+}
+
+// A stale list pointing at an already-removed skill is a 404, not a silent 200 —
+// the caller has to learn its view was out of date.
+func TestDeleteSkillHandlerMissingIs404(t *testing.T) {
+	gw := &fakeGateway{name: "OpenClaw", deleteErr: skills.ErrSkillNotFound}
+	rec, c := getReq(t, "/api/agent/skills?name=gone")
+
+	(&AgentHandler{agentGateway: gw}).DeleteSkill(c)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("want 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestDeleteSkillHandlerGuards(t *testing.T) {
+	// No name at all → 400, and the gateway is never called.
+	gw := &fakeGateway{name: "OpenClaw"}
+	rec, c := getReq(t, "/api/agent/skills")
+	(&AgentHandler{agentGateway: gw}).DeleteSkill(c)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("missing name: want 400, got %d", rec.Code)
+	}
+	if gw.gotDelName != "" {
+		t.Error("gateway must not be called without a name")
+	}
+
+	// Bad shape → 400.
+	gw = &fakeGateway{name: "OpenClaw", deleteErr: skills.ErrInvalidSkillName}
+	rec, c = getReq(t, "/api/agent/skills?name=..%2Fetc")
+	(&AgentHandler{agentGateway: gw}).DeleteSkill(c)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("bad name: want 400, got %d", rec.Code)
+	}
+
+	// Runtime can't uninstall → 501 naming it.
+	gw = &fakeGateway{name: "PicoClaw", deleteErr: domain.ErrNotSupportedByRuntime}
+	rec, c = getReq(t, "/api/agent/skills?name=music")
+	(&AgentHandler{agentGateway: gw}).DeleteSkill(c)
+	if rec.Code != http.StatusNotImplemented {
+		t.Fatalf("unsupported: want 501, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "PicoClaw") {
+		t.Errorf("runtime name not surfaced: %s", rec.Body.String())
 	}
 }

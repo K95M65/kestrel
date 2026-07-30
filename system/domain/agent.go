@@ -195,6 +195,13 @@ type AgentGateway interface {
 	// ListSkills (skills.ReadSkillFiles does the walk).
 	ReadSkillFiles(name string) ([]SkillBundleFile, error)
 
+	// DeleteSkill removes an installed skill from this runtime's skills dir and
+	// returns the directory it deleted. Same per-backend split as ListSkills:
+	// only the target dir differs (skills.DeleteSkill does the work). A skill
+	// that isn't there returns skills.ErrSkillNotFound, not success, so a stale
+	// caller sees the mismatch.
+	DeleteSkill(name string) (path string, err error)
+
 	// FetchChatHistory sends a chat.history RPC and returns the raw messages array.
 	// Best-effort: returns nil on error or timeout without failing the caller.
 	FetchChatHistory(sessionKey string, limit int) (json.RawMessage, error)

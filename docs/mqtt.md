@@ -332,6 +332,7 @@ optional `error`, and an optional `data` payload.
 | `channel.refresh_config` | Re-apply a channel's canonical config block (async; acks `configuring`) | `channel` |
 | `skills.install_store` | Install ONE catalog skill on the active runtime (async; acks `starting`) | `id`, optional `name` |
 | `skills.files` | Read one installed skill's files — list, or one file's contents (synchronous) | `name`, optional `path` |
+| `skills.uninstall` | Remove one installed skill from the active runtime (synchronous) | `name` |
 | `skills.save` | Write one authored skill into the active runtime's skills dir (synchronous) | `name`, `description`, `instructions` |
 | `system.info` | Aggregate snapshot: versions + network + host | _(none)_ |
 | `system.version` | Component versions only (cheaper than `system.info`) | _(none)_ |
@@ -602,6 +603,44 @@ text stays valid UTF-8. Binary entries carry metadata only, never bytes.
 | `unsupported_runtime` | the active runtime has no device-readable skills dir |
 | `read` | skill missing (stale listing) or unreadable |
 
+#### `skills.uninstall`
+
+The MQTT twin of `DELETE /api/agent/skills`. Removes the skill from whichever
+skills dir the **active** runtime owns, via `AgentGateway.DeleteSkill`.
+
+**Receive:** `{"cmd": "data", "kind": "skills.uninstall", "data": {"name": "music"}}`
+
+**Synchronous** — removing a directory is local disk, so there is no `starting` ack.
+
+```json
+{
+  "device": "lamp", "type": "data", "kind": "skills.uninstall",
+  "status": "success | failure",
+  "error": "<step>: <message>",
+  "data": { "name": "music", "runtime": "OpenClaw",
+            "path": "/root/.openclaw/workspace/skills/music" }
+}
+```
+
+**Not idempotent on purpose:** a skill that isn't installed comes back
+`failed_step: "not_found"`, not success — so a stale backend view or a
+double-send is visible instead of being reported as a deletion that never
+happened.
+
+| `failed_step` | Meaning |
+|---------------|---------|
+| `validate_name` | name isn't a legal slug — a `..` or `/` can never reach outside the skills dir |
+| `not_found` | no such skill (or the path isn't a skill directory) |
+| `unsupported_runtime` | the active runtime has no device-writable skills dir |
+| `remove` | filesystem failure |
+
+Concurrency: shares one mutex with the install/save kinds, so an uninstall can't
+interleave with an extract into the same tree.
+
+On Hermes the roots are tried device-owned first, matching the listing's
+precedence — so an uninstall removes the skill the `skills` uplink actually
+advertised.
+
 #### `skills.save`
 
 Writes ONE authored skill into whichever skills dir the **active** agentic runtime
@@ -680,6 +719,7 @@ Handled by bootstrap worker, not through MQTT handler directly.
 | `system/server/device/delivery/mqtt/data_handler.go` | Handle `data` command kinds `oauth.set`/`oauth.remove` (+ access-token store) |
 | `system/server/device/delivery/mqtt/skills_install_store_handler.go` | Handle `skills.install_store` (async catalog download → `AgentGateway.InstallSkillArchive`) |
 | `system/server/device/delivery/mqtt/skills_files_handler.go` | Handle `skills.files` (read one installed skill's files: list, or one file's contents) |
+| `system/server/device/delivery/mqtt/skills_uninstall_handler.go` | Handle `skills.uninstall` |
 | `system/server/device/delivery/mqtt/skills_save_handler.go` | Handle `skills.save` (synchronous authored-skill write via `AgentGateway.SaveSkill`) |
 | `system/server/device/delivery/mqtt/connector_handler.go` | Handle `connector.set.<code>`/`connector.remove.<code>` (async, writer dispatch via `connectorWriterFor`) |
 | `system/server/device/delivery/mqtt/connector_writer.go` | `ConnectorWriter` interface + shared `<code>_access_tokens.json` file helpers |
