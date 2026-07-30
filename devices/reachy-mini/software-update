@@ -97,7 +97,14 @@ elif [ "$APP" = "openclaw" ]; then
   # reports "No matching version found". spike-agent.sh already does this; without
   # it `software-update openclaw` cannot work on this robot at all.
   VER="$(echo "${VERSION:-latest}" | sed -E 's/(^|\.)0+([0-9])/\1\2/g')"
-  npm install -g "openclaw@${VER}" || { echo "npm install openclaw failed"; exit 1; }
+  # Same flags spike-agent.sh installs with. Without the browser opt-outs npm
+  # pulls a Chromium build (~400 MB) for a capability this device does not
+  # declare, onto a disk with ~1.8 GB free — a half-written global install then
+  # leaves an openclaw on PATH that cannot start. --omit=optional skips arm64
+  # prebuilds that fall back to source builds and cost minutes.
+  env PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 PUPPETEER_SKIP_DOWNLOAD=1 \
+    npm install -g --no-fund --no-audit --omit=optional "openclaw@${VER}" \
+    || { echo "npm install openclaw failed"; exit 1; }
   openclaw plugins install @openclaw/discord@${VER} --force 2>&1 || echo "[software-update] WARN: discord plugin install failed (non-fatal)"
   openclaw plugins install @openclaw/slack@${VER} --force 2>&1 || echo "[software-update] WARN: slack plugin install failed (non-fatal)"
   systemctl restart openclaw
@@ -121,8 +128,19 @@ elif [ "$APP" = "hal" ]; then
   HAL_DIR="/opt/hal"
   unzip -o -q "$ZIP_TMP" -d "$HAL_DIR"
   UV_BIN=$(command -v uv || echo "/root/.local/bin/uv")
-  find /root/.cache/uv -name "lerobot.egg-info" -type d 2>/dev/null | xargs rm -rf
-  cd "$HAL_DIR" && "$UV_BIN" sync --python 3.12 --extra hardware || { echo "uv sync failed"; exit 1; }
+  # Cache INSIDE /opt/hal, exactly as spike-hal.sh installed it. uv reuses the
+  # cache it finds; pointing at root's default instead re-downloads several GB
+  # (torch and friends) onto a disk with ~1.8 GB free.
+  export UV_CACHE_DIR="$HAL_DIR/.uv-cache"
+  # 30s is uv's default per-request timeout — too tight for a 300 MB wheel.
+  export UV_HTTP_TIMEOUT=180
+  find "$UV_CACHE_DIR" -name "lerobot.egg-info" -type d 2>/dev/null | xargs rm -rf
+  # --extra reachy is NOT optional here. `uv sync` is authoritative: it removes
+  # anything outside the resolved extras, so syncing with `--extra hardware`
+  # alone UNINSTALLS the Reachy SDK and leaves HAL with no motion or camera
+  # driver. spike-hal.sh:146 installs with both extras; these must stay in step.
+  cd "$HAL_DIR" && "$UV_BIN" sync --python 3.12 --extra hardware --extra reachy || { echo "uv sync failed"; exit 1; }
+  "$UV_BIN" cache prune >/dev/null 2>&1 || true
   cd /
   systemctl restart hal
   echo "hal updated to $VERSION"
@@ -146,11 +164,44 @@ elif [ "$APP" = "device" ]; then
   DEST="$DEVICES_DIR/$DEVICE_TYPE"
   ZIP_TMP=$(mktemp)
   curl -fsSL -H "Cache-Control: no-cache" -o "$ZIP_TMP" "$URL" || { echo "Failed to download device profile"; exit 1; }
+  # Mirror, not merge — same as spike-device.sh: a capability or rootfs file
+  # removed upstream must actually disappear, and unzipping over the old tree
+  # would keep it forever.
+  rm -rf "${DEST:?}"
   mkdir -p "$DEST"
   unzip -o -q "$ZIP_TMP" -d "$DEST"
   rm -f "$ZIP_TMP"
-  # Re-apply the device rootfs overlay onto / before services restart.
-  [ -d "$DEST/rootfs" ] && cp -a "$DEST/rootfs/." /
+  # Re-apply the device rootfs overlay onto / before services restart — the
+  # profile's /etc/asound.conf and /opt/hal/.env live there, so an OTA that only
+  # unzipped into $DEST would leave HAL on the old tuning.
+  #
+  # But KEEP an existing /opt/hal/.env. It is the one overlay file an operator
+  # edits on the robot (VAD thresholds, sensing floors, camera tuning), and this
+  # branch runs UNATTENDED from the bootstrap worker — silently resetting tuning
+  # on a routine update is exactly how it was lost before (spike-device.sh keeps
+  # it too, and only --force-env replaces it). Absent → installed, because HAL
+  # will not start without DEVICE_TYPE.
+  if [ -d "$DEST/rootfs" ]; then
+    ENV_DST="/opt/hal/.env"
+    ENV_BACKUP=""
+    if [ -f "$ENV_DST" ]; then
+      ENV_BACKUP="$(mktemp)"
+      cp -a "$ENV_DST" "$ENV_BACKUP"
+    fi
+    cp -a "$DEST/rootfs/." /
+    if [ -n "$ENV_BACKUP" ]; then
+      cp -a "$ENV_BACKUP" "$ENV_DST"
+      rm -f "$ENV_BACKUP"
+    fi
+  fi
+  # Refresh this script from the package just installed, so a fix in the updater
+  # reaches the robot over OTA instead of needing a hand-copy. Syntax-checked
+  # first: a broken updater is the one thing nothing else on the robot can repair.
+  if [ -f "$DEST/software-update" ] && bash -n "$DEST/software-update" 2>/dev/null; then
+    install -m 0755 "$DEST/software-update" /usr/local/bin/software-update.new
+    mv -f /usr/local/bin/software-update.new /usr/local/bin/software-update
+    echo "[software-update] refreshed /usr/local/bin/software-update from $DEST"
+  fi
   systemctl restart os-server 2>/dev/null || true
   systemctl restart hal 2>/dev/null || true
   echo "device profile ($DEVICE_TYPE) updated to $VERSION"
