@@ -1,12 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  FolderTree, Folder, FileText, Loader2, RefreshCw, AlertCircle, ChevronRight, Search, Trash2,
+  FolderTree, Folder, FileText, Loader2, RefreshCw, AlertCircle, ChevronRight, ChevronDown,
+  Search, Trash2, Plus, PenLine, Upload,
 } from "lucide-react";
 import { listInstalledSkills, readSkillFiles, deleteSkill } from "@/lib/api";
 import type { InstalledSkill, SkillBundleFile } from "@/lib/api";
 import { ModalShell } from "./ModalShell";
 import { SkillFilesView } from "./SkillFilesView";
-import { inputStyle, btnStyle } from "./styles";
+import { MenuItem } from "./MenuPanel";
+import { WriteSkillModal } from "./WriteSkillModal";
+import { UploadSkillModal } from "./UploadSkillModal";
+import { inputStyle, btnStyle, menuPanel, applyCardHover } from "./styles";
 
 // "Manage skills" — the skills present in the ACTIVE agentic runtime's skills
 // dir. Two views, deliberately the same shape as Browse skills:
@@ -54,6 +58,10 @@ function SkillList({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
+  // "New" opens the composer's Write/Upload modal ON TOP of this one, rather
+  // than replacing it: the operator came here to manage skills, and after adding
+  // one they should land back on the list — refreshed, with the new skill in it.
+  const [adding, setAdding] = useState<"write" | "upload" | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -89,8 +97,18 @@ function SkillList({
         ? `${filtered.length} of ${skills.length} installed`
         : `${skills.length} installed on this runtime`;
 
+  const closeAdding = () => { setAdding(null); void load(); };
+
   return (
-    <ModalShell icon={FolderTree} title="Manage skills" subtitle={subtitle} width={640} onClose={onClose}>
+    <>
+    <ModalShell
+      icon={FolderTree}
+      title="Manage skills"
+      subtitle={subtitle}
+      width={640}
+      onClose={onClose}
+      headerActions={<NewSkillMenu onPick={setAdding} />}
+    >
       <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
         <div style={{ position: "relative", flex: 1 }}>
           <Search size={14} style={{
@@ -138,6 +156,74 @@ function SkillList({
         </div>
       )}
     </ModalShell>
+
+    {/* Portalled siblings, so they stack above the list shell. Closing either
+        one reloads: they may have added a skill, and there is no cheaper signal
+        than asking the runtime again. */}
+    {adding === "write" && <WriteSkillModal onClose={closeAdding} />}
+    {adding === "upload" && <UploadSkillModal onClose={closeAdding} />}
+    </>
+  );
+}
+
+// The same Write/Upload pair the composer's "+" menu offers, repeated in this
+// header so an operator already looking at the installed list doesn't have to
+// close the modal to add one.
+function NewSkillMenu({ onPick }: { onPick: (a: "write" | "upload") => void }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    // Capture phase + stopPropagation so Escape closes THIS menu without also
+    // reaching ModalShell's document-level handler and closing the whole modal.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey, true);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey, true);
+    };
+  }, [open]);
+
+  const run = (a: "write" | "upload") => { setOpen(false); onPick(a); };
+
+  return (
+    <div ref={wrapRef} style={{ position: "relative", flexShrink: 0 }}>
+      <button
+        type="button"
+        className="lm-u-btn"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title="Add a skill"
+        style={{
+          height: 30, padding: "0 9px", borderRadius: 8,
+          background: open ? "var(--lm-card)" : "var(--lm-bg)",
+          border: "1px solid var(--lm-border)", color: "var(--lm-text-dim)", cursor: "pointer",
+          display: "inline-flex", alignItems: "center", gap: 5,
+          fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap",
+        }}
+      >
+        <Plus size={13} /> New <ChevronDown size={12} style={{ opacity: 0.7 }} />
+      </button>
+
+      {/* Opens DOWNWARD — the dialog clips to its own box, so an upward menu
+          anchored in the header would be cut off. */}
+      {open && (
+        <div role="menu" className="lm-pop" style={{ ...menuPanel, top: "calc(100% + 6px)", right: 0, minWidth: 208 }}>
+          <MenuItem icon={PenLine} label="Write skill" hint="author a new SKILL.md" onClick={() => run("write")} />
+          <MenuItem icon={Upload} label="Upload a skill" hint=".skill / .zip / .md from this computer" onClick={() => run("upload")} />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -150,10 +236,10 @@ function SkillRow({ skill, onOpen }: { skill: InstalledSkill; onOpen: () => void
         display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left",
         padding: "10px 12px", borderRadius: 10, cursor: "pointer",
         background: "var(--lm-card)", border: "1px solid var(--lm-border)",
-        color: "var(--lm-text)", transition: "border-color 0.12s",
+        color: "var(--lm-text)", transition: "background 0.12s, border-color 0.12s",
       }}
-      onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--lm-border-hi)"; }}
-      onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--lm-border)"; }}
+      onMouseEnter={(e) => applyCardHover(e.currentTarget, true)}
+      onMouseLeave={(e) => applyCardHover(e.currentTarget, false)}
     >
       <Folder size={15} style={{ color: "var(--lm-amber)", flexShrink: 0 }} />
       <div style={{ flex: 1, minWidth: 0 }}>

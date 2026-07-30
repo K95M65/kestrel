@@ -66,3 +66,13 @@ func (s *OpenclawService) DeleteSkill(name string) (string, error) {
 	slog.Info("[skills] uninstalled", "component", "openclaw", "skill", name, "path", path)
 	return path, nil
 }
+
+// InstallSkillMarkdown installs a bare SKILL.md; its front-matter names the skill.
+func (s *OpenclawService) InstallSkillMarkdown(content []byte) (string, error) {
+	dir, err := skills.InstallSkillMarkdown(s.skillsDir(), content)
+	if err != nil {
+		return "", err
+	}
+	slog.Info("[skills] markdown installed", "component", "openclaw", "dir", dir)
+	return dir, nil
+}

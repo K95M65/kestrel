@@ -13,6 +13,7 @@ import { useT, setLanguage } from "@/lib/i18n";
 import type { DisplayEvent, MonitorEvent } from "./types";
 import { PlusMenu, type SkillsAction } from "./chat/PlusMenu";
 import { WriteSkillModal } from "./chat/WriteSkillModal";
+import { UploadSkillModal } from "./chat/UploadSkillModal";
 import { BrowseSkillsModal } from "./chat/BrowseSkillsModal";
 import { ManageSkillsModal } from "./chat/ManageSkillsModal";
 
@@ -2247,6 +2248,7 @@ export function ChatSection({ events, isActive }: Props) {
       {/* Skills surfaces opened from the composer's "+" menu. Portalled from
           inside each modal, so mounting them here doesn't affect chat layout. */}
       {skillsView === "write" && <WriteSkillModal onClose={() => setSkillsView(null)} />}
+      {skillsView === "upload" && <UploadSkillModal onClose={() => setSkillsView(null)} />}
       {skillsView === "browse" && <BrowseSkillsModal onClose={() => setSkillsView(null)} />}
       {skillsView === "manage" && <ManageSkillsModal onClose={() => setSkillsView(null)} />}
     </div>

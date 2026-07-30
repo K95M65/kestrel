@@ -427,6 +427,7 @@ func (s *Server) Serve(closeFn func()) error {
 	agent.GET("skills/files", adminAuthMiddleware(s.config), s.agentHandler.ReadSkillFiles)
 	agent.POST("skills", adminAuthMiddleware(s.config), s.agentHandler.SaveSkill)
 	agent.POST("skills/install", adminAuthMiddleware(s.config), s.agentHandler.InstallSkill)
+	agent.POST("skills/upload", adminAuthMiddleware(s.config), s.agentHandler.UploadSkill)
 	agent.DELETE("skills", adminAuthMiddleware(s.config), s.agentHandler.DeleteSkill)
 
 	logs := api.Group("logs")

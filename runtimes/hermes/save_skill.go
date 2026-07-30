@@ -85,3 +85,13 @@ func (s *HermesService) DeleteSkill(name string) (string, error) {
 	slog.Info("[skills] uninstalled", "component", "hermes", "skill", name, "path", path)
 	return path, nil
 }
+
+// InstallSkillMarkdown installs a bare SKILL.md; its front-matter names the skill.
+func (s *HermesService) InstallSkillMarkdown(content []byte) (string, error) {
+	dir, err := skills.InstallSkillMarkdown(hermesAuthoredSkillsDir, content)
+	if err != nil {
+		return "", err
+	}
+	slog.Info("[skills] markdown installed", "component", "hermes", "dir", dir)
+	return dir, nil
+}

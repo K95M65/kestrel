@@ -62,3 +62,13 @@ func (s *PicoclawService) DeleteSkill(name string) (string, error) {
 	slog.Info("[skills] uninstalled", "component", "picoclaw", "skill", name, "path", path)
 	return path, nil
 }
+
+// InstallSkillMarkdown installs a bare SKILL.md; its front-matter names the skill.
+func (s *PicoclawService) InstallSkillMarkdown(content []byte) (string, error) {
+	dir, err := skills.InstallSkillMarkdown(picoclawSkillsDir(), content)
+	if err != nil {
+		return "", err
+	}
+	slog.Info("[skills] markdown installed", "component", "picoclaw", "dir", dir)
+	return dir, nil
+}

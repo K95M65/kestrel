@@ -58,3 +58,13 @@ func (s *ClaudeCodeService) DeleteSkill(name string) (string, error) {
 	slog.Info("[skills] uninstalled", "component", "claudecode", "skill", name, "path", path)
 	return path, nil
 }
+
+// InstallSkillMarkdown installs a bare SKILL.md; its front-matter names the skill.
+func (s *ClaudeCodeService) InstallSkillMarkdown(content []byte) (string, error) {
+	dir, err := skills.InstallSkillMarkdown(claudecodeSkillsDir, content)
+	if err != nil {
+		return "", err
+	}
+	slog.Info("[skills] markdown installed", "component", "claudecode", "dir", dir)
+	return dir, nil
+}

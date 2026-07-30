@@ -352,3 +352,202 @@ func TestDeleteSkillFromRejectsBadNameOnce(t *testing.T) {
 		t.Fatalf("err = %v, want ErrInvalidSkillName", err)
 	}
 }
+
+func TestSlugifySkillName(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"weekly-status-report", "weekly-status-report"},
+		{"My Skill", "my-skill"},
+		{"design-critique.skill", "design-critique-skill"},
+		{"  Padded  Name  ", "padded-name"},
+		{"a___b", "a___b"},
+		{"UPPER", "upper"},
+		{"multi   spaces", "multi-spaces"},
+		{"trailing---", "trailing"},
+		{"---leading", "leading"},
+		{"tiếng việt", "ti-ng-vi-t"},
+		// Nothing usable survives → "", which the caller turns into a validation
+		// error rather than inventing a name.
+		{"", ""},
+		{"   ", ""},
+		{"...", ""},
+		{"日本語", ""},
+	}
+	for _, tc := range cases {
+		if got := SlugifySkillName(tc.in); got != tc.want {
+			t.Errorf("SlugifySkillName(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+// Whatever the slug produces must be accepted by the validator that guards every
+// write — otherwise a fallback name could slip past one and fail at the other.
+func TestSlugifySkillNameOutputIsValid(t *testing.T) {
+	for _, in := range []string{
+		"My Skill", "design-critique.skill", "UPPER", "a b c",
+		strings.Repeat("x", 200), strings.Repeat("a b ", 40),
+	} {
+		got := SlugifySkillName(in)
+		if got == "" {
+			t.Errorf("input %q produced an empty slug", in)
+			continue
+		}
+		if err := ValidateSkillName(got); err != nil {
+			t.Errorf("SlugifySkillName(%q) = %q, which ValidateSkillName rejects: %v", in, got, err)
+		}
+	}
+}
+
+// ─── Front-matter + bare-.md install ────────────────────────────────────────
+
+func TestParseSkillFrontMatter(t *testing.T) {
+	name, desc, err := ParseSkillFrontMatter([]byte(
+		"---\nname: weekly-report\ndescription: Sums up the week.\n---\n\nbody"))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if name != "weekly-report" || desc != "Sums up the week." {
+		t.Fatalf("name=%q desc=%q", name, desc)
+	}
+}
+
+// The upstream format allows extra keys — anthropics/skills' algorithmic-art
+// carries `license:` — so an unknown key must not make a valid skill unreadable.
+func TestParseSkillFrontMatterToleratesExtraKeys(t *testing.T) {
+	name, desc, err := ParseSkillFrontMatter([]byte(
+		"---\nname: algorithmic-art\ndescription: Creating algorithmic art with p5.js.\n" +
+			"license: Complete terms in LICENSE.txt\nversion: 1.2.0\n---\n"))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if name != "algorithmic-art" || desc != "Creating algorithmic art with p5.js." {
+		t.Errorf("name=%q desc=%q", name, desc)
+	}
+}
+
+// A `name:` nested under another key is NOT the skill's name.
+func TestParseSkillFrontMatterIgnoresNestedKeys(t *testing.T) {
+	_, _, err := ParseSkillFrontMatter([]byte(
+		"---\ndescription: Has a nested name only.\nmetadata:\n  name: sneaky\n---\n"))
+	if !errors.Is(err, ErrInvalidFrontMatter) {
+		t.Fatalf("err = %v, want ErrInvalidFrontMatter (nested name must not count)", err)
+	}
+}
+
+func TestParseSkillFrontMatterRejects(t *testing.T) {
+	cases := []struct{ label, content string }{
+		{"no front-matter", "# Just a heading\n\nbody"},
+		{"unterminated but keyless", "---\n"},
+		{"name only", "---\nname: x\n---\n"},
+		{"description only", "---\ndescription: d\n---\n"},
+		{"empty file", ""},
+		{"content before block", "hello\n---\nname: x\ndescription: d\n---\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.label, func(t *testing.T) {
+			if _, _, err := ParseSkillFrontMatter([]byte(tc.content)); !errors.Is(err, ErrInvalidFrontMatter) {
+				t.Fatalf("err = %v, want ErrInvalidFrontMatter", err)
+			}
+		})
+	}
+}
+
+// Round-trip: what RenderSkillMarkdown writes must parse back.
+func TestFrontMatterRoundTrip(t *testing.T) {
+	md := RenderSkillMarkdown("weekly-report", "Sums up the week.", "1. Collect")
+	name, desc, err := ParseSkillFrontMatter([]byte(md))
+	if err != nil {
+		t.Fatalf("rendered SKILL.md does not parse back: %v", err)
+	}
+	if name != "weekly-report" || desc != "Sums up the week." {
+		t.Errorf("name=%q desc=%q", name, desc)
+	}
+}
+
+func TestInstallSkillMarkdown(t *testing.T) {
+	dir := t.TempDir()
+	content := []byte("---\nname: weekly-report\ndescription: Sums up the week.\n---\n\nbody")
+
+	path, err := InstallSkillMarkdown(dir, content)
+	if err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	// Directory comes from the front-matter name, not from any filename.
+	if want := filepath.Join(dir, "weekly-report"); path != want {
+		t.Fatalf("path = %q, want %q", path, want)
+	}
+	got, err := os.ReadFile(filepath.Join(path, SkillMarkdownFile))
+	if err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+	if string(got) != string(content) {
+		t.Error("content was not stored verbatim")
+	}
+	for _, leftover := range []string{path + ".new", path + ".old"} {
+		if _, err := os.Stat(leftover); !os.IsNotExist(err) {
+			t.Errorf("%s was left behind", leftover)
+		}
+	}
+}
+
+func TestInstallSkillMarkdownRejectsBadFrontMatter(t *testing.T) {
+	dir := t.TempDir()
+	// Valid YAML block but the name isn't a legal slug.
+	if _, err := InstallSkillMarkdown(dir, []byte("---\nname: Not A Slug\ndescription: d\n---\n")); !errors.Is(err, ErrInvalidSkillName) {
+		t.Errorf("bad slug: err = %v, want ErrInvalidSkillName", err)
+	}
+	if _, err := InstallSkillMarkdown(dir, []byte("# no front-matter")); !errors.Is(err, ErrInvalidFrontMatter) {
+		t.Errorf("no front-matter: err = %v, want ErrInvalidFrontMatter", err)
+	}
+	entries, _ := os.ReadDir(dir)
+	if len(entries) != 0 {
+		t.Errorf("nothing should have been written, found %d entries", len(entries))
+	}
+}
+
+// Unlike authoring, installing replaces.
+func TestInstallSkillMarkdownReplaces(t *testing.T) {
+	dir := t.TempDir()
+	seedSkill(t, dir, "x", map[string]string{"SKILL.md": "OLD", "stale.md": "stale"})
+
+	if _, err := InstallSkillMarkdown(dir, []byte("---\nname: x\ndescription: d\n---\nNEW")); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "x", "stale.md")); !os.IsNotExist(err) {
+		t.Error("stale sibling survived — install is not a clean swap")
+	}
+}
+
+// An archive with no SKILL.md at the skill root isn't a skill.
+func TestInstallSkillArchiveRequiresSkillMD(t *testing.T) {
+	tmp := t.TempDir()
+	archive := filepath.Join(tmp, "a.zip")
+	makeZip(t, archive, map[string]string{
+		"my-skill/README.md":         "not the entry point",
+		"my-skill/reference/note.md": "x",
+	})
+	skillsDir := filepath.Join(tmp, "skills")
+
+	if _, _, err := InstallSkillArchive(archive, skillsDir, "my-skill"); !errors.Is(err, ErrMissingSkillMD) {
+		t.Fatalf("err = %v, want ErrMissingSkillMD", err)
+	}
+	// A rejected archive must leave nothing behind, staging included.
+	for _, p := range []string{
+		filepath.Join(skillsDir, "my-skill"),
+		filepath.Join(skillsDir, "my-skill.new"),
+	} {
+		if _, err := os.Stat(p); !os.IsNotExist(err) {
+			t.Errorf("%s was left behind", p)
+		}
+	}
+}
+
+// SKILL.md must be at the skill ROOT, not buried in a subdirectory.
+func TestInstallSkillArchiveRejectsNestedSkillMD(t *testing.T) {
+	tmp := t.TempDir()
+	archive := filepath.Join(tmp, "a.zip")
+	makeZip(t, archive, map[string]string{"my-skill/docs/SKILL.md": "buried"})
+
+	if _, _, err := InstallSkillArchive(archive, filepath.Join(tmp, "skills"), "my-skill"); !errors.Is(err, ErrMissingSkillMD) {
+		t.Fatalf("err = %v, want ErrMissingSkillMD", err)
+	}
+}

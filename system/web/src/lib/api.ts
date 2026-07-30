@@ -636,6 +636,17 @@ export async function readSkillFiles(name: string): Promise<SkillBundle> {
     `${API_BASE}/api/agent/skills/files?name=${encodeURIComponent(name)}`);
 }
 
+/** POST /api/agent/skills/upload — installs a `.skill`/`.zip` the operator picked
+ *  from their machine. Multipart (not base64) so a multi-MB archive isn't
+ *  inflated a third on the wire. */
+export async function uploadSkill(file: File): Promise<{ name: string; path: string }> {
+  const body = new FormData();
+  body.append("file", file);
+  // No Content-Type header: the browser must set the multipart boundary itself.
+  return apiRequest<{ name: string; path: string }>(
+    `${API_BASE}/api/agent/skills/upload`, { method: "POST", body });
+}
+
 /** DELETE /api/agent/skills — removes the skill from the ACTIVE runtime's skills
  *  dir. Rejects with the backend's message when it isn't installed (HTTP 404) or
  *  the runtime can't uninstall (HTTP 501). */

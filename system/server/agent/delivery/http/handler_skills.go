@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
@@ -112,6 +113,133 @@ func (h *AgentHandler) ReadSkillFiles(c *gin.Context) {
 		files = []domain.SkillBundleFile{}
 	}
 	c.JSON(http.StatusOK, serializers.ResponseSuccess(domain.SkillBundle{ID: name, Files: files}))
+}
+
+// UploadSkill handles POST /api/agent/skills/upload — a skill supplied from the
+// operator's machine, installed into the ACTIVE runtime's skills dir. Same
+// destination and same replace semantics as installing from the catalog; only the
+// source of the bytes differs.
+//
+// Accepted inputs mirror the upstream skill format (anthropics/skills):
+//
+//	.zip / .skill  an archive that MUST contain SKILL.md at the skill root
+//	.md            a bare SKILL.md whose YAML front-matter MUST carry name +
+//	               description — that name is what the skill is installed as
+//
+// Both requirements are enforced device-side, so a malformed upload is rejected
+// with a 400 instead of installing something the agent can never load.
+//
+// Multipart (field `file`) rather than the base64-in-JSON this repo uses for face
+// enrollment: that carries a small JPEG, whereas a skill archive can run to
+// megabytes, and base64 would inflate it by a third for no gain.
+func (h *AgentHandler) UploadSkill(c *gin.Context) {
+	header, err := c.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, serializers.ResponseError("file is required (multipart field \"file\")"))
+		return
+	}
+	if header.Size == 0 {
+		c.JSON(http.StatusBadRequest, serializers.ResponseError("the uploaded file is empty"))
+		return
+	}
+	if header.Size > skills.StoreMaxBytes {
+		c.JSON(http.StatusRequestEntityTooLarge, serializers.ResponseError(
+			fmt.Sprintf("archive is %d bytes, max %d", header.Size, int64(skills.StoreMaxBytes))))
+		return
+	}
+
+	base := filepath.Base(header.Filename)
+	ext := strings.ToLower(filepath.Ext(base))
+
+	var dir string
+	switch ext {
+	case ".md":
+		dir, err = h.installUploadedMarkdown(header)
+	case ".zip", ".skill":
+		dir, err = h.installUploadedArchive(header, base)
+	default:
+		c.JSON(http.StatusBadRequest, serializers.ResponseError(
+			"unsupported file type "+ext+" — upload a .skill, .zip or .md"))
+		return
+	}
+
+	switch {
+	case errors.Is(err, domain.ErrNotSupportedByRuntime):
+		c.JSON(http.StatusNotImplemented, serializers.ResponseError(
+			"the active agent runtime ("+h.agentGateway.Name()+") cannot install skills yet"))
+		return
+	case errors.Is(err, skills.ErrEmptyArchive),
+		errors.Is(err, skills.ErrMissingSkillMD),
+		errors.Is(err, skills.ErrInvalidFrontMatter),
+		errors.Is(err, skills.ErrInvalidSkillName):
+		c.JSON(http.StatusBadRequest, serializers.ResponseError(err.Error()))
+		return
+	case err != nil:
+		slog.Error("[skills] upload install failed", "component", "agent-http",
+			"file", header.Filename, "error", err)
+		c.JSON(http.StatusBadRequest, serializers.ResponseError(err.Error()))
+		return
+	}
+
+	name := filepath.Base(dir)
+	slog.Info("[skills] uploaded", "component", "agent-http",
+		"file", header.Filename, "skill", name, "runtime", h.agentGateway.Name(), "path", dir)
+	c.JSON(http.StatusOK, serializers.ResponseSuccess(gin.H{"name": name, "path": dir}))
+}
+
+// installUploadedMarkdown handles a bare SKILL.md upload: the file's own YAML
+// front-matter names the skill, so nothing has to be inferred from the filename.
+func (h *AgentHandler) installUploadedMarkdown(header *multipart.FileHeader) (string, error) {
+	f, err := header.Open()
+	if err != nil {
+		return "", fmt.Errorf("open upload: %w", err)
+	}
+	defer f.Close()
+
+	content, err := io.ReadAll(io.LimitReader(f, skills.StoreMaxBytes))
+	if err != nil {
+		return "", fmt.Errorf("read upload: %w", err)
+	}
+	return h.agentGateway.InstallSkillMarkdown(content)
+}
+
+// installUploadedArchive stages a `.skill`/`.zip` upload in a temp dir and hands
+// it to the runtime. The fallback name is only consulted for a flat archive; a
+// normal bundle's wrapping directory names the skill.
+func (h *AgentHandler) installUploadedArchive(header *multipart.FileHeader, base string) (string, error) {
+	tmpDir, err := os.MkdirTemp("", "skill-upload-*")
+	if err != nil {
+		return "", fmt.Errorf("create temp dir: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	zipPath := filepath.Join(tmpDir, "skill.zip")
+	if err := saveMultipartFile(header, zipPath); err != nil {
+		return "", err
+	}
+
+	fallback := skills.SlugifySkillName(strings.TrimSuffix(base, filepath.Ext(base)))
+	return h.agentGateway.InstallSkillArchive(zipPath, fallback)
+}
+
+// saveMultipartFile writes an uploaded part to dst. Hand-rolled rather than
+// gin's SaveUploadedFile so the copy is byte-capped.
+func saveMultipartFile(header *multipart.FileHeader, dst string) error {
+	src, err := header.Open()
+	if err != nil {
+		return fmt.Errorf("open upload: %w", err)
+	}
+	defer src.Close()
+
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		return fmt.Errorf("create temp file: %w", err)
+	}
+	if _, err := io.Copy(out, io.LimitReader(src, skills.StoreMaxBytes)); err != nil {
+		out.Close()
+		return fmt.Errorf("store upload: %w", err)
+	}
+	return out.Close()
 }
 
 // DeleteSkill handles DELETE /api/agent/skills?name=<skill>. Removes the skill

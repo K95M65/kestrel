@@ -182,6 +182,13 @@ type AgentGateway interface {
 	// device-writable skills dir return ErrNotSupportedByRuntime.
 	InstallSkillArchive(archivePath, fallbackName string) (dir string, err error)
 
+	// InstallSkillMarkdown installs a BARE SKILL.md into this runtime's skills
+	// dir and returns the directory it wrote. The file's YAML front-matter `name`
+	// decides the directory, so content without valid front-matter is refused
+	// (skills.ErrInvalidFrontMatter) rather than landing under a guessed name.
+	// Same per-backend split as InstallSkillArchive.
+	InstallSkillMarkdown(content []byte) (dir string, err error)
+
 	// ListSkills returns the skills currently present in this runtime's skills
 	// dir, each with its file tree. Same per-backend split as SaveSkill: only
 	// the directory differs (skills.ListInstalled does the walk). Backends with
