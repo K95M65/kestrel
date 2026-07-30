@@ -229,12 +229,36 @@ STATUS_LED_PRESETS = {
     # normally on top, and every LED restore lands back on this instead of the
     # user state, so "nothing happening + red breathing" = mic is muted.
     # Applied by /voice/mute, cleared by /voice/unmute (app_state._mic_muted_led).
-    "mic_muted": {"effect": FX_BREATHING, "color": [140, 0, 0], "speed": 0.8},  # dark red — mic muted
+    # Deliberately dimmer than the light.max_brightness ceiling would force
+    # (the gate alone would clamp 140 -> 120): this is a RESTING look that
+    # stays lit for as long as the mic is muted, often pointed at the user, so
+    # it is tuned for "glanceable", not "bright". Red-only helps — at the same
+    # value it carries ~1/4 the luminance of white. Don't go much lower or the
+    # privacy indicator stops reading in a daylit room.
+    "mic_muted": {"effect": FX_BREATHING, "color": [90, 0, 0], "speed": 0.8},  # dark red — mic muted
 }
 
-# Ambient resting look — the warm-white breathing the strip settles into when
-# no user LED state exists. MUST mirror the Go ambient fallback
-# (system/ambient/service.go breathingLoop: (255,200,140) @ 0.3)
-# so a HAL-side settle (e.g. mic unmute with no saved state) is visually
-# identical to what ambient paints on idle.
-AMBIENT_RESTING_LED = {"effect": FX_BREATHING, "color": [255, 200, 140], "speed": 0.3}
+# Ambient resting look — what the strip settles into when no user LED state
+# exists. MUST mirror the Go ambient fallback (system/ambient/service.go
+# `ambientRestingColor`) so a HAL-side settle (e.g. mic unmute with no saved
+# state) is visually identical to what ambient paints on idle. Flip the two
+# together or the device shows one look on idle and another on restore.
+#
+# A BLACK color means "resting state is dark": the settle paths clear the strip
+# instead of starting an effect (an effect thread breathing black would burn
+# 25 fps of SPI writes and make GET /led/color report on=true over a dark
+# strip). Light then becomes opt-in — it comes on for an action (emotion,
+# status cue, explicit user/agent color) and goes back to black when that
+# action releases the strip.
+#
+# Currently [0, 0, 0] — default off, per the 30/07/2026 product call: the lamp
+# was lighting itself up unasked and shining into users' faces. Restore
+# [255, 200, 140] (warm white ~2700K @ speed 0.3) to bring back the previous
+# "a lamp at rest reads as a cozy lamp turned on" behavior.
+AMBIENT_RESTING_LED = {"effect": FX_BREATHING, "color": [0, 0, 0], "speed": 0.3}
+
+
+def ambient_resting_is_dark() -> bool:
+    """True when the resting look is black, i.e. the strip's idle state is OFF.
+    Settle paths use this to clear the strip instead of running an effect."""
+    return not any(AMBIENT_RESTING_LED.get("color") or [0, 0, 0])

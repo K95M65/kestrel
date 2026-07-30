@@ -145,7 +145,10 @@ from `STATUS_LED_PRESETS`, overridable per device via `presets.json`'s `status_l
 
 ### Mic-muted idle indicator
 
-`STATUS_LED_PRESETS["mic_muted"]` — dark red `(140, 0, 0)` breathing at speed 0.8. HAL-local
+`STATUS_LED_PRESETS["mic_muted"]` — dark red `(90, 0, 0)` breathing at speed 0.8, deliberately
+dimmer than the `light.max_brightness` ceiling would force (the gate alone clamps to 120):
+it is a resting look that stays lit for as long as the mic is muted, often pointed at the
+user, so it is tuned to be glanceable rather than bright. HAL-local
 key (no Go statusled state): applied by `POST /voice/mute`, cleared by `POST /voice/unmute`
 (`app_state._mic_muted_led`). It is the strip's **resting look** while the mic is muted —
 nothing is blocked:
@@ -177,9 +180,40 @@ When lamp starts and `config.SetUpCompleted == false` (device in AP/provisioning
 ## Ambient Idle Behaviors
 
 When Lamp is idle (no interaction):
-- **Breathing LED** — sine-wave brightness. Breathes the current LED color; when none is set (e.g. just after boot), it falls back to a soft warm white `(255, 200, 140)` (~2700K) at speed 0.3, so a lamp at rest reads as a cozy lamp turned on rather than a cold "device" blue. A user/agent-set color is respected (breathing uses it; ambient never overrides a locked color).
+- **Breathing LED** — sine-wave brightness. Breathes the current LED color; when none is set (e.g. just after boot), it falls back to the **resting look**, which is `(0, 0, 0)` — dark. A user/agent-set color is respected (breathing uses it; ambient never overrides a locked color).
 
 Auto-pauses on interaction, resumes after 60s of silence.
+
+### The resting look (default: off)
+
+When no user LED state exists, the strip settles on the *resting look*, defined in **two
+places that must be flipped together**:
+
+| Side | Knob | Consumers |
+|---|---|---|
+| HAL | `AMBIENT_RESTING_LED` (`hal/presets.py`) | `POST /led/restore` with no user state; the settle after mic-unmute |
+| os-server | `ambientRestingColor` (`system/ambient/service.go`) | `breathingLoop` fallback when `/led/color` reads black |
+
+Both are currently **`(0, 0, 0)` — the resting state is dark**. A black resting color is
+treated specially: the settle paths *clear* the strip instead of starting an effect (an
+effect thread breathing black would burn 25 fps of SPI writes and make `GET /led/color`
+report `on: true` over a dark strip), and the Go loop skips its tick entirely rather than
+painting. Light is therefore opt-in — it comes on for an *action* (emotion, status cue,
+explicit user/agent color, scene) and goes back to black when that action releases the
+strip.
+
+Two consequences worth knowing:
+
+- An idle device looks **off**, not "resting". That is intended — status cues (`booting`,
+  `connectivity`, …) are what tell the user something is happening.
+- After a reboot the strip stays dark until something asks for light: the LED sidecar is
+  boot-scoped, so every boot starts with no user state and lands on the resting look.
+
+Setting both knobs back to `(255, 200, 140)` (warm white ~2700K @ speed 0.3) restores the
+previous behavior, where an idle lamp read as a cozy lamp turned on rather than a cold
+"device booting" blue, and the warm tone stayed clear of every status color. That look is
+what re-lit the strip ~60s after the user turned the light off, and what made every fresh
+boot come up lit.
 
 ### LED off wins over transient overlays
 

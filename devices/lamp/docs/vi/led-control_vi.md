@@ -144,7 +144,10 @@ màu/effect/speed từ `STATUS_LED_PRESETS`, override per-device qua section `st
 
 ### Đèn báo mic đang mute (idle indicator)
 
-`STATUS_LED_PRESETS["mic_muted"]` — đỏ sẫm `(140, 0, 0)` breathing speed 0.8. Key HAL-local
+`STATUS_LED_PRESETS["mic_muted"]` — đỏ sẫm `(90, 0, 0)` breathing speed 0.8, cố tình để dịu hơn
+mức mà trần `light.max_brightness` ép xuống (riêng gate đã clamp về 120): đây là resting look
+sáng liên tục suốt thời gian mic bị mute, lại thường chiếu về phía user, nên chỉnh theo tiêu chí
+"liếc là thấy" chứ không phải "sáng". Key HAL-local
 (không có state Go statusled tương ứng): bật bởi `POST /voice/mute`, tắt bởi `POST /voice/unmute`
 (`app_state._mic_muted_led`). Đây là **trạng thái nghỉ** của strip khi mic đang mute —
 không chặn gì cả:
@@ -174,9 +177,37 @@ Khi lamp start và `config.SetUpCompleted == false` (device đang ở AP/provisi
 ## Ambient Idle Behaviors
 
 Khi Lamp idle (không có interaction):
-- **Breathing LED** — sine-wave brightness. Thở theo màu LED hiện tại; khi chưa có màu nào (vd vừa boot xong), fallback về **trắng ấm dịu `(255, 200, 140)`** (~2700K) speed 0.3, để đèn lúc nghỉ trông như một cái đèn ấm cúng đang bật, không phải màu xanh "thiết bị" lạnh. Nếu user/agent đã đặt màu thì tôn trọng màu đó (breathing dùng màu đó; ambient không đè lên màu đã khóa).
+- **Breathing LED** — sine-wave brightness. Thở theo màu LED hiện tại; khi chưa có màu nào (vd vừa boot xong), fallback về **resting look**, hiện là `(0, 0, 0)` — tối. Nếu user/agent đã đặt màu thì tôn trọng màu đó (breathing dùng màu đó; ambient không đè lên màu đã khóa).
 
 Tự pause khi có interaction, resume sau 60s im lặng.
+
+### Resting look (mặc định: tắt)
+
+Khi chưa có user LED state, strip settle về *resting look*, được định nghĩa ở **hai chỗ và
+phải đổi cùng lúc**:
+
+| Phía | Knob | Nơi tiêu thụ |
+|---|---|---|
+| HAL | `AMBIENT_RESTING_LED` (`hal/presets.py`) | `POST /led/restore` khi không có user state; settle sau khi bỏ mic-mute |
+| os-server | `ambientRestingColor` (`system/ambient/service.go`) | fallback của `breathingLoop` khi `/led/color` đọc ra đen |
+
+Cả hai hiện là **`(0, 0, 0)` — trạng thái nghỉ là tối**. Màu resting đen được xử lý đặc biệt:
+các đường settle sẽ *clear* strip thay vì start effect (một thread effect thở màu đen sẽ đốt
+25 fps ghi SPI và làm `GET /led/color` báo `on: true` trong khi đèn tối thui), còn vòng lặp
+bên Go thì skip nguyên tick thay vì paint. Nhờ vậy đèn thành opt-in — chỉ sáng khi có *action*
+(emotion, status cue, màu do user/agent set, scene) và trở về đen khi action đó nhả strip.
+
+Hai hệ quả cần biết:
+
+- Device lúc idle trông như **đã tắt**, không phải "đang nghỉ". Đây là chủ ý — status cue
+  (`booting`, `connectivity`, …) mới là thứ báo cho user biết có gì đang diễn ra.
+- Sau reboot strip ở yên trong bóng tối cho tới khi có thứ gì cần đèn: sidecar LED là
+  boot-scoped nên mỗi lần boot đều bắt đầu với no user state và rơi vào resting look.
+
+Đổi cả hai knob về `(255, 200, 140)` (trắng ấm ~2700K @ speed 0.3) là khôi phục hành vi cũ:
+đèn idle trông như một cái đèn ấm cúng đang bật thay vì màu xanh "thiết bị" lạnh, và tông ấm
+đó tránh trùng với mọi màu status. Chính look này là thứ bật lại đèn ~60s sau khi user tắt,
+và làm mỗi lần boot lên là đèn sáng.
 
 ### LED off thắng mọi transient overlay
 

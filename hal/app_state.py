@@ -14,6 +14,7 @@ from typing import Optional
 
 from hal.presets import (
     AMBIENT_RESTING_LED,
+    ambient_resting_is_dark,
     EMO_IDLE,
     EMO_THINKING,
     EMOTION_PRESETS,
@@ -533,9 +534,14 @@ def _clear_mic_muted_led(force: bool = False):
     # it and settle on the ambient resting look ourselves — the Go ambient
     # loop thinks its effect is still running and won't re-light the strip
     # until its next pause/resume cycle.
+    # A dark resting look means the strip stays cleared — see AMBIENT_RESTING_LED.
     if _effect_thread is not None and _effect_thread.name == "led-mic-muted":
         _stop_current_effect()
         if _user_led_state is None and rgb_service:
+            if ambient_resting_is_dark():
+                rgb_service.dispatch(RGB_CMD_SOLID, (0, 0, 0))
+                logger.info("Mic-muted LED cleared -- no user state, resting dark")
+                return
             _start_preset_effect(AMBIENT_RESTING_LED, "led-ambient-fallback")
             return
     _restore_user_led()

@@ -316,13 +316,19 @@ def restore_led():
         return {"status": "ok"}
     if user_state is None:
         # No saved user preference — settle on the ambient resting look
-        # (warm-white breathing, mirrors the Go ambient loop fallback) so a
-        # transient overlay releasing the strip (voice_service noise-session
-        # cleanup, Buddy) doesn't leave the lamp DARK for ~60s until
+        # (mirrors the Go ambient loop fallback) so a transient overlay
+        # releasing the strip (voice_service noise-session cleanup, Buddy)
+        # doesn't leave the lamp in a look nobody chose for ~60s until
         # ambient.breathingLoop resumes after its interaction quiet-window.
         # Same pattern _clear_mic_muted_led uses when no user state exists.
-        from hal.presets import AMBIENT_RESTING_LED
+        # A dark resting look means clear the strip — see AMBIENT_RESTING_LED.
+        from hal.presets import AMBIENT_RESTING_LED, ambient_resting_is_dark
 
+        if ambient_resting_is_dark():
+            state._stop_current_effect()
+            state.rgb_service.dispatch(RGB_CMD_SOLID, (0, 0, 0))
+            state.logger.info("LED restore: no user state -- resting dark, cleared")
+            return {"status": "ok"}
         state._start_preset_effect(AMBIENT_RESTING_LED, "led-ambient-fallback")
         state.logger.info("LED restore: no user state -- settling on ambient resting")
         return {"status": "ok"}

@@ -719,7 +719,7 @@ Toàn bộ suite là opt-in theo từng device: capability routeless `lifelike` 
 
 | Loop | Capability | Nhịp | Hoạt động |
 |------|-----------|------|-----------|
-| Breathing LED | `light` | liên tục (tick 2 giây) | Bật effect `breathing` có sẵn của HAL qua `/led/effect` (speed 0.3) với màu LED hiện tại đọc từ HAL; fallback trắng ấm `(255, 200, 140)` khi LED đang tắt (đen). Dừng effect khi paused hoặc LED đang bị lock. |
+| Breathing LED | `light` | liên tục (tick 2 giây) | Bật effect `breathing` có sẵn của HAL qua `/led/effect` (speed 0.3) với màu LED hiện tại đọc từ HAL; fallback về resting look (`ambientRestingColor`, hiện là `(0, 0, 0)`) khi LED đang tắt (đen) — resting look tối nghĩa là skip tick và strip ở yên không sáng. Xem [led-control_vi.md § Resting look](led-control_vi.md#resting-look-mặc-định-tắt). Dừng effect khi paused hoặc LED đang bị lock. |
 | Micro-movements | `motion` | ngẫu nhiên 45–120 giây | Phát một servo recording an toàn trong bộ `idle`, `curious`, `nod`. Chỉ servo — không đụng vào LED. |
 | Mumble (tự lẩm bẩm) | `audio` | ngẫu nhiên 5–15 phút | Nói một câu ngẫu nhiên từ pool `PhraseMumble` (`system/lib/i18n/phrases.go`, EN/VI/zh-CN/zh-TW, có audio tag như `[sigh]`/`[whisper]`/`[chuckle]`). Dùng `hal.SpeakCached` — lần render đầu của mỗi câu mới gọi TTS provider, các lần sau phát lại từ WAV cache của HAL, nên lẩm bẩm lúc idle không tốn API. |
 
