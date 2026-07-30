@@ -233,7 +233,7 @@ trong khi mọi service vẫn báo healthy.
 | 3 | `spike-os.sh` | Tải binary `os-server` về `/usr/local/bin`, seed `/root/config/config.json` tối thiểu, chạy **dưới root với `WorkingDirectory=/root`** |
 | 4 | `spike-web.sh` | Cài nginx, tải bundle `web` về `/usr/share/nginx/html/setup`, viết vhost `reachy-spike` |
 | 5 | `spike-agent.sh` | Cài Node.js 22 (NodeSource) + `openclaw` đúng version OTA pin, seed `/root/.openclaw`, chạy gateway ở loopback `18789` |
-| 6 | `spike-bootstrap.sh` | Worker OTA: seed `/root/config/bootstrap.json`, poll feed mỗi `5m` |
+| 6 | `spike-bootstrap.sh` | Worker OTA: seed `/root/config/bootstrap.json`, cài `devices/reachy-mini/software-update` → `/usr/local/bin/software-update` (worker exec script này để áp update; thiếu nó thì mọi lần apply đều fail `executable file not found in $PATH` trong khi mọi unit vẫn báo healthy), poll feed mỗi `5m` |
 
 Thứ tự có lý do. `device` phải chạy trước vì mọi thứ khác đọc file nó cài.
 `bootstrap` để **cuối cùng**: nó có thể restart os-server và hal ngay khi thấy
