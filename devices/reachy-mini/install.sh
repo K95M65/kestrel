@@ -39,7 +39,45 @@ OTA_METADATA_URL="${OTA_METADATA_URL:-https://cdn.autonomous.ai/os/ota/metadata.
 tag() { printf '[install] %s\n' "$1" >&2; }
 fail() { printf '[install] ERROR: %s\n' "$1" >&2; exit 1; }
 
+# --force is ours, not spike.sh's, so filter it out of the argument list rather
+# than rewriting it in place: substituting it for an empty string would leave a
+# blank argument that spike.sh rejects as an unknown flag.
+FORCE=0
+ARGS=()
+for a in "$@"; do
+  if [ "$a" = "--force" ]; then FORCE=1; else ARGS+=("$a"); fi
+done
+set -- ${ARGS[@]+"${ARGS[@]}"}
+
 [ "$(id -u)" -eq 0 ] || fail "run as root — pipe to 'sudo bash', not 'bash'"
+
+# Refuse to run anywhere but a Reachy Mini. A one-liner published in a README
+# gets pasted into the wrong terminal eventually, and this one is not harmless
+# there: it apt-installs packages, overwrites /etc/asound.conf for the whole
+# machine, writes /opt and /root/config, and enables five systemd units. On a
+# laptop it merely fails; on some other Linux box it succeeds and leaves a mess.
+#
+# The marker is the Pollen daemon, since that is what the install actually
+# depends on: motion goes through it, and HAL borrows the camera and microphone
+# from it. Its systemd unit is checked as well as its port, so the guard still
+# passes while the daemon happens to be restarting.
+if [ "$FORCE" = "0" ]; then
+  if systemctl list-unit-files reachy-mini-daemon.service >/dev/null 2>&1 \
+     && systemctl cat reachy-mini-daemon.service >/dev/null 2>&1; then
+    :
+  elif curl -sf -m 3 http://localhost:8000/api/media/status >/dev/null 2>&1; then
+    :
+  else
+    fail "this does not look like a Reachy Mini.
+No reachy-mini-daemon.service, and nothing answering on localhost:8000.
+
+Run it ON the robot, over SSH — not on your laptop:
+    ssh pollen@reachy-mini.local
+    curl -fsSL …/install.sh | sudo bash
+
+If you really mean to install here, re-run with --force."
+  fi
+fi
 
 tag "device : $DEVICE_TYPE"
 tag "feed   : $OTA_METADATA_URL"
