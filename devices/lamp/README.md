@@ -5,7 +5,7 @@ to live on a desk — the first reference device for [Autonomous](../../README.m
 
 🔗 **Product page:** https://www.autonomous.ai/lamp
 
-<img src="images/lamp.webp" alt="Autonomous Lamp" width="480">
+<img src="images/lamp_icon_2.webp" alt="Autonomous Lamp" width="480">
 
 ## What it is
 
