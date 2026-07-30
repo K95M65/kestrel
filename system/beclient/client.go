@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"go.autonomous.ai/os/system/domain"
 	"go.autonomous.ai/os/system/server/config"
 )
 
@@ -236,13 +237,9 @@ type PingPayload struct {
 	// Deliberately name+description only, NOT the file trees that endpoint also
 	// returns: the ping fires every StatusReportInterval, so shipping a full
 	// per-skill file tree that often would be pure waste.
-	Skills []PingSkill `json:"skills,omitempty"`
-}
-
-// PingSkill is one installed skill as reported on the ping.
-type PingSkill struct {
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
+	//
+	// Same type the MQTT `info` uplink uses, so the two can't drift apart.
+	Skills []domain.SkillSummary `json:"skills,omitempty"`
 }
 
 // MQTTConfig holds MQTT broker configuration from the backend.

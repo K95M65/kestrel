@@ -63,7 +63,7 @@ The OS server uses MQTT to communicate with the backend server (status reporting
 `openclaw`. The response also carries these optional fields when known:
 `hal_version`, `openclaw_version`, `hermes_version`, `picoclaw_version`,
 `codex_version`, `claudecode_version`, `opencode_version`, `local_ip`, `tts_provider`, `tts_voice`,
-`stt_language`, `timezone`, `unsupported_channels`. `timezone` is the device's
+`stt_language`, `timezone`, `unsupported_channels`, `skills`. `timezone` is the device's
 **live** IANA zone (e.g. `Asia/Ho_Chi_Minh`), read fresh from `/etc/timezone`
 (falling back to config), not just the config record. The six per-runtime
 versions are all probed at startup (each from its own `--version`) and
@@ -74,6 +74,17 @@ device that the **active** runtime cannot run. It is populated by `ChannelReconc
 after a runtime switch — e.g. switching `openclaw` → `picoclaw` (telegram-only) leaves
 any configured `slack`/`discord` as unsupported. The list is sourced from
 `config.channels_unsupported`, which `ChannelReconcile` rewrites on each switch.
+
+`skills` (omitted when empty) is what the **active** runtime currently has
+installed — the same set the web UI's Manage-skills panel shows
+(`AgentGateway.ListSkills`). Shape is
+`[{"name":"music","description":"Play music."}]`: name + description only, never
+the per-skill file trees that `GET /api/agent/skills` also returns. The HTTP ping
+carries the identical array (same `domain.SkillSummary` type, so the two uplinks
+cannot drift). Best-effort — a runtime that can't list skills or an unreadable
+skills dir omits the field instead of failing the uplink. The field lives on
+`MQTTInfoResponse`, which the `data` replies embed, but only `handleInfo`
+populates it, so `data` results never carry it.
 
 **HTTP backend ping mirrors these fields.** The device-initiated ping
 (`POST {llm_base}/ping`, built by `system/device.buildPingPayload`, sent via
@@ -320,6 +331,7 @@ optional `error`, and an optional `data` payload.
 | `connector.remove.<code>` | Delete a connector's credentials (async; acks `starting`) | `connector` |
 | `channel.refresh_config` | Re-apply a channel's canonical config block (async; acks `configuring`) | `channel` |
 | `skills.install_store` | Install ONE catalog skill on the active runtime (async; acks `starting`) | `id`, optional `name` |
+| `skills.files` | Read one installed skill's files — list, or one file's contents (synchronous) | `name`, optional `path` |
 | `skills.save` | Write one authored skill into the active runtime's skills dir (synchronous) | `name`, `description`, `instructions` |
 | `system.info` | Aggregate snapshot: versions + network + host | _(none)_ |
 | `system.version` | Component versions only (cheaper than `system.info`) | _(none)_ |
@@ -541,6 +553,55 @@ write into the same skills dir. A second one arriving mid-flight fails fast with
 No gateway restart: every backend with a skills dir picks new files up per
 session.
 
+#### `skills.files`
+
+The MQTT twin of `GET /api/agent/skills/files`. That endpoint is LAN-only and
+admin-gated, so the backend — and through it a mobile app — has no way to inspect
+a skill the `skills` uplink advertised. This is that way in.
+
+**Two modes**, because MQTT is not a bulk transport and a whole skill can be
+megabytes:
+
+| Receive | Returns |
+|---------|---------|
+| `{"name":"music"}` | the file **list** — `path` / `size` / `binary` per entry, **no contents** |
+| `{"name":"music","path":"music/SKILL.md"}` | that **one file**, contents inlined |
+
+`path` must be the entry path exactly as the list reported it (relative to the
+skills root, so it includes the skill dir). A basename or a `..` attempt does not
+resolve — lookup is an exact match against the listing, never a filesystem join.
+
+**Synchronous** — reading a skill dir is local disk, so there is no `starting` ack.
+
+List mode:
+```json
+{
+  "device": "lamp", "type": "data", "kind": "skills.files",
+  "status": "success",
+  "data": { "name": "music", "runtime": "OpenClaw", "files": [
+    {"path": "music/SKILL.md", "size": 1204},
+    {"path": "music/reference/tempo.md", "size": 380},
+    {"path": "music/assets/icon.png", "size": 9001, "binary": true}
+  ]}
+}
+```
+
+Single-file mode returns `data.file` instead: the same entry plus `text`, and
+`truncated: true` when the body was cut.
+
+**Size budget.** The HTTP twin inlines up to 512 KB per file, fine over a LAN
+socket but not over MQTT — brokers commonly cap a message around 256 KB, and the
+payload still has to survive JSON escaping. This uplink caps inlined text at
+**64 KB** and flags `truncated`; the cut never splits a multi-byte rune, so the
+text stays valid UTF-8. Binary entries carry metadata only, never bytes.
+
+| `failed_step` | Meaning |
+|---------------|---------|
+| `validate_name` | skill name isn't a legal slug |
+| `not_found` | the requested `path` isn't in that skill |
+| `unsupported_runtime` | the active runtime has no device-readable skills dir |
+| `read` | skill missing (stale listing) or unreadable |
+
 #### `skills.save`
 
 Writes ONE authored skill into whichever skills dir the **active** agentic runtime
@@ -618,6 +679,7 @@ Handled by bootstrap worker, not through MQTT handler directly.
 | `system/server/device/delivery/mqtt/slack_event_handler.go` | Handle `slack_event` / `slack_command` (runtime-aware: forwards Slack HTTP-mode events/slash commands to the local OpenClaw gateway, or drives a hermes turn when the runtime is a `SlackBridge`) |
 | `system/server/device/delivery/mqtt/data_handler.go` | Handle `data` command kinds `oauth.set`/`oauth.remove` (+ access-token store) |
 | `system/server/device/delivery/mqtt/skills_install_store_handler.go` | Handle `skills.install_store` (async catalog download → `AgentGateway.InstallSkillArchive`) |
+| `system/server/device/delivery/mqtt/skills_files_handler.go` | Handle `skills.files` (read one installed skill's files: list, or one file's contents) |
 | `system/server/device/delivery/mqtt/skills_save_handler.go` | Handle `skills.save` (synchronous authored-skill write via `AgentGateway.SaveSkill`) |
 | `system/server/device/delivery/mqtt/connector_handler.go` | Handle `connector.set.<code>`/`connector.remove.<code>` (async, writer dispatch via `connectorWriterFor`) |
 | `system/server/device/delivery/mqtt/connector_writer.go` | `ConnectorWriter` interface + shared `<code>_access_tokens.json` file helpers |

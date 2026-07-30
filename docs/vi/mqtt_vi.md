@@ -63,7 +63,7 @@ rồi `gateway.default` trong `DEVICE.md` của device, cuối cùng mặc đị
 Phản hồi còn kèm các field tùy chọn khi có: `hal_version`, `openclaw_version`,
 `hermes_version`, `picoclaw_version`, `codex_version`, `claudecode_version`,
 `opencode_version`, `local_ip`, `tts_provider`, `tts_voice`, `stt_language`, `timezone`,
-`unsupported_channels`. `timezone` là múi giờ IANA **trực tiếp** của device (ví dụ
+`unsupported_channels`, `skills`. `timezone` là múi giờ IANA **trực tiếp** của device (ví dụ
 `Asia/Ho_Chi_Minh`), đọc tươi từ `/etc/timezone` (fallback về config), không chỉ là
 bản ghi trong config. Cả sáu version per-runtime đều được probe lúc startup (mỗi cái
 từ `--version` riêng) và bắn cạnh nhau; `agent_runtime` cho biết cái nào đang active.
@@ -73,6 +73,15 @@ mà runtime **đang active** không chạy được. Nó được `ChannelReconc
 chuyển runtime — vd chuyển `openclaw` → `picoclaw` (chỉ telegram) khiến mọi `slack`/
 `discord` đã cấu hình thành không hỗ trợ. Danh sách lấy từ
 `config.channels_unsupported`, được `ChannelReconcile` ghi lại mỗi lần chuyển runtime.
+
+`skills` (bỏ qua khi rỗng) là những skill runtime **đang active** hiện có — đúng bộ
+mà panel Manage skills trên web hiển thị (`AgentGateway.ListSkills`). Shape là
+`[{"name":"music","description":"Play music."}]`: chỉ name + description, không bao
+giờ kèm cây file mà `GET /api/agent/skills` cũng trả. Cú ping HTTP mang y hệt mảng
+này (cùng type `domain.SkillSummary` nên hai uplink không thể lệch nhau).
+Best-effort — runtime không list được hoặc thư mục skill đọc lỗi thì bỏ field chứ
+không làm fail uplink. Field nằm trên `MQTTInfoResponse` mà các reply `data` embed,
+nhưng chỉ `handleInfo` set nó, nên reply `data` không bao giờ mang theo.
 
 **HTTP backend ping mirror các field này.** Cú ping do device chủ động gửi
 (`POST {llm_base}/ping`, build bởi `system/device.buildPingPayload`, gửi qua
@@ -312,6 +321,7 @@ metadata device/version chuẩn cộng với `kind`, `status` (`success|failure`
 | `connector.remove.<code>` | Xóa credentials của một connector (bất đồng bộ; ack `starting`) | `connector` |
 | `channel.refresh_config` | Áp dụng lại block config chuẩn của một channel (bất đồng bộ; ack `configuring`) | `channel` |
 | `skills.install_store` | Cài MỘT skill từ catalog lên runtime đang chạy (bất đồng bộ; ack `starting`) | `id`, `name` tuỳ chọn |
+| `skills.files` | Đọc file của một skill đã cài — danh sách, hoặc nội dung một file (đồng bộ) | `name`, `path` tuỳ chọn |
 | `skills.save` | Ghi một skill soạn sẵn vào thư mục skill của runtime đang chạy (đồng bộ) | `name`, `description`, `instructions` |
 | `system.info` | Snapshot tổng hợp: versions + network + host | _(không)_ |
 | `system.version` | Chỉ versions các thành phần (rẻ hơn `system.info`) | _(không)_ |
@@ -525,6 +535,55 @@ vào cùng thư mục skill. Cái thứ hai đến giữa lúc đang chạy sẽ
 Không restart gateway: mọi backend có thư mục skill đều nhặt file mới theo từng
 session.
 
+#### `skills.files`
+
+Bản MQTT của `GET /api/agent/skills/files`. Endpoint đó chỉ trong LAN và sau
+admin-auth, nên backend — và qua đó là app mobile — không có cách nào xem một skill
+mà uplink `skills` đã báo có. Đây là đường vào đó.
+
+**Hai chế độ**, vì MQTT không phải kênh truyền khối lớn và cả một skill có thể nặng
+vài MB:
+
+| Nhận | Trả về |
+|------|--------|
+| `{"name":"music"}` | **danh sách** file — `path` / `size` / `binary` mỗi entry, **không có nội dung** |
+| `{"name":"music","path":"music/SKILL.md"}` | **một file** đó, nội dung inline |
+
+`path` phải đúng y như danh sách đã báo (tương đối so với gốc thư mục skill, nên có
+kèm tên thư mục skill). Truyền basename hay thử `..` đều không khớp — tra cứu là so
+khớp chính xác với listing, không bao giờ join đường dẫn trên filesystem.
+
+**Đồng bộ** — đọc thư mục skill là đọc đĩa local, nên không có ack `starting`.
+
+Chế độ danh sách:
+```json
+{
+  "device": "lamp", "type": "data", "kind": "skills.files",
+  "status": "success",
+  "data": { "name": "music", "runtime": "OpenClaw", "files": [
+    {"path": "music/SKILL.md", "size": 1204},
+    {"path": "music/reference/tempo.md", "size": 380},
+    {"path": "music/assets/icon.png", "size": 9001, "binary": true}
+  ]}
+}
+```
+
+Chế độ một file trả `data.file` thay vì `files`: cùng entry đó cộng `text`, và
+`truncated: true` khi nội dung bị cắt.
+
+**Ngân sách kích thước.** Bản HTTP inline tới 512 KB mỗi file — ổn trên socket LAN
+nhưng không ổn qua MQTT: broker thường chặn message quanh 256 KB, và payload còn
+phải chịu escaping JSON. Uplink này chặn text inline ở **64 KB** rồi gắn cờ
+`truncated`; chỗ cắt không bao giờ chẻ đôi một rune nhiều byte nên text vẫn là UTF-8
+hợp lệ. Entry nhị phân chỉ mang metadata, không bao giờ mang bytes.
+
+| `failed_step` | Nghĩa |
+|---------------|-------|
+| `validate_name` | tên skill không phải slug hợp lệ |
+| `not_found` | `path` yêu cầu không có trong skill đó |
+| `unsupported_runtime` | runtime đang chạy không có thư mục skill đọc được |
+| `read` | skill không còn (list cũ) hoặc đọc lỗi |
+
 #### `skills.save`
 
 Ghi MỘT skill soạn sẵn vào thư mục skill mà agentic runtime **đang chạy** sở hữu.
@@ -601,6 +660,7 @@ Xử lý bởi bootstrap worker, không qua MQTT handler trực tiếp.
 | `system/server/device/delivery/mqtt/slack_event_handler.go` | Handle `slack_event` / `slack_command` (runtime-aware: forward Slack HTTP-mode events tới gateway OpenClaw local, hoặc drive hermes turn nếu runtime là `SlackBridge`) |
 | `system/server/device/delivery/mqtt/data_handler.go` | Handle `data` command kinds `oauth.set`/`oauth.remove` (+ access-token store) |
 | `system/server/device/delivery/mqtt/skills_install_store_handler.go` | Handle `skills.install_store` (async catalog download → `AgentGateway.InstallSkillArchive`) |
+| `system/server/device/delivery/mqtt/skills_files_handler.go` | Handle `skills.files` (đọc file của một skill đã cài: danh sách, hoặc nội dung một file) |
 | `system/server/device/delivery/mqtt/skills_save_handler.go` | Handle `skills.save` (ghi skill soạn sẵn, đồng bộ, qua `AgentGateway.SaveSkill`) |
 | `system/server/device/delivery/mqtt/connector_handler.go` | Handle `connector.set.<code>`/`connector.remove.<code>` (bất đồng bộ, dispatch writer qua `connectorWriterFor`) |
 | `system/server/device/delivery/mqtt/connector_writer.go` | Interface `ConnectorWriter` + file helpers `<code>_access_tokens.json` dùng chung |

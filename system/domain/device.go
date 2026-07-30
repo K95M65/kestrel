@@ -393,6 +393,15 @@ const (
 	// different feature: a whole ROLE bundle, openclaw-only.
 	KindSkillsInstallStore = "skills.install_store"
 
+	// KindSkillsFiles reads ONE installed skill's files. Data:
+	// MQTTSkillsFilesData. The MQTT twin of GET /api/agent/skills/files, which is
+	// a LAN-only admin endpoint — this is how the backend (and through it a mobile
+	// app) inspects a skill the `skills` uplink advertised.
+	//
+	// Two modes, because MQTT is not a bulk transport: without `path` it returns
+	// the file LIST with no contents; with `path` it returns that one file's text.
+	KindSkillsFiles = "skills.files"
+
 	// KindChannelRefreshConfig re-applies the canonical channels.<channel> block on
 	// an already-onboarded device. Targets older customers whose openclaw.json
 	// predates schema additions (e.g. the socketMode block, object-form streaming,
@@ -591,6 +600,12 @@ type MQTTInfoResponse struct {
 	// slack/discord become unsupported after switching to picoclaw). Empty/omitted
 	// when every configured channel is supported.
 	UnsupportedChannels []string `json:"unsupported_channels,omitempty"`
+	// Skills is what the ACTIVE runtime currently has installed — the same set
+	// the web UI's Manage-skills panel shows, and the same `skills` array the
+	// HTTP backend ping carries (both use SkillSummary, so the two uplinks can't
+	// drift). Populated only by handleInfo; omitempty keeps it out of the `data`
+	// replies that embed this struct.
+	Skills []SkillSummary `json:"skills,omitempty"`
 }
 
 // NewDeviceMessage creates a base message with required fields populated from config.
@@ -810,6 +825,18 @@ type MQTTSkillsSaveData struct {
 	Name         string `json:"name"`
 	Description  string `json:"description"`
 	Instructions string `json:"instructions"`
+}
+
+// MQTTSkillsFilesData is the Data payload for kind:"skills.files".
+//
+//	{"name":"music"}                        → file list, no contents
+//	{"name":"music","path":"music/SKILL.md"} → that one file, contents inlined
+//
+// Path is the entry path exactly as the list reported it (relative to the skills
+// root, so it includes the skill dir).
+type MQTTSkillsFilesData struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
 }
 
 // MQTTSkillsInstallStoreData is the Data payload for kind:"skills.install_store" — ONE skill

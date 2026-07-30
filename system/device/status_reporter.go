@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"go.autonomous.ai/os/system/beclient"
+	"go.autonomous.ai/os/system/domain"
 	"go.autonomous.ai/os/system/lib/hal"
 	"go.autonomous.ai/os/system/lib/runtimereg"
 	"go.autonomous.ai/os/system/server/config"
@@ -58,7 +59,7 @@ func (s *Service) buildPingPayload(status string) beclient.PingPayload {
 // Only name+description ride along — the file trees ListSkills also returns are
 // a UI concern (the Manage-skills detail pane reads them from
 // GET /api/agent/skills/files on demand), and the ping fires every 15s.
-func (s *Service) installedSkillsForPing() []beclient.PingSkill {
+func (s *Service) installedSkillsForPing() []domain.SkillSummary {
 	if s.agentGateway == nil {
 		return nil
 	}
@@ -69,15 +70,7 @@ func (s *Service) installedSkillsForPing() []beclient.PingSkill {
 		slog.Debug("[ping] skills list unavailable", "component", "device", "error", err)
 		return nil
 	}
-	if len(list) == 0 {
-		return nil
-	}
-
-	out := make([]beclient.PingSkill, 0, len(list))
-	for _, sk := range list {
-		out = append(out, beclient.PingSkill{Name: sk.Name, Description: sk.Description})
-	}
-	return out
+	return domain.SummarizeSkills(list)
 }
 
 // StartStatusReporter periodically pings the autonomous backend.
