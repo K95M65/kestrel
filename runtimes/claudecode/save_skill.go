@@ -49,6 +49,10 @@ func (s *ClaudeCodeService) ReadSkillFiles(name string) ([]domain.SkillBundleFil
 	return skills.ReadSkillFiles(claudecodeSkillsDir, name)
 }
 
+func (s *ClaudeCodeService) ReadSkillFile(name, filePath string) (domain.SkillBundleFile, error) {
+	return skills.ReadSkillFile(claudecodeSkillsDir, name, filePath)
+}
+
 // DeleteSkill removes an installed skill and returns the directory it deleted.
 func (s *ClaudeCodeService) DeleteSkill(name string) (string, error) {
 	path, err := skills.DeleteSkill(claudecodeSkillsDir, name)

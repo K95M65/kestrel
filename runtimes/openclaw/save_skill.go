@@ -57,6 +57,10 @@ func (s *OpenclawService) ReadSkillFiles(name string) ([]domain.SkillBundleFile,
 	return skills.ReadSkillFiles(s.skillsDir(), name)
 }
 
+func (s *OpenclawService) ReadSkillFile(name, filePath string) (domain.SkillBundleFile, error) {
+	return skills.ReadSkillFile(s.skillsDir(), name, filePath)
+}
+
 // DeleteSkill removes an installed skill and returns the directory it deleted.
 func (s *OpenclawService) DeleteSkill(name string) (string, error) {
 	path, err := skills.DeleteSkill(s.skillsDir(), name)

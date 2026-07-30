@@ -53,6 +53,10 @@ func (s *PicoclawService) ReadSkillFiles(name string) ([]domain.SkillBundleFile,
 	return skills.ReadSkillFiles(picoclawSkillsDir(), name)
 }
 
+func (s *PicoclawService) ReadSkillFile(name, filePath string) (domain.SkillBundleFile, error) {
+	return skills.ReadSkillFile(picoclawSkillsDir(), name, filePath)
+}
+
 // DeleteSkill removes an installed skill and returns the directory it deleted.
 func (s *PicoclawService) DeleteSkill(name string) (string, error) {
 	path, err := skills.DeleteSkill(picoclawSkillsDir(), name)

@@ -37,22 +37,6 @@ func TestStripSkillFileText(t *testing.T) {
 	}
 }
 
-func TestFindSkillFile(t *testing.T) {
-	files := sampleSkillFiles()
-
-	f, ok := findSkillFile(files, "music/reference/tempo.md")
-	if !ok || f.Text != "tempo" {
-		t.Fatalf("lookup failed: ok=%v file=%+v", ok, f)
-	}
-	// Paths are matched exactly as the list reported them — a basename or a
-	// traversal attempt must not resolve.
-	for _, bad := range []string{"tempo.md", "music/../music/SKILL.md", "", "MUSIC/SKILL.md"} {
-		if _, ok := findSkillFile(files, bad); ok {
-			t.Errorf("path %q must not resolve", bad)
-		}
-	}
-}
-
 func TestCapSkillFileText(t *testing.T) {
 	// Under the cap: untouched.
 	small := domain.SkillBundleFile{Path: "a.md", Size: 7, Text: "small"}

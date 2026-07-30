@@ -45,6 +45,47 @@ func (h *DeviceMQTTHandler) handleSkillsFiles(env domain.MQTTDataCommand) error 
 
 	runtimeName := h.agentGateway.Name()
 
+	if req.Path != "" {
+		// Do not load the entire skill merely to return one requested document.
+		// Reference-heavy skills can hold many megabytes of files; that work used
+		// to delay the MQTT response even though its payload contains one file.
+		file, err := h.agentGateway.ReadSkillFile(req.Name, req.Path)
+		if err != nil {
+			if errors.Is(err, skills.ErrSkillFileNotFound) {
+				slog.Warn("skills.files: path not in skill", "component", "mqtt",
+					"skill", req.Name, "path", req.Path)
+				return h.publishDataResult(env.Kind, "failure", "not_found: "+req.Path, map[string]interface{}{
+					"name":        req.Name,
+					"path":        req.Path,
+					"runtime":     runtimeName,
+					"failed_step": "not_found",
+				})
+			}
+			step := "read"
+			if errors.Is(err, domain.ErrNotSupportedByRuntime) {
+				step = "unsupported_runtime"
+			} else if errors.Is(err, skills.ErrInvalidSkillName) {
+				step = "validate_name"
+			}
+			slog.Error("skills.files: file read failed", "component", "mqtt",
+				"skill", req.Name, "path", req.Path, "runtime", runtimeName, "step", step, "error", err)
+			return h.publishDataResult(env.Kind, "failure", step+": "+err.Error(), map[string]interface{}{
+				"name":        req.Name,
+				"path":        req.Path,
+				"runtime":     runtimeName,
+				"failed_step": step,
+			})
+		}
+
+		slog.Info("skills.files: success", "component", "mqtt",
+			"skill", req.Name, "runtime", runtimeName, "path", file.Path, "bytes", len(file.Text))
+		return h.publishDataResult(env.Kind, "success", "", map[string]interface{}{
+			"name":    req.Name,
+			"runtime": runtimeName,
+			"file":    capSkillFileText(file),
+		})
+	}
+
 	files, err := h.agentGateway.ReadSkillFiles(req.Name)
 	if err != nil {
 		step := "read"
@@ -63,34 +104,12 @@ func (h *DeviceMQTTHandler) handleSkillsFiles(env domain.MQTTDataCommand) error 
 		})
 	}
 
-	if req.Path == "" {
-		// List mode: strip every body so the payload stays bounded no matter how
-		// big the skill is.
-		return h.publishDataResult(env.Kind, "success", "", map[string]interface{}{
-			"name":    req.Name,
-			"runtime": runtimeName,
-			"files":   stripSkillFileText(files),
-		})
-	}
-
-	file, ok := findSkillFile(files, req.Path)
-	if !ok {
-		slog.Warn("skills.files: path not in skill", "component", "mqtt",
-			"skill", req.Name, "path", req.Path)
-		return h.publishDataResult(env.Kind, "failure", "not_found: "+req.Path, map[string]interface{}{
-			"name":        req.Name,
-			"path":        req.Path,
-			"runtime":     runtimeName,
-			"failed_step": "not_found",
-		})
-	}
-
-	slog.Info("skills.files: success", "component", "mqtt",
-		"skill", req.Name, "runtime", runtimeName, "path", file.Path, "bytes", len(file.Text))
+	// List mode: strip every body so the payload stays bounded no matter how
+	// big the skill is.
 	return h.publishDataResult(env.Kind, "success", "", map[string]interface{}{
 		"name":    req.Name,
 		"runtime": runtimeName,
-		"file":    capSkillFileText(file),
+		"files":   stripSkillFileText(files),
 	})
 }
 
@@ -105,16 +124,6 @@ func stripSkillFileText(files []domain.SkillBundleFile) []domain.SkillBundleFile
 		out = append(out, f)
 	}
 	return out
-}
-
-// findSkillFile looks a file up by the exact path the list reported.
-func findSkillFile(files []domain.SkillBundleFile, path string) (domain.SkillBundleFile, bool) {
-	for _, f := range files {
-		if f.Path == path {
-			return f, true
-		}
-	}
-	return domain.SkillBundleFile{}, false
 }
 
 // capSkillFileText re-truncates a file's text to the MQTT budget. The reader

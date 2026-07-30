@@ -553,6 +553,8 @@ vài MB:
 `path` phải đúng y như danh sách đã báo (tương đối so với gốc thư mục skill, nên có
 kèm tên thư mục skill). Truyền basename hay thử `..` đều không khớp — tra cứu là so
 khớp chính xác với listing, không bao giờ join đường dẫn trên filesystem.
+Khi có `path`, device chỉ đọc file đó; skill có nhiều reference/asset sẽ không
+làm chậm phản hồi vì phải nạp mọi file còn lại trước.
 
 **Đồng bộ** — đọc thư mục skill là đọc đĩa local, nên không có ack `starting`.
 

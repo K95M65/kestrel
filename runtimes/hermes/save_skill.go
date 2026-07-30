@@ -73,6 +73,10 @@ func (s *HermesService) ReadSkillFiles(name string) ([]domain.SkillBundleFile, e
 	return skills.ReadSkillFilesFrom(name, hermesAuthoredSkillsDir, hermesImportedSkillsDir)
 }
 
+func (s *HermesService) ReadSkillFile(name, filePath string) (domain.SkillBundleFile, error) {
+	return skills.ReadSkillFileFrom(name, filePath, hermesAuthoredSkillsDir, hermesImportedSkillsDir)
+}
+
 // DeleteSkill removes the skill from whichever root has it, device-owned first —
 // same precedence as ListSkills, so an uninstall hits the skill the listing
 // showed. An imported skill CAN be removed this way; presync's `claw migrate`

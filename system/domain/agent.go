@@ -202,6 +202,11 @@ type AgentGateway interface {
 	// ListSkills (skills.ReadSkillFiles does the walk).
 	ReadSkillFiles(name string) ([]SkillBundleFile, error)
 
+	// ReadSkillFile returns one installed skill file addressed by the exact path
+	// emitted by ReadSkillFiles (for example "music/SKILL.md"). Callers that
+	// need one document should use this instead of loading the entire skill.
+	ReadSkillFile(name, filePath string) (SkillBundleFile, error)
+
 	// DeleteSkill removes an installed skill from this runtime's skills dir and
 	// returns the directory it deleted. Same per-backend split as ListSkills:
 	// only the target dir differs (skills.DeleteSkill does the work). A skill

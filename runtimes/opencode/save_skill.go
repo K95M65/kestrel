@@ -49,6 +49,10 @@ func (s *OpenCodeService) ReadSkillFiles(name string) ([]domain.SkillBundleFile,
 	return skills.ReadSkillFiles(opencodeSkillsDir, name)
 }
 
+func (s *OpenCodeService) ReadSkillFile(name, filePath string) (domain.SkillBundleFile, error) {
+	return skills.ReadSkillFile(opencodeSkillsDir, name, filePath)
+}
+
 // DeleteSkill removes an installed skill and returns the directory it deleted.
 func (s *OpenCodeService) DeleteSkill(name string) (string, error) {
 	path, err := skills.DeleteSkill(opencodeSkillsDir, name)

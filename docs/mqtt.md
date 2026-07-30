@@ -571,6 +571,8 @@ megabytes:
 `path` must be the entry path exactly as the list reported it (relative to the
 skills root, so it includes the skill dir). A basename or a `..` attempt does not
 resolve — lookup is an exact match against the listing, never a filesystem join.
+When `path` is supplied, the device reads only that file; a reference-heavy skill
+does not delay the reply by loading all of its other files first.
 
 **Synchronous** — reading a skill dir is local disk, so there is no `starting` ack.
 
