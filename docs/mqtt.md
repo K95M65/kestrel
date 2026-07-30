@@ -307,6 +307,7 @@ optional `error`, and an optional `data` payload.
 | `connector.set.<code>` | Store/replace credentials for a connector (async; acks `starting`) | `connector`, `auth_type`, optional `access_token`/`refresh_token`/`api_key`/`expires_in`/`expires_at`/`scopes`/`credentials`/`refresh` |
 | `connector.remove.<code>` | Delete a connector's credentials (async; acks `starting`) | `connector` |
 | `channel.refresh_config` | Re-apply a channel's canonical config block (async; acks `configuring`) | `channel` |
+| `skills.install_store` | Install ONE catalog skill on the active runtime (async; acks `starting`) | `id`, optional `name` |
 | `skills.save` | Write one authored skill into the active runtime's skills dir (synchronous) | `name`, `description`, `instructions` |
 | `system.info` | Aggregate snapshot: versions + network + host | _(none)_ |
 | `system.version` | Component versions only (cheaper than `system.info`) | _(none)_ |
@@ -471,6 +472,63 @@ so the backend can correlate refresh outcomes with runtime upgrades. Error codes
 | `slack_credentials_missing` | config.json has no credentials for the channel being refreshed (kept for wire back-compat; applies to any channel, not just slack) |
 | `channel_not_supported` | the active runtime can't run this channel |
 
+#### `skills.install_store`
+
+The MQTT twin of `POST /api/agent/skills/install` (the web UI's Install button).
+The device downloads the catalog's `.skill` archive and the **active** runtime
+extracts it into its own skills dir via `AgentGateway.InstallSkillArchive`, so
+this works on every backend, not just openclaw.
+
+> The `_store` suffix is only because the bare `skills.install` kind is already
+> taken by the older, different feature: a whole ROLE bundle written straight
+> into `OpenclawConfigDir`.
+
+**Receive:** `{"cmd": "data", "kind": "skills.install_store", "data": {"id": "6a195e59e438b1a9f06299d0"}}`
+
+`id` is the catalog skill id. Optional `name` is a fallback used **only** when the
+archive has no single wrapping directory to take the skill name from (catalog
+`.skill` bundles normally do, shaped `<name>/SKILL.md`).
+
+**Async** — the download crosses the network, so the device acks `starting` and
+publishes a terminal status when done.
+
+```json
+{
+  "device": "lamp", "type": "data", "kind": "skills.install_store",
+  "status": "starting | success | failure",
+  "error": "<step>: <message>",
+  "data": { "id": "6a19\u2026", "name": "design-critique", "runtime": "OpenClaw",
+            "path": "/root/.openclaw/workspace/skills/design-critique" }
+}
+```
+
+`data.name` is read back from the directory that was actually created, so the
+device never has to be told the name. `data.runtime` + `data.path` say which
+runtime stored it and where — both differ per backend.
+
+| `failed_step` | Meaning |
+|---------------|---------|
+| `validate_id` | id empty or contains a path separator (`/ \\ ? #`) |
+| `temp_dir` | could not create the staging dir |
+| `download` | catalog unreachable, non-200, or the id doesn't exist |
+| `archive` | the downloaded file isn't a usable zip / is empty |
+| `validate_name` | the skill name derived from the archive isn't a legal slug |
+| `unsupported_runtime` | the active runtime has no device-writable skills dir; **nothing was installed** |
+| `install` | extract/swap failure |
+
+Installing **replaces** an existing skill of the same name — unlike
+`skills.save`, which refuses to overwrite: installing is an explicit instruction,
+authoring is not. The extract is staged in `<skill>.new` and swapped in only on
+full success (previous version kept at `<skill>.old` until then), so a corrupt
+download can never leave a half-installed skill or destroy a working one.
+
+Concurrency: shares one mutex with `skills.install` and `skills.save` — all three
+write into the same skills dir. A second one arriving mid-flight fails fast with
+`"another skills install is already in progress; try again later"`.
+
+No gateway restart: every backend with a skills dir picks new files up per
+session.
+
 #### `skills.save`
 
 Writes ONE authored skill into whichever skills dir the **active** agentic runtime
@@ -547,6 +605,7 @@ Handled by bootstrap worker, not through MQTT handler directly.
 | `system/server/device/delivery/mqtt/add_channel_hander.go` | Handle `add_channel` command (streams pairing events for WhatsApp) |
 | `system/server/device/delivery/mqtt/slack_event_handler.go` | Handle `slack_event` / `slack_command` (runtime-aware: forwards Slack HTTP-mode events/slash commands to the local OpenClaw gateway, or drives a hermes turn when the runtime is a `SlackBridge`) |
 | `system/server/device/delivery/mqtt/data_handler.go` | Handle `data` command kinds `oauth.set`/`oauth.remove` (+ access-token store) |
+| `system/server/device/delivery/mqtt/skills_install_store_handler.go` | Handle `skills.install_store` (async catalog download → `AgentGateway.InstallSkillArchive`) |
 | `system/server/device/delivery/mqtt/skills_save_handler.go` | Handle `skills.save` (synchronous authored-skill write via `AgentGateway.SaveSkill`) |
 | `system/server/device/delivery/mqtt/connector_handler.go` | Handle `connector.set.<code>`/`connector.remove.<code>` (async, writer dispatch via `connectorWriterFor`) |
 | `system/server/device/delivery/mqtt/connector_writer.go` | `ConnectorWriter` interface + shared `<code>_access_tokens.json` file helpers |

@@ -382,6 +382,17 @@ const (
 	// honour the same no-overwrite rule.
 	KindSkillsSave = "skills.save"
 
+	// KindSkillsInstallStore installs ONE skill from the Autonomous skill catalog by
+	// id. Data: MQTTSkillsInstallStoreData. The MQTT twin of
+	// POST /api/agent/skills/install — the device downloads the `.skill` archive
+	// and the ACTIVE runtime extracts it (AgentGateway.InstallSkillArchive), so it
+	// works on every backend.
+	//
+	// Named "install" to match the device API it mirrors, with the _store suffix
+	// only because the bare skills.install kind is already taken by the older,
+	// different feature: a whole ROLE bundle, openclaw-only.
+	KindSkillsInstallStore = "skills.install_store"
+
 	// KindChannelRefreshConfig re-applies the canonical channels.<channel> block on
 	// an already-onboarded device. Targets older customers whose openclaw.json
 	// predates schema additions (e.g. the socketMode block, object-form streaming,
@@ -799,6 +810,15 @@ type MQTTSkillsSaveData struct {
 	Name         string `json:"name"`
 	Description  string `json:"description"`
 	Instructions string `json:"instructions"`
+}
+
+// MQTTSkillsInstallStoreData is the Data payload for kind:"skills.install_store" — ONE skill
+// from the Autonomous skill catalog, identified by its catalog id.
+type MQTTSkillsInstallStoreData struct {
+	ID string `json:"id"`
+	// Name is an optional fallback, used only when the archive has no single
+	// wrapping directory to take the skill name from.
+	Name string `json:"name"`
 }
 
 // MQTTTTSSetData is the nested data payload for cmd:"data", kind:"tts.set" downlinks.

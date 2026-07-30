@@ -28,15 +28,6 @@ import (
 // round-trip, and the catalog host stays a server-side concern.
 
 const (
-	// skillStoreBaseURL is the catalog host. Overridable via SKILL_STORE_BASE_URL
-	// so a device can be pointed at a local/staging BFF without a rebuild.
-	skillStoreBaseURL = "https://apiv2.autonomous.ai"
-
-	// skillStoreLocation fills the `location` header the catalog's
-	// LocationHandler middleware requires on every /api/v1 route. en-US is the
-	// documented default/fallback.
-	skillStoreLocation = "en-US"
-
 	// skillStoreTimeout bounds a listing fetch, skillDownloadTimeout an archive
 	// download (bigger body, so a longer budget).
 	skillStoreTimeout    = 10 * time.Second
@@ -62,43 +53,11 @@ type storeEnvelope struct {
 	Data    json.RawMessage `json:"data"`
 }
 
-// storeBaseURL returns the configured catalog host without a trailing slash.
-func storeBaseURL() string {
-	if env := strings.TrimSpace(os.Getenv("SKILL_STORE_BASE_URL")); env != "" {
-		return strings.TrimRight(env, "/")
-	}
-	return skillStoreBaseURL
-}
-
-// storeGet performs a GET against the catalog with the required location
-// header and returns the raw body. Non-200 responses are an error — the caller
-// still has to inspect the envelope's status for HTTP-200 business failures.
+// storeGet delegates to the shared catalog client in system/skills — the MQTT
+// downlink needs the same transport, and one copy means the two paths can't
+// drift on host, header or limits.
 func storeGet(path string, query url.Values, timeout time.Duration, maxBytes int64) ([]byte, error) {
-	u := storeBaseURL() + path
-	if len(query) > 0 {
-		u += "?" + query.Encode()
-	}
-	req, err := http.NewRequest(http.MethodGet, u, nil)
-	if err != nil {
-		return nil, fmt.Errorf("build request: %w", err)
-	}
-	req.Header.Set("location", skillStoreLocation)
-
-	client := &http.Client{Timeout: timeout}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("request %s: %w", path, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("skill store returned %s", resp.Status)
-	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes))
-	if err != nil {
-		return nil, fmt.Errorf("read response: %w", err)
-	}
-	return body, nil
+	return skills.StoreGet(path, query, timeout, maxBytes)
 }
 
 // ListSkills handles GET /api/agent/skills. Returns the skills present in the

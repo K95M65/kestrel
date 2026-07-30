@@ -300,6 +300,7 @@ metadata device/version chuẩn cộng với `kind`, `status` (`success|failure`
 | `connector.set.<code>` | Lưu/thay credentials cho một connector (bất đồng bộ; ack `starting`) | `connector`, `auth_type`, tùy chọn `access_token`/`refresh_token`/`api_key`/`expires_in`/`expires_at`/`scopes`/`credentials`/`refresh` |
 | `connector.remove.<code>` | Xóa credentials của một connector (bất đồng bộ; ack `starting`) | `connector` |
 | `channel.refresh_config` | Áp dụng lại block config chuẩn của một channel (bất đồng bộ; ack `configuring`) | `channel` |
+| `skills.install_store` | Cài MỘT skill từ catalog lên runtime đang chạy (bất đồng bộ; ack `starting`) | `id`, `name` tuỳ chọn |
 | `skills.save` | Ghi một skill soạn sẵn vào thư mục skill của runtime đang chạy (đồng bộ) | `name`, `description`, `instructions` |
 | `system.info` | Snapshot tổng hợp: versions + network + host | _(không)_ |
 | `system.version` | Chỉ versions các thành phần (rẻ hơn `system.info`) | _(không)_ |
@@ -458,6 +459,61 @@ và publish trạng thái kết thúc:
 | `slack_credentials_missing` | config.json không có credentials cho channel đang refresh (giữ lại để tương thích wire; áp dụng cho mọi channel, không chỉ slack) |
 | `channel_not_supported` | runtime đang active không chạy được channel này |
 
+#### `skills.install_store`
+
+Bản MQTT của `POST /api/agent/skills/install` (nút Install trên web). Device tải
+file `.skill` từ catalog và runtime **đang chạy** giải nén vào thư mục skill của
+nó qua `AgentGateway.InstallSkillArchive`, nên chạy được trên mọi backend chứ
+không riêng openclaw.
+
+> Hậu tố `_store` chỉ vì kind `skills.install` trơn đã bị chiếm bởi chức năng cũ
+> và khác hẳn: cả một ROLE bundle ghi thẳng vào `OpenclawConfigDir`.
+
+**Nhận:** `{"cmd": "data", "kind": "skills.install_store", "data": {"id": "6a195e59e438b1a9f06299d0"}}`
+
+`id` là id skill trong catalog. `name` là tuỳ chọn, **chỉ** dùng làm fallback khi
+archive không có thư mục bọc duy nhất để lấy tên skill (bundle `.skill` của
+catalog thường có, dạng `<name>/SKILL.md`).
+
+**Bất đồng bộ** — phải tải qua mạng, nên device ack `starting` rồi publish status
+cuối khi xong.
+
+```json
+{
+  "device": "lamp", "type": "data", "kind": "skills.install_store",
+  "status": "starting | success | failure",
+  "error": "<step>: <message>",
+  "data": { "id": "6a19\u2026", "name": "design-critique", "runtime": "OpenClaw",
+            "path": "/root/.openclaw/workspace/skills/design-critique" }
+}
+```
+
+`data.name` được đọc lại từ thư mục thực sự được tạo, nên không cần ai nói tên cho
+device. `data.runtime` + `data.path` cho biết runtime nào lưu và lưu ở đâu — cả
+hai khác nhau theo backend.
+
+| `failed_step` | Nghĩa |
+|---------------|-------|
+| `validate_id` | id rỗng hoặc chứa ký tự phân cách đường dẫn (`/ \\ ? #`) |
+| `temp_dir` | không tạo được thư mục staging |
+| `download` | không tới được catalog, trả non-200, hoặc id không tồn tại |
+| `archive` | file tải về không phải zip dùng được / rỗng |
+| `validate_name` | tên skill suy ra từ archive không phải slug hợp lệ |
+| `unsupported_runtime` | runtime đang chạy không có thư mục skill ghi được; **không cài gì cả** |
+| `install` | lỗi giải nén / swap |
+
+Install **thay thế** skill trùng tên — khác `skills.save` là từ chối ghi đè: cài
+là chỉ thị chủ động, soạn thảo thì không. Giải nén được stage ở `<skill>.new` và
+chỉ swap khi thành công trọn vẹn (bản cũ giữ ở `<skill>.old` cho tới lúc đó), nên
+bản tải hỏng không bao giờ để lại skill cài dở hay phá skill đang chạy.
+
+Đồng thời: dùng chung một mutex với `skills.install` và `skills.save` — cả ba ghi
+vào cùng thư mục skill. Cái thứ hai đến giữa lúc đang chạy sẽ fail ngay với
+`"another skills install is already in progress; try again later"`.
+
+Không restart gateway: mọi backend có thư mục skill đều nhặt file mới theo từng
+session.
+
 #### `skills.save`
 
 Ghi MỘT skill soạn sẵn vào thư mục skill mà agentic runtime **đang chạy** sở hữu.
@@ -533,6 +589,7 @@ Xử lý bởi bootstrap worker, không qua MQTT handler trực tiếp.
 | `system/server/device/delivery/mqtt/add_channel_hander.go` | Handle `add_channel` command (stream pairing events cho WhatsApp) |
 | `system/server/device/delivery/mqtt/slack_event_handler.go` | Handle `slack_event` / `slack_command` (runtime-aware: forward Slack HTTP-mode events tới gateway OpenClaw local, hoặc drive hermes turn nếu runtime là `SlackBridge`) |
 | `system/server/device/delivery/mqtt/data_handler.go` | Handle `data` command kinds `oauth.set`/`oauth.remove` (+ access-token store) |
+| `system/server/device/delivery/mqtt/skills_install_store_handler.go` | Handle `skills.install_store` (async catalog download → `AgentGateway.InstallSkillArchive`) |
 | `system/server/device/delivery/mqtt/skills_save_handler.go` | Handle `skills.save` (ghi skill soạn sẵn, đồng bộ, qua `AgentGateway.SaveSkill`) |
 | `system/server/device/delivery/mqtt/connector_handler.go` | Handle `connector.set.<code>`/`connector.remove.<code>` (bất đồng bộ, dispatch writer qua `connectorWriterFor`) |
 | `system/server/device/delivery/mqtt/connector_writer.go` | Interface `ConnectorWriter` + file helpers `<code>_access_tokens.json` dùng chung |

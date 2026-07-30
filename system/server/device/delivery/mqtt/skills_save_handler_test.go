@@ -98,3 +98,85 @@ func TestSkillsSaveKindIsDistinct(t *testing.T) {
 		t.Errorf("kind = %q, want skills.save", domain.KindSkillsSave)
 	}
 }
+
+// ─── skills.install_store (catalog install) ────────────────────────────────────────
+
+// skills.install_store must be its own kind — skills.install is the older, different
+// feature (a whole ROLE bundle straight into the openclaw dir).
+func TestSkillsInstallStoreKindIsDistinct(t *testing.T) {
+	if domain.KindSkillsInstallStore == domain.KindSkillsInstall {
+		t.Fatal("skills.install_store must not reuse the role-bundle kind")
+	}
+	if domain.KindSkillsInstallStore == domain.KindSkillsSave {
+		t.Fatal("skills.install_store and skills.save must be distinct kinds")
+	}
+	if domain.KindSkillsInstallStore != "skills.install_store" {
+		t.Errorf("kind = %q, want skills.install_store", domain.KindSkillsInstallStore)
+	}
+}
+
+// The role-bundle payload must stay role-only — no id field crept into it.
+func TestSkillsInstallDataStaysRoleOnly(t *testing.T) {
+	var req domain.MQTTSkillsInstallData
+	if err := json.Unmarshal([]byte(`{"role":"design","id":"abc"}`), &req); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if req.Role != "design" {
+		t.Errorf("role = %q", req.Role)
+	}
+	// An `id` in a skills.install payload is simply ignored — that kind never
+	// installs a catalog skill.
+	if fmt.Sprintf("%+v", req) != "{Role:design}" {
+		t.Errorf("MQTTSkillsInstallData gained a field: %+v", req)
+	}
+}
+
+func TestSkillsInstallStoreData(t *testing.T) {
+	var req domain.MQTTSkillsInstallStoreData
+	if err := json.Unmarshal([]byte(`{"id":"6a195e59e438b1a9f06299d0","name":"design-critique"}`), &req); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if req.ID != "6a195e59e438b1a9f06299d0" || req.Name != "design-critique" {
+		t.Errorf("got %+v", req)
+	}
+	// name is optional — only a fallback when the archive has no wrapping dir.
+	var bare domain.MQTTSkillsInstallStoreData
+	if err := json.Unmarshal([]byte(`{"id":"abc"}`), &bare); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if bare.Name != "" {
+		t.Errorf("name should default empty, got %q", bare.Name)
+	}
+}
+
+func TestClassifySkillsInstallStoreError(t *testing.T) {
+	cases := []struct {
+		err  error
+		want string
+	}{
+		{domain.ErrNotSupportedByRuntime, "unsupported_runtime"},
+		{skills.ErrEmptyArchive, "archive"},
+		{skills.ErrInvalidSkillName, "validate_name"},
+		{fmt.Errorf("disk full"), "install"},
+		// InstallSkillArchive wraps with %w — sentinels must survive.
+		{fmt.Errorf("extract: %w", skills.ErrEmptyArchive), "archive"},
+	}
+	for _, tc := range cases {
+		if got := classifySkillsInstallStoreError(tc.err); got != tc.want {
+			t.Errorf("classify(%v) = %q, want %q", tc.err, got, tc.want)
+		}
+	}
+}
+
+// The catalog id lands in an upstream URL path, so separators must be rejected
+// before the request is built.
+func TestValidateStoreSkillIDGuardsPath(t *testing.T) {
+	if err := skills.ValidateStoreSkillID("6a195e59e438b1a9f06299d0"); err != nil {
+		t.Errorf("a normal catalog id must pass: %v", err)
+	}
+	for _, bad := range []string{"", "   ", "../secret", "a/b", "a?x=1", "a#frag", `a\b`} {
+		if err := skills.ValidateStoreSkillID(bad); err == nil {
+			t.Errorf("id %q must be rejected", bad)
+		}
+	}
+}
