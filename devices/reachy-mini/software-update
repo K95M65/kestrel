@@ -127,7 +127,18 @@ elif [ "$APP" = "hal" ]; then
   curl -fsSL -H "Cache-Control: no-cache" -o "$ZIP_TMP" "$URL" || { echo "Failed to download hal"; exit 1; }
   HAL_DIR="/opt/hal"
   unzip -o -q "$ZIP_TMP" -d "$HAL_DIR"
-  UV_BIN=$(command -v uv || echo "/root/.local/bin/uv")
+  # uv is a per-user install and this runs under sudo, whose secure_path does not
+  # include /home/pollen/.local/bin — so `command -v uv` misses the copy Pollen
+  # ships. The lamp-derived fallback (/root/.local/bin/uv) does not exist here at
+  # all, which is why this branch died with "No such file or directory" before
+  # reaching uv. Same search order spike-hal.sh uses, plus a loud failure.
+  UV_BIN="$(command -v uv || true)"
+  for c in /usr/local/bin/uv /home/pollen/.local/bin/uv /root/.local/bin/uv; do
+    [ -n "$UV_BIN" ] && break
+    [ -x "$c" ] && UV_BIN="$c"
+  done
+  [ -n "$UV_BIN" ] || { echo "uv not found (looked on PATH, /usr/local/bin, /home/pollen/.local/bin, /root/.local/bin) — run spike-hal.sh once, it installs uv"; exit 1; }
+  echo "[software-update] uv: $UV_BIN"
   # Cache INSIDE /opt/hal, exactly as spike-hal.sh installed it. uv reuses the
   # cache it finds; pointing at root's default instead re-downloads several GB
   # (torch and friends) onto a disk with ~1.8 GB free.
