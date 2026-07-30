@@ -417,26 +417,20 @@ function countFiles(skill: InstalledSkill): number {
   return n;
 }
 
-// formatUpdated renders the listing's `updated_at` (Unix SECONDS) compactly
-// enough for a narrow column: relative while that is the more useful reading,
-// then an absolute date once "N days ago" stops meaning anything. The exact
-// timestamp is always on the row's title attribute.
+// formatUpdated renders the listing's `updated_at` (Unix SECONDS) as a plain
+// MM/DD/YYYY date. Absolute rather than relative ("3d ago"): the column answers
+// "which of these is stale", and a fixed-width date compares down a column at a
+// glance where mixed units don't. The exact timestamp stays on the row's title
+// attribute for when the time of day matters.
+//
+// Hardcoded MM/DD/YYYY, not toLocaleDateString: the whole column must line up,
+// and a locale-dependent order would also make the same screenshot read as a
+// different day to a reader who assumes DD/MM.
 function formatUpdated(unixSeconds?: number): string {
   if (!unixSeconds) return "—";
-  const then = new Date(unixSeconds * 1000);
-  const secs = Math.floor((Date.now() - then.getTime()) / 1000);
-
-  // A clock skew between device and browser can put a file marginally in the
-  // future; read that as "now" rather than as a negative age.
-  if (secs < 60) return "just now";
-  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
-  if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`;
-  if (secs < 7 * 86400) return `${Math.floor(secs / 86400)}d ago`;
-
-  const sameYear = then.getFullYear() === new Date().getFullYear();
-  return then.toLocaleDateString(undefined, {
-    day: "numeric", month: "short", ...(sameYear ? {} : { year: "numeric" }),
-  });
+  const d = new Date(unixSeconds * 1000);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getMonth() + 1)}/${pad(d.getDate())}/${d.getFullYear()}`;
 }
 
 function Centered({ children, tone }: { children: React.ReactNode; tone?: "error" }) {
