@@ -307,6 +307,8 @@ optional `error`, and an optional `data` payload.
 | `connector.set.<code>` | Store/replace credentials for a connector (async; acks `starting`) | `connector`, `auth_type`, optional `access_token`/`refresh_token`/`api_key`/`expires_in`/`expires_at`/`scopes`/`credentials`/`refresh` |
 | `connector.remove.<code>` | Delete a connector's credentials (async; acks `starting`) | `connector` |
 | `channel.refresh_config` | Re-apply a channel's canonical config block (async; acks `configuring`) | `channel` |
+| `skills.install` | Install a role's skill bundle from the CDN (async; acks `starting`) | `role` |
+| `skills.save` | Write one authored skill into the active runtime's skills dir (synchronous) | `name`, `description`, `instructions` |
 | `system.info` | Aggregate snapshot: versions + network + host | _(none)_ |
 | `system.version` | Component versions only (cheaper than `system.info`) | _(none)_ |
 | `system.network` | network facts of the default-route interface only | _(none)_ |
@@ -470,6 +472,66 @@ so the backend can correlate refresh outcomes with runtime upgrades. Error codes
 | `slack_credentials_missing` | config.json has no credentials for the channel being refreshed (kept for wire back-compat; applies to any channel, not just slack) |
 | `channel_not_supported` | the active runtime can't run this channel |
 
+#### `skills.save`
+
+Writes ONE authored skill into whichever skills dir the **active** agentic runtime
+owns. The MQTT twin of `POST /api/agent/skills`: both call
+`AgentGateway.SaveSkill`, so a backend-pushed skill lands in exactly the same
+place as one written in the web UI's "Write skill" form and honours the same
+no-overwrite rule. Distinct from `skills.install`, which fetches a whole role
+bundle from the CDN.
+
+**Receive:**
+```json
+{"cmd": "data", "kind": "skills.save", "data": {
+  "name": "weekly-status-report",
+  "description": "Summarise the week's activity into a short status report.",
+  "instructions": "When the user asks for a weekly status report:\n1. …"
+}}
+```
+
+`name` + `description` become the SKILL.md YAML front-matter, `instructions` the
+markdown body (`skills.RenderSkillMarkdown`). All three are required; each is
+trimmed first, so a padded value is accepted rather than rejected.
+
+**Synchronous** — unlike `skills.install` there is no `starting` ack: writing one
+file takes milliseconds, so the device publishes a single terminal status.
+
+```json
+{
+  "device": "lamp",
+  "type": "data",
+  "kind": "skills.save",
+  "status": "success | failure",
+  "error": "<step>: <message>",
+  "data": { "name": "weekly-status-report", "runtime": "OpenClaw",
+            "path": "/root/.openclaw/workspace/skills/weekly-status-report/SKILL.md" }
+}
+```
+
+`data.runtime` names the runtime that stored it and `data.path` is where it
+landed — both differ per backend, so the backend can tell which tree received the
+skill. On failure `data.failed_step` carries the same label as the `error` prefix:
+
+| `failed_step` | Meaning |
+|---------------|---------|
+| `validate_name` | name isn't a `^[a-z0-9_-]+$` slug, or is over 64 chars |
+| `already_exists` | a skill of that name is already installed — authoring never overwrites (use `skills.install` semantics if replacing is intended) |
+| `unsupported_runtime` | the active runtime has no device-writable skills dir; **nothing was stored** |
+| `write` | filesystem failure |
+
+The name shape is validated inside `SaveSkill` (via `skills.ValidateSkillName`),
+not at the MQTT layer, so this path and the HTTP one can never disagree on what a
+legal skill name is.
+
+Concurrency: `skills.save` shares its mutex with `skills.install` — both write
+into the same skills dir. A save arriving mid-install fails fast with
+`"a skills install is in progress; try again later"` rather than stalling the MQTT
+dispatch loop for the length of a CDN download.
+
+No gateway restart: every backend with a skills dir picks new files up per
+session.
+
 ### `ota` — Trigger OTA update
 
 Handled by bootstrap worker, not through MQTT handler directly.
@@ -487,6 +549,8 @@ Handled by bootstrap worker, not through MQTT handler directly.
 | `system/server/device/delivery/mqtt/add_channel_hander.go` | Handle `add_channel` command (streams pairing events for WhatsApp) |
 | `system/server/device/delivery/mqtt/slack_event_handler.go` | Handle `slack_event` / `slack_command` (runtime-aware: forwards Slack HTTP-mode events/slash commands to the local OpenClaw gateway, or drives a hermes turn when the runtime is a `SlackBridge`) |
 | `system/server/device/delivery/mqtt/data_handler.go` | Handle `data` command kinds `oauth.set`/`oauth.remove` (+ access-token store) |
+| `system/server/device/delivery/mqtt/skills_install_handler.go` | Handle `skills.install` (async role-bundle download + extract) |
+| `system/server/device/delivery/mqtt/skills_save_handler.go` | Handle `skills.save` (synchronous authored-skill write via `AgentGateway.SaveSkill`) |
 | `system/server/device/delivery/mqtt/connector_handler.go` | Handle `connector.set.<code>`/`connector.remove.<code>` (async, writer dispatch via `connectorWriterFor`) |
 | `system/server/device/delivery/mqtt/connector_writer.go` | `ConnectorWriter` interface + shared `<code>_access_tokens.json` file helpers |
 | `system/server/device/delivery/mqtt/connector_writer_generic.go` | Data-driven `connectorWriter`: payload-driven MCP routing, fallback table, path-traversal guard, per-connector token files |

@@ -376,6 +376,13 @@ const (
 	// KindSkillsInstall installs a role's skill bundle. Data: {"role":"<role>"}.
 	KindSkillsInstall = "skills.install"
 
+	// KindSkillsSave writes ONE authored skill into the active runtime's skills
+	// dir. Data: MQTTSkillsSaveData. The MQTT twin of POST /api/agent/skills —
+	// same AgentGateway.SaveSkill call, so both paths land in the same place and
+	// honour the same no-overwrite rule. Distinct from skills.install, which
+	// fetches a whole role bundle from the CDN.
+	KindSkillsSave = "skills.save"
+
 	// KindChannelRefreshConfig re-applies the canonical channels.<channel> block on
 	// an already-onboarded device. Targets older customers whose openclaw.json
 	// predates schema additions (e.g. the socketMode block, object-form streaming,
@@ -783,6 +790,16 @@ type ConnectorsFile struct {
 // <role>/skills.zip on demand.
 type MQTTSkillsInstallData struct {
 	Role string `json:"role"`
+}
+
+// MQTTSkillsSaveData is the Data payload for kind:"skills.save" — an authored
+// skill pushed from the backend instead of the web UI's form. Same three fields
+// as SkillDraft (which this maps onto); Name must be a slug matching
+// ^[a-z0-9_-]+$, enforced device-side by skills.ValidateSkillName.
+type MQTTSkillsSaveData struct {
+	Name         string `json:"name"`
+	Description  string `json:"description"`
+	Instructions string `json:"instructions"`
 }
 
 // MQTTTTSSetData is the nested data payload for cmd:"data", kind:"tts.set" downlinks.
