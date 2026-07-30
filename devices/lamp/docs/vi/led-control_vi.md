@@ -178,6 +178,18 @@ Khi Lamp idle (không có interaction):
 
 Tự pause khi có interaction, resume sau 60s im lặng.
 
+### LED off thắng mọi transient overlay
+
+"Tắt đèn" lưu `{"type": "off"}` làm user LED state, và HAL tôn trọng nó ở mọi đường: emotion
+LED bị skip, TTS/music wave render trên nền đen, chỉ báo mic-muted nhường chỗ, và
+`POST /led/restore` clear về đen. `POST /led/effect` với `"transient": true` cũng bị skip vì
+cùng lý do — nếu không, vòng breathing của ambient sẽ resume 60s sau interaction cuối, đọc
+màu đen từ `/led/color`, rơi vào fallback trắng ấm hard-code và bật lại dải đèn mà user vừa
+tắt. Điều này cũng chặn luôn status overlay (`POST /led/status`: cam mất mạng, đỏ lỗi, xanh
+OTA) khi đèn đang tắt — đèn đã tắt thì ở yên trong bóng tối cho tới khi user bật lại. Bật lại
+là bất kỳ lệnh ghi **non-transient** nào (`/led/solid`, `/led/effect`, `/led/paint`, scene),
+lệnh đó sẽ ghi đè state `off` đã lưu.
+
 ## LED Trong Emotion
 
 Mỗi emotion preset có LED color riêng:

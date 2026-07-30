@@ -200,6 +200,19 @@ def start_led_effect(req: LEDEffectRequest):
         )
         return {"status": "ok", "effect": req.effect, "speed": req.speed}
 
+    # "Turn off the light" is a deliberate user state (LST_OFF), honored by
+    # emotions, speaking waves and /led/restore — a transient system overlay
+    # must honor it too. Ambient's breathingLoop resumes ~60s after the last
+    # interaction and, reading black from /led/color, falls back to a
+    # hard-coded warm white (see system/ambient/service.go) — which re-lit a
+    # strip the user had just turned off. Non-transient writes are the user
+    # turning the light back ON, so they pass through and overwrite LST_OFF.
+    if req.transient and state._led_off_by_user():
+        state.logger.info(
+            "LED effect '%s' (transient) skipped -- LED off by user", req.effect
+        )
+        return {"status": "ok", "effect": req.effect, "speed": req.speed}
+
     state._stop_current_effect()
     if not req.transient:
         state._active_scene = None

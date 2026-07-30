@@ -181,6 +181,19 @@ When Lamp is idle (no interaction):
 
 Auto-pauses on interaction, resumes after 60s of silence.
 
+### LED off wins over transient overlays
+
+"Turn off the light" saves `{"type": "off"}` as the user LED state, and HAL honors it on
+every path: emotion LEDs are skipped, TTS/music waves render on black, the mic-muted
+privacy indicator yields, and `POST /led/restore` clears to black. `POST /led/effect` with
+`"transient": true` is skipped for the same reason — otherwise ambient's breathing loop
+would resume 60s after the last interaction, read black from `/led/color`, fall back to its
+hard-coded warm white and re-light a strip the user had just turned off. This also
+suppresses status overlays (`POST /led/status`: connectivity orange, error red, OTA green)
+while the light is off — a dark strip stays dark until the user turns it back on. Turning it
+back on is any **non-transient** write (`/led/solid`, `/led/effect`, `/led/paint`, a scene),
+which overwrites the saved `off` state.
+
 ## LED in Emotion
 
 See [emotion-led-mapping.md](emotion-led-mapping.md) for the full emotion → LED color + effect + servo mapping.
