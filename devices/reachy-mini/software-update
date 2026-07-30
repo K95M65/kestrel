@@ -155,5 +155,3 @@ elif [ "$APP" = "device" ]; then
   systemctl restart hal 2>/dev/null || true
   echo "device profile ($DEVICE_TYPE) updated to $VERSION"
 fi
-EOFSCRIPT
-chmod +x /usr/local/bin/software-update
