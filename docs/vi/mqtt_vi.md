@@ -87,6 +87,17 @@ tới ~2 phút, để đường cứu popup Setup mô tả trong `docs/setup-flo
 động được), (2) một lần khi setup xong (status `working`), và (3) định kỳ từ
 status reporter. Field nào backend không xài thì đơn giản là bị bỏ qua.
 
+Ping còn mang thêm **`skills`** — những skill runtime đang chạy hiện có, đúng bộ
+mà panel Manage skills trên web hiển thị (`AgentGateway.ListSkills`, cũng là thứ
+`GET /api/agent/skills` trả về). Gửi ở mọi lần ping để index skill theo device
+phía backend tự chữa, cùng lý do với `slack_team_id`. Shape là
+`[{"name":"music","description":"Play music."}]` — **chỉ name + description**,
+cố ý không kèm cây file mà endpoint đó cũng trả: ping bắn mỗi 15s nên gửi cả
+tree thường xuyên như vậy là vô ích (pane detail trên web lấy riêng qua
+`GET /api/agent/skills/files` khi cần). Best-effort — runtime không list được,
+thư mục skill đọc lỗi, hoặc device chưa có skill nào thì field bị bỏ qua chứ
+không làm fail cú ping vốn còn mang `local_ip` tối quan trọng cho setup.
+
 **Ping sống sót qua việc đổi địa chỉ LAN.** Địa chỉ của thiết bị không cố định —
 chuyển dây ethernet sang mạng khác, hoặc DHCP cấp lại lease, là đổi, trong khi
 os-server vẫn đang chạy. `beclient` giữ các kết nối keep-alive gắn với địa chỉ

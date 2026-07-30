@@ -88,6 +88,18 @@ the Setup-popup rescue described in `docs/setup-flow.md` can work), (2) once
 when setup completes (status `working`), and (3) periodically from the status
 reporter. Fields the backend doesn't consume are simply ignored.
 
+The ping also carries **`skills`** — what the active runtime currently has
+installed, the same set the web UI's Manage-skills panel shows
+(`AgentGateway.ListSkills`, also served by `GET /api/agent/skills`). Sent on
+every ping so the backend's per-device skill index self-heals, the same rationale
+as `slack_team_id`. Shape is `[{"name":"music","description":"Play music."}]` —
+**name + description only**, deliberately not the per-skill file trees that
+endpoint also returns: the ping fires every 15s, so shipping full trees that
+often would be pure waste (the web detail pane fetches them on demand from
+`GET /api/agent/skills/files` instead). Best-effort — a runtime that cannot list
+skills, an unreadable skills dir, or a device with none simply omits the field
+rather than failing a ping that also carries the setup-critical `local_ip`.
+
 **The ping survives a LAN address change.** A device's address is not stable —
 moving the ethernet cable to another network, or a DHCP re-lease, changes it
 while os-server keeps running. `beclient` holds keep-alive connections bound to
