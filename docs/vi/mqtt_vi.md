@@ -574,11 +574,10 @@ Chế độ danh sách:
 Chế độ một file trả `data.file` thay vì `files`: cùng entry đó cộng `text`, và
 `truncated: true` khi nội dung bị cắt.
 
-**Ngân sách kích thước.** Bản HTTP inline tới 512 KB mỗi file — ổn trên socket LAN
-nhưng không ổn qua MQTT: broker thường chặn message quanh 256 KB, và payload còn
-phải chịu escaping JSON. Uplink này chặn text inline ở **64 KB** rồi gắn cờ
-`truncated`; chỗ cắt không bao giờ chẻ đôi một rune nhiều byte nên text vẫn là UTF-8
-hợp lệ. Entry nhị phân chỉ mang metadata, không bao giờ mang bytes.
+**Ngân sách kích thước.** Uplink này trả tối đa **5 KiB** đầu tiên của text file
+được yêu cầu; nếu bị cắt sẽ có `truncated: true`. Điểm cắt không bao giờ chẻ đôi
+một rune nhiều byte nên text vẫn là UTF-8 hợp lệ. Entry binary chỉ có metadata,
+không bao giờ có bytes.
 
 | `failed_step` | Nghĩa |
 |---------------|-------|

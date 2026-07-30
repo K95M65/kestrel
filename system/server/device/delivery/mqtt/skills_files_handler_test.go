@@ -44,13 +44,13 @@ func TestCapSkillFileText(t *testing.T) {
 		t.Errorf("small file was modified: %+v", got)
 	}
 
-	big := strings.Repeat("a", mqttMaxFileText+500)
+	big := strings.Repeat("a", mqttMaxFileTextBytes+500)
 	got := capSkillFileText(domain.SkillBundleFile{Path: "b.md", Size: int64(len(big)), Text: big})
 	if !got.Truncated {
 		t.Error("oversized file must be flagged truncated")
 	}
-	if len(got.Text) > mqttMaxFileText {
-		t.Errorf("inlined %d bytes, cap is %d", len(got.Text), mqttMaxFileText)
+	if got.Text != strings.Repeat("a", mqttMaxFileTextBytes) {
+		t.Errorf("text = %q, want exactly %d bytes", got.Text, mqttMaxFileTextBytes)
 	}
 	// Size keeps reporting the real length, not the truncated preview's.
 	if got.Size != int64(len(big)) {
@@ -58,15 +58,15 @@ func TestCapSkillFileText(t *testing.T) {
 	}
 }
 
-// A cut must not split a multi-byte rune, or json.Marshal replaces the tail with
-// U+FFFD and the client sees corruption instead of a clean truncation.
 func TestCapSkillFileTextKeepsValidUTF8(t *testing.T) {
-	// Pad so the cap lands in the middle of a 3-byte rune.
-	text := strings.Repeat("a", mqttMaxFileText-1) + "日本語"
+	text := strings.Repeat("a", mqttMaxFileTextBytes-1) + "日本語"
 	got := capSkillFileText(domain.SkillBundleFile{Path: "c.md", Text: text})
 
 	if !utf8.ValidString(got.Text) {
-		t.Fatalf("truncated text is not valid UTF-8 (%d bytes)", len(got.Text))
+		t.Errorf("text is not valid UTF-8: %q", got.Text)
+	}
+	if len(got.Text) > mqttMaxFileTextBytes {
+		t.Errorf("text has %d bytes, cap is %d", len(got.Text), mqttMaxFileTextBytes)
 	}
 	if !got.Truncated {
 		t.Error("must be flagged truncated")

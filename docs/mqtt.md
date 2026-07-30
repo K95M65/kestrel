@@ -592,11 +592,10 @@ List mode:
 Single-file mode returns `data.file` instead: the same entry plus `text`, and
 `truncated: true` when the body was cut.
 
-**Size budget.** The HTTP twin inlines up to 512 KB per file, fine over a LAN
-socket but not over MQTT — brokers commonly cap a message around 256 KB, and the
-payload still has to survive JSON escaping. This uplink caps inlined text at
-**64 KB** and flags `truncated`; the cut never splits a multi-byte rune, so the
-text stays valid UTF-8. Binary entries carry metadata only, never bytes.
+**Size budget.** This uplink returns up to the first **5 KiB** of a requested
+text file and flags `truncated: true` when it cut content. The cut never splits a
+multi-byte rune, so text stays valid UTF-8. Binary entries carry metadata only,
+never bytes.
 
 | `failed_step` | Meaning |
 |---------------|---------|

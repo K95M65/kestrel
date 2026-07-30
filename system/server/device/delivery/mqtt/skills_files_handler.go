@@ -11,14 +11,13 @@ import (
 	"go.autonomous.ai/os/system/skills"
 )
 
-// mqttMaxFileText caps the inlined text of a single file on this uplink.
+// mqttMaxFileTextBytes caps the inlined text of a single file on this uplink.
 //
 // The HTTP twin inlines up to 512 KB per file, which is fine over a LAN socket
-// but not over MQTT: brokers commonly cap a message around 256 KB, and the whole
-// payload also has to survive base64/JSON escaping. 64 KB leaves room for the
-// envelope while still covering any realistic SKILL.md or reference doc; anything
-// longer comes back flagged `truncated`.
-const mqttMaxFileText = 64 << 10
+// but not over MQTT. Keep the test payload at 5 KiB so it is small enough for
+// constrained brokers while still allowing a useful section of a SKILL.md.
+// Anything longer comes back flagged `truncated`.
+const mqttMaxFileTextBytes = 5 << 10
 
 // handleSkillsFiles handles kind="skills.files" — the MQTT twin of
 // GET /api/agent/skills/files. That endpoint is LAN-only and admin-gated, so the
@@ -126,16 +125,13 @@ func stripSkillFileText(files []domain.SkillBundleFile) []domain.SkillBundleFile
 	return out
 }
 
-// capSkillFileText re-truncates a file's text to the MQTT budget. The reader
-// already caps at the (much larger) HTTP limit, so this only bites on a file
-// between the two thresholds. Size keeps reporting the file's REAL length.
+// capSkillFileText re-truncates a file's text to the MQTT budget. Size keeps
+// reporting the file's REAL length. Do not split a UTF-8 rune at the byte cap.
 func capSkillFileText(f domain.SkillBundleFile) domain.SkillBundleFile {
-	if len(f.Text) <= mqttMaxFileText {
+	if len(f.Text) <= mqttMaxFileTextBytes {
 		return f
 	}
-	text := f.Text[:mqttMaxFileText]
-	// Don't cut a multi-byte rune in half — the payload has to stay valid UTF-8
-	// or json.Marshal replaces the tail with U+FFFD.
+	text := f.Text[:mqttMaxFileTextBytes]
 	for len(text) > 0 && !utf8.ValidString(text) {
 		text = text[:len(text)-1]
 	}
