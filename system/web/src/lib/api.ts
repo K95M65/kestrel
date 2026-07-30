@@ -619,6 +619,9 @@ export interface InstalledSkill {
   name: string;
   description?: string;
   files: SkillNode[];
+  /** Newest mtime anywhere in the skill's tree, Unix SECONDS. Omitted when
+   *  nothing in the tree could be stat'd. */
+  updated_at?: number;
 }
 
 /** GET /api/agent/skills — what the ACTIVE runtime currently has installed.

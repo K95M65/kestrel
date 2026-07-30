@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import {
-  FolderTree, Folder, FileText, Loader2, RefreshCw, AlertCircle, ChevronRight, ChevronDown,
+  FolderTree, Folder, FileText, Loader2, RefreshCw, AlertCircle, ChevronDown,
   Search, Trash2, Plus, PenLine, Upload,
 } from "lucide-react";
 import { listInstalledSkills, readSkillFiles, deleteSkill } from "@/lib/api";
@@ -146,12 +147,15 @@ function SkillList({
       ) : filtered.length === 0 ? (
         <Centered>{`No installed skill matches \u201C${query.trim()}\u201D.`}</Centered>
       ) : (
-        // Same two-per-row grid as Browse skills.
-        <div style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
-          gap: 8,
-        }}>
+        // A LIST, not the card grid Browse uses: these skills are already
+        // installed, so the useful question is "what's here and when did it last
+        // change", which reads better as aligned columns than as prose cards.
+        <div>
+          <div style={{ ...skillGridCols, ...listHeadStyle }}>
+            <span>Skill</span>
+            <span style={{ textAlign: "right" }}>Files</span>
+            <span style={{ textAlign: "right" }}>Last updated</span>
+          </div>
           {filtered.map((s) => <SkillRow key={s.name} skill={s} onOpen={() => onOpen(s)} />)}
         </div>
       )}
@@ -228,36 +232,61 @@ function NewSkillMenu({ onPick }: { onPick: (a: "write" | "upload") => void }) {
 }
 
 function SkillRow({ skill, onOpen }: { skill: InstalledSkill; onOpen: () => void }) {
+  const files = countFiles(skill);
   return (
     <button
       type="button"
       onClick={onOpen}
       style={{
-        display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left",
-        padding: "10px 12px", borderRadius: 10, cursor: "pointer",
+        ...skillGridCols,
+        alignItems: "center", width: "100%", textAlign: "left",
+        padding: "9px 12px", borderRadius: 10, cursor: "pointer",
         background: "var(--lm-card)", border: "1px solid var(--lm-border)",
         color: "var(--lm-text)", transition: "background 0.12s, border-color 0.12s",
+        marginBottom: 6,
       }}
       onMouseEnter={(e) => applyCardHover(e.currentTarget, true)}
       onMouseLeave={(e) => applyCardHover(e.currentTarget, false)}
     >
-      <Folder size={15} style={{ color: "var(--lm-amber)", flexShrink: 0 }} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 600 }}>/{skill.name}</div>
-        {skill.description && (
-          <div style={{
-            fontSize: 11.5, color: "var(--lm-text-dim)", marginTop: 3, lineHeight: 1.45,
-            display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
-          }}>{skill.description}</div>
-        )}
-        <div style={{ fontSize: 10, color: "var(--lm-text-muted)", marginTop: 6 }}>
-          {countFiles(skill)} file{countFiles(skill) === 1 ? "" : "s"}
-        </div>
-      </div>
-      <ChevronRight size={15} style={{ color: "var(--lm-text-muted)", flexShrink: 0 }} />
+      <span style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
+        <Folder size={15} style={{ color: "var(--lm-amber)", flexShrink: 0 }} />
+        <span style={{ minWidth: 0 }}>
+          <span style={{
+            display: "block", fontSize: 13, fontWeight: 600,
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          }}>/{skill.name}</span>
+          {skill.description && (
+            <span style={{
+              display: "block", fontSize: 11, color: "var(--lm-text-dim)", marginTop: 2,
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            }}>{skill.description}</span>
+          )}
+        </span>
+      </span>
+      <span style={{ fontSize: 11.5, color: "var(--lm-text-dim)", textAlign: "right", whiteSpace: "nowrap" }}>
+        {files}
+      </span>
+      <span
+        style={{ fontSize: 11.5, color: "var(--lm-text-dim)", textAlign: "right", whiteSpace: "nowrap" }}
+        title={skill.updated_at ? new Date(skill.updated_at * 1000).toLocaleString() : undefined}
+      >{formatUpdated(skill.updated_at)}</span>
     </button>
   );
 }
+
+// One column template for the header and every row, so they can't drift out of
+// alignment. The name column takes the slack; the two numeric columns are sized
+// to their widest realistic content ("Last updated", "3 weeks ago").
+const skillGridCols: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) 52px 96px",
+  gap: 10,
+};
+
+const listHeadStyle: CSSProperties = {
+  padding: "0 12px 6px", fontSize: 10, fontWeight: 600, letterSpacing: "0.04em",
+  textTransform: "uppercase", color: "var(--lm-text-muted)",
+};
 
 // ─── Detail view ─────────────────────────────────────────────────────────────
 
@@ -381,6 +410,28 @@ function countFiles(skill: InstalledSkill): number {
   };
   walk(skill.files ?? []);
   return n;
+}
+
+// formatUpdated renders the listing's `updated_at` (Unix SECONDS) compactly
+// enough for a narrow column: relative while that is the more useful reading,
+// then an absolute date once "N days ago" stops meaning anything. The exact
+// timestamp is always on the row's title attribute.
+function formatUpdated(unixSeconds?: number): string {
+  if (!unixSeconds) return "—";
+  const then = new Date(unixSeconds * 1000);
+  const secs = Math.floor((Date.now() - then.getTime()) / 1000);
+
+  // A clock skew between device and browser can put a file marginally in the
+  // future; read that as "now" rather than as a negative age.
+  if (secs < 60) return "just now";
+  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
+  if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`;
+  if (secs < 7 * 86400) return `${Math.floor(secs / 86400)}d ago`;
+
+  const sameYear = then.getFullYear() === new Date().getFullYear();
+  return then.toLocaleDateString(undefined, {
+    day: "numeric", month: "short", ...(sameYear ? {} : { year: "numeric" }),
+  });
 }
 
 function Centered({ children, tone }: { children: React.ReactNode; tone?: "error" }) {

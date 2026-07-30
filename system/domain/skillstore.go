@@ -32,6 +32,12 @@ type InstalledSkill struct {
 	Name        string      `json:"name"`
 	Description string      `json:"description,omitempty"`
 	Files       []SkillNode `json:"files"`
+	// UpdatedAt is the NEWEST modification time in the skill's tree, as Unix
+	// seconds — the skill directory's own mtime only moves when files are added
+	// or removed, so it would call an edited SKILL.md unchanged. 0 when nothing
+	// in the tree could be stat'd, which the UI renders as unknown rather than
+	// as the epoch.
+	UpdatedAt int64 `json:"updated_at,omitempty"`
 }
 
 // SkillSummary is one installed skill flattened for the device's status
