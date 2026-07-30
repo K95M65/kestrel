@@ -15,7 +15,7 @@ build a third.
 
 | | Device | What it is | Declares |
 |---|--------|-----------|----------|
-| <img src="devices/lamp/images/lamp.webp" width="210"> | [**Autonomous Lamp**](devices/lamp) | 5-DOF expressive desk robot | the maximal set — audio, vision, motion, light, display, sensing |
+| <img src="devices/lamp/images/lamp_icon_2.webp" width="210"> | [**Autonomous Lamp**](devices/lamp) | 5-DOF expressive desk robot | the maximal set — audio, vision, motion, light, display, sensing |
 | <img src="devices/intern-v2/images/intern.webp" width="210"> | [**Autonomous Intern**](devices/intern-v2) | always-on desk agent | audio, sensing, light — **no** camera, motion, or display |
 | <img src="devices/reachy-mini/images/reachy-icon.svg" width="210"> | [**Reachy Mini**](devices/reachy-mini) | Pollen Robotics' desk robot, running Autonomous | audio, vision, motion (6-DOF head + 360° body), expression, sensing — **no** light or display |
 | <img src="devices/unitree-go2w/images/go2-w.webp" width="210"> | [**Unitree Go2-W**](devices/unitree-go2w) | a *different manufacturer's* mobile robot, running Autonomous | audio, vision (+ depth), motion (locomotion), sensing |
