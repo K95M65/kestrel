@@ -16,6 +16,7 @@ import { WriteSkillModal } from "./chat/WriteSkillModal";
 import { UploadSkillModal } from "./chat/UploadSkillModal";
 import { BrowseSkillsModal } from "./chat/BrowseSkillsModal";
 import { ManageSkillsModal } from "./chat/ManageSkillsModal";
+import { AgentFiles } from "./chat/AgentFiles";
 
 // ─── Markdown ───────────────────────────────────────────────────────────────
 
@@ -2058,6 +2059,10 @@ export function ChatSection({ events, isActive }: Props) {
                       }} />
                     </>
                   ) : msg.role === "agent" ? renderMarkdown(msg.text) : linkifyPlain(msg.text, msg.id)}
+                  {/* Device paths the agent named become viewable attachments.
+                      Only once the turn is done — a path half-streamed would
+                      render as a broken one and then re-mount. */}
+                  {msg.role === "agent" && !msg.pending && <AgentFiles text={msg.text} tools={msg.tools} />}
                 </div>
                 {/* Action bar: time + copy + retry */}
                 <div style={{ display: "flex", alignItems: "center", gap: 6, paddingInline: 4 }}>

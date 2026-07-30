@@ -429,6 +429,11 @@ func (s *Server) Serve(closeFn func()) error {
 	agent.POST("skills/install", adminAuthMiddleware(s.config), s.agentHandler.InstallSkill)
 	agent.POST("skills/upload", adminAuthMiddleware(s.config), s.agentHandler.UploadSkill)
 	agent.DELETE("skills", adminAuthMiddleware(s.config), s.agentHandler.DeleteSkill)
+	// Device-local file the agent produced, so a reply that names a path (a
+	// camera snapshot, a generated report) can be SHOWN in the chat instead of
+	// read as an unusable string. `path` is client-supplied and validated
+	// against an allow-list of roots + served types — see handler_file.go.
+	agent.GET("file", adminAuthMiddleware(s.config), s.agentHandler.ServeFile)
 
 	logs := api.Group("logs")
 	logs.GET("tail", adminAuthMiddleware(s.config), s.logTail)

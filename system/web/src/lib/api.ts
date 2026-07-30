@@ -52,6 +52,15 @@ export function hwUrl(path: string): string {
   return withApiToken(`/api/hardware${path}`);
 }
 
+/** Build a `GET /api/agent/file` URL for a DEVICE-LOCAL path the agent named in
+ *  a reply (a camera snapshot, a generated report). The path is validated
+ *  server-side against an allow-list of roots and served types — this helper
+ *  only builds the URL, it makes no claim that the file is servable, so callers
+ *  must handle 403/404 (an <img> onError, a link that just fails). */
+export function agentFileUrl(devicePath: string): string {
+  return withApiToken(`${API_BASE}/api/agent/file?path=${encodeURIComponent(devicePath)}`);
+}
+
 /** Base64-encode a File for JSON bodies (e.g. face enroll). Uses FileReader
  *  instead of `btoa(String.fromCharCode(...new Uint8Array(buf)))`: spreading a
  *  full-resolution JPEG's bytes into a function call blows the call stack
