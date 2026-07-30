@@ -5,7 +5,9 @@ Pollen Robotics' desk robot. Autonomous gives it a voice pipeline, vision,
 sensing, a web UI, an agent runtime and over-the-air updates, driving the body
 through Pollen's own SDK.
 
-<img src="images/reachy-icon.svg" alt="Reachy Mini" width="480">
+<p align="center">
+  <img src="images/reachy-icon.svg" alt="Reachy Mini" width="480">
+</p>
 
 ## Install
 
