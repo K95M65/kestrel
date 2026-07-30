@@ -390,11 +390,32 @@ def _led_off_by_user() -> bool:
     return bool(_user_led_state and _user_led_state.get("type") == LST_OFF)
 
 
+def led_should_stay_dark() -> bool:
+    """True when nothing may light the strip of its own accord.
+
+    THE single source of truth for "leave the lamp alone". Two states look
+    identical on a dark strip and so must behave identically:
+
+    - the user explicitly turned the light off (LST_OFF), and
+    - nobody has set a colour and the resting look is dark
+      (see AMBIENT_RESTING_LED) — the state every boot starts in, because the
+      user LED sidecar is boot-scoped.
+
+    Treating only the first as "off" is what let a reboot silently re-arm the
+    speaking wave, the post-wave settle and the presence restore-light on a
+    lamp the user believed was off. Anything that paints the strip WITHOUT the
+    user asking right now — waves, resting settles, presence, ambient — must
+    check this. An explicit user/agent command must NOT: that is the user
+    asking, and it overwrites the saved state.
+    """
+    return _led_off_by_user() or (_user_led_state is None and ambient_resting_is_dark())
+
+
 def _get_current_led_color() -> tuple:
     """Return the current LED color for the speaking wave effect."""
-    # User turned the LED off → the wave must render on black (invisible), not
-    # the warm fallback below, so speaking/music never re-lights a dark strip.
-    if _led_off_by_user():
+    # Nothing may self-light a dark strip → the wave renders on black
+    # (inaudible-equivalent: invisible) instead of the warm fallback below.
+    if led_should_stay_dark():
         return (0, 0, 0)
     if _user_led_state:
         stype = _user_led_state.get("type")
@@ -412,6 +433,9 @@ def _get_current_led_color() -> tuple:
                 return tuple(int(c * preset["brightness"]) for c in preset["color"])
     if _is_nonblack(_effect_base_color):
         return _effect_base_color
+    # Last-resort warm white. Only reachable when the resting look is LIT (a
+    # dark resting look returns black at the top of this function), i.e. the
+    # device is configured to glow at rest and the wave should match it.
     return (255, 180, 100)
 
 
@@ -669,6 +693,16 @@ def _restore_user_led():
         logger.info("LED restore: user state OFF -- cleared to black")
         return
     if state is None:
+        # A dark resting look means "no user state" settles to black, exactly
+        # like an explicit off — otherwise whatever just ran (speaking wave,
+        # emotion) freezes on its last frame and the strip stays lit with a
+        # colour nobody asked for. Keeping the emotion colour only makes sense
+        # when the device is configured to glow at rest.
+        if ambient_resting_is_dark():
+            _stop_current_effect()
+            rgb_service.clear()
+            logger.info("LED restore: no user state -- resting dark, cleared")
+            return
         logger.info("LED restore: no active user state -- keeping emotion color")
         return
 
