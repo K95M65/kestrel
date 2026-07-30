@@ -5,7 +5,7 @@ your laptop sleeps — the second reference device for [Autonomous](../../README
 
 🔗 **Product page:** https://www.autonomous.ai/ai-gadgets/intern
 
-![Autonomous Intern](images/intern.webp)
+<img src="images/intern.webp" alt="Autonomous Intern" width="480">
 
 ## What it is
 
