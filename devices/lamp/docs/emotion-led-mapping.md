@@ -15,7 +15,7 @@ Source: `hal/presets.py` — `EMOTION_PRESETS`
 | `listening` | 51, 121, 230 | `#3379E6` xanh dương | pulse | 0.1 | listening |
 | `laugh` | 130, 91, 11 | `#825a0b` vàng sẫm | candle | 0.2 | laugh |
 | `confused` | 124, 71, 25 | `#7c4719` cam đậm | candle | 0.2 | confused |
-| `sleepy` | 60, 40, 120 | `#3C2878` tím đậm | breathing | 0.2 | sleepy |
+| `sleepy` | 0, 0, 0 | `#000000` đen (tắt) | solid | — | sleepy |
 | `greeting` | 255, 180, 100 | `#FFB464` vàng nhạt | breathing | 0.3 | greeting | wake_up | goodbye |
 | `acknowledge` | 51, 230, 70 | `#33e645` xanh lá | breathing | 0.5 | acknowledge |
 | `stretching` | 145, 140, 30 | `#918b1e` xanh lá nhạt | breathing | 0.6 | stretching |
