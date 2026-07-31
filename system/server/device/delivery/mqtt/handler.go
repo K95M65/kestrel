@@ -46,6 +46,10 @@ type DeviceMQTTHandler struct {
 	// state changes, not every tick. Mutated only from the single refresh-loop
 	// goroutine; initialised in ProvideDeviceMQTTHandler.
 	oauthAlertStatus map[string]string
+	// chatStream mirrors the monitor events of chat.send runs onto fd_channel.
+	// Nil only in tests that build the handler directly; handleChatSend nil-checks
+	// so a missing stream degrades to "turn runs, backend sees only the ack".
+	chatStream *ChatStream
 }
 
 // mcpConnectorSpec lists the remote-MCP connectors that the generic writer
@@ -152,7 +156,7 @@ func (h *DeviceMQTTHandler) refreshableConnectorWriters() []ConnectorWriter {
 }
 
 // ProvideDeviceMQTTHandler creates DeviceMQTTHandler with all command handlers.
-func ProvideDeviceMQTTHandler(cfg *config.Config, mqttFactory *mqtt.Factory, ds *device.Service, ns *network.Service, gw domain.AgentGateway) DeviceMQTTHandler {
+func ProvideDeviceMQTTHandler(cfg *config.Config, mqttFactory *mqtt.Factory, ds *device.Service, ns *network.Service, gw domain.AgentGateway, chatStream *ChatStream) DeviceMQTTHandler {
 	configsDir := filepath.Join(cfg.OpenclawConfigDir, "workspace", "configs")
 	return DeviceMQTTHandler{
 		config:         cfg,
@@ -165,6 +169,7 @@ func ProvideDeviceMQTTHandler(cfg *config.Config, mqttFactory *mqtt.Factory, ds 
 		connectorWriter:         newConnectorWriter(configsDir, gw, specialConnectorCodes),
 		specialConnectorWriters: newSpecialConnectorWriters(cfg, gw),
 		oauthAlertStatus:        map[string]string{},
+		chatStream:              chatStream,
 	}
 }
 
@@ -276,6 +281,8 @@ func (h *DeviceMQTTHandler) dispatchData(env domain.MQTTDataCommand) error {
 		return h.handleSkillsUninstall(env)
 	case domain.KindChannelRefreshConfig:
 		return h.handleChannelRefreshConfig(env)
+	case domain.KindChatSend:
+		return h.handleChatSend(env)
 	default:
 		slog.Warn("unknown data kind", "component", "mqtt", "kind", env.Kind)
 		return h.publishDataResult(env.Kind, "failure", "unknown kind: "+env.Kind, nil)

@@ -323,6 +323,7 @@ metadata device/version chuẩn cộng với `kind`, `status` (`success|failure`
 | `skills.install_store` | Cài MỘT skill từ catalog lên runtime đang chạy (bất đồng bộ; ack `starting`) | `id`, `name` tuỳ chọn |
 | `skills.files` | Đọc file của một skill đã cài — danh sách, hoặc nội dung một file (đồng bộ) | `name`, `path` tuỳ chọn |
 | `skills.uninstall` | Xoá một skill đã cài khỏi runtime đang chạy (đồng bộ) | `name` |
+| `chat.send` | Mở một turn của agent từ backend rồi stream ngược về (ack một run id, sau đó bắn `chat.event`) | `message` (bắt buộc), tuỳ chọn `image`/`session_id`/`speak` |
 | `skills.save` | Ghi một skill soạn sẵn vào thư mục skill của runtime đang chạy (đồng bộ) | `name`, `description`, `instructions` |
 | `system.info` | Snapshot tổng hợp: versions + network + host | _(không)_ |
 | `system.version` | Chỉ versions các thành phần (rẻ hơn `system.info`) | _(không)_ |
@@ -680,6 +681,94 @@ MQTT suốt thời gian tải từ CDN.
 Không restart gateway: mọi backend có thư mục skill đều nhặt file mới theo từng
 session.
 
+#### `chat.send` + `chat.event`
+
+Cho phép backend (và qua đó là app mobile) giữ **đúng cuộc hội thoại mà chat trên
+web monitor đang giữ**. Chat web gồm 2 nửa — `POST /api/sensing/event` với
+`type:"web_chat"` để mở turn, và SSE `GET /api/agent/events` để render — cả hai
+đều nằm local trên device sau admin auth, nên điện thoại chạy 4G không với tới
+cái nào. fa/fd sẵn là đường theo từng device và xuyên được NAT, nên cặp này đi
+qua đó.
+
+```
+mobile ──HTTP──▶ backend ──fa: chat.send──▶ device
+mobile ◀── SSE ── backend ◀── fd: chat.event × N ── device
+```
+
+**Nhận:**
+```json
+{"cmd": "data", "kind": "chat.send", "data": {
+  "message": "cậu thấy gì?",
+  "image": "<base64 jpeg, tuỳ chọn>",
+  "session_id": "abc123",
+  "speak": false
+}}
+```
+
+`message` bắt buộc. `image` chính là base64 mà chat web bỏ vào sensing event, nên
+điện thoại đính ảnh y hệt cách đó. `session_id` device **không hiểu** gì về nó —
+chỉ echo lại trên ack và trên mọi event để backend fan-out đúng client; device
+**không** tách state hội thoại theo nó, vì chỉ có một agent và một history, y như
+hai người cùng đứng cạnh cái máy. `speak` (mặc định false) cho device đọc to câu
+trả lời; mặc định tắt vì người chat từ phòng khác không mong cái máy tự nhiên nói
+— cũng chính là lý do chat web suppress TTS.
+
+**Ack** (ngay lập tức, chỉ mang id để correlate — không mang câu trả lời):
+```json
+{
+  "device": "<device_type>", "type": "data", "kind": "chat.send",
+  "status": "success | failure",
+  "data": { "run_id": "run-…", "session_id": "abc123" }
+}
+```
+
+**Rồi tới một stream** `chat.event` do device tự bắn, mỗi monitor event của run
+đó một message:
+```json
+{
+  "device": "<device_type>", "type": "data", "kind": "chat.event", "status": "success",
+  "data": { "run_id": "run-…", "session_id": "abc123",
+            "event": { "id": "evt-42", "time": "…", "type": "assistant_delta",
+                       "summary": "Đang chụp ảnh", "runId": "run-…" } }
+}
+```
+
+`event` là `domain.MonitorEvent` **nguyên si** — đúng struct mà SSE của web đẩy
+(`assistant_delta`, `thinking`, `tool_call`, `hw_*`, `token_usage`,
+`chat_response`). Cố ý như vậy: client dùng lại luôn reducer của chat web, thay
+vì một bộ vocabulary thứ hai mà chỉ cần thêm một event type là lệch nhau.
+
+Vài điểm triển khai mà người viết backend cần biết:
+
+- **Chỉ mirror run do backend mở.** Bus mang mọi turn trên device, kể cả turn nói
+  bằng miệng; một run được track khi `chat.send` của nó được nhận và bỏ track ở
+  event kết thúc (`chat_response` / `no_reply`), kèm TTL 10 phút cho turn chết
+  giữa chừng không có event kết thúc.
+- **`assistant_delta` được gộp** thành lô ~250 ms. Bus bắn một delta mỗi chunk của
+  model, mà mỗi publish lên fd đều QoS 1 (một round-trip), nên forward 1:1 tốn
+  hơn cả việc sinh ra chúng. Event đã gộp mang toàn bộ đoạn text tích luỹ,
+  `detail.coalesced: true`, và `id` **rỗng** để không bị nhầm là replay của chunk
+  cuối dùng để dựng nó. Text đang chờ luôn được flush **trước** mọi event khác,
+  nên chip công cụ không bao giờ vượt lên trước câu văn đứng trước nó.
+- **Turn đi ngược vào chính sensing endpoint của device qua loopback** thay vì gọi
+  thẳng AgentGateway, để gate describe-first cho ảnh, nhánh queue lúc agent bận,
+  việc mark run web-chat và flow logging đều là đúng code mà chat web đang chạy.
+  Cùng lý do với hook gateway của Hermes POST vào `/api/agent/channel-turn`.
+- **Một client broker riêng** (`device-<id>-chat`) được giữ mở cho stream. Helper
+  `publish` dùng chung mở rồi đóng kết nối cho từng message — hợp lý với kết quả
+  một-lần của command, nhưng thảm hoạ với hàng chục event mỗi turn. Client id
+  phải khác: hai kết nối trùng id thì broker đá cái nối trước.
+- **File agent tạo ra chưa được relay.** Câu trả lời có
+  `/root/.openclaw/media/hal-snapshots/snap_*.jpg` thì chat web hiện được nhờ
+  `GET /api/agent/file`, nhưng endpoint đó nằm local trên device — điện thoại
+  không fetch được. Chừng nào device chưa đẩy bytes ra ngoài, client mobile chỉ
+  thấy path dưới dạng text.
+
+Thay thế: `integrations/chat-bridges/autonomous-chat-hook/` forward chat từ
+backend một chiều dưới dạng `type:"voice"`, nên device đọc to câu trả lời và
+không có gì quay về. Nó không thể làm nền cho một UI chat; cặp kind này thay nó ở
+mục đích đó.
+
 ### `ota` — Trigger OTA update
 
 Xử lý bởi bootstrap worker, không qua MQTT handler trực tiếp.
@@ -700,6 +789,8 @@ Xử lý bởi bootstrap worker, không qua MQTT handler trực tiếp.
 | `system/server/device/delivery/mqtt/skills_install_store_handler.go` | Handle `skills.install_store` (async catalog download → `AgentGateway.InstallSkillArchive`) |
 | `system/server/device/delivery/mqtt/skills_files_handler.go` | Handle `skills.files` (đọc file của một skill đã cài: danh sách, hoặc nội dung một file) |
 | `system/server/device/delivery/mqtt/skills_uninstall_handler.go` | Handle `skills.uninstall` |
+| `system/server/device/delivery/mqtt/chat_send_handler.go` | Handle `chat.send` — forward turn qua loopback tới sensing endpoint |
+| `system/server/device/delivery/mqtt/chat_stream.go` | Mirror monitor event của một chat run về dưới dạng `chat.event` |
 | `system/server/device/delivery/mqtt/skills_save_handler.go` | Handle `skills.save` (ghi skill soạn sẵn, đồng bộ, qua `AgentGateway.SaveSkill`) |
 | `system/server/device/delivery/mqtt/connector_handler.go` | Handle `connector.set.<code>`/`connector.remove.<code>` (bất đồng bộ, dispatch writer qua `connectorWriterFor`) |
 | `system/server/device/delivery/mqtt/connector_writer.go` | Interface `ConnectorWriter` + file helpers `<code>_access_tokens.json` dùng chung |

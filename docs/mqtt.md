@@ -334,6 +334,7 @@ optional `error`, and an optional `data` payload.
 | `skills.files` | Read one installed skill's files — list, or one file's contents (synchronous) | `name`, optional `path` |
 | `skills.uninstall` | Remove one installed skill from the active runtime (synchronous) | `name` |
 | `skills.save` | Write one authored skill into the active runtime's skills dir (synchronous) | `name`, `description`, `instructions` |
+| `chat.send` | Start an agent turn from the backend and stream it back (acks a run id, then emits `chat.event`) | `message` (required), optional `image`/`session_id`/`speak` |
 | `system.info` | Aggregate snapshot: versions + network + host | _(none)_ |
 | `system.version` | Component versions only (cheaper than `system.info`) | _(none)_ |
 | `system.network` | network facts of the default-route interface only | _(none)_ |
@@ -701,6 +702,97 @@ dispatch loop for the length of a CDN download.
 No gateway restart: every backend with a skills dir picks new files up per
 session.
 
+#### `chat.send` + `chat.event`
+
+Lets the backend (and through it a phone app) hold the **same conversation the
+web monitor's chat holds**. The web chat is two halves — `POST
+/api/sensing/event` with `type:"web_chat"` to start a turn, and the SSE stream
+`GET /api/agent/events` to render it — and both are device-local behind admin
+auth, so a phone on mobile data can reach neither. fa/fd is already a
+per-device path that survives NAT, so the pair rides here.
+
+```
+mobile ──HTTP──▶ backend ──fa: chat.send──▶ device
+mobile ◀── SSE ── backend ◀── fd: chat.event × N ── device
+```
+
+**Receive:**
+```json
+{"cmd": "data", "kind": "chat.send", "data": {
+  "message": "what do you see?",
+  "image": "<base64 jpeg, optional>",
+  "session_id": "abc123",
+  "speak": false
+}}
+```
+
+`message` is required. `image` is the same base64 the web chat puts in the
+sensing event, so a phone attaches a photo the same way. `session_id` is opaque
+to the device — echoed on the ack and on every event so the backend can fan the
+stream to the right client; the device does **not** partition conversation state
+by it, since there is one agent and one history, exactly as if two people stood
+next to the box. `speak` (default false) makes the device say the reply out loud
+too; off by default because a user chatting from another room does not expect it
+to start talking — the same reason the web chat suppresses TTS.
+
+**Ack** (immediate, carries only the correlation id — not the reply):
+```json
+{
+  "device": "<device_type>", "type": "data", "kind": "chat.send",
+  "status": "success | failure",
+  "data": { "run_id": "run-…", "session_id": "abc123" }
+}
+```
+
+**Then a stream** of `chat.event`, device-initiated, one per monitor event of
+that run:
+```json
+{
+  "device": "<device_type>", "type": "data", "kind": "chat.event", "status": "success",
+  "data": { "run_id": "run-…", "session_id": "abc123",
+            "event": { "id": "evt-42", "time": "…", "type": "assistant_delta",
+                       "summary": "Taking a photo", "runId": "run-…" } }
+}
+```
+
+`event` is `domain.MonitorEvent` **verbatim** — the same struct the web SSE
+stream delivers (`assistant_delta`, `thinking`, `tool_call`, `hw_*`,
+`token_usage`, `chat_response`). That is deliberate: a client reuses the web
+chat's reducer instead of a second vocabulary that would drift the first time an
+event type is added.
+
+Implementation notes that matter to a backend author:
+
+- **Only backend-started runs are mirrored.** The bus carries every turn on the
+  device, including spoken ones; a run is tracked when its `chat.send` is
+  accepted and untracked at its terminal event (`chat_response` / `no_reply`),
+  with a 10-minute TTL for turns that die without one.
+- **`assistant_delta` is coalesced** into ~250 ms batches. The bus emits one
+  delta per model chunk and every fd publish is QoS 1 (a round-trip), so
+  forwarding them 1:1 would cost more than generating them. A coalesced event
+  carries the whole accumulated run of text, `detail.coalesced: true`, and an
+  **empty `id`** so it can't be mistaken for a replay of the chunk it was built
+  from. Pending text is always flushed *before* any other event, so a tool chip
+  never overtakes the sentence it followed.
+- **The turn re-enters the device's own sensing endpoint over loopback** rather
+  than calling the AgentGateway directly, so the describe-first vision gate, the
+  agent-busy queue fork, the web-chat run marking and the flow logging are the
+  same code the web chat exercises. Same reasoning as the Hermes gateway hook
+  POSTing to `/api/agent/channel-turn`.
+- **A dedicated broker client** (`device-<id>-chat`) is held open for the stream.
+  The shared `publish` helper opens and closes a connection per message, which is
+  right for a one-shot command result and ruinous for dozens of events a turn.
+  A distinct client id matters: two connections sharing one id make the broker
+  evict the first.
+- **Files the agent produced are not yet relayed.** A reply naming
+  `/root/.openclaw/media/hal-snapshots/snap_*.jpg` renders in the web chat via
+  `GET /api/agent/file`, which is device-local — a phone can't fetch it. Until
+  the device pushes those bytes out, a mobile client sees the path as text.
+
+Superseded: `integrations/chat-bridges/autonomous-chat-hook/` forwards backend
+chat one-way as `type:"voice"`, so the device speaks the reply and nothing comes
+back. It cannot back a chat UI; this pair replaces it for that purpose.
+
 ### `ota` — Trigger OTA update
 
 Handled by bootstrap worker, not through MQTT handler directly.
@@ -721,6 +813,8 @@ Handled by bootstrap worker, not through MQTT handler directly.
 | `system/server/device/delivery/mqtt/skills_install_store_handler.go` | Handle `skills.install_store` (async catalog download → `AgentGateway.InstallSkillArchive`) |
 | `system/server/device/delivery/mqtt/skills_files_handler.go` | Handle `skills.files` (read one installed skill's files: list, or one file's contents) |
 | `system/server/device/delivery/mqtt/skills_uninstall_handler.go` | Handle `skills.uninstall` |
+| `system/server/device/delivery/mqtt/chat_send_handler.go` | Handle `chat.send` — forwards the turn over loopback to the sensing endpoint |
+| `system/server/device/delivery/mqtt/chat_stream.go` | Mirror a chat run's monitor events back as `chat.event` |
 | `system/server/device/delivery/mqtt/skills_save_handler.go` | Handle `skills.save` (synchronous authored-skill write via `AgentGateway.SaveSkill`) |
 | `system/server/device/delivery/mqtt/connector_handler.go` | Handle `connector.set.<code>`/`connector.remove.<code>` (async, writer dispatch via `connectorWriterFor`) |
 | `system/server/device/delivery/mqtt/connector_writer.go` | `ConnectorWriter` interface + shared `<code>_access_tokens.json` file helpers |

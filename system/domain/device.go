@@ -423,6 +423,32 @@ const (
 	//   device → server : status=configuring → status=success data={channel, runtime}
 	//                                        | status=failure error=<code>
 	KindChannelRefreshConfig = "channel.refresh_config"
+
+	// KindChatSend starts an agent turn from the backend — the MQTT twin of the
+	// web monitor's POST /api/sensing/event with type "web_chat". Data:
+	// MQTTChatSendData. This is what lets a phone app hold the SAME conversation
+	// the web chat holds: the device is on a LAN behind NAT, so MQTT is the only
+	// standing path in, and fa/fd are already per-device.
+	//
+	// Flow:
+	//   server → device : kind=chat.send data={message, image?, session_id?, speak?}
+	//   device → server : status=success data={run_id, session_id}
+	//                     then a STREAM of kind=chat.event carrying that run's
+	//                     monitor events, ending with the chat_response one.
+	//
+	// Deliberately NOT the same as the one-way autonomous-chat-hook bridge, which
+	// forwards as type "voice": that makes the device SPEAK the reply and returns
+	// nothing to the backend, so it can never back a chat UI.
+	KindChatSend = "chat.send"
+
+	// KindChatEvent is DEVICE-INITIATED (no request carries it): one monitor
+	// event belonging to a chat.send run. Data: MQTTChatEventData.
+	//
+	// The payload is domain.MonitorEvent verbatim — the same struct the web
+	// monitor's SSE stream (GET /api/agent/events) delivers — so a phone client
+	// can reuse the web chat's reducer as-is instead of a parallel vocabulary
+	// that would drift the first time an event type is added.
+	KindChatEvent = "chat.event"
 )
 
 // Connector (MCP) data-kind prefixes. The connector code is the suffix, e.g.
@@ -841,6 +867,38 @@ type MQTTSkillsSaveData struct {
 type MQTTSkillsFilesData struct {
 	Name string `json:"name"`
 	Path string `json:"path"`
+}
+
+// MQTTChatSendData is the Data payload for kind:"chat.send".
+type MQTTChatSendData struct {
+	Message string `json:"message"`
+	// Image is an optional base64 JPEG, exactly what the web chat puts in the
+	// sensing event's `image` field — so a phone can attach a photo the same way.
+	Image string `json:"image,omitempty"`
+	// SessionID is opaque to the device: it is echoed on the ack and on every
+	// chat.event of this run so the backend can fan the stream back out to the
+	// right client. The device does NOT partition conversation state by it —
+	// there is one agent and one history, the same as standing next to the box.
+	SessionID string `json:"session_id,omitempty"`
+	// Speak makes the device say the reply out loud as well. Off by default: a
+	// phone user chatting from another room does not expect the device to start
+	// talking, which is also why the web chat suppresses TTS.
+	Speak bool `json:"speak,omitempty"`
+}
+
+// MQTTChatSendResult is the Data block of the chat.send ack. The stream of
+// chat.event messages that follows carries the same RunID.
+type MQTTChatSendResult struct {
+	RunID     string `json:"run_id"`
+	SessionID string `json:"session_id,omitempty"`
+}
+
+// MQTTChatEventData is the Data payload for kind:"chat.event" — one monitor
+// event of an in-flight chat.send run.
+type MQTTChatEventData struct {
+	RunID     string       `json:"run_id"`
+	SessionID string       `json:"session_id,omitempty"`
+	Event     MonitorEvent `json:"event"`
 }
 
 // MQTTSkillsUninstallData is the Data payload for kind:"skills.uninstall".
