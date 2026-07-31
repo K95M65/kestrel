@@ -309,14 +309,12 @@ def _finalize_sleepy_peripherals(mute_mic: bool, mute_speaker: bool):
     if mute_mic and not _mic_muted:
         _mic_muted = True
         _sleepy_auto_muted_mic = True
-        _persist_mic_state()
         if voice_service and voice_service.available:
             threading.Thread(target=voice_service.stop, daemon=True, name="sleepy-mic-stop").start()
 
     if mute_speaker and not _speaker_muted:
         _speaker_muted = True
         _sleepy_auto_muted_speaker = True
-        _persist_speaker_state()
         if tts_service and tts_service.speaking:
             tts_service.stop()
         if music_service and music_service.playing:
@@ -331,12 +329,10 @@ def _wake_sleepy_peripherals():
     if _sleepy_auto_muted_speaker:
         _speaker_muted = False
         _sleepy_auto_muted_speaker = False
-        _persist_speaker_state()
     if _sleepy_auto_muted_mic:
         _sleepy_auto_muted_mic = False
         if _hw_mic_switch_muted is not True:
             _mic_muted = False
-            _persist_mic_state()
             if voice_service:
                 voice_service.start()
     logger.info("Sleepy wake: restored sleepy-owned audio state")
