@@ -889,15 +889,17 @@ class VoiceService:
         longest_partial = [""]
         final_segments = []
         final_sent = [False]
-        # Two-stage listening cue. Stage 1 at SESSION OPEN: LED-only blue
-        # pulse — instant feedback (~0.3s after the first word), cheap to be
-        # wrong. Stage 2 on the FIRST STT PARTIAL: full emotion=listening
-        # (servo lean + face). The entry VAD alone is NOT enough for stage 2:
-        # loud transients pass it and open sessions that end with an empty
-        # transcript (~half of all sessions in a noisy room, measured
-        # 2026-07-16), and leaning on every bang reads as mis-triggering.
+        # The listening cue fires on the FIRST STT PARTIAL — never at session
+        # open. A partial is proof a human said words; the entry VAD is not.
+        # That VAD is tuned wide open on purpose so quiet speech is never
+        # missed, and the price is that most sessions it opens are noise
+        # (measured on a lamp 2026-07-30: 28 of 31 ended with an empty
+        # transcript). There used to be an earlier LED-only stage at session
+        # open, justified as "instant feedback, cheap to be wrong" — it was
+        # wrong ~90% of the time, and once the strip's resting look went dark
+        # a wrong cue stopped being cheap: it became the most visible thing on
+        # the device. Cost of waiting for the partial: 1.5-2.5s (measured).
         listening_emotion_sent = [False]
-        led_cue_fired = [False]
         # Collect every resampled 16kHz int16 PCM chunk so we can identify the
         # speaker at session end. This list is LOCAL to _stream_session — a
         # fresh empty list every call, no cross-session carry-over.
@@ -1023,21 +1025,15 @@ class VoiceService:
             # the user stops, so without this the voiceprint ends up 30-50%
             # silence and the embedding degrades. (Pre-initialized to -1 above.)
             last_speech_idx = len(audio_buffer) - 1
-            # Stage-1 listening cue (see two-stage note above): the SAME LED
-            # render the listening emotion uses — black base + blue pulse, so
-            # it reads clearly over any user color and stage 2 is a seamless
-            # upgrade. NOT the /led/effect transient path: transient overlays
-            # the pulse on the user's saved color (a blue ripple inside white
-            # is barely visible). LED only — no servo lean, no face,
-            # no _current_emotion commit.
-            try:
-                from hal import app_state
-
-                app_state._apply_emotion_led_display(presets.EMO_LISTENING, 0.7)
-                led_cue_fired[0] = True
-            except Exception as e:
-                logger.debug("listening LED cue failed: %s", e)
-            # Signal the OS server to show listening LED as soon as mic session opens (before transcript arrives)
+            # No LED here: the cue waits for the first STT partial (see the
+            # listening-cue note above). Opening a session is cheap to be wrong
+            # about; lighting the strip is not.
+            #
+            # Tell the OS server a mic session is open. NOT an LED signal
+            # despite the event name — the handler only extends a window that
+            # suppresses passive sensing (motion/presence) so it can't steal
+            # the turn while the user is speaking. Firing it on a noise session
+            # is harmless, so it stays ungated.
             try:
                 requests.post(
                     "http://127.0.0.1:5000/api/sensing/event",
@@ -1150,7 +1146,8 @@ class VoiceService:
                 rt,
             )
 
-            # Clear listening LED
+            # Close the sensing-suppression window (see the matching
+            # voice_listening post above — neither event drives an LED).
             try:
                 requests.post(
                     "http://127.0.0.1:5000/api/sensing/event",
@@ -1160,18 +1157,9 @@ class VoiceService:
             except Exception:
                 pass
 
-            # Stage-1 cue cleanup: a noise session (LED cue fired, but no STT
-            # partial → no emotion) must not leave the blue pulse hanging.
-            # restore_led() is TTS-guarded internally, so an agent reply that
-            # already started speaking keeps its speaking wave.
-            if led_cue_fired[0] and not listening_emotion_sent[0]:
-                try:
-                    from hal.routes.led import restore_led
-
-                    restore_led()
-                    logger.info("listening LED cue restored (noise session, no transcript)")
-                except Exception as e:
-                    logger.debug("listening LED cue restore failed: %s", e)
+            # No cue cleanup for a noise session: nothing was painted, because
+            # the cue only fires once a partial proves someone spoke. A session
+            # that ends with an empty transcript leaves the strip untouched.
 
             # Safety net: if we fired emotion=listening but no follow-up
             # emotion arrives (LLM error, silence-only after first partial,
