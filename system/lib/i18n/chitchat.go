@@ -21,8 +21,8 @@ var chitchatInputs = map[Phrase]map[string][]string{
 		LangZhTW: {"你好", "嗨"},
 	}, */
 	PhraseChitchatGreeting: {
-		LangVI:   {"chào", "chào {name}", "{name} ơi", "hey {name}"},
-		LangEN:   {"hi", "hi {name}", "hello {name}", "hey", "hey {name}"},
+		LangVI:   {"chào", "chào {name}", "{name} ơi"},
+		LangEN:   {"hi", "hi {name}", "hello {name}"},
 		LangZhCN: {"你好", "你好啊", "嗨", "嘿"},
 		LangZhTW: {"你好", "嗨"},
 	},
