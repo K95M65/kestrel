@@ -188,10 +188,12 @@ Ba backend thay thế cho nhau, chọn bằng `HAL_REALTIME_PROVIDER`
 | OpenAI Realtime | `voice_agent/openai_realtime.py` `OpenAIRealtimeAgent` | thuần đồng bộ; 1 `RealtimeConnection` dùng chung bởi thread send/recv, serialize bằng reentrant lock | `gpt-realtime-2` | 24000 Hz |
 | Qwen Omni Realtime | `voice_agent/qwen_realtime.py` `QwenRealtimeAgent` | thuần đồng bộ; client `websockets.sync.client` thô | `qwen3.5-omni-plus-realtime` | 16000 Hz |
 
-Gemini Live dùng `google-genai`, nhưng tắt keepalive websocket của SDK
-(`ping_interval=None`, `ping_timeout=None`) để Python client giống browser raw-WS
-probe hơn khi đi qua proxy `campaign-api`. Vòng ping mặc định 20 giây của Python
-`websockets` có thể đóng session idle và làm lượt kế tiếp fail WS 1011. HAL cũng
+Gemini Live dùng `google-genai` và private asyncio loop của nó do thread
+`gemini-io` sở hữu. Teardown đóng/hủy provider receive task trước, rồi mới join
+worker; handshake thất bại rollback loop/thread ngay. Nhờ vậy một receive bị
+kẹt không sống sót qua session rebuild. Với họ native-audio, HAL gửi websocket
+ping mỗi 20 giây nhưng không đặt ping timeout: traffic đi ra giữ đường proxy
+sống mà pong bị thiếu không bị hiểu là lỗi client. HAL cũng
 recycle Gemini đồng bộ trước khi stream audio nếu lượt trước đã kết thúc quá
 `HAL_GEMINI_PRE_TURN_RECYCLE_S` giây, để câu nói sau khoảng nghỉ không rơi vào
 socket đã chết vì idle ở proxy.
@@ -495,9 +497,9 @@ Mỗi knob có thể bị `HAL_*` env override (thắng block, và là đường
 | `HAL_REALTIME_LOOK_RECV_TIMEOUT_S` | `20.0` | Watchdog im-lặng dùng thay mặc định cho turn có `look` (theo từng turn, qua `extend_recv_timeout()`). Gemini bị ép thinking trên frame dày chữ có thể im >8 s ngay trước khi trả lời — watchdog mặc định giết nhầm mấy turn đó |
 | `HAL_REALTIME_REQUIRE_TRANSCRIPT` | `true` | Không bao giờ commit turn empty-STT lên model. Giọng thật mà nova-3 miss (câu ngắn) vẫn là voiced nên qua hết guard VAD/Silero, commit audio thô khiến model bịa câu trả lời cho khoảng im lặng (lời chào chung chung, thường kèm tên không ai nói). Khi `true`, mọi turn empty-STT bị bỏ bất kể duration/voicing — im còn hơn trả lời sai. Đặt `false` để quay về đường audio-only gated bằng Silero bên dưới. |
 | `HAL_REALTIME_MIN_COMMIT_DURATION_S` | `0.8` | Session ngắn hơn ngưỡng này mà không có STT transcript bị coi là nhiễu VAD, không commit lên model. Chỉ xét khi `HAL_REALTIME_REQUIRE_TRANSCRIPT=false`. |
-| `HAL_REALTIME_SESSION_IDLE_RESET_S` | `240` | Kiểm soát chi phí: khi một turn đến sau ngần này giây im lặng, recycle (rebuild) session **sau** turn đó để turn kế tiếp bỏ phần context mỗi-turn mà provider re-bill trên session sống lâu. Turn sau khoảng nghỉ dài coi như cuộc hội thoại mới; trí nhớ dài hạn vẫn còn nhờ nạp lại `summary.md`. `0` = tắt. Dùng lại đường rebuild của zombie-recovery. |
+| `HAL_REALTIME_SESSION_IDLE_RESET_S` | `240` | Kiểm soát chi phí: khi một turn đến sau ngần này giây im lặng, recycle (rebuild) session **sau** turn đó để turn kế tiếp bỏ phần context mỗi-turn mà provider re-bill trên session sống lâu. Turn sau khoảng nghỉ dài coi như cuộc hội thoại mới; trí nhớ dài hạn vẫn còn nhờ nạp lại `summary.md`. Với Gemini native-audio, bước này bị bỏ qua nếu pre-turn recycle thành công đã làm mới session cho chính idle gap đó. `0` = tắt. Dùng lại đường rebuild của zombie-recovery. |
 | `HAL_GEMINI_SESSION_RESUMPTION` | `false` | Resume cùng session Gemini qua reconnect. Mặc định OFF — proxy `campaign-api` không forward đúng resumption handshake nên resume qua nó tạo session zombie (cold reconnect thì chạy được). Chỉ bật khi endpoint hỗ trợ. |
-| `HAL_GEMINI_PRE_TURN_RECYCLE_S` | `15` | Guard transport cho Gemini: khi lượt nói mới bắt đầu sau ngần này giây idle, rebuild session Gemini **trước khi** stream pre-roll/audio để turn không đụng socket chết vì idle ở proxy/SDK. `0` = tắt. |
+| `HAL_GEMINI_PRE_TURN_RECYCLE_S` | `120` | Guard transport cho Gemini: khi lượt nói mới bắt đầu sau ngần này giây idle, rebuild session Gemini **trước khi** stream pre-roll/audio để turn không đụng socket chết vì idle ở proxy/SDK. `0` = tắt. Pre-turn recycle thành công sẽ chặn idle recycle generic sau chính turn đó, nên một idle gap chỉ tạo tối đa một rebuild phục vụ transport/chi phí. |
 | `HAL_AGENT_GATEWAY` | `openclaw` | Chọn context manager (cũng đọc từ `agent_runtime` trong config.json) |
 | `GEMINI_API_KEY` / `GOOGLE_API_KEY` | — | Key Gemini; fallback về `llm_api_key` |
 | `HAL_GEMINI_LIVE_MODEL` | `gemini-2.5-flash-native-audio-preview-12-2025` | |

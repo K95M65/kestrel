@@ -197,11 +197,13 @@ Three interchangeable backends, selected by `HAL_REALTIME_PROVIDER` /
 | OpenAI Realtime | `voice_agent/openai_realtime.py` `OpenAIRealtimeAgent` | fully synchronous; one `RealtimeConnection` shared by send/recv threads, serialized by a reentrant lock | `gpt-realtime-2` | 24000 Hz |
 | Qwen Omni Realtime | `voice_agent/qwen_realtime.py` `QwenRealtimeAgent` | fully synchronous; raw `websockets.sync.client` socket shared by send/recv threads, reusing the openai_realtime thread/queue skeleton | `qwen3.5-omni-plus-realtime` | 16000 Hz in / 24000 Hz out |
 
-Gemini Live uses `google-genai`, but the SDK websocket keepalive is disabled
-(`ping_interval=None`, `ping_timeout=None`) so the Python client behaves like the
-browser raw-WS probe through the `campaign-api` proxy. The default Python
-`websockets` 20 s ping loop can close idle sessions and make the next turn fail
-with WS 1011. HAL also recycles Gemini synchronously before streaming audio when
+Gemini Live uses `google-genai` and keeps its private asyncio loop owned by its
+`gemini-io` thread. Teardown first closes/cancels the provider receive task,
+then joins workers; a failed handshake rolls back that loop/thread immediately.
+This prevents a stalled receive from surviving a session rebuild. For the
+native-audio family, HAL sends a 20 s websocket ping but sets no ping timeout:
+outbound traffic keeps the proxy path alive without treating its missing pong as
+a client-side failure. HAL also recycles Gemini synchronously before streaming audio when
 the previous turn ended more than `HAL_GEMINI_PRE_TURN_RECYCLE_S` seconds ago, so
 post-idle speech does not land on a proxy-dropped session.
 
@@ -516,9 +518,9 @@ Each knob's `HAL_*` env var overrides the block (and is the dev-box path):
 | `HAL_REALTIME_LOOK_RECV_TIMEOUT_S` | `20.0` | Silent-turn watchdog used instead of the default for turns where a `look` fired (per-turn, via `extend_recv_timeout()`). Gemini's forced thinking over a text-dense frame can stay silent >8 s right before the answer — the default watchdog was killing those turns |
 | `HAL_REALTIME_REQUIRE_TRANSCRIPT` | `true` | Never commit an empty-STT turn to the model. Real speech that nova-3 missed (short utterances) is voiced and passes the VAD/Silero guards, so committing its raw audio makes the model invent a reply to silence (a generic greeting, often with a name nobody said). When `true`, any empty-STT turn is dropped regardless of duration/voicing — silence beats a wrong reply. Set `false` to fall back to the Silero-gated audio-only path below. |
 | `HAL_REALTIME_MIN_COMMIT_DURATION_S` | `0.8` | Sessions shorter than this with no STT transcript are treated as VAD noise and not committed to the model. Only consulted when `HAL_REALTIME_REQUIRE_TRANSCRIPT=false`. |
-| `HAL_REALTIME_SESSION_IDLE_RESET_S` | `240` | Cost control: when a turn arrives after this many seconds of silence, recycle (rebuild) the session **after** that turn so the next turn drops the per-turn context the provider re-bills on a long-lived session. A post-pause turn is effectively a new conversation; long-term continuity survives via the reloaded `summary.md`. `0` disables. Reuses the zombie-recovery rebuild path. |
+| `HAL_REALTIME_SESSION_IDLE_RESET_S` | `240` | Cost control: when a turn arrives after this many seconds of silence, recycle (rebuild) the session **after** that turn so the next turn drops the per-turn context the provider re-bills on a long-lived session. A post-pause turn is effectively a new conversation; long-term continuity survives via the reloaded `summary.md`. For native-audio Gemini, this is skipped when a successful pre-turn recycle already made the same idle gap fresh. `0` disables. Reuses the zombie-recovery rebuild path. |
 | `HAL_GEMINI_SESSION_RESUMPTION` | `false` | Resume the same Gemini session across reconnects. OFF by default — the `campaign-api` proxy doesn't forward the resumption handshake, so resuming through it yields a zombie session (cold reconnects work). Enable only against an endpoint that supports it. |
-| `HAL_GEMINI_PRE_TURN_RECYCLE_S` | `15` | Gemini transport guard: when a new spoken turn starts after this much idle time, rebuild the Gemini session **before** streaming pre-roll/audio so the turn does not hit a proxy/SDK idle-dead socket. `0` disables. |
+| `HAL_GEMINI_PRE_TURN_RECYCLE_S` | `120` | Gemini transport guard: when a new spoken turn starts after this much idle time, rebuild the Gemini session **before** streaming pre-roll/audio so the turn does not hit a proxy/SDK idle-dead socket. `0` disables. A successful pre-turn recycle suppresses the generic post-turn idle recycle for that same turn, so one idle gap creates at most one cost/transport rebuild. |
 | `HAL_AGENT_GATEWAY` | `openclaw` | Selects the context manager (also from `agent_runtime` in config.json) |
 | `GEMINI_API_KEY` / `GOOGLE_API_KEY` | — | Gemini key; falls back to `llm_api_key` |
 | `HAL_GEMINI_LIVE_MODEL` | `gemini-2.5-flash-native-audio-preview-12-2025` | |

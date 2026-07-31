@@ -487,14 +487,15 @@ REALTIME_ZOMBIE_RECONNECT_AFTER: int = int(
 # after this many seconds of silence. A long-lived session accumulates per-turn
 # context the provider (Gemini Live / OpenAI Realtime) re-bills every turn; a turn
 # that follows a long pause is effectively a new conversation, so starting a fresh
-# session then drops that accumulation. Long-term continuity survives — the rebuild
-# reloads the persisted summary.md. 0 disables. Default 240s (4 min). See
-# RealtimeOrchestrator._mark_turn_start.
+# session then drops that accumulation. Native-audio Gemini skips this POST-turn
+# policy when its pre-turn transport recycle already made the session fresh for the
+# same idle gap. Long-term continuity survives — the rebuild reloads the persisted
+# summary.md. 0 disables. Default 240s (4 min). See RealtimeOrchestrator._mark_turn_start.
 REALTIME_SESSION_IDLE_RESET_S: float = float(
     os.environ.get("HAL_REALTIME_SESSION_IDLE_RESET_S", "240")
 )
 REALTIME_GEMINI_PRE_TURN_RECYCLE_S: float = float(
-    os.environ.get("HAL_GEMINI_PRE_TURN_RECYCLE_S", "60")
+    os.environ.get("HAL_GEMINI_PRE_TURN_RECYCLE_S", "120")
 )
 # Gemini 1011 recovery: how many times to reconnect a FRESH session and replay
 # the just-captured turn audio when a turn produced no output (the campaign-api

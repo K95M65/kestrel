@@ -247,6 +247,10 @@ class RealtimeOrchestrator:
         # the provider re-bills on a long-lived session. See _maybe_idle_reset.
         self._last_turn_monotonic: float = 0.0  # end-of-turn timestamp; 0 = none yet
         self._idle_reset_pending: bool = False
+        # Set when Gemini proactively rebuilt before the current turn after a
+        # long idle. That session is already fresh, so the generic post-turn
+        # idle cost recycle must not immediately create a second handshake.
+        self._skip_post_idle_recycle: bool = False
         self._turns_since_recycle: int = 0  # turn-cap recycle counter (cost)
         self._rebuild_lock: threading.Lock = threading.Lock()  # guards _force_rebuild
         summarizer: RealtimeSummarizer | None = None
@@ -400,6 +404,9 @@ class RealtimeOrchestrator:
 
     def prepare_turn(self) -> None:
         """Prepare the realtime session before the caller streams turn audio."""
+        # A new capture starts a new logical turn. Clear any marker left by a
+        # capture that was dropped before it reached stream_output().
+        self._skip_post_idle_recycle = False
         provider: str = config.REALTIME_PROVIDER.strip().lower()
         if provider != "gemini" or not gemini_needs_idle_workaround():
             return
@@ -414,7 +421,8 @@ class RealtimeOrchestrator:
             idle,
             threshold,
         )
-        self._rebuild_now("gemini-idle-pre-turn")
+        if self._rebuild_now("gemini-idle-pre-turn"):
+            self._skip_post_idle_recycle = True
 
     def _force_rebuild(self) -> None:
         """Recover a zombie session by building a BRAND-NEW agent and swapping it
@@ -551,6 +559,12 @@ class RealtimeOrchestrator:
         context every turn; a turn that follows a long pause is effectively a new
         conversation, so recycling then drops that context for ~free (long-term
         continuity is preserved via the summary the rebuild reloads)."""
+        if self._skip_post_idle_recycle:
+            # prepare_turn() just connected a fresh Gemini session for this
+            # idle gap. Keep it after the reply; the next turn already has the
+            # low-context session, so a second recycle only churns handshakes.
+            return
+
         reset_s = config.REALTIME_SESSION_IDLE_RESET_S
         if reset_s <= 0 or self._last_turn_monotonic <= 0.0:
             return
@@ -688,6 +702,12 @@ class RealtimeOrchestrator:
         if replay_pending:
             return
 
+        # The post-turn portion of a Gemini pre-turn recycle is intentionally
+        # skipped. Keep the marker through a look replay above because it is
+        # still the same logical user turn.
+        skip_post_idle_recycle = self._skip_post_idle_recycle
+        self._skip_post_idle_recycle = False
+
         # Track consecutive silent turns for the zombie guard: a turn that
         # committed audio but yielded nothing. A long-lived Gemini session can
         # wedge (connected, accepts audio, never replies — no go_away/close), so
@@ -723,7 +743,10 @@ class RealtimeOrchestrator:
         )
         max_turns: int = config.REALTIME_SESSION_MAX_TURNS
         turn_cap: bool = max_turns > 0 and self._turns_since_recycle >= max_turns
-        if zombie or self._idle_reset_pending or turn_cap:
+        idle_recycle: bool = (
+            self._idle_reset_pending and not skip_post_idle_recycle
+        )
+        if zombie or idle_recycle or turn_cap:
             if zombie:
                 logger.warning(
                     "[realtime] %d consecutive silent turns — forcing reconnect "
@@ -731,7 +754,7 @@ class RealtimeOrchestrator:
                     self._consecutive_silent,
                 )
             else:
-                reason: str = "idle" if self._idle_reset_pending else "turn-cap"
+                reason: str = "idle" if idle_recycle else "turn-cap"
                 logger.info(
                     "[realtime] recycling session (%s) after %d turns (cost)",
                     reason, self._turns_since_recycle,
