@@ -765,8 +765,17 @@ Implementation notes that matter to a backend author:
 
 - **Only backend-started runs are mirrored.** The bus carries every turn on the
   device, including spoken ones; a run is tracked when its `chat.send` is
-  accepted and untracked at its terminal event (`chat_response` / `no_reply`),
-  with a 10-minute TTL for turns that die without one.
+  accepted and untracked at its terminal event, with a 10-minute TTL for turns
+  that die without one.
+- **A turn emits MANY `chat_response` events, and only the last one ends it.**
+  The runtime pushes `chat_response` repeatedly as a reply streams in — the
+  earlier ones carry `state` `"delta"`/`"partial"`, each with a longer prefix of
+  the same reply. The run ends only at `state` `"complete"`, `"final"` or
+  `"error"` (or at a `no_reply` event, which fires once by nature). A client that
+  treats the first `chat_response` as the end shows every reply truncated to its
+  first chunk — the exact bug this shipped with. The web monitor's reducer
+  applies the same rule (`ChatSection.tsx`), which is the point of sharing one
+  event vocabulary.
 - **`assistant_delta` is coalesced** into ~250 ms batches. The bus emits one
   delta per model chunk and every fd publish is QoS 1 (a round-trip), so
   forwarding them 1:1 would cost more than generating them. A coalesced event

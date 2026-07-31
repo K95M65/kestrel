@@ -742,8 +742,16 @@ Vài điểm triển khai mà người viết backend cần biết:
 
 - **Chỉ mirror run do backend mở.** Bus mang mọi turn trên device, kể cả turn nói
   bằng miệng; một run được track khi `chat.send` của nó được nhận và bỏ track ở
-  event kết thúc (`chat_response` / `no_reply`), kèm TTL 10 phút cho turn chết
-  giữa chừng không có event kết thúc.
+  event kết thúc, kèm TTL 10 phút cho turn chết giữa chừng không có event kết
+  thúc.
+- **Một turn bắn RẤT NHIỀU event `chat_response`, chỉ cái cuối mới là hết.**
+  Runtime đẩy `chat_response` liên tục trong lúc câu trả lời đang stream — những
+  cái trước mang `state` `"delta"`/`"partial"`, mỗi cái là một đoạn đầu dài dần
+  của cùng câu trả lời. Run chỉ kết thúc ở `state` `"complete"`, `"final"` hoặc
+  `"error"` (hoặc ở event `no_reply`, vốn bản chất chỉ bắn một lần). Client nào
+  coi `chat_response` đầu tiên là hết thì mọi câu trả lời đều bị cắt còn mẩu đầu
+  — đúng con bug bản đầu tiên mắc phải. Reducer của web monitor áp dụng đúng luật
+  này (`ChatSection.tsx`), và đó chính là lý do dùng chung một bộ event.
 - **`assistant_delta` được gộp** thành lô ~250 ms. Bus bắn một delta mỗi chunk của
   model, mà mỗi publish lên fd đều QoS 1 (một round-trip), nên forward 1:1 tốn
   hơn cả việc sinh ra chúng. Event đã gộp mang toàn bộ đoạn text tích luỹ,

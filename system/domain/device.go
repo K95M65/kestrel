@@ -434,7 +434,9 @@ const (
 	//   server → device : kind=chat.send data={message, image?, session_id?, speak?}
 	//   device → server : status=success data={run_id, session_id}
 	//                     then a STREAM of kind=chat.event carrying that run's
-	//                     monitor events, ending with the chat_response one.
+	//                     monitor events. chat_response fires REPEATEDLY as the
+	//                     reply streams; only the one whose State is
+	//                     complete/final/error ends the run.
 	//
 	// Deliberately NOT the same as the one-way autonomous-chat-hook bridge, which
 	// forwards as type "voice": that makes the device SPEAK the reply and returns
