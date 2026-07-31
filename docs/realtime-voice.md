@@ -328,6 +328,7 @@ only surface `voice_service` talks to:
 | `send_function_result(call_id, output)` | Return a tool result to the model |
 | `save_turn(user, agent)` | Persist a turn to realtime memory |
 | `available` / `sample_rate` | Readiness + provider audio rate |
+| `rebuilding` / `wait_until_available()` | Observe and briefly wait for an already-running replacement session without starting another rebuild |
 
 ## Context managers
 
@@ -388,6 +389,13 @@ turn ("hello") right after a restart would leak to the main agent.
    normally (WS 1000) at speech start is replaced before streaming continues and
    the complete pre-roll is replayed once on the fresh socket. This preserves the
    opening words; a recovered normal close is a warning, not an error.
+   Gemini Manual VAD cannot cancel an already-streamed activity. Therefore an
+   empty-STT/noise turn starts a clean replacement session rather than letting
+   its noise contaminate the next user turn. That reconnect runs in the
+   background: if the user speaks immediately, HAL keeps the entire next turn
+   locally, then sends it once in order when the replacement session is ready.
+   A slow/failed reconnect falls back to the main agent with the STT transcript;
+   it never drops the opening audio or commits it to the old activity.
 4. **Commit.** At session end, if enabled + `available` + audio buffered,
    `commit_audio()` fires. A `thinking` emotion cue fires with the commit
    (face + servo + a FORCED purple LED pulse — `thinking` is normally a

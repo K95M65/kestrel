@@ -32,7 +32,11 @@ from hal.realtime.utils import pcm16_bytes_to_float32, resample_float32
 from hal.drivers.voice._internal import config as voice_cfg
 from hal.drivers.voice._internal.audio_dsp import resample_to_stt, rms
 from hal.drivers.voice._internal.audio_recorder import ArecordStream
-from hal.drivers.voice._internal.realtime_turn import build_turn_context, run_realtime_turn
+from hal.drivers.voice._internal.realtime_turn import (
+    build_turn_context,
+    is_noise_turn,
+    run_realtime_turn,
+)
 from hal.drivers.voice._internal.sensing_sender import SensingSender
 from hal.drivers.voice._internal.session_finalize import finalize_session
 from hal.drivers.voice._internal.speaker_decorate import SpeakerDecorator
@@ -951,6 +955,10 @@ class VoiceService:
             final_sent[0] = True
 
         rt_audio_buffer: list = []
+        # A noise-drop can be rebuilding a clean Gemini session in the
+        # background. Keep this entire capture local in that narrow window so
+        # no frame is sent to the old, about-to-be-discarded activity.
+        realtime_deferred = False
         try:
             if preconnected_session:
                 # Already connected — swap in the real transcript callback.
@@ -995,11 +1003,16 @@ class VoiceService:
             # session alive through the speak window (it died here before keepalive).
             if hal_config.REALTIME_ENABLED:
                 self._realtime.prepare_turn()
+                realtime_deferred = self._realtime.rebuilding
 
             # Send per-turn context before any audio is streamed to Gemini. Do not
             # inject clientContent after audio has opened an activity window: Gemini
             # 2.5 native-audio can close the websocket with 1011 on that ordering.
-            if hal_config.REALTIME_ENABLED and self._realtime.available:
+            if (
+                hal_config.REALTIME_ENABLED
+                and not realtime_deferred
+                and self._realtime.available
+            ):
                 try:
                     self._realtime.send_text(build_turn_context())
                 except Exception as e:
@@ -1052,14 +1065,17 @@ class VoiceService:
                 # cannot duplicate or retain audio sent to a dead socket.
                 for frame in all_pre:
                     audio_buffer.append(frame)
-                    # Also send pre-buffer to realtime model (non-blocking queue put)
-                    if hal_config.REALTIME_ENABLED and self._realtime.available:
+                    # Keep the full realtime copy even while a noise-drop rebuild
+                    # is warming. It is flushed once to the replacement session
+                    # at turn end, preserving the opening words.
+                    if hal_config.REALTIME_ENABLED:
                         audio_f32 = pcm16_bytes_to_float32(frame)
                         audio_f32 = resample_float32(
                             audio_f32, voice_cfg.STT_RATE, self._realtime.sample_rate
                         )
-                        self._realtime.append_audio(audio_f32)
                         rt_audio_buffer.append(audio_f32)
+                        if not realtime_deferred and self._realtime.available:
+                            self._realtime.append_audio(audio_f32)
 
             self._listening = True
             last_speech_time = time.time()
@@ -1117,14 +1133,17 @@ class VoiceService:
                     break
                 audio_buffer.append(resampled)
 
-                # Parallel: stream to realtime model (non-blocking queue put)
-                if hal_config.REALTIME_ENABLED and self._realtime.available:
+                # Parallel: stream to realtime model (non-blocking queue put).
+                # During a pending noise-drop rebuild retain frames locally and
+                # flush them once to the clean replacement session below.
+                if hal_config.REALTIME_ENABLED:
                     audio_f32 = pcm16_bytes_to_float32(resampled)
                     audio_f32 = resample_float32(
                         audio_f32, voice_cfg.STT_RATE, self._realtime.sample_rate
                     )
-                    self._realtime.append_audio(audio_f32)
                     rt_audio_buffer.append(audio_f32)
+                    if not realtime_deferred and self._realtime.available:
+                        self._realtime.append_audio(audio_f32)
 
                 energy = rms(data, self._np)
                 self._mic_level = energy
@@ -1174,6 +1193,41 @@ class VoiceService:
                     )
                 except Exception as e:
                     logger.warning("Realtime noise-guard buffer decode failed: %s", e)
+
+            # `discard_open_activity()` starts its replacement session in the
+            # background. A user can begin the next utterance before that
+            # handshake completes; in that case we retained every frame above.
+            # Wait only after capture has ended, then inject context and flush
+            # the complete ordered audio once. A slow/failed reconnect leaves
+            # the realtime buffer uncommitted so the normal OS-server fallback
+            # still receives the STT transcript without a missing opening word.
+            if (
+                realtime_deferred
+                and rt_audio_buffer
+                and not is_noise_turn(combined, buf_duration, rt_audio_is_speech)
+            ):
+                if self._realtime.wait_until_available():
+                    try:
+                        self._realtime.send_text(build_turn_context())
+                        for audio_f32 in rt_audio_buffer:
+                            self._realtime.append_audio(audio_f32)
+                        logger.info(
+                            "[realtime] Flushed %d buffered frame(s) after noise-drop rebuild",
+                            len(rt_audio_buffer),
+                        )
+                    except Exception as e:
+                        # Do not commit a partial deferred turn. No audio was
+                        # intended for the old activity; falling back preserves
+                        # the transcript and avoids contaminating the new session.
+                        logger.warning(
+                            "[realtime] deferred audio flush failed; falling back: %s", e
+                        )
+                        rt_audio_buffer.clear()
+                else:
+                    logger.warning(
+                        "[realtime] noise-drop rebuild not ready after capture; "
+                        "falling back to main agent"
+                    )
 
             # --- Realtime voice agent (runs first, before speaker ID / OS server) ---
             # Runs even if STT transcript is empty — the model has the raw audio.

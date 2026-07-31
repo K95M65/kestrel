@@ -253,6 +253,11 @@ class RealtimeOrchestrator:
         self._skip_post_idle_recycle: bool = False
         self._turns_since_recycle: int = 0  # turn-cap recycle counter (cost)
         self._rebuild_lock: threading.Lock = threading.Lock()  # guards _force_rebuild
+        # Set whenever no rebuild is in flight. Voice capture uses this to keep
+        # collecting a turn that starts immediately after a noise-drop, rather
+        # than losing its opening frames while Gemini establishes a clean session.
+        self._rebuild_done: threading.Event = threading.Event()
+        self._rebuild_done.set()
         summarizer: RealtimeSummarizer | None = None
         if config.REALTIME_SUMMARIZER_ENABLED:
             try:
@@ -298,6 +303,27 @@ class RealtimeOrchestrator:
         )
 
     @property
+    def rebuilding(self) -> bool:
+        """Whether a replacement provider session is currently connecting."""
+        return self._rebuild_lock.locked()
+
+    def wait_until_available(self, timeout_s: float = 2.0) -> bool:
+        """Wait briefly for an already-started rebuild without starting one.
+
+        This is intentionally only a bounded wait. A voice turn that starts
+        during a background noise-drop rebuild keeps its audio locally first;
+        when the replacement session is ready, the caller flushes that complete
+        audio buffer in order. A failed/slow reconnect falls back to the main
+        agent instead of holding a finished user turn indefinitely.
+        """
+        if self.available:
+            return True
+        if not self.rebuilding:
+            return False
+        self._rebuild_done.wait(timeout=max(0.0, timeout_s))
+        return self.available
+
+    @property
     def sample_rate(self) -> int:
         """Target sample rate expected by the realtime provider."""
         if self._agent is not None:
@@ -338,21 +364,28 @@ class RealtimeOrchestrator:
             )
         return None
 
-    def _rebuild_now(self, reason: str) -> bool:
-        """Synchronously swap in a fresh session before audio is streamed.
-
-        Used for Gemini idle-gap recovery: if the proxy/SDK may have dropped an
-        idle socket, reconnecting after commit is too late because this turn's
-        audio has already been sent to the dead session.
-        """
+    def _begin_rebuild(self) -> bool:
+        """Reserve the rebuild slot before a synchronous or background rebuild."""
         if not self._rebuild_lock.acquire(blocking=False):
             return False
+        self._rebuild_done.clear()
+        return True
+
+    def _finish_rebuild(self) -> None:
+        """Publish that the current rebuild has completed, successfully or not."""
+        self._rebuild_lock.release()
+        self._rebuild_done.set()
+
+    def _rebuild_locked(self, reason: str, discard_old_on_failure: bool = False) -> bool:
+        """Build a replacement session while holding the rebuild reservation."""
         provider: str = config.REALTIME_PROVIDER.strip().lower()
         old = self._agent
         try:
             instructions = self._context.build_instructions()
             new = self._make_agent(provider, instructions)
             if new is None:
+                if discard_old_on_failure:
+                    self._agent = None
                 return False
             new.connect()
             self._agent = new
@@ -368,14 +401,48 @@ class RealtimeOrchestrator:
             return True
         except Exception:
             logger.exception("[realtime] Pre-turn session rebuild failed")
+            # A dropped Manual-VAD activity must never become the next user
+            # turn when its clean replacement could not connect. Mark it dead
+            # so voice_service falls back with the STT transcript instead.
+            if discard_old_on_failure:
+                self._agent = None
             return False
         finally:
-            self._rebuild_lock.release()
+            self._finish_rebuild()
             if old is not None and old is not self._agent:
                 try:
                     old.disconnect()
                 except Exception:
                     logger.exception("[realtime] old agent disconnect failed")
+
+    def _rebuild_now(self, reason: str) -> bool:
+        """Synchronously swap in a fresh session before audio is streamed.
+
+        Used for Gemini idle-gap recovery: if the proxy/SDK may have dropped an
+        idle socket, reconnecting after commit is too late because this turn's
+        audio has already been sent to the dead session.
+        """
+        if not self._begin_rebuild():
+            return False
+        return self._rebuild_locked(reason)
+
+    def _rebuild_in_background(
+        self, reason: str, thread_name: str, discard_old_on_failure: bool = False
+    ) -> bool:
+        """Start a replacement session without blocking voice capture."""
+        if not self._begin_rebuild():
+            return False
+        try:
+            threading.Thread(
+                target=self._rebuild_locked,
+                args=(reason, discard_old_on_failure),
+                daemon=True,
+                name=thread_name,
+            ).start()
+        except Exception:
+            self._finish_rebuild()
+            raise
+        return True
 
     def discard_open_activity(self, reason: str) -> bool:
         """Drop a turn whose audio already streamed into the session.
@@ -384,13 +451,16 @@ class RealtimeOrchestrator:
         in the still-open activity and gets billed with (and can confuse) the
         NEXT committed turn. Closing with activityEnd instead would make the
         model answer the noise — the exact reply REQUIRE_TRANSCRIPT exists to
-        prevent. The only clean exit is a fresh session; costs one handshake
-        (~1s) on a turn that is already dead air. No-op when no activity is
-        open (auto-VAD providers, or no audio streamed yet).
+        prevent. The only clean exit is a fresh session. Start that handshake
+        in the background: a user who starts speaking immediately is buffered
+        by voice_service and then flushed to the new session in full. No-op
+        when no activity is open (auto-VAD providers, or no audio streamed yet).
         """
         if self._agent is None or not getattr(self._agent, "_activity_started", False):
             return False
-        return self._rebuild_now(reason)
+        return self._rebuild_in_background(
+            reason, "rt-noise-rebuild", discard_old_on_failure=True
+        )
 
     def recover_session(self, reason: str) -> bool:
         """Reconnect a FRESH session synchronously for a mid-turn 1011 replay.
@@ -437,39 +507,7 @@ class RealtimeOrchestrator:
         entirely (this is what a HAL restart does, minus the process). Runs on a
         daemon thread so the voice turn doesn't block on connect; a lock prevents
         overlapping rebuilds while one is in flight."""
-        if not self._rebuild_lock.acquire(blocking=False):
-            return  # a rebuild is already running
-        provider: str = config.REALTIME_PROVIDER.strip().lower()
-
-        def _run() -> None:
-            old = self._agent
-            try:
-                instructions = self._context.build_instructions()
-                new = self._make_agent(provider, instructions)
-                if new is None:
-                    return
-                new.connect()
-                self._agent = new
-                # Fresh session context has no images — see _rebuild_now.
-                self._looked_this_turn = False
-                self._last_look_sent_monotonic = 0.0
-                logger.info("[realtime] Zombie recovery: fresh session connected")
-            except Exception:
-                logger.exception("[realtime] Zombie rebuild failed")
-            finally:
-                self._rebuild_lock.release()
-                # Tear down the old (wedged) agent in the background — its recv
-                # thread only exits once its loop is stopped by disconnect(); it
-                # is a separate instance so it can't disturb the new agent.
-                if old is not None and old is not self._agent:
-                    try:
-                        old.disconnect()
-                    except Exception:
-                        logger.exception("[realtime] old agent disconnect failed")
-
-        threading.Thread(
-            target=_run, daemon=True, name="rt-zombie-rebuild"
-        ).start()
+        self._rebuild_in_background("zombie-recovery", "rt-zombie-rebuild")
 
     def start(self) -> None:
         """Create the agent based on config and connect."""

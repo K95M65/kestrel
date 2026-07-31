@@ -313,6 +313,7 @@ nhất mà `voice_service` giao tiếp:
 | `send_function_result(call_id, output)` | Trả kết quả tool về model |
 | `save_turn(user, agent)` | Lưu một lượt vào realtime memory |
 | `available` / `sample_rate` | Trạng thái sẵn sàng + sample rate của provider |
+| `rebuilding` / `wait_until_available()` | Quan sát và chờ ngắn session thay thế vốn đang kết nối, không tự khởi động thêm rebuild |
 
 ## Context manager
 
@@ -373,6 +374,12 @@ sớm ("hello") ngay sau khi restart sẽ rớt xuống main agent.
    (WS 1000) đúng lúc bắt đầu nói, HAL thay socket trước khi stream tiếp và replay
    toàn bộ pre-roll đúng một lần vào socket mới. Nhờ vậy không mất từ mở đầu; close
    bình thường đã recovery là warning, không phải error.
+   Gemini Manual VAD không có lệnh huỷ một activity đã stream. Vì vậy turn
+   empty-STT/noise khởi động session sạch thay vì để noise lẫn vào câu người dùng
+   kế tiếp. Reconnect này chạy nền: nếu user nói ngay, HAL giữ toàn bộ audio của
+   turn mới ở local rồi gửi đúng một lần, đúng thứ tự khi session thay thế sẵn
+   sàng. Nếu reconnect chậm/lỗi thì fallback về main agent với transcript STT;
+   không làm rớt audio đầu câu hoặc commit nó vào activity cũ.
 4. **Commit.** Cuối session, nếu enabled + `available` + có audio buffer, gọi
    `commit_audio()`. Cue emotion `thinking` fire cùng lúc commit (mặt + servo +
    LED pulse tím ÉP HIỆN — `thinking` vốn là background emotion có LED nhường
