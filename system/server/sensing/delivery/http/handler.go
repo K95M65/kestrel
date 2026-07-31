@@ -335,8 +335,7 @@ func (h *SensingHandler) PostEvent(c *gin.Context) {
 			var queuedRunID string
 			if isWebChat {
 				_, queuedRunID = h.agentGateway.NextChatRunID()
-				// TEMP: TTS suppression disabled to test speaker remotely from web chat.
-				// h.agentGateway.MarkWebChatRun(queuedRunID)
+				h.agentGateway.MarkWebChatRun(queuedRunID)
 			}
 			slog.Info("INBOUND from HAL → QUEUED (agent busy, will replay on idle)",
 				"component", "sensing",
@@ -440,10 +439,13 @@ func (h *SensingHandler) PostEvent(c *gin.Context) {
 		}
 	}
 	// Web monitor chat: suppress TTS — response displayed in web UI only.
-	// TEMP: disabled to test TTS remotely from web chat.
-	// if isWebChat {
-	// 	h.agentGateway.MarkWebChatRun(runID)
-	// }
+	// Covers the MQTT chat.send path too: it forwards as type "web_chat" unless
+	// the caller asked to be spoken to (`speak: true`, which forwards as
+	// "voice"), so a phone chatting from another room doesn't make the device
+	// talk — and doesn't spend TTS on a reply nobody is in the room to hear.
+	if isWebChat {
+		h.agentGateway.MarkWebChatRun(runID)
+	}
 	// Important: pass explicit runID to flow.Start to avoid global trace race (another goroutine may interleave
 	// between SetTrace() and Start()).
 	turnStart := flow.Start("sensing_input", startPayload, runID)
@@ -490,10 +492,7 @@ func (h *SensingHandler) PostEvent(c *gin.Context) {
 	// to synthesize and play out before the real reply arrives — avoiding
 	// the hal-side speak() lock-timeout=2s race that the timer-based
 	// fire-at-lifecycle.start+FillerDelay path triggers.
-	// TEMP: include isWebChat so remote TTS test gets the same opening filler
-	// + dead-air filler experience as voice. Revert with the MarkWebChatRun
-	// suppression toggle above when done — search "TEMP: disabled to test TTS".
-	if isVoice || isWebChat {
+	if isVoice {
 		DefaultFillerManager.MarkVoiceRun(runID)
 		go PlayOpeningFillerNow()
 	}
