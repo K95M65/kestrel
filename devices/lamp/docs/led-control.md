@@ -165,6 +165,9 @@ nothing is blocked:
   mic-unmute paths (`/scene` with `mic:"on"`, `/scene/off`) also clear it. It does NOT
   yield to a resting (dark) strip: the indicator is the only signal that the mic is off,
   so it outranks "the lamp is idle".
+- **Sleep wins:** while the `sleepy` emotion is active, the strip stays off. The muted
+  flag still persists, but a late emotion/TTS/music restore cannot repaint the red
+  indicator; it may resume only after a wake emotion clears sleep.
 - `_user_led_state` is never touched — unmute restores the user's saved look.
 - While the indicator owns the strip, transient overlay writes are skipped (`POST /led/effect`
   with `transient:true`) and so is **every** `POST /led/effect/stop`: no transient overlay can

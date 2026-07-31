@@ -296,12 +296,18 @@ def _persist_speaker_state():
 
 
 def _finalize_sleepy_peripherals(mute_mic: bool, mute_speaker: bool):
-    """Enter silent sleep immediately without changing manual user mutes."""
+    """Enter silent sleep immediately without changing manual user mutes.
+
+    Sleep owns the resting LED state. Teardown callbacks from an emotion, TTS,
+    or music session can arrive after this function returns, so they must not
+    revive the mic-muted indicator or a previous user/effect state.
+    """
     global _sleepy_auto_muted_mic, _sleepy_auto_muted_speaker
     global _mic_muted, _speaker_muted
     if _current_emotion != EMO_SLEEPY:
         return
 
+    _cancel_pending_restore()
     if rgb_service:
         _stop_current_effect()
         rgb_service.clear()
@@ -546,6 +552,9 @@ def _start_preset_effect(preset: dict, thread_name: str):
 def _start_mic_muted_effect():
     """Paint the mic-muted indicator (dark red breathing). Display-only:
     never touches _user_led_state, so unmute restores the saved user look."""
+    if _sleeping:
+        logger.info("Mic-muted LED skipped -- sleepy owns the strip")
+        return
     if not _mic_muted_led_owns_strip():
         return
     _start_preset_effect(STATUS_LED_PRESETS["mic_muted"], "led-mic-muted")
@@ -705,6 +714,16 @@ def _restore_user_led():
     global _restore_timer
     _restore_timer = None
 
+    # Sleep is a terminal visual state. TTS/music teardown and previously
+    # scheduled emotion restores may arrive after sleepy cleared the strip;
+    # do not let any of them repaint the mic-muted indicator or user state.
+    if _sleeping:
+        if rgb_service:
+            _stop_current_effect()
+            rgb_service.clear()
+        logger.info("LED restore skipped -- sleepy owns the strip")
+        return
+
     if _tts_speaking:
         logger.info("LED restore: skipped -- TTS speaking_wave active")
         return
@@ -820,6 +839,9 @@ def _on_tts_speak_start():
     global _restore_timer
     if not rgb_service:
         return
+    if _sleeping:
+        logger.info("TTS speaking LED skipped -- sleepy owns the strip")
+        return
 
     color = _get_current_led_color()
     logger.info("TTS speaking LED start: color=%s", color)
@@ -872,6 +894,9 @@ def _on_music_play_start():
     global _music_playing, _effect_thread, _effect_name, _effect_base_color
     global _restore_timer
     if not rgb_service:
+        return
+    if _sleeping:
+        logger.info("Music wave skipped -- sleepy owns the strip")
         return
     if _tts_speaking:
         # TTS wave owns the strip; don't overwrite it.
@@ -951,6 +976,9 @@ def _apply_emotion_led_display(
     The user-LED-off and TTS-speaking guards still apply."""
     preset = EMOTION_PRESETS.get(emotion)
     if not preset:
+        return None
+    if _sleeping and emotion != EMO_SLEEPY:
+        logger.info("Emotion LED skipped (%s) -- sleepy owns the strip", emotion)
         return None
     if _tts_speaking:
         logger.info("Emotion LED skipped (%s) -- TTS speaking_wave active", emotion)

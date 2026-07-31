@@ -162,6 +162,9 @@ không chặn gì cả:
   giữ nguyên ánh sáng chức năng (flag vẫn giữ, thoát scene mà còn mute thì đỏ quay lại
   ở lần restore kế). Các đường scene unmute mic (`/scene` với `mic:"on"`, `/scene/off`)
   cũng clear indicator.
+- **Sleep được ưu tiên:** khi emotion `sleepy` đang hoạt động, strip luôn tắt. Flag mute
+  vẫn được giữ, nhưng restore đến muộn từ emotion/TTS/music không thể vẽ lại indicator đỏ;
+  nó chỉ có thể hoạt động lại sau khi một wake emotion thoát sleep.
 - `_user_led_state` không bao giờ bị đụng — unmute là về lại đúng state user đã lưu.
 - Khi indicator đang giữ strip, transient overlay bị skip (`POST /led/effect` với
   `transient:true`) và **mọi** `POST /led/effect/stop` cũng bị skip: không thể có transient
