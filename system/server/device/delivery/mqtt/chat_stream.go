@@ -2,12 +2,16 @@ package mqtthandler
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
+	"go.autonomous.ai/os/system/agentfile"
 	"go.autonomous.ai/os/system/device"
 	"go.autonomous.ai/os/system/domain"
 	"go.autonomous.ai/os/system/lib/mqtt"
@@ -47,6 +51,12 @@ const (
 	// chatStreamQueue is the buffer between the bus subscription and the
 	// publishing goroutine. Deep enough to ride out a broker hiccup mid-turn.
 	chatStreamQueue = 256
+
+	// chatFileMaxInlineBytes caps a file carried inline on fd_channel. Well under
+	// agentfile.MaxBytes: that governs a same-network HTTP fetch, while this is a
+	// device uplink shared with every other command, and base64 adds a third on
+	// top. A camera snapshot is ~40 KB, so the realistic case is nowhere near it.
+	chatFileMaxInlineBytes = 2 << 20
 )
 
 // terminalEventTypes end a run's mirroring on their own, regardless of state:
@@ -88,6 +98,11 @@ type trackedRun struct {
 	pending  strings.Builder
 	lastEvt  domain.MonitorEvent
 	hasDelta bool
+	// sentFiles is the set of device paths already pushed for this run. The same
+	// snapshot path typically appears in a tool's args, that tool's result AND
+	// the spoken reply, and re-sending its bytes three times would be the most
+	// expensive mistake in this file.
+	sentFiles map[string]bool
 }
 
 // ChatStream mirrors monitor events of backend-started runs onto fd_channel.
@@ -124,7 +139,7 @@ func (s *ChatStream) Track(runID, sessionID string) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.runs[runID] = &trackedRun{sessionID: sessionID, started: time.Now()}
+	s.runs[runID] = &trackedRun{sessionID: sessionID, started: time.Now(), sentFiles: map[string]bool{}}
 	slog.Info("chat stream tracking run", "component", "mqtt-chat", "run_id", runID, "session_id", sessionID)
 }
 
@@ -217,8 +232,10 @@ func (s *ChatStream) handle(evt domain.MonitorEvent) {
 	// followed would render out of order on the phone.
 	if flushed != nil {
 		s.send(evt.RunID, sessionID, *flushed)
+		s.mirrorFiles(run, evt.RunID, sessionID, *flushed)
 	}
 	s.send(evt.RunID, sessionID, evt)
+	s.mirrorFiles(run, evt.RunID, sessionID, evt)
 
 	if terminal {
 		slog.Info("chat stream run done", "component", "mqtt-chat", "run_id", evt.RunID, "type", evt.Type)
@@ -245,6 +262,7 @@ func (s *ChatStream) takePending(run *trackedRun) *domain.MonitorEvent {
 
 func (s *ChatStream) flushAll() {
 	type pendingSend struct {
+		run       *trackedRun
 		runID     string
 		sessionID string
 		evt       domain.MonitorEvent
@@ -254,14 +272,109 @@ func (s *ChatStream) flushAll() {
 	s.mu.Lock()
 	for runID, run := range s.runs {
 		if evt := s.takePending(run); evt != nil {
-			out = append(out, pendingSend{runID: runID, sessionID: run.sessionID, evt: *evt})
+			out = append(out, pendingSend{run: run, runID: runID, sessionID: run.sessionID, evt: *evt})
 		}
 	}
 	s.mu.Unlock()
 
 	for _, p := range out {
 		s.send(p.runID, p.sessionID, p.evt)
+		s.mirrorFiles(p.run, p.runID, p.sessionID, p.evt)
 	}
+}
+
+// mirrorFiles pushes out any device file this event named and this run hasn't
+// sent yet.
+//
+// The whole event is scanned, not just its text: a turn asked to send a photo
+// typically names the path in a tool's ARGS while its spoken reply names nothing
+// (`message {"action":"send","media":"…jpg"}`), and a `curl /camera/snapshot`
+// names it in the tool RESULT. Marshalling the event and scanning that covers
+// all three without knowing any tool's schema.
+//
+// run.sentFiles is touched only from the publish goroutine (handle and flushAll
+// both run there), so it needs no lock of its own.
+func (s *ChatStream) mirrorFiles(run *trackedRun, runID, sessionID string, evt domain.MonitorEvent) {
+	if run == nil {
+		return
+	}
+	raw, err := json.Marshal(evt)
+	if err != nil {
+		return
+	}
+	for _, path := range agentfile.Scan(string(raw)) {
+		if run.sentFiles[path] {
+			continue
+		}
+		// Marked before the read, not after: a file that fails to resolve must not
+		// be retried on every subsequent event of the same turn.
+		run.sentFiles[path] = true
+		s.sendFile(runID, sessionID, path)
+	}
+}
+
+// sendFile validates a candidate path and publishes it. Silent on refusal —
+// a scanned path is a guess, and an agent mentioning /tmp/notes.json is not an
+// error worth reporting to the backend.
+func (s *ChatStream) sendFile(runID, sessionID, path string) {
+	resolved, mime, err := agentfile.Resolve(path, agentfile.Roots())
+	if err != nil {
+		slog.Info("chat file skipped", "component", "mqtt-chat",
+			"run_id", runID, "path", path, "reason", err)
+		return
+	}
+
+	info, err := os.Stat(resolved)
+	if err != nil {
+		return
+	}
+
+	data := domain.MQTTChatFileData{
+		RunID:     runID,
+		SessionID: sessionID,
+		Name:      filepath.Base(resolved),
+		Path:      path,
+		MIME:      mime,
+		Size:      info.Size(),
+	}
+
+	// Past the inline budget the metadata still goes out: a client can say "a
+	// 12 MB video was produced" instead of silently showing nothing. Separate
+	// from agentfile.MaxBytes, which is what the LAN HTTP endpoint will serve —
+	// MQTT is a much narrower pipe than a same-network fetch.
+	if info.Size() > chatFileMaxInlineBytes {
+		data.TooLarge = true
+		slog.Info("chat file too large to inline", "component", "mqtt-chat",
+			"run_id", runID, "path", path, "size", info.Size(), "cap", chatFileMaxInlineBytes)
+	} else {
+		body, err := os.ReadFile(resolved)
+		if err != nil {
+			slog.Warn("chat file read failed", "component", "mqtt-chat", "path", resolved, "error", err)
+			return
+		}
+		// base64 mirrors how a chat.send carries an inbound image, so the backend
+		// handles one encoding in both directions.
+		data.Content = base64.StdEncoding.EncodeToString(body)
+	}
+
+	payload := domain.MQTTDataResponse{
+		MQTTInfoResponse: domain.NewMQTTInfoResponse(s.cfg, "data", device.GetDeviceMac()),
+		Kind:             domain.KindChatFile,
+		Status:           "success",
+		Data:             data,
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		slog.Error("chat file marshal failed", "component", "mqtt-chat", "error", err)
+		return
+	}
+	if err := s.publish(body); err != nil {
+		slog.Error("chat file publish failed", "component", "mqtt-chat",
+			"run_id", runID, "path", path, "error", err)
+		return
+	}
+	slog.Info("chat file published", "component", "mqtt-chat",
+		"run_id", runID, "name", data.Name, "size", data.Size, "too_large", data.TooLarge)
 }
 
 // sweep drops runs that never produced a terminal event.
