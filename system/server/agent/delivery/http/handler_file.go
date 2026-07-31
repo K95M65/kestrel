@@ -19,9 +19,9 @@ import (
 // <img>/download at this endpoint.
 //
 // What may leave the device is decided in system/agentfile, NOT here: the MQTT
-// path that pushes the same files to a phone (kind chat.file) has to agree with
-// this one exactly, and two copies of an allow-list is two chances to widen one
-// by accident. This handler is only the HTTP dressing.
+// path that serves the same files to a phone (kind chat.file.get) has to agree
+// with this one exactly, and two copies of an allow-list is two chances to widen
+// one by accident. This handler is only the HTTP dressing.
 //
 // A narrower, path-free variant already exists for Flow Monitor tool results
 // (SensingHandler.GetAgentSnapshot, which takes runtime/source/name segments

@@ -283,6 +283,8 @@ func (h *DeviceMQTTHandler) dispatchData(env domain.MQTTDataCommand) error {
 		return h.handleChannelRefreshConfig(env)
 	case domain.KindChatSend:
 		return h.handleChatSend(env)
+	case domain.KindChatFileGet:
+		return h.handleChatFileGet(env)
 	default:
 		slog.Warn("unknown data kind", "component", "mqtt", "kind", env.Kind)
 		return h.publishDataResult(env.Kind, "failure", "unknown kind: "+env.Kind, nil)

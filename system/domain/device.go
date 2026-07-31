@@ -452,14 +452,20 @@ const (
 	// that would drift the first time an event type is added.
 	KindChatEvent = "chat.event"
 
-	// KindChatFile is DEVICE-INITIATED: one file a chat.send turn produced,
-	// pushed out with its bytes. Data: MQTTChatFileData.
+	// KindChatFileGet fetches ONE device-local file a turn named. Data:
+	// MQTTChatFileGetData; the reply's Data is MQTTChatFileData.
 	//
-	// The web chat shows such a file by fetching GET /api/agent/file, which is
-	// device-local — a phone cannot reach it, so for backend-started runs the
-	// device pushes instead of waiting to be asked. What may leave is decided by
-	// system/agentfile, the same allow-list the HTTP endpoint uses.
-	KindChatFile = "chat.file"
+	// PULL, not push, and deliberately so: it is the MQTT twin of
+	// GET /api/agent/file, which is exactly how the web chat works — the client
+	// spots a device path in the message it is rendering and asks for that file.
+	// Keeping the two the same means a phone bytes-for-bytes reuses the web
+	// client's logic, files nobody opens cost nothing on the uplink, and a
+	// conversation scrolled back weeks still resolves its images.
+	//
+	// What may leave the device is decided by system/agentfile — the same
+	// allow-list the HTTP endpoint enforces, so `path` being client-supplied is
+	// safe the same way it is safe there.
+	KindChatFileGet = "chat.file.get"
 )
 
 // Connector (MCP) data-kind prefixes. The connector code is the suffix, e.g.
@@ -912,13 +918,26 @@ type MQTTChatEventData struct {
 	Event     MonitorEvent `json:"event"`
 }
 
-// MQTTChatFileData is the Data payload for kind:"chat.file" — one file produced
-// by an in-flight chat.send run.
-type MQTTChatFileData struct {
-	RunID     string `json:"run_id"`
+// MQTTChatFileGetData is the Data payload for kind:"chat.file.get" — a request
+// for ONE device-local file the client found named in a message it is rendering.
+type MQTTChatFileGetData struct {
+	// Path is the device path, exactly as it appeared in the turn. Treated as
+	// hostile input and validated against the agentfile allow-list.
+	Path string `json:"path"`
+	// SessionID and RunID are opaque to the device and echoed back untouched, so
+	// the backend can route the reply to the client that asked. Both optional:
+	// a file can be requested long after its run is over.
 	SessionID string `json:"session_id,omitempty"`
-	// Name is the basename; Path is the device path the agent named, kept for
-	// traceability and so a backend can correlate a re-send of the same file.
+	RunID     string `json:"run_id,omitempty"`
+}
+
+// MQTTChatFileData is the Data block of a chat.file.get reply — one file's
+// metadata plus, when it fits, its bytes.
+type MQTTChatFileData struct {
+	RunID     string `json:"run_id,omitempty"`
+	SessionID string `json:"session_id,omitempty"`
+	// Name is the basename; Path echoes what was asked for, so a reply can be
+	// matched to its request without relying on ordering.
 	Name string `json:"name"`
 	Path string `json:"path"`
 	MIME string `json:"mime"`
@@ -927,9 +946,9 @@ type MQTTChatFileData struct {
 	// carries an inbound image, so the backend handles one encoding in both
 	// directions. Empty when TooLarge is set.
 	Content string `json:"content,omitempty"`
-	// TooLarge marks a file past the MQTT inline budget: the metadata is still
-	// published so a client can say "a 12 MB video was produced" instead of
-	// silently showing nothing, but the bytes are not on the wire.
+	// TooLarge marks a file past the MQTT inline budget: the metadata still
+	// comes back so a client can say "a 12 MB video" instead of showing nothing,
+	// but the bytes are not on the wire.
 	TooLarge bool `json:"too_large,omitempty"`
 }
 

@@ -7,9 +7,9 @@
 //
 //	GET /api/agent/file  (system/server/agent/delivery/http) — the web chat, on
 //	                     the LAN, fetching the bytes directly
-//	kind chat.file       (system/server/device/delivery/mqtt) — a phone, which
-//	                     cannot reach the device at all, so the device pushes the
-//	                     bytes out over MQTT
+//	kind chat.file.get   (system/server/device/delivery/mqtt) — a phone, which
+//	                     cannot reach the device at all, so it asks the backend
+//	                     and the bytes come back over MQTT
 //
 // Both must agree on exactly what may leave the device. That is why the rules
 // live here and not in either caller: a second copy is a second chance to widen
