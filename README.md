@@ -1,6 +1,6 @@
-# Autonomous OS AI
+# Autonomous OS
 
-**Autonomous OS AI is the open source operating system for physical AI agents.** It runs on edge devices
+**Autonomous OS is the open source operating system for physical AI agents.** It runs on edge devices
 with cameras, microphones, speakers, displays, motors, lights, and sensors, and gives
 an AI agent a body: it sees, hears, speaks, moves, senses, remembers, runs skills, and
 updates itself — locally first.
@@ -9,7 +9,7 @@ updates itself — locally first.
 build a third.
 
 > The brain is a swappable **agentic runtime** (OpenClaw, Hermes, OpenCode, OpenAI Codex,
-> Claude Code, or any LLM + skills + memory). Autonomous OS AI is everything else — the body, the skills, and the bounds.
+> Claude Code, or any LLM + skills + memory). Autonomous OS is everything else — the body, the skills, and the bounds.
 
 ## Reference devices
 
@@ -34,10 +34,10 @@ capabilities, never hardware.
 
 ## Architecture
 
-Autonomous OS AI is a layered stack: each layer exposes an interface to the one above and
+Autonomous OS is a layered stack: each layer exposes an interface to the one above and
 depends only on the one below, so any layer can be replaced without touching the others.
 
-![Autonomous OS AI architecture](docs/architecture/autonomous-stack.svg)
+![Autonomous OS architecture](docs/architecture/autonomous-stack.svg)
 
 ### Skills
 
@@ -57,7 +57,7 @@ with or without the runtime. OTA runs as its own worker (`bootstrap/`).
 
 **OpenClaw**, **Hermes**, **OpenCode**, **OpenAI Codex**, **Claude Code**, or a custom
 runtime. Runs the skills, embodies the device's `SOUL.md`, and decides what to act on.
-Swappable at runtime (web Settings or MQTT) — and where Autonomous OS AI's differentiated value
+Swappable at runtime (web Settings or MQTT) — and where Autonomous OS's differentiated value
 (the default brain, memory, character) lives. Its **tools** — how it reaches beyond the device —
 are **MCP connectors** (`runtimes/*/mcp.go`, synced across a switch by `system/agent`) and the
 **CLI** the LLM calls directly (`curl`, shell); skills are the device's own abilities through the
