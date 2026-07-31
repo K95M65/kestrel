@@ -20,7 +20,6 @@ from hal.models import (
 from hal.presets import (
     FX_SPEAKING_WAVE,
     LST_EFFECT,
-    LST_OFF,
     LST_PAINT,
     LST_SOLID,
     RGB_CMD_PAINT,
@@ -154,7 +153,21 @@ def set_led_paint(req: LEDPaintRequest):
 
 @router.post("/led/off", response_model=StatusResponse)
 def turn_off_leds(req: Optional[LEDOffRequest] = Body(default=None)):
-    """Turn off all LEDs."""
+    """Turn off all LEDs — i.e. drop the user's colour and return to the
+    default resting state.
+
+    "Off" is not a separate mode. The resting look is already dark
+    (AMBIENT_RESTING_LED), so clearing the user state IS off: ambient, the
+    resting settle, presence and the speaking waves all read
+    led_should_stay_dark() and leave the strip alone. Actions may still light
+    it briefly (an emotion) or for as long as they last (a status cue, the
+    mic-muted indicator) — those are information, not decoration.
+
+    Modelling off as its own sticky state was worse: it looked identical to
+    the default (both dark) but behaved differently, and nothing could return
+    the device to the default — an explicit colour was the only way out, so
+    the user could never get back to "dark at rest, expressive on action".
+    """
     if not state.rgb_service:
         raise HTTPException(503, "LED not available")
     transient = req.transient if req else False
@@ -168,7 +181,7 @@ def turn_off_leds(req: Optional[LEDOffRequest] = Body(default=None)):
         state._cancel_pending_restore()
     else:
         state._dismiss_mic_muted_led("led/off")
-        state._save_user_led_state({"type": LST_OFF})
+        state._save_user_led_state(None)
     return {"status": "ok"}
 
 
@@ -200,19 +213,12 @@ def start_led_effect(req: LEDEffectRequest):
         )
         return {"status": "ok", "effect": req.effect, "speed": req.speed}
 
-    # "Turn off the light" is a deliberate user state (LST_OFF), honored by
-    # emotions, speaking waves and /led/restore — a transient system overlay
-    # must honor it too. Ambient's breathingLoop resumes ~60s after the last
-    # interaction and, reading black from /led/color, falls back to a
-    # hard-coded warm white (see system/ambient/service.go) — which re-lit a
-    # strip the user had just turned off. Non-transient writes are the user
-    # turning the light back ON, so they pass through and overwrite LST_OFF.
-    if req.transient and state._led_off_by_user():
-        state.logger.info(
-            "LED effect '%s' (transient) skipped -- LED off by user", req.effect
-        )
-        return {"status": "ok", "effect": req.effect, "speed": req.speed}
-
+    # NOTE: no "light is off" guard here. A transient effect on this route is
+    # a status cue (connectivity, error, OTA) or a companion overlay — it
+    # carries information, so it may light a resting strip. What must NOT
+    # relight it is ambient breathing, and that is handled at the source
+    # (system/ambient/service.go never paints a dark strip) rather than by
+    # second-guessing every caller here.
     state._stop_current_effect()
     if not req.transient:
         state._active_scene = None
@@ -308,12 +314,6 @@ def restore_led():
         state.logger.info("LED restore: mic muted -- settling on privacy indicator")
         return {"status": "ok"}
     user_state = state._user_led_state
-    if user_state is not None and user_state.get("type") == LST_OFF:
-        # User explicitly turned the strip off — honor it, restore to black.
-        state._stop_current_effect()
-        state.rgb_service.dispatch(RGB_CMD_SOLID, (0, 0, 0))
-        state.logger.info("LED restore: user state OFF -- cleared to black")
-        return {"status": "ok"}
     if user_state is None:
         # No saved user preference — settle on the ambient resting look
         # (mirrors the Go ambient loop fallback) so a transient overlay
@@ -358,4 +358,12 @@ def stop_led_effect():
         state.logger.info("LED effect/stop skipped -- mic-muted indicator owns strip")
         return {"status": "ok"}
     state._stop_current_effect()
+    # Stopping a thread does not unpaint what it drew: the strip holds the
+    # effect's last frame. When the resting state is dark that remnant is the
+    # visible result, so clear it. With a lit resting look the old behaviour is
+    # right — the caller's follow-up restore repaints, and blanking here would
+    # add a flicker in between.
+    if state.led_should_stay_dark():
+        state.rgb_service.dispatch(RGB_CMD_SOLID, (0, 0, 0))
+        state.logger.info("LED effect/stop -- resting dark, cleared last frame")
     return {"status": "ok"}

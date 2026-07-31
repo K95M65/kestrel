@@ -145,10 +145,11 @@ from `STATUS_LED_PRESETS`, overridable per device via `presets.json`'s `status_l
 
 ### Mic-muted idle indicator
 
-`STATUS_LED_PRESETS["mic_muted"]` — dark red `(90, 0, 0)` breathing at speed 0.8, deliberately
-dimmer than the `light.max_brightness` ceiling would force (the gate alone clamps to 120):
-it is a resting look that stays lit for as long as the mic is muted, often pointed at the
-user, so it is tuned to be glanceable rather than bright. HAL-local
+`STATUS_LED_PRESETS["mic_muted"]` — dark red `(10, 0, 0)` breathing at speed 0.8, far dimmer
+than the `light.max_brightness` ceiling would force (the gate alone clamps to 120): it is a
+resting look that stays lit for as long as the mic is muted, often pointed at the user, so it
+is tuned to be glanceable rather than bright. Red helps — at the same value it carries about
+a quarter the luminance of white. HAL-local
 key (no Go statusled state): applied by `POST /voice/mute`, cleared by `POST /voice/unmute`
 (`app_state._mic_muted_led`). It is the strip's **resting look** while the mic is muted —
 nothing is blocked:
@@ -159,10 +160,11 @@ nothing is blocked:
   the mic is muted.
 - An explicit user LED command (non-transient `/led/solid|off|effect`, `/led/paint`)
   dismisses the indicator — the user's ask wins the strip; the mic stays muted.
-- Yields to deliberate lighting choices: user LED-off stays dark, an active scene keeps
-  its functional lighting (the flag persists, so leaving the scene while still muted
-  brings the red back on the next restore). Scene mic-unmute paths (`/scene` with
-  `mic:"on"`, `/scene/off`) also clear it.
+- Yields to an active scene, which keeps its functional lighting (the flag persists, so
+  leaving the scene while still muted brings the red back on the next restore). Scene
+  mic-unmute paths (`/scene` with `mic:"on"`, `/scene/off`) also clear it. It does NOT
+  yield to a resting (dark) strip: the indicator is the only signal that the mic is off,
+  so it outranks "the lamp is idle".
 - `_user_led_state` is never touched — unmute restores the user's saved look.
 - While the indicator owns the strip, transient overlay writes are skipped (`POST /led/effect`
   with `transient:true`) and so is **every** `POST /led/effect/stop`: no transient overlay can
@@ -215,18 +217,33 @@ previous behavior, where an idle lamp read as a cozy lamp turned on rather than 
 what re-lit the strip ~60s after the user turned the light off, and what made every fresh
 boot come up lit.
 
-### LED off wins over transient overlays
+### "Off" is not a mode
 
-"Turn off the light" saves `{"type": "off"}` as the user LED state, and HAL honors it on
-every path: emotion LEDs are skipped, TTS/music waves render on black, the mic-muted
-privacy indicator yields, and `POST /led/restore` clears to black. `POST /led/effect` with
-`"transient": true` is skipped for the same reason — otherwise ambient's breathing loop
-would resume 60s after the last interaction, read black from `/led/color`, fall back to its
-hard-coded warm white and re-light a strip the user had just turned off. This also
-suppresses status overlays (`POST /led/status`: connectivity orange, error red, OTA green)
-while the light is off — a dark strip stays dark until the user turns it back on. Turning it
-back on is any **non-transient** write (`/led/solid`, `/led/effect`, `/led/paint`, a scene),
-which overwrites the saved `off` state.
+`POST /led/off` **clears the user LED state** (`_save_user_led_state(None)`) rather than
+saving an off flag. Since the resting look is already dark, no state IS off. There are only
+two states:
+
+| State | `_user_led_state` | At rest | On an action |
+|---|---|---|---|
+| **Default** | `None` | dark | lights up (emotion, status cue, mic-muted indicator) |
+| **User colour** | solid / paint / effect / scene | that colour | effect runs over it, then settles back |
+
+`led_should_stay_dark()` (`hal/app_state.py`) is the single predicate for "leave the lamp
+alone", and everything that paints without the user asking checks it: the TTS/music waves,
+the post-effect settle, `POST /led/restore`, `POST /led/effect/stop` (it clears the stopped
+effect's last frame instead of leaving it frozen), presence restore/dim, and — on the
+os-server side — ambient's breathing loop.
+
+What is deliberately NOT gated: an explicit user/agent command (that IS the user asking, and
+it overwrites the state), and cues that carry information the user needs — status overlays
+(`POST /led/status`: connectivity orange, error red, OTA green) and the mic-muted indicator.
+Those earn their light even on a resting strip.
+
+Off used to be its own sticky state, and it was worse: it looked identical to the default
+(both dark) but behaved differently, nothing could return the device to the default — an
+explicit colour was the only way out — and a reboot silently dropped it, because the sidecar
+is boot-scoped. A legacy sidecar holding `{"type": "off"}` is normalised to "no state" on
+load.
 
 ## LED in Emotion
 
