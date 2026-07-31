@@ -365,6 +365,10 @@ sớm ("hello") ngay sau khi restart sẽ rớt xuống main agent.
 3. **Stream.** Khi session STT đang mở, mỗi frame mic được resample về rate của
    provider và gửi qua `append_audio()` (song song, non-blocking), đồng thời buffer
    vào `rt_audio_buffer`.
+   Khi bật STT keepalive tùy chọn, nếu socket STT pre-connect đóng bình thường
+   (WS 1000) đúng lúc bắt đầu nói, HAL thay socket trước khi stream tiếp và replay
+   toàn bộ pre-roll đúng một lần vào socket mới. Nhờ vậy không mất từ mở đầu; close
+   bình thường đã recovery là warning, không phải error.
 4. **Commit.** Cuối session, nếu enabled + `available` + có audio buffer, gọi
    `commit_audio()`. Cue emotion `thinking` fire cùng lúc commit (mặt + servo +
    LED pulse tím ÉP HIỆN — `thinking` vốn là background emotion có LED nhường

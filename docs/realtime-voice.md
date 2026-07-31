@@ -380,6 +380,10 @@ turn ("hello") right after a restart would leak to the main agent.
 3. **Stream.** While the STT session is open, each mic frame is also resampled to
    the provider rate and sent via `append_audio()` (parallel, non-blocking), and
    buffered in `rt_audio_buffer`.
+   When optional STT keepalive is enabled, a pre-connected STT socket that closes
+   normally (WS 1000) at speech start is replaced before streaming continues and
+   the complete pre-roll is replayed once on the fresh socket. This preserves the
+   opening words; a recovered normal close is a warning, not an error.
 4. **Commit.** At session end, if enabled + `available` + audio buffered,
    `commit_audio()` fires. A `thinking` emotion cue fires with the commit
    (face + servo + a FORCED purple LED pulse — `thinking` is normally a

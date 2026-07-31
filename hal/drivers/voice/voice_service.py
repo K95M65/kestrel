@@ -44,6 +44,15 @@ from hal.drivers.voice.stt import STTProvider
 logger = logging.getLogger("hal.voice")
 
 
+def _is_normal_ws_close(error: Exception) -> bool:
+    """Whether an STT exception represents a peer's normal WS close (1000)."""
+    code = getattr(error, "code", None)
+    received = getattr(error, "rcvd", None)
+    if code is None and received is not None:
+        code = getattr(received, "code", None)
+    return code == 1000 or "received 1000 (OK)" in str(error)
+
+
 class VoiceService:
     """Local VAD + pluggable STT provider for autonomous sensing."""
 
@@ -1004,8 +1013,44 @@ class VoiceService:
                     len(all_pre),
                     len(all_pre) * voice_cfg.FRAME_DURATION_MS,
                 )
+                # A keepalive socket can pass the earlier is_closed() check then
+                # receive a peer close just as speech starts. Retry the COMPLETE
+                # pre-roll on a fresh session before recording/forwarding it so
+                # the user does not lose the opening words (or get duplicate
+                # frames in realtime) because the old socket accepted only a
+                # prefix before its close.
+                used_preconnected = preconnected_session is not None
+
+                def _send_pre_roll():
+                    if stt_session.is_closed():
+                        raise RuntimeError("pre-connected STT session is closed")
+                    for pre_frame in all_pre:
+                        stt_session.send_audio(pre_frame)
+
+                try:
+                    _send_pre_roll()
+                except Exception as e:
+                    if not used_preconnected:
+                        raise
+                    logger.warning(
+                        "STT keepalive closed at speech start (%s) — reconnecting "
+                        "and replaying %d pre-roll frame(s)",
+                        "normal 1000 close" if _is_normal_ws_close(e) else str(e),
+                        len(all_pre),
+                    )
+                    try:
+                        stt_session.close()
+                    except Exception:
+                        pass
+                    stt_session = self._stt.create_session()
+                    if not stt_session.start(on_transcript):
+                        raise RuntimeError("fresh STT session failed to connect") from e
+                    _send_pre_roll()
+
+                # The full pre-roll reached one live STT session. Only now make
+                # it part of local/realtime buffers, so a failed keepalive retry
+                # cannot duplicate or retain audio sent to a dead socket.
                 for frame in all_pre:
-                    stt_session.send_audio(frame)
                     audio_buffer.append(frame)
                     # Also send pre-buffer to realtime model (non-blocking queue put)
                     if hal_config.REALTIME_ENABLED and self._realtime.available:
@@ -1091,7 +1136,13 @@ class VoiceService:
                     logger.info("Silence detected, disconnecting STT")
                     break
         except Exception as e:
-            logger.error("STT stream error: %s", e)
+            if _is_normal_ws_close(e):
+                logger.warning(
+                    "STT session closed normally (1000) before turn completion; "
+                    "audio for this turn was discarded"
+                )
+            else:
+                logger.error("STT stream error: %s", e)
         finally:
             self._backchannel.reset()
             self._listening = False
