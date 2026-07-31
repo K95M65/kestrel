@@ -49,12 +49,34 @@ const (
 	chatStreamQueue = 256
 )
 
-// terminalEventTypes end a run's mirroring. chat_response is what the web chat
-// treats as "turn done" (ChatSection's reducer); the rest are the paths where a
-// turn produces no assistant message at all.
+// terminalEventTypes end a run's mirroring on their own, regardless of state:
+// these Types never fire more than once per run. chat_response is NOT one of
+// them — see chatResponseTerminalStates.
 var terminalEventTypes = map[string]bool{
-	"chat_response": true,
-	"no_reply":      true,
+	"no_reply": true,
+}
+
+// chatResponseTerminalStates are the domain.ChatPayload.State values
+// (autonomous system/domain/openclaw.go) at which a Type=="chat_response"
+// event is the run's actual last word. OpenClaw pushes chat_response
+// repeatedly while a reply streams in (state e.g. "delta"/"partial") before
+// the terminal one — ending the mirror on the FIRST chat_response, as this
+// used to, truncates every reply to its first chunk. This must match the web
+// monitor's own reducer exactly (ChatSection.tsx: `ev.state === "complete" ||
+// ev.state === "final"` for a normal reply, `ev.state === "error"` for a
+// failed one) — same event vocabulary, one client.
+var chatResponseTerminalStates = map[string]bool{
+	"complete": true,
+	"final":    true,
+	"error":    true,
+}
+
+// isTerminalChatEvent reports whether evt ends its run's mirroring.
+func isTerminalChatEvent(evt domain.MonitorEvent) bool {
+	if evt.Type == "chat_response" {
+		return chatResponseTerminalStates[evt.State]
+	}
+	return terminalEventTypes[evt.Type]
 }
 
 // trackedRun is one backend-started turn being mirrored.
@@ -185,7 +207,7 @@ func (s *ChatStream) handle(evt domain.MonitorEvent) {
 
 	flushed := s.takePending(run)
 	sessionID := run.sessionID
-	terminal := terminalEventTypes[evt.Type]
+	terminal := isTerminalChatEvent(evt)
 	if terminal {
 		delete(s.runs, evt.RunID)
 	}

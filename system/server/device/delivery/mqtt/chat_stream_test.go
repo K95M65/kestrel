@@ -120,7 +120,7 @@ func TestChatStreamStopsAtTerminalEvent(t *testing.T) {
 	s, sent := newTestStream()
 	s.Track("run1", "sess1")
 
-	s.handle(domain.MonitorEvent{Type: "chat_response", RunID: "run1", Summary: "done"})
+	s.handle(domain.MonitorEvent{Type: "chat_response", State: "final", RunID: "run1", Summary: "done"})
 	s.handle(domain.MonitorEvent{Type: "assistant_delta", RunID: "run1", Summary: "late"})
 	s.flushAll()
 
@@ -137,6 +137,36 @@ func TestChatStreamStopsAtTerminalEvent(t *testing.T) {
 	s.mu.Unlock()
 	if still {
 		t.Error("run still tracked after its terminal event")
+	}
+}
+
+// OpenClaw pushes chat_response repeatedly while a reply streams in — state
+// "delta"/"partial" chunks before the terminal one. Ending the mirror on the
+// FIRST chat_response regardless of state truncates every reply to its first
+// chunk; only state "complete"/"final"/"error" may end it (must match the web
+// monitor's own reducer — ChatSection.tsx).
+func TestChatStreamChatResponseNotTerminalUntilFinalState(t *testing.T) {
+	s, sent := newTestStream()
+	s.Track("run1", "sess1")
+
+	s.handle(domain.MonitorEvent{Type: "chat_response", State: "delta", RunID: "run1", Summary: "Why"})
+	s.handle(domain.MonitorEvent{Type: "chat_response", State: "delta", RunID: "run1", Summary: "Why don't"})
+	s.handle(domain.MonitorEvent{Type: "chat_response", State: "final", RunID: "run1", Summary: "Why don't scientists trust atoms?"})
+
+	s.mu.Lock()
+	_, still := s.runs["run1"]
+	s.mu.Unlock()
+	if still {
+		t.Error("run still tracked after its final chat_response")
+	}
+
+	got := sent()
+	if len(got) != 3 {
+		t.Fatalf("want all 3 chat_response chunks relayed, got %d: %+v", len(got), got)
+	}
+	last := got[len(got)-1]
+	if last.Event.Summary != "Why don't scientists trust atoms?" {
+		t.Errorf("last relayed event = %+v, want the final chunk", last.Event)
 	}
 }
 
