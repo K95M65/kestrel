@@ -323,7 +323,8 @@ metadata device/version chuẩn cộng với `kind`, `status` (`success|failure`
 | `skills.install_store` | Cài MỘT skill từ catalog lên runtime đang chạy (bất đồng bộ; ack `starting`) | `id`, `name` tuỳ chọn |
 | `skills.files` | Đọc file của một skill đã cài — danh sách, hoặc nội dung một file (đồng bộ) | `name`, `path` tuỳ chọn |
 | `skills.uninstall` | Xoá một skill đã cài khỏi runtime đang chạy (đồng bộ) | `name` |
-| `chat.send` | Mở một turn của agent từ backend rồi stream ngược về (ack một run id, sau đó bắn `chat.event` + `chat.file`) | `message` (bắt buộc), tuỳ chọn `image`/`session_id`/`speak` |
+| `chat.file.get` | Lấy một file trên device mà turn đã gọi tên (đồng bộ) | `path` (bắt buộc), tuỳ chọn `session_id`/`run_id` |
+| `chat.send` | Mở một turn của agent từ backend rồi stream ngược về (ack một run id, sau đó bắn `chat.event`) | `message` (bắt buộc), tuỳ chọn `image`/`session_id`/`speak` |
 | `skills.save` | Ghi một skill soạn sẵn vào thư mục skill của runtime đang chạy (đồng bộ) | `name`, `description`, `instructions` |
 | `system.info` | Snapshot tổng hợp: versions + network + host | _(không)_ |
 | `system.version` | Chỉ versions các thành phần (rẻ hơn `system.info`) | _(không)_ |
@@ -766,17 +767,38 @@ Vài điểm triển khai mà người viết backend cần biết:
   `publish` dùng chung mở rồi đóng kết nối cho từng message — hợp lý với kết quả
   một-lần của command, nhưng thảm hoạ với hàng chục event mỗi turn. Client id
   phải khác: hai kết nối trùng id thì broker đá cái nối trước.
-**File turn tạo ra — `chat.file`**
+**File turn tạo ra — `chat.file.get`**
 
 Một turn chỉ có thể GỌI TÊN file nó tạo: "chụp hình" thì kết thúc bằng path tuyệt
-đối kiểu `/root/.openclaw/media/hal-snapshots/snap_*.jpg`. Chat web hiện được nhờ
-gọi `GET /api/agent/file`, nhưng endpoint đó nằm local trên device — điện thoại
-không với tới — nên với run do backend mở, device **đẩy ra** chứ không đợi được
-hỏi. Device tự bắn; không request nào mang kind này.
+đối kiểu `/root/.openclaw/media/hal-snapshots/snap_*.jpg`. Client thấy path đó
+trong message mình đang render rồi đi xin file — bản MQTT của việc chat web gọi
+`GET /api/agent/file`.
 
+**Client chủ động kéo, device không tự đẩy.** Cố ý giống hệt web: cách này chạy
+được với cả message client **đã có sẵn** (hội thoại cuộn lại từ mấy tuần trước
+vẫn hiện được ảnh — đẩy thì chỉ phủ đúng turn đang chạy), file không ai mở thì
+không tốn gì trên uplink của device, và điện thoại dùng lại luôn regex path cùng
+hành vi "hỏng thì để nguyên path dạng text" của client web thay vì viết bản thứ
+hai.
+
+**Nhận:**
+```json
+{"cmd": "data", "kind": "chat.file.get", "data": {
+  "path": "/root/.openclaw/media/hal-snapshots/snap_1785393455291.jpg",
+  "session_id": "abc123",
+  "run_id": "run-…"
+}}
+```
+
+`path` bắt buộc. `session_id` / `run_id` device không hiểu gì, chỉ echo lại
+nguyên vẹn để backend trả đúng client đã hỏi; cả hai tuỳ chọn, vì file có thể
+được xin rất lâu sau khi run kết thúc.
+
+**Trả về:**
 ```json
 {
-  "device": "<device_type>", "type": "data", "kind": "chat.file", "status": "success",
+  "device": "<device_type>", "type": "data", "kind": "chat.file.get",
+  "status": "success",
   "data": {
     "run_id": "run-…", "session_id": "abc123",
     "name": "snap_1785393455291.jpg",
@@ -787,28 +809,25 @@ hỏi. Device tự bắn; không request nào mang kind này.
 }
 ```
 
-- **Quét cả event chứ không chỉ câu trả lời.** Bảo agent gửi ảnh thì nó thường
-  đặt path trong ARGS của tool còn câu nói ra không có path nào
-  (`message {"action":"send","media":"…jpg"}`); `curl /camera/snapshot` thì path
-  nằm trong RESULT của tool; đôi khi nó gõ thẳng path ra. Event được marshal rồi
-  quét, nên không cần biết schema của bất kỳ tool nào.
-- **Thứ được phép rời device là `system/agentfile`** — đúng allow-list mà
-  `GET /api/agent/file` đang enforce, cố ý chỉ một bản: allow-list có hai bản là
-  hai cơ hội nới lỏng nhầm một bên. Root gồm `media/` + `workspace/` của từng
-  runtime cộng `/tmp`; `.json` và `.log` không được serve (config JSON của runtime
-  chứa gateway token). Path bị từ chối hoặc không tồn tại thì bỏ qua im lặng —
-  path quét được chỉ là phỏng đoán, không phải cam kết.
-- **Mỗi file chỉ đi một lần trong một run.** Cùng một path snapshot thường xuất
-  hiện ở args của tool, result của tool đó VÀ câu trả lời; gửi bytes ba lần là sai
-  lầm đắt nhất ở đây. Path được đánh dấu đã gửi **trước** khi đọc, nên file
-  resolve hỏng không bị thử lại ở mọi event sau đó của cùng turn.
+- **`path` do client gửi lên nên là input thù địch.** Thứ được phép rời device do
+  `system/agentfile` quyết — đúng allow-list mà `GET /api/agent/file` đang
+  enforce, cố ý chỉ một bản: allow-list có hai bản là hai cơ hội nới lỏng nhầm
+  một bên. Root gồm `media/` + `workspace/` của từng runtime cộng `/tmp`; `.json`
+  và `.log` không được serve (config JSON của runtime chứa gateway token); path
+  phải resolve (`EvalSymlinks`) vào trong root, nên `..` lẫn symlink thoát ra đều
+  chết.
+- **Mọi trường hợp từ chối đều trả cùng một message**, `"file not available"`.
+  Nói rõ là sai đuôi / ngoài root / không tồn tại thì kẻ dò biết được cấu trúc
+  filesystem của device; lý do thật ghi vào log trên device.
 - **`content` là base64**, đối xứng với cách `chat.send` mang ảnh vào, nên backend
   chỉ phải xử lý một kiểu encode cho cả hai chiều.
 - **Quá 2 MB thì bỏ bytes, không bỏ record**: `too_large: true`, `content` rỗng,
-  `size` vẫn là size thật, để client nói được "có file video 12 MB" thay vì không
-  hiện gì. Ngưỡng đó là budget inline của MQTT, chặt hơn hẳn 32 MB của
+  `size` vẫn thật, để client nói được "có file video 12 MB" thay vì không hiện
+  gì. Ngưỡng đó là budget inline của MQTT, chặt hơn hẳn 32 MB của
   `agentfile.MaxBytes` (dành cho fetch HTTP cùng mạng) — đây là uplink của device
   dùng chung với mọi command khác, mà base64 còn cộng thêm 1/3.
+- **Backend nên cache bytes.** Mỗi request là device đọc lại và encode lại từ
+  đầu, mà file trong `/tmp` thì reboot là mất.
 
 Thay thế: `integrations/chat-bridges/autonomous-chat-hook/` forward chat từ
 backend một chiều dưới dạng `type:"voice"`, nên device đọc to câu trả lời và
@@ -837,7 +856,8 @@ Xử lý bởi bootstrap worker, không qua MQTT handler trực tiếp.
 | `system/server/device/delivery/mqtt/skills_uninstall_handler.go` | Handle `skills.uninstall` |
 | `system/server/device/delivery/mqtt/chat_send_handler.go` | Handle `chat.send` — forward turn qua loopback tới sensing endpoint |
 | `system/server/device/delivery/mqtt/chat_stream.go` | Mirror monitor event của một chat run về dưới dạng `chat.event` |
-| `system/agentfile/agentfile.go` | Package quyết định file nào của device được phép đưa ra, kèm scanner tìm chúng (dùng chung cho `chat.file` và `GET /api/agent/file`) |
+| `system/server/device/delivery/mqtt/chat_file_handler.go` | Handle `chat.file.get` — validate path được yêu cầu rồi trả file về |
+| `system/agentfile/agentfile.go` | Package quyết định file nào của device được phép đưa ra, kèm scanner tìm path cho client (dùng chung cho `chat.file.get` và `GET /api/agent/file`) |
 | `system/server/device/delivery/mqtt/skills_save_handler.go` | Handle `skills.save` (ghi skill soạn sẵn, đồng bộ, qua `AgentGateway.SaveSkill`) |
 | `system/server/device/delivery/mqtt/connector_handler.go` | Handle `connector.set.<code>`/`connector.remove.<code>` (bất đồng bộ, dispatch writer qua `connectorWriterFor`) |
 | `system/server/device/delivery/mqtt/connector_writer.go` | Interface `ConnectorWriter` + file helpers `<code>_access_tokens.json` dùng chung |
