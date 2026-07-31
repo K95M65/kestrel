@@ -119,11 +119,16 @@ def express_emotion(req: EmotionRequest):
             try:
                 from hal.routes.servo import release_servos
 
-                state.logger.info(
-                    "Auto-release: sleepy held >= %ds, releasing servo",
-                    SLEEPY_AUTO_RELEASE_SECONDS,
-                )
-                release_servos()
+                # release() ramps to a gravity-rest pose before torque-off.
+                # Serialize it with wake/resume so a wake cannot re-enable
+                # torque halfway through the release sequence.
+                with state._sleep_servo_lock:
+                    state._sleep_servo_released = True
+                    state.logger.info(
+                        "Auto-release: sleepy held >= %ds, releasing servo",
+                        SLEEPY_AUTO_RELEASE_SECONDS,
+                    )
+                    release_servos()
             except Exception as e:
                 state.logger.warning(f"Sleepy auto-release failed: {e}")
 
@@ -171,7 +176,12 @@ def express_emotion(req: EmotionRequest):
             # thread, backends whose control loop lives elsewhere (Reachy's
             # daemon) no-op. Reaching for _running/_event_thread directly threw
             # AttributeError on any non-feetech body.
-            svc.ensure_running()
+            if was_sleeping and state._sleep_servo_released:
+                with state._sleep_servo_lock:
+                    svc.resume()
+                    state._sleep_servo_released = False
+            else:
+                svc.ensure_running()
             svc.dispatch(SERVO_CMD_PLAY, preset["servo"])
             servo_played = preset["servo"]
         except Exception as e:

@@ -113,7 +113,7 @@ Agent calls `/emotion idle` (0.4), fires `/servo/track/stop` to release any acti
 
 Sent automatically by HAL's `PresenceService` when **no motion is detected for 15 minutes** (after already dimming at 5 min). By this point the lights are already off — the agent's job is to **announce going to sleep** via TTS and Telegram.
 
-Agent calls `/emotion sleepy` (0.8), fires `/servo/track/stop` so any stale follow from earlier in the session is released. HAL immediately turns the LED black, mutes the mic and speaker, and stops active TTS or music; after 2 seconds of continuous `sleepy`, it releases servo torque. A later wake emotion restores only the mic/speaker states that sleepy auto-muted. This is the last action before Lamp goes fully idle.
+Agent calls `/emotion sleepy` (0.8), fires `/servo/track/stop` so any stale follow from earlier in the session is released. HAL immediately turns the LED black, mutes the mic and speaker, and stops active TTS or music; after 2 seconds of continuous `sleepy`, it releases servo torque and locks motion commands. A wake emotion is the only action that resumes servo motion, and it restores only the mic/speaker states that sleepy auto-muted. This is the last action before Lamp goes fully idle.
 
 The full presence auto-control timeline:
 1. **5 min no motion** → light dims to 20% (automatic, no agent involvement)

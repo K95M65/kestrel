@@ -102,6 +102,10 @@ _current_emotion: Optional[str] = None
 # Fires release_servos after sleepy stays active continuously. Cancelled
 # the moment the emotion changes away from sleepy (see routes/emotion.py).
 _sleepy_release_timer: Optional[threading.Timer] = None
+# Set once sleepy has released torque. Servo routes honor this lock until a
+# wake emotion explicitly resumes the motion service.
+_sleep_servo_released = False
+_sleep_servo_lock = threading.RLock()
 # These flags track only mutes owned by sleepy; a wake must never undo a
 # manual user mute.
 _sleepy_auto_muted_mic = False
