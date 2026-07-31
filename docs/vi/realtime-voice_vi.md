@@ -198,6 +198,10 @@ recycle Gemini đồng bộ trước khi stream audio nếu lượt trước đ�
 `HAL_GEMINI_PRE_TURN_RECYCLE_S` giây, để câu nói sau khoảng nghỉ không rơi vào
 socket đã chết vì idle ở proxy.
 
+Mọi provider coi teardown là trạng thái kết thúc: sau khi `disconnect()` đặt
+stop signal, worker send/receive không reconnect và cũng không ghi log lỗi
+transport trong lúc socket đã đóng đang unwind.
+
 **Qwen Omni Realtime** (Alibaba DashScope / Model Studio) nói **schema event BETA
 của OpenAI Realtime** (`session.update`, `input_audio_buffer.append/commit`,
 `response.create`, `response.audio.delta`, `response.audio_transcript.delta`,

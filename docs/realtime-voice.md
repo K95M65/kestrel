@@ -207,6 +207,10 @@ a client-side failure. HAL also recycles Gemini synchronously before streaming a
 the previous turn ended more than `HAL_GEMINI_PRE_TURN_RECYCLE_S` seconds ago, so
 post-idle speech does not land on a proxy-dropped session.
 
+All providers treat teardown as terminal: once `disconnect()` sets the stop
+signal, send/receive workers neither reconnect nor emit transport-failure logs
+while their closed socket unwinds.
+
 Qwen Omni Realtime (Alibaba DashScope / Model Studio) speaks the **OpenAI
 Realtime beta event schema** (`session.update`, `input_audio_buffer.append` /
 `commit`, `response.create`, `response.audio.delta`,
