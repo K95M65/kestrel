@@ -473,12 +473,15 @@ or via env on the device (`DASHSCOPE_API_KEY`, `HAL_QWEN_REALTIME_BASE_URL` in
 > "leave blank to derive" stays blank and a save never re-persists the bare URL.
 
 ```json
-"realtime": {
-  "enabled": true,
-  "provider": "gemini",
-  "gemini": { "model": "gemini-3.1-flash-live-preview", "voice": "Kore", "thinking_level": "MINIMAL" },
-  "openai": { "model": "gpt-realtime-2", "voice": "alloy", "reasoning_effort": "minimal" },
-  "qwen": { "model": "qwen3.5-omni-plus-realtime", "voice": "Ethan", "api_key": "sk-…", "base_url": "wss://…" }
+{
+  "wakeword": false,
+  "realtime": {
+    "enabled": true,
+    "provider": "gemini",
+    "gemini": { "model": "gemini-3.1-flash-live-preview", "voice": "Kore", "thinking_level": "MINIMAL" },
+    "openai": { "model": "gpt-realtime-2", "voice": "alloy", "reasoning_effort": "minimal" },
+    "qwen": { "model": "qwen3.5-omni-plus-realtime", "voice": "Ethan", "api_key": "sk-…", "base_url": "wss://…" }
+  }
 }
 ```
 
@@ -528,6 +531,7 @@ Each knob's `HAL_*` env var overrides the block (and is the dev-box path):
 | Variable | Default | Notes |
 |----------|---------|-------|
 | `HAL_REALTIME_ENABLED` | `true` | Master gate for the realtime pipeline |
+| `wakeword` | `false` | Top-level config-file wake-word gate. When true, HAL keeps listening with its active STT provider but only sends a turn to the realtime model after an interim transcript starts with a configured wake phrase (for example `hey <name>` or `<name> ơi`). Direct realtime replies stay in HAL; only an explicit `delegate_to_main` is forwarded to os-server. If realtime is disabled, an armed final transcript instead follows the normal os-server path, so wake-word control still works. Missing/false preserves the existing always-listening flow. HAL restarts after a local Settings save. |
 | `HAL_REALTIME_PROVIDER` | `gemini` | `none` \| `gemini` \| `openai` \| `qwen` |
 | `HAL_REALTIME_TURN_DETECTION` | `off` | `server_vad` \| `semantic_vad` \| `off` (Gemini: off = manual activity detection) |
 | `HAL_REALTIME_RECV_QUEUE_TIMEOUT_S` | `8.0` | Max seconds `receive()` waits for the next output event before ending a silent turn (fallback to main agent) |

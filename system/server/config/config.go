@@ -177,6 +177,11 @@ type Config struct {
 	// accessors below.
 	Realtime *RealtimeConfig `json:"realtime,omitempty" yaml:"realtime"`
 
+	// WakeWord gates voice turns before either the realtime model or the main
+	// agent sees them. It is top-level because it applies to Deepgram and the
+	// non-realtime Go fallback too, not just a particular realtime provider.
+	WakeWord *bool `json:"wakeword,omitempty" yaml:"wakeword"`
+
 	OpenclawConfigDir string `json:"openclaw_config_dir" yaml:"openclawConfigDir"`
 
 	NetworkSSID     string `json:"network_ssid" yaml:"networkSSID" validate:"required"`
@@ -279,6 +284,7 @@ func Load() (Config, error) {
 }
 
 func Default() Config {
+	wakeWord := false
 	return Config{
 		HttpPort: 5000,
 
@@ -305,9 +311,16 @@ func Default() Config {
 		// Seed the realtime block so a fresh config.json always carries an editable
 		// realtime config (HAL reads it from there). See DefaultRealtimeConfig.
 		Realtime: DefaultRealtimeConfig(),
+		WakeWord: &wakeWord,
 
 		notify: make(chan bool, 1),
 	}
+}
+
+// WakeWordEnabled reports whether STT must first recognize a wake phrase
+// before HAL handles the voice turn. Unset defaults to false for upgrades.
+func (c *Config) WakeWordEnabled() bool {
+	return c.WakeWord != nil && *c.WakeWord
 }
 
 // DeviceTypeOrDefault resolves the device class used to pick
@@ -364,6 +377,15 @@ func ProvideConfig() *Config {
 		cfg.Realtime = DefaultRealtimeConfig()
 		if err := cfg.Save(); err != nil {
 			slog.Error("seed realtime config failed", "component", "config", "error", err)
+		}
+	}
+	// Seed the top-level wake-word switch for config files created before it was
+	// introduced. It stays false by default, preserving always-listening mode.
+	if cfg.WakeWord == nil {
+		wakeWord := false
+		cfg.WakeWord = &wakeWord
+		if err := cfg.Save(); err != nil {
+			slog.Error("seed wakeword config failed", "component", "config", "error", err)
 		}
 	}
 

@@ -454,6 +454,10 @@ def _rt_enabled() -> bool:
 
 REALTIME_ENABLED: bool = _rt_enabled()
 REALTIME_PROVIDER: str = _rt_str("HAL_REALTIME_PROVIDER", _RT.get("provider"), "gemini")  # none | gemini | openai | qwen
+# When enabled, do not send a voice turn to the realtime agent until an STT
+# interim transcript starts with one of the configured wake phrases. This is a
+# top-level config.json setting because it also gates the non-realtime Go path.
+WAKEWORD_ENABLED: bool = _os_cfg_get("wakeword", False) is True
 # Max seconds receive() waits for the NEXT output event from the agent's recv
 # queue before giving up on the turn. This is the gap between events, not the
 # whole turn: a streaming reply puts events on the queue sub-second apart and

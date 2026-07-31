@@ -38,6 +38,7 @@ export function RealtimeSection({
   active,
   realtimeLoaded, llmLoaded,
   enabled, setEnabled,
+  wakeWord, setWakeWord,
   provider, setProvider,
   voice, setVoice,
   reasoning, setReasoning,
@@ -48,6 +49,7 @@ export function RealtimeSection({
   realtimeLoaded: RealtimeLoadedState;
   llmLoaded: LlmLoadedState;
   enabled: boolean; setEnabled: (v: boolean) => void;
+  wakeWord: boolean; setWakeWord: (v: boolean) => void;
   provider: string; setProvider: (v: string) => void;
   voice: string; setVoice: (v: string) => void;
   reasoning: string; setReasoning: (v: string) => void;
@@ -76,6 +78,11 @@ export function RealtimeSection({
       <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, cursor: "pointer", fontSize: 12.5, color: C.text }}>
         <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
         Enabled (audio-native brain — Gemini Live / OpenAI Realtime / Qwen Omni Realtime)
+      </label>
+
+      <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, cursor: "pointer", fontSize: 12.5, color: C.text }}>
+        <input type="checkbox" checked={wakeWord} onChange={(e) => setWakeWord(e.target.checked)} />
+        Require wake word before handling speech
       </label>
 
       <div style={{ marginBottom: 12 }}>

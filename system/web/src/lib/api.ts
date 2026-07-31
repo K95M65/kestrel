@@ -307,6 +307,7 @@ export interface DeviceConfig {
   stt_model: string;
   tts_provider: string;
   tts_voice: string;
+  wakeword: boolean;
   realtime?: {
     enabled?: boolean;
     provider?: string;

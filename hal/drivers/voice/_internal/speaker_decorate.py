@@ -106,6 +106,24 @@ class SpeakerDecorator:
             self._wake_words = [w.lower() for w in words]
         logger.info("Wake words updated: %s", self._wake_words)
 
+    def starts_with_wake_word(self, transcript: str) -> bool:
+        """Return true when an interim transcript starts with a wake phrase.
+
+        The realtime gate must not trigger merely because the agent name appears
+        in the middle of a conversation. Case and punctuation are ignored so
+        Deepgram variants such as ``Hey Luna, ...`` and ``hey luna ...`` match.
+        """
+        normalized = re.sub(r"[^\w\s]", "", transcript.casefold()).strip()
+        if not normalized:
+            return False
+        with self._wake_words_lock:
+            wake_words = list(self._wake_words)
+        for wake_word in wake_words:
+            phrase = re.sub(r"[^\w\s]", "", wake_word.casefold()).strip()
+            if phrase and (normalized == phrase or normalized.startswith(phrase + " ")):
+                return True
+        return False
+
     def resolve_wake_word_split(self, combined: str) -> tuple[str, str]:
         """Detect wake word in `combined` and split it off.
 

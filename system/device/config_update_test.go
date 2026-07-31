@@ -179,11 +179,27 @@ func TestApplyUpdateAdminHash(t *testing.T) {
 func TestApplyUpdateRealtime(t *testing.T) {
 	c := baseConfig()
 	enabled := true
-	ch := applyUpdate(c, domain.UpdateConfigRequest{Realtime: &domain.RealtimeSetData{Enabled: &enabled}}, "")
+	wakeWord := true
+	ch := applyUpdate(c, domain.UpdateConfigRequest{Realtime: &domain.RealtimeSetData{Enabled: &enabled}, WakeWord: &wakeWord}, "")
 	if !ch.realtime {
 		t.Fatal("realtime payload not flagged for hal restart")
 	}
 	if c.Realtime == nil || c.Realtime.Enabled == nil || !*c.Realtime.Enabled {
 		t.Fatal("realtime enabled not persisted")
+	}
+	if c.WakeWord == nil || !*c.WakeWord {
+		t.Fatal("wakeword not persisted")
+	}
+}
+
+func TestApplyUpdateWakeWordRestartsHAL(t *testing.T) {
+	c := baseConfig()
+	wakeWord := true
+	ch := applyUpdate(c, domain.UpdateConfigRequest{WakeWord: &wakeWord}, "")
+	if !ch.voice {
+		t.Fatal("wakeword-only save must restart HAL")
+	}
+	if c.WakeWord == nil || !*c.WakeWord {
+		t.Fatal("wakeword not persisted")
 	}
 }

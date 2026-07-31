@@ -33,6 +33,7 @@ from hal.drivers.voice._internal import config as voice_cfg
 from hal.drivers.voice._internal.audio_dsp import resample_to_stt, rms
 from hal.drivers.voice._internal.audio_recorder import ArecordStream
 from hal.drivers.voice._internal.realtime_turn import (
+    RealtimeTurnResult,
     build_turn_context,
     is_noise_turn,
     run_realtime_turn,
@@ -929,12 +930,24 @@ class VoiceService:
             pre_frames_from_vad,
             device_rate,
         )
+        # The callback below runs in the STT listener thread. It only latches
+        # the match; the capture thread flushes retained audio immediately,
+        # preserving the opening wake phrase without touching realtime session
+        # state across threads.
+        wake_word_detected = threading.Event()
 
         def on_transcript(text: str, is_final: bool):
             if text.strip():
                 self._last_transcript_ts = time.time()
             if not is_final:
                 logger.info("STT partial: '%s'", text)
+                if (
+                    hal_config.WAKEWORD_ENABLED
+                    and self._decorator.starts_with_wake_word(text)
+                    and not wake_word_detected.is_set()
+                ):
+                    wake_word_detected.set()
+                    logger.info("Wake-word gate opened by STT partial")
                 if len(text) > len(longest_partial[0]):
                     longest_partial[0] = text
                 self._backchannel.on_partial(text)
@@ -959,6 +972,42 @@ class VoiceService:
         # background. Keep this entire capture local in that narrow window so
         # no frame is sent to the old, about-to-be-discarded activity.
         realtime_deferred = False
+        realtime_turn_started = False
+
+        def start_realtime_turn() -> bool:
+            """Open realtime as soon as the wake-word partial is available.
+
+            Only this capture thread touches the realtime session. When it sees
+            the Event set by the STT callback, it flushes all retained audio
+            once, including the opening wake phrase, then later frames stream
+            straight through as in always-listening mode.
+            """
+            nonlocal realtime_deferred, realtime_turn_started
+            if realtime_turn_started:
+                return False
+            if hal_config.WAKEWORD_ENABLED and not wake_word_detected.is_set():
+                return False
+
+            realtime_turn_started = True
+            if not hal_config.REALTIME_ENABLED:
+                return True
+
+            self._realtime.prepare_turn()
+            realtime_deferred = self._realtime.rebuilding
+            if not realtime_deferred and self._realtime.available:
+                try:
+                    self._realtime.send_text(build_turn_context())
+                    for audio_f32 in rt_audio_buffer:
+                        self._realtime.append_audio(audio_f32)
+                    if hal_config.WAKEWORD_ENABLED:
+                        logger.info(
+                            "[realtime] Wake-word gate opened; flushed %d buffered frame(s)",
+                            len(rt_audio_buffer),
+                        )
+                except Exception as e:
+                    logger.warning("[realtime] start turn failed: %s", e)
+                    rt_audio_buffer.clear()
+            return True
         try:
             if preconnected_session:
                 # Already connected — swap in the real transcript callback.
@@ -994,29 +1043,9 @@ class VoiceService:
             if not connect_ok[0]:
                 return
 
-            # Long-idle recovery: keepalive holds the WS open across SHORT idle, but
-            # past ~the proxy/Cloudflare WS-idle + auth-TTL window (~100s) the held
-            # connection's session expires — committing a turn onto it returns WS
-            # 1008 (auth) / 1011. So for a turn that follows a LONG idle gap
-            # (>= REALTIME_GEMINI_PRE_TURN_RECYCLE_S) rebuild a FRESH session (fresh
-            # auth) BEFORE streaming audio. Viable now that keepalive keeps the fresh
-            # session alive through the speak window (it died here before keepalive).
-            if hal_config.REALTIME_ENABLED:
-                self._realtime.prepare_turn()
-                realtime_deferred = self._realtime.rebuilding
-
-            # Send per-turn context before any audio is streamed to Gemini. Do not
-            # inject clientContent after audio has opened an activity window: Gemini
-            # 2.5 native-audio can close the websocket with 1011 on that ordering.
-            if (
-                hal_config.REALTIME_ENABLED
-                and not realtime_deferred
-                and self._realtime.available
-            ):
-                try:
-                    self._realtime.send_text(build_turn_context())
-                except Exception as e:
-                    logger.warning("[realtime] send turn context failed: %s", e)
+            # Always-listening mode starts now. In wake-word mode this returns
+            # immediately until an STT partial callback sets the Event.
+            start_realtime_turn()
 
             # Flush holdoff audio (frames captured before STT connect, both paths)
             all_pre = (speech_pre_buffer or []) + pre_buffer
@@ -1074,8 +1103,16 @@ class VoiceService:
                             audio_f32, voice_cfg.STT_RATE, self._realtime.sample_rate
                         )
                         rt_audio_buffer.append(audio_f32)
-                        if not realtime_deferred and self._realtime.available:
+                        if (
+                            realtime_turn_started
+                            and not realtime_deferred
+                            and self._realtime.available
+                        ):
                             self._realtime.append_audio(audio_f32)
+
+                # A partial can arrive while the STT pre-roll is sent. Open the
+                # gate now and flush that complete pre-roll exactly once.
+                start_realtime_turn()
 
             self._listening = True
             last_speech_time = time.time()
@@ -1105,6 +1142,9 @@ class VoiceService:
                 pass
 
             while self._running and not stt_session.is_closed():
+                # Only the capture thread opens and flushes the realtime activity;
+                # The STT callback merely latches wake_word_detected.
+                start_realtime_turn()
                 # If TTS or music starts mid-session, stop streaming immediately
                 if self._tts_is_speaking():
                     logger.info("TTS started mid-session, closing STT to avoid echo")
@@ -1142,7 +1182,13 @@ class VoiceService:
                         audio_f32, voice_cfg.STT_RATE, self._realtime.sample_rate
                     )
                     rt_audio_buffer.append(audio_f32)
-                    if not realtime_deferred and self._realtime.available:
+                    opened_now = start_realtime_turn()
+                    if (
+                        realtime_turn_started
+                        and not opened_now
+                        and not realtime_deferred
+                        and self._realtime.available
+                    ):
                         self._realtime.append_audio(audio_f32)
 
                 energy = rms(data, self._np)
@@ -1194,6 +1240,10 @@ class VoiceService:
                 except Exception as e:
                     logger.warning("Realtime noise-guard buffer decode failed: %s", e)
 
+            # Capture can end just after the STT callback. One final check
+            # avoids dropping a matched partial that raced the loop exit.
+            start_realtime_turn()
+
             # `discard_open_activity()` starts its replacement session in the
             # background. A user can begin the next utterance before that
             # handshake completes; in that case we retained every frame above.
@@ -1202,7 +1252,8 @@ class VoiceService:
             # the realtime buffer uncommitted so the normal OS-server fallback
             # still receives the STT transcript without a missing opening word.
             if (
-                realtime_deferred
+                realtime_turn_started
+                and realtime_deferred
                 and rt_audio_buffer
                 and not is_noise_turn(combined, buf_duration, rt_audio_is_speech)
             ):
@@ -1230,26 +1281,45 @@ class VoiceService:
                     )
 
             # --- Realtime voice agent (runs first, before speaker ID / OS server) ---
-            # Runs even if STT transcript is empty — the model has the raw audio.
-            rt = run_realtime_turn(
-                self._realtime,
-                self._tts,
-                self.strip_rt_markers,
-                combined,
-                rt_audio_buffer,
-                buf_duration,
-                rt_audio_is_speech,
-            )
+            # Wake-word mode only commits a turn that STT explicitly armed.
+            if realtime_turn_started:
+                rt = run_realtime_turn(
+                    self._realtime,
+                    self._tts,
+                    self.strip_rt_markers,
+                    combined,
+                    rt_audio_buffer,
+                    buf_duration,
+                    rt_audio_is_speech,
+                )
+            else:
+                rt = RealtimeTurnResult()
 
             # --- Speaker recognition + OS server send + SER ---
-            dispatch_turn(
-                self._decorator,
-                self._sensing_sender,
-                combined,
-                audio_buffer,
-                ser_audio_buffer,
-                rt,
-            )
+            if not hal_config.WAKEWORD_ENABLED:
+                dispatch_turn(
+                    self._decorator,
+                    self._sensing_sender,
+                    combined,
+                    audio_buffer,
+                    ser_audio_buffer,
+                    rt,
+                )
+            elif wake_word_detected.is_set() and (
+                not hal_config.REALTIME_ENABLED or rt.delegated
+            ):
+                # With realtime disabled the armed final transcript follows the
+                # normal Go path. Otherwise, Go sees only an explicit delegate.
+                dispatch_turn(
+                    self._decorator,
+                    self._sensing_sender,
+                    combined,
+                    audio_buffer,
+                    ser_audio_buffer,
+                    rt,
+                )
+            else:
+                self._decorator.submit_speech_emotion_from_session(ser_audio_buffer)
 
             # Close the sensing-suppression window (see the matching
             # voice_listening post above — neither event drives an LED).

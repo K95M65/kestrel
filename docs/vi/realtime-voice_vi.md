@@ -453,12 +453,15 @@ trong `/opt/hal/.env`); thiếu cả hai thì WS handshake fail rõ ràng trong 
 > không bao giờ suy ra từ `llm_base_url`.
 
 ```json
-"realtime": {
-  "enabled": true,
-  "provider": "gemini",
-  "gemini": { "model": "gemini-3.1-flash-live-preview", "voice": "Kore", "thinking_level": "MINIMAL" },
-  "openai": { "model": "gpt-realtime-2", "voice": "alloy", "reasoning_effort": "minimal" },
-  "qwen": { "api_key": "sk-…", "base_url": "wss://…", "model": "qwen3.5-omni-plus-realtime", "voice": "Ethan" }
+{
+  "wakeword": false,
+  "realtime": {
+    "enabled": true,
+    "provider": "gemini",
+    "gemini": { "model": "gemini-3.1-flash-live-preview", "voice": "Kore", "thinking_level": "MINIMAL" },
+    "openai": { "model": "gpt-realtime-2", "voice": "alloy", "reasoning_effort": "minimal" },
+    "qwen": { "api_key": "sk-…", "base_url": "wss://…", "model": "qwen3.5-omni-plus-realtime", "voice": "Ethan" }
+  }
 }
 ```
 
@@ -506,6 +509,7 @@ Mỗi knob có thể bị `HAL_*` env override (thắng block, và là đường
 | Biến | Mặc định | Ghi chú |
 |------|----------|---------|
 | `HAL_REALTIME_ENABLED` | `true` | Cổng tổng cho pipeline realtime |
+| `wakeword` | `false` | Cổng wake word top-level trong config file. Khi bật, HAL vẫn nghe qua STT provider đang dùng nhưng chỉ gửi một lượt sang model realtime khi partial bắt đầu bằng một wake phrase đã cấu hình (ví dụ `hey <tên>` hoặc `<tên> ơi`). Câu trả lời realtime trực tiếp chỉ ở HAL; chỉ `delegate_to_main` rõ ràng mới được chuyển sang os-server. Nếu realtime tắt, final transcript đã được mở khóa sẽ đi theo đường os-server thường, nên wake word vẫn hoạt động. Thiếu/`false` giữ luồng luôn lắng nghe hiện có. HAL restart sau khi lưu ở local Settings. |
 | `HAL_REALTIME_PROVIDER` | `gemini` | `none` \| `gemini` \| `openai` \| `qwen` |
 | `HAL_REALTIME_TURN_DETECTION` | `off` | `server_vad` \| `semantic_vad` \| `off` (Gemini: off = activity detection thủ công) |
 | `HAL_REALTIME_RECV_QUEUE_TIMEOUT_S` | `8.0` | Số giây tối đa `receive()` chờ output event kế tiếp trước khi kết thúc lượt im lặng (fallback sang main agent) |

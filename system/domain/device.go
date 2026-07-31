@@ -1215,6 +1215,7 @@ type ConfigPublicResponse struct {
 	STTModel           string `json:"stt_model"`
 	TTSProvider        string `json:"tts_provider"`
 	TTSVoice           string `json:"tts_voice"`
+	WakeWord           bool   `json:"wakeword"`
 	DeviceID           string `json:"device_id"`
 	Mac                string `json:"mac"`
 	NetworkSSID        string `json:"network_ssid"`
@@ -1287,6 +1288,7 @@ type UpdateConfigRequest struct {
 
 	TTSProvider string `json:"tts_provider"`
 	TTSVoice    string `json:"tts_voice"`
+	WakeWord    *bool  `json:"wakeword,omitempty"`
 
 	// Realtime voice-agent config (Gemini Live / OpenAI Realtime). Same payload
 	// as the MQTT realtime.set downlink; omit to leave the realtime block alone.
