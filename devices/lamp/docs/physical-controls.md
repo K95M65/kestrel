@@ -26,7 +26,7 @@ Board detection in both handlers reads `/proc/device-tree/model`:
 
 | Gesture | GPIO button | TTP223 touchpad |
 |---|---|---|
-| **1 tap** | Stop speaker / unmute mic + speaker + ack chime (~120 ms ping) — all fire immediately on release (no click-window wait); the "I'm listening" cue plays once the 0.4 s click window resolves | Same, split the same way — in-flight TTS is cut and the ack chime plays ~0.2 s after the finger lifts (first session end); unmute + cue wait for the 1.2 s decision window (tap-vs-pet cost, see below) |
+| **1 tap** | Stop speaker / unmute mic + speaker + ack chime (~120 ms ping) — all fire immediately on release (no click-window wait); the "Listening" cue plays once the 0.4 s click window resolves | Same, split the same way — in-flight TTS is cut and the ack chime plays ~0.2 s after the finger lifts (first session end); unmute + cue wait for the 1.2 s decision window (tap-vs-pet cost, see below) |
 | **2 taps** (≤ 0.4 s apart, button) / (≤ 1.2 s apart, TTP223) | Nothing beyond the single-click already fired on tap 1 (panic-click guard) | Pet response — TTS picks a random phrase from the language pool |
 | **3 taps** (≤ 0.4 s apart, button) | Reboot OS (TTS announce → `sudo reboot`) | n/a — TTP223 stops at 2 (any further taps absorbed by cooldown) |
 | **Hold 3–10 s, then release** | Speak the localized sleep announcement, then enter `sleepy`: LED off, camera/mic/speaker off; servo releases after 2 s. LED blinks sleepy purple while held. | n/a — TTP223 hardware cannot reliably hold (see "FastMode" below) |
@@ -37,7 +37,7 @@ Hold gestures are intentionally only on the GPIO button because the mechanical b
 
 ## Interrupting Lamp while it speaks (barge-in)
 
-The 1-tap gesture is Lamp's primary **barge-in mechanism**: tap top of Lamp (touchpad) or press the GPIO button once during an in-flight TTS to cancel the current utterance mid-word, stop any music, and unmute the mic so Lamp listens for the next thing the user says. A user/scene speaker mute is also relaxed (unless a voice enrollment is recording) so the cue and the reply are audible again. A localized "I'm listening" cue plays after the cancel.
+The 1-tap gesture is Lamp's primary **barge-in mechanism**: tap top of Lamp (touchpad) or press the GPIO button once during an in-flight TTS to cancel the current utterance mid-word, stop any music, and unmute the mic so Lamp listens for the next thing the user says. A user/scene speaker mute is also relaxed (unless a voice enrollment is recording) so the cue and the reply are audible again. A localized "Listening" cue plays after the cancel.
 
 End-to-end chain:
 1. `gpio_button.py` / `ttp223.py` detect single click → call `single_click_action(source)` in `button_actions.py`
@@ -64,7 +64,7 @@ Edge-counting driver where **all destructive actions commit on the release edge 
    - else (short tap) → increment `click_count` and (re)start a 0.4 s click-window timer. On the **first** tap of a burst, the silent part of `single_click_action` (`announce=False`) fires immediately off-thread — it's non-destructive ("give me the floor"), so it doesn't wait for the window. The audible cue is deferred so it never talks over a triple-click in progress.
 3. When the click window expires:
    - `count == 3` → `triple_click_action` (no listening cue — only the reboot announce)
-   - any other count → `announce_listening_cue` speaks the deferred "I'm listening" confirmation once per burst; `count == 2` / `>= 4` additionally log as ignored (panic-click guard — the floor-grab already happened on tap 1, nothing destructive fires)
+   - any other count → `announce_listening_cue` speaks the deferred "Listening" confirmation once per burst; `count == 2` / `>= 4` additionally log as ignored (panic-click guard — the floor-grab already happened on tap 1, nothing destructive fires)
 
 A release edge with no matching press (the press was debounce-dropped) is ignored — `press_start` could be stale, so acting on it could fire a destructive action against a minutes-old timestamp. Destructive actions run on their own daemon threads because the `lgpio` callback must return promptly or subsequent edges queue up.
 
@@ -120,7 +120,7 @@ The actions live in one place so the GPIO button, TTP223, and any future input (
 
 | Function | What it does | Interrupts in-flight TTS? |
 |---|---|---|
-| `single_click_action(source)` | Relax a user/scene speaker mute (skipped while `_enrolling`). If mic is muted: unmute. Else stop TTS + stop music. Then speak the localized "I'm listening" cue with retry-on-busy. | Yes — calls `stop_tts()` and the cue itself preempts. |
+| `single_click_action(source)` | Relax a user/scene speaker mute (skipped while `_enrolling`). If mic is muted: unmute. Else stop TTS + stop music. Then speak the localized "Listening" cue with retry-on-busy. | Yes — calls `stop_tts()` and the cue itself preempts. |
 | `triple_click_action(source)` | Speak "Rebooting now" → wait 5 s for the cached clip → `sudo reboot`. | Yes |
 | `sleep_action(source)` | Speak the localized sleep announcement, then invoke `sleepy`: LED off, camera/mic/speaker off, then servo release after 2 s. | Yes — the sleepy pipeline stops active TTS/music after the announcement. |
 | `long_press_action(source)` | Speak "Shutting down now" → wait 5 s → `release_servos()` (so the lamp doesn't slam down mid-pose) → `sudo shutdown -h now`. | Yes |

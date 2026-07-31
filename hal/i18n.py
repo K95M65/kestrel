@@ -69,10 +69,10 @@ PHRASE_RATE_LIMIT = "rate_limit"
 # during a service reload.
 PHRASES_BY_LANG = {
     PHRASE_LISTENING: {
-        LANG_EN:    "I'm listening!",
-        LANG_VI:    "Mình nghe đây!",
-        LANG_ZH_CN: "我在听！",
-        LANG_ZH_TW: "我在聽！",
+        LANG_EN:    "Listening.",
+        LANG_VI:    "Nghe đây.",
+        LANG_ZH_CN: "在听。",
+        LANG_ZH_TW: "在聽。",
     },
     PHRASE_REBOOT: {
         LANG_EN:    "Rebooting now.",
