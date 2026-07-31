@@ -36,10 +36,9 @@ _WAKE_EMOTIONS = {
     EMO_SAD, EMO_SHY, EMO_SHOCK, EMO_CONFUSED,
 }
 
-# Auto-release the servo after this many seconds of *continuous* sleepy.
-# The device is presumed unattended at that point; releasing prevents servo
-# heat / wear during long idle periods.
-SLEEPY_AUTO_RELEASE_SECONDS = 15 * 60
+# Auto-release the servo shortly after *continuous* sleepy so the animation
+# can settle before torque is disabled.
+SLEEPY_AUTO_RELEASE_SECONDS = 2
 
 router = APIRouter(tags=["Emotion"])
 

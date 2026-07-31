@@ -113,7 +113,7 @@ Agent gọi `/emotion idle` (0.4), fire `/servo/track/stop` để thả follow n
 
 Được gửi tự động bởi `PresenceService` của HAL khi **không phát hiện chuyển động trong 15 phút** (sau khi đã dim đèn ở phút thứ 5). Lúc này đèn đã tắt — agent chỉ cần **thông báo đi ngủ** qua TTS và Telegram.
 
-Agent gọi `/emotion sleepy` (0.8), fire `/servo/track/stop` để thả follow cũ còn sót, và nói lời chúc ngủ ngon ấm áp (ví dụ "Không có ai xung quanh… Lamp đi ngủ đây. Chúc ngủ ngon!"). Đây là hành động cuối cùng trước khi Lamp hoàn toàn idle.
+Agent gọi `/emotion sleepy` (0.8), fire `/servo/track/stop` để thả follow cũ còn sót, và nói lời chúc ngủ ngon ấm áp (ví dụ "Không có ai xung quanh… Lamp đi ngủ đây. Chúc ngủ ngon!"). Sau 2 giây `sleepy` liên tục, HAL sẽ release torque của servo. Đây là hành động cuối cùng trước khi Lamp hoàn toàn idle.
 
 Timeline tự động điều khiển presence:
 1. **5 phút không chuyển động** → đèn dim xuống 20% (tự động, không cần agent)
