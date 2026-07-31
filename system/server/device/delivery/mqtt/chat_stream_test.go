@@ -2,6 +2,8 @@ package mqtthandler
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -179,5 +181,159 @@ func TestDeltaText(t *testing.T) {
 		if got := deltaText(tc.evt); got != tc.want {
 			t.Errorf("%s: got %q, want %q", tc.name, got, tc.want)
 		}
+	}
+}
+
+// captureFiles is the chat.file half of newTestStream's capture.
+func filesFrom(t *testing.T, s *ChatStream) func() []domain.MQTTChatFileData {
+	t.Helper()
+	var mu sync.Mutex
+	var files []domain.MQTTChatFileData
+	prev := s.publish
+	s.publish = func(body []byte) error {
+		var resp struct {
+			Kind string          `json:"kind"`
+			Data json.RawMessage `json:"data"`
+		}
+		if err := json.Unmarshal(body, &resp); err != nil {
+			return err
+		}
+		if resp.Kind == domain.KindChatFile {
+			var f domain.MQTTChatFileData
+			if err := json.Unmarshal(resp.Data, &f); err != nil {
+				return err
+			}
+			mu.Lock()
+			files = append(files, f)
+			mu.Unlock()
+			return nil
+		}
+		return prev(body)
+	}
+	return func() []domain.MQTTChatFileData {
+		mu.Lock()
+		defer mu.Unlock()
+		out := make([]domain.MQTTChatFileData, len(files))
+		copy(out, files)
+		return out
+	}
+}
+
+// seedTmpFile writes a file under a temp dir and points the stream's roots at it
+// by returning the path; agentfile.Roots() includes /tmp, so tests use that.
+func seedTmpFile(t *testing.T, name string, size int) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("/tmp", "chatfile-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	p := filepath.Join(dir, name)
+	if err := os.WriteFile(p, make([]byte, size), 0644); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// The path an agent sends is usually in a tool's ARGS, not in what it says —
+// this is the case that made text-only detection useless on the device.
+func TestChatStreamRelaysFileFromToolArgs(t *testing.T) {
+	s, _ := newTestStream()
+	files := filesFrom(t, s)
+	s.Track("run1", "sess1")
+
+	img := seedTmpFile(t, "snap.jpg", 64)
+	s.handle(domain.MonitorEvent{
+		Type:    "tool_call",
+		RunID:   "run1",
+		Summary: "Tool message",
+		Detail:  map[string]any{"args": `{"action":"send","media":"` + img + `"}`},
+	})
+
+	got := files()
+	if len(got) != 1 {
+		t.Fatalf("want 1 file, got %d: %+v", len(got), got)
+	}
+	if got[0].Name != "snap.jpg" || got[0].MIME != "image/jpeg" || got[0].Size != 64 {
+		t.Errorf("metadata = %+v", got[0])
+	}
+	if got[0].Content == "" || got[0].TooLarge {
+		t.Errorf("want inline bytes, got content=%d too_large=%v", len(got[0].Content), got[0].TooLarge)
+	}
+	if got[0].RunID != "run1" || got[0].SessionID != "sess1" {
+		t.Errorf("correlation = %+v", got[0])
+	}
+}
+
+// The same snapshot shows up in a tool's args, its result AND the reply. Sending
+// its bytes three times is the most expensive mistake available here.
+func TestChatStreamSendsEachFileOnce(t *testing.T) {
+	s, _ := newTestStream()
+	files := filesFrom(t, s)
+	s.Track("run1", "sess1")
+
+	img := seedTmpFile(t, "snap.jpg", 32)
+	s.handle(domain.MonitorEvent{Type: "tool_call", RunID: "run1",
+		Detail: map[string]any{"args": `{"media":"` + img + `"}`}})
+	s.handle(domain.MonitorEvent{Type: "tool_call", RunID: "run1",
+		Summary: "Tool Bash done: {\"path\": \"" + img + "\"}"})
+	s.handle(domain.MonitorEvent{Type: "chat_response", RunID: "run1", Summary: "đây nè: " + img})
+
+	if got := files(); len(got) != 1 {
+		t.Fatalf("want the file once, got %d", len(got))
+	}
+}
+
+// Past the inline budget the metadata still goes out — a client should be able
+// to say "a big file was produced" rather than show nothing.
+func TestChatStreamMarksOversizedFile(t *testing.T) {
+	s, _ := newTestStream()
+	files := filesFrom(t, s)
+	s.Track("run1", "sess1")
+
+	big := seedTmpFile(t, "clip.mp4", chatFileMaxInlineBytes+1)
+	s.handle(domain.MonitorEvent{Type: "chat_response", RunID: "run1", Summary: "made " + big})
+
+	got := files()
+	if len(got) != 1 {
+		t.Fatalf("want 1 file record, got %d", len(got))
+	}
+	if !got[0].TooLarge {
+		t.Error("want too_large set")
+	}
+	if got[0].Content != "" {
+		t.Error("oversized file must not carry bytes")
+	}
+	if got[0].Size <= chatFileMaxInlineBytes {
+		t.Errorf("size = %d, want the real size reported anyway", got[0].Size)
+	}
+}
+
+// A path the allow-list refuses, or one that isn't there, is silently skipped —
+// an agent mentioning a config file is not an error worth publishing.
+func TestChatStreamSkipsRefusedPaths(t *testing.T) {
+	s, _ := newTestStream()
+	files := filesFrom(t, s)
+	s.Track("run1", "sess1")
+
+	secret := seedTmpFile(t, "creds.json", 16) // served root, unserved type
+	s.handle(domain.MonitorEvent{Type: "chat_response", RunID: "run1",
+		Summary: "see " + secret + " and /root/.openclaw/openclaw.json and /tmp/gone-9f3a.png"})
+
+	if got := files(); len(got) != 0 {
+		t.Fatalf("published %d files that should have been refused: %+v", len(got), got)
+	}
+}
+
+// A file named by a turn nobody asked to mirror must not leave the device.
+func TestChatStreamNoFilesForUntrackedRun(t *testing.T) {
+	s, _ := newTestStream()
+	files := filesFrom(t, s)
+
+	img := seedTmpFile(t, "snap.jpg", 16)
+	s.handle(domain.MonitorEvent{Type: "chat_response", RunID: "someone-elses", Summary: img})
+
+	if got := files(); len(got) != 0 {
+		t.Fatalf("leaked %d files from an untracked run", len(got))
 	}
 }

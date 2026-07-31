@@ -334,7 +334,7 @@ optional `error`, and an optional `data` payload.
 | `skills.files` | Read one installed skill's files — list, or one file's contents (synchronous) | `name`, optional `path` |
 | `skills.uninstall` | Remove one installed skill from the active runtime (synchronous) | `name` |
 | `skills.save` | Write one authored skill into the active runtime's skills dir (synchronous) | `name`, `description`, `instructions` |
-| `chat.send` | Start an agent turn from the backend and stream it back (acks a run id, then emits `chat.event`) | `message` (required), optional `image`/`session_id`/`speak` |
+| `chat.send` | Start an agent turn from the backend and stream it back (acks a run id, then emits `chat.event` + `chat.file`) | `message` (required), optional `image`/`session_id`/`speak` |
 | `system.info` | Aggregate snapshot: versions + network + host | _(none)_ |
 | `system.version` | Component versions only (cheaper than `system.info`) | _(none)_ |
 | `system.network` | network facts of the default-route interface only | _(none)_ |
@@ -784,10 +784,51 @@ Implementation notes that matter to a backend author:
   right for a one-shot command result and ruinous for dozens of events a turn.
   A distinct client id matters: two connections sharing one id make the broker
   evict the first.
-- **Files the agent produced are not yet relayed.** A reply naming
-  `/root/.openclaw/media/hal-snapshots/snap_*.jpg` renders in the web chat via
-  `GET /api/agent/file`, which is device-local — a phone can't fetch it. Until
-  the device pushes those bytes out, a mobile client sees the path as text.
+**Files the turn produced — `chat.file`**
+
+A turn can only NAME a file it made: "take a photo" ends with an absolute path
+like `/root/.openclaw/media/hal-snapshots/snap_*.jpg`. The web chat renders that
+by fetching `GET /api/agent/file`, which is device-local — a phone cannot reach
+it — so for backend-started runs the device PUSHES instead of waiting to be
+asked. Device-initiated; no request carries this kind.
+
+```json
+{
+  "device": "<device_type>", "type": "data", "kind": "chat.file", "status": "success",
+  "data": {
+    "run_id": "run-…", "session_id": "abc123",
+    "name": "snap_1785393455291.jpg",
+    "path": "/root/.openclaw/media/hal-snapshots/snap_1785393455291.jpg",
+    "mime": "image/jpeg", "size": 43165,
+    "content": "<base64>"
+  }
+}
+```
+
+- **Detection scans the whole event, not just the reply.** Asked to send a photo
+  an agent typically names the path in a tool's ARGS while what it says names
+  nothing (`message {"action":"send","media":"…jpg"}`); a `curl /camera/snapshot`
+  names it in the tool RESULT; sometimes it just types the path out. The event is
+  marshalled and scanned, so no tool's schema has to be known.
+- **What may leave the device is `system/agentfile`** — the same allow-list
+  `GET /api/agent/file` enforces, deliberately one implementation: an allow-list
+  with two copies is two chances to widen one by accident. Roots are `media/` +
+  `workspace/` per runtime plus `/tmp`; `.json` and `.log` are not served (a
+  runtime's config JSON holds gateway tokens). A refused or missing path is
+  skipped silently — a scanned path is a guess, not a promise.
+- **Each file goes out once per run.** The same snapshot path usually appears in
+  a tool's args, that tool's result AND the reply; sending its bytes three times
+  would be the most expensive mistake available here. A path is marked sent
+  BEFORE the read, so one that fails to resolve isn't retried on every later
+  event of the turn.
+- **`content` is base64**, mirroring how a `chat.send` carries an inbound image,
+  so the backend handles one encoding in both directions.
+- **Over 2 MB the bytes are dropped, the record is not**: `too_large: true` with
+  `content` empty and the real `size`, so a client can say "a 12 MB video was
+  produced" instead of showing nothing. That cap is the MQTT inline budget, much
+  tighter than the 32 MB `agentfile.MaxBytes` governing a same-network HTTP
+  fetch — this is a device uplink shared with every other command, and base64
+  adds a third on top.
 
 Superseded: `integrations/chat-bridges/autonomous-chat-hook/` forwards backend
 chat one-way as `type:"voice"`, so the device speaks the reply and nothing comes
@@ -815,6 +856,7 @@ Handled by bootstrap worker, not through MQTT handler directly.
 | `system/server/device/delivery/mqtt/skills_uninstall_handler.go` | Handle `skills.uninstall` |
 | `system/server/device/delivery/mqtt/chat_send_handler.go` | Handle `chat.send` — forwards the turn over loopback to the sensing endpoint |
 | `system/server/device/delivery/mqtt/chat_stream.go` | Mirror a chat run's monitor events back as `chat.event` |
+| `system/agentfile/agentfile.go` | Package deciding which device files an agent turn may hand out, plus the scanner that finds them (shared by `chat.file` and `GET /api/agent/file`) |
 | `system/server/device/delivery/mqtt/skills_save_handler.go` | Handle `skills.save` (synchronous authored-skill write via `AgentGateway.SaveSkill`) |
 | `system/server/device/delivery/mqtt/connector_handler.go` | Handle `connector.set.<code>`/`connector.remove.<code>` (async, writer dispatch via `connectorWriterFor`) |
 | `system/server/device/delivery/mqtt/connector_writer.go` | `ConnectorWriter` interface + shared `<code>_access_tokens.json` file helpers |

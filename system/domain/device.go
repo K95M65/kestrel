@@ -449,6 +449,15 @@ const (
 	// can reuse the web chat's reducer as-is instead of a parallel vocabulary
 	// that would drift the first time an event type is added.
 	KindChatEvent = "chat.event"
+
+	// KindChatFile is DEVICE-INITIATED: one file a chat.send turn produced,
+	// pushed out with its bytes. Data: MQTTChatFileData.
+	//
+	// The web chat shows such a file by fetching GET /api/agent/file, which is
+	// device-local — a phone cannot reach it, so for backend-started runs the
+	// device pushes instead of waiting to be asked. What may leave is decided by
+	// system/agentfile, the same allow-list the HTTP endpoint uses.
+	KindChatFile = "chat.file"
 )
 
 // Connector (MCP) data-kind prefixes. The connector code is the suffix, e.g.
@@ -899,6 +908,27 @@ type MQTTChatEventData struct {
 	RunID     string       `json:"run_id"`
 	SessionID string       `json:"session_id,omitempty"`
 	Event     MonitorEvent `json:"event"`
+}
+
+// MQTTChatFileData is the Data payload for kind:"chat.file" — one file produced
+// by an in-flight chat.send run.
+type MQTTChatFileData struct {
+	RunID     string `json:"run_id"`
+	SessionID string `json:"session_id,omitempty"`
+	// Name is the basename; Path is the device path the agent named, kept for
+	// traceability and so a backend can correlate a re-send of the same file.
+	Name string `json:"name"`
+	Path string `json:"path"`
+	MIME string `json:"mime"`
+	Size int64  `json:"size"`
+	// Content is the file base64-encoded — the mirror image of how a chat.send
+	// carries an inbound image, so the backend handles one encoding in both
+	// directions. Empty when TooLarge is set.
+	Content string `json:"content,omitempty"`
+	// TooLarge marks a file past the MQTT inline budget: the metadata is still
+	// published so a client can say "a 12 MB video was produced" instead of
+	// silently showing nothing, but the bytes are not on the wire.
+	TooLarge bool `json:"too_large,omitempty"`
 }
 
 // MQTTSkillsUninstallData is the Data payload for kind:"skills.uninstall".
