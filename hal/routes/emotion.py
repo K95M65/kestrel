@@ -102,6 +102,8 @@ def express_emotion(req: EmotionRequest):
     was_sleeping = state._sleeping
     state._sleeping = req.emotion == EMO_SLEEPY
     state._current_emotion = req.emotion
+    if was_sleeping and not state._sleeping:
+        state._wake_sleepy_peripherals()
 
     # Sleepy auto-release: fires only if sleepy stays continuous for the
     # full window. Any other emotion (including a wake) cancels the timer.
@@ -209,6 +211,12 @@ def express_emotion(req: EmotionRequest):
         state._auto_camera_off(f"emotion:{req.emotion}")
     elif cam == "on" and state._camera_disabled:
         state._auto_camera_on(f"emotion:{req.emotion}")
+
+    if req.emotion == EMO_SLEEPY:
+        state._finalize_sleepy_peripherals(
+            mute_mic=preset.get("mic") == "off",
+            mute_speaker=preset.get("speaker") == "off",
+        )
 
     return {
         "status": "ok",

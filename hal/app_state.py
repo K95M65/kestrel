@@ -16,6 +16,7 @@ from hal.presets import (
     AMBIENT_RESTING_LED,
     ambient_resting_is_dark,
     EMO_IDLE,
+    EMO_SLEEPY,
     EMO_THINKING,
     EMOTION_PRESETS,
     FX_SPEAKING_WAVE,
@@ -101,6 +102,10 @@ _current_emotion: Optional[str] = None
 # Fires release_servos after sleepy stays active continuously. Cancelled
 # the moment the emotion changes away from sleepy (see routes/emotion.py).
 _sleepy_release_timer: Optional[threading.Timer] = None
+# These flags track only mutes owned by sleepy; a wake must never undo a
+# manual user mute.
+_sleepy_auto_muted_mic = False
+_sleepy_auto_muted_speaker = False
 
 # --- TTS speaking LED state ---
 
@@ -284,6 +289,53 @@ def _persist_mic_state():
 
 def _persist_speaker_state():
     _save_boot_sidecar(_SPEAKER_STATE_PATH, {"muted": _speaker_muted})
+
+
+def _finalize_sleepy_peripherals(mute_mic: bool, mute_speaker: bool):
+    """Enter silent sleep immediately without changing manual user mutes."""
+    global _sleepy_auto_muted_mic, _sleepy_auto_muted_speaker
+    global _mic_muted, _speaker_muted
+    if _current_emotion != EMO_SLEEPY:
+        return
+
+    if rgb_service:
+        _stop_current_effect()
+        rgb_service.clear()
+
+    if mute_mic and not _mic_muted:
+        _mic_muted = True
+        _sleepy_auto_muted_mic = True
+        _persist_mic_state()
+        if voice_service and voice_service.available:
+            threading.Thread(target=voice_service.stop, daemon=True, name="sleepy-mic-stop").start()
+
+    if mute_speaker and not _speaker_muted:
+        _speaker_muted = True
+        _sleepy_auto_muted_speaker = True
+        _persist_speaker_state()
+        if tts_service and tts_service.speaking:
+            tts_service.stop()
+        if music_service and music_service.playing:
+            music_service.stop()
+
+    logger.info("Sleepy finalized: LED off, mic muted, speaker muted")
+
+
+def _wake_sleepy_peripherals():
+    """Restore only mic/speaker states that sleepy itself muted."""
+    global _sleepy_auto_muted_mic, _sleepy_auto_muted_speaker, _mic_muted, _speaker_muted
+    if _sleepy_auto_muted_speaker:
+        _speaker_muted = False
+        _sleepy_auto_muted_speaker = False
+        _persist_speaker_state()
+    if _sleepy_auto_muted_mic:
+        _sleepy_auto_muted_mic = False
+        if _hw_mic_switch_muted is not True:
+            _mic_muted = False
+            _persist_mic_state()
+            if voice_service:
+                voice_service.start()
+    logger.info("Sleepy wake: restored sleepy-owned audio state")
 
 
 def _persist_camera_state():

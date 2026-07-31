@@ -140,7 +140,7 @@ EMOTION_PRESETS = {
                     "camera": "on"},
     EMO_LAUGH: {"servo": SERVO_LAUGH, "color": [130, 91, 11], "effect": FX_CANDLE, "speed": 0.2, "camera": "on"},
     EMO_CONFUSED: {"servo": SERVO_CONFUSED, "color": [124, 71, 25], "effect": FX_CANDLE, "speed": 0.2, "camera": "on"},
-    EMO_SLEEPY: {"servo": SERVO_SLEEPY, "color": [0, 0, 0], "camera": "off"},
+    EMO_SLEEPY: {"servo": SERVO_SLEEPY, "color": [0, 0, 0], "camera": "off", "mic": "off", "speaker": "off"},
     EMO_GREETING: {"servo": SERVO_GREETING, "color": [255, 180, 100], "effect": FX_BREATHING, "speed": 0.3, "camera": "on"},
     EMO_GOODBYE: {"servo": SERVO_GOODBYE, "color": [255, 180, 100], "effect": FX_BREATHING, "speed": 0.5},
     EMO_CARING: {"servo": SERVO_NOD, "color": [255, 160, 120], "effect": FX_BREATHING, "speed": 0.4, "camera": "on"},
