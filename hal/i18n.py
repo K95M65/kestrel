@@ -38,6 +38,7 @@ def localized_phrase(key: str, lang: str | None = None) -> str:
 
 PHRASE_LISTENING = "listening"
 PHRASE_REBOOT = "reboot"
+PHRASE_SLEEP = "sleep"
 PHRASE_SHUTDOWN = "shutdown"
 PHRASE_SERVICE_RESTART = "service_restart"
 # Spoken when a music/audio play request is suppressed by the audio.quiet_hours
@@ -56,8 +57,9 @@ PHRASE_RATE_LIMIT = "rate_limit"
 # Localized action announcements. reboot/shutdown phrases stay literal
 # in every language ("rebooting", "shutting down") because the user just
 # triggered a destructive gesture and needs explicit confirmation of
-# which action fired — this is a safety announcement, not a persona
-# moment. Empty/unknown stt_language → DEFAULT_LANG.
+# which action fired. Sleep is a softer user-initiated action, but is also
+# explicit so the user knows the hold registered. Empty/unknown
+# stt_language → DEFAULT_LANG.
 #
 # PHRASE_SERVICE_RESTART fires when only the HAL process is going
 # down (OTA replace, deploy, manual `systemctl restart`) — OS itself
@@ -77,6 +79,12 @@ PHRASES_BY_LANG = {
         LANG_VI:    "Đang khởi động lại.",
         LANG_ZH_CN: "正在重启。",
         LANG_ZH_TW: "正在重啟。",
+    },
+    PHRASE_SLEEP: {
+        LANG_EN:    "I'm going to sleep now.",
+        LANG_VI:    "Mình đi ngủ đây.",
+        LANG_ZH_CN: "我要睡觉了。",
+        LANG_ZH_TW: "我要睡覺了。",
     },
     PHRASE_SHUTDOWN: {
         LANG_EN:    "Shutting down now.",

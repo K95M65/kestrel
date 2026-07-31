@@ -24,6 +24,7 @@ from hal.i18n import (
     HEAD_PAT_PHRASES_BY_LANG,
     PHRASE_LISTENING,
     PHRASE_REBOOT,
+    PHRASE_SLEEP,
     PHRASE_SHUTDOWN,
     PHRASES_BY_LANG,
 )
@@ -296,12 +297,18 @@ def head_pat_action(source: str = "touch"):
 
 
 def sleep_action(source: str = "button"):
-    """Enter sleepy mode silently through the normal emotion pipeline."""
+    """Announce sleep, then enter sleepy mode through the normal pipeline."""
     if state._sleeping:
         logger.info("%s sleep hold -- already sleeping", source)
         return
 
-    logger.info("%s sleep hold -- entering sleepy emotion", source)
+    logger.info("%s sleep hold -- announcing sleepy emotion", source)
+    if _tts_available():
+        state.tts_service.speak_cached(_phrase(PHRASE_SLEEP))
+        # Like reboot/shutdown, allow the cached announcement to play before
+        # sleepy mutes the speaker and stops any active TTS.
+        time.sleep(5)
+
     try:
         from hal.models import EmotionRequest
         from hal.routes.emotion import express_emotion
