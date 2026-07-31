@@ -1,5 +1,5 @@
 {
-  "_comment": "Intern-v2 emotion presets, initially copied from hal/presets.py for device-specific tuning. See devices/contract/DEVICE-SPEC.md § Per-device presets.",
+  "_comment": "Intern-v2 emotion and status LED presets, initially copied from hal/presets.py for device-specific tuning. See devices/contract/DEVICE-SPEC.md § Per-device presets.",
   "led_count": 16,
   "emotion": {
     "curious": { "servo": "curious", "color": [125, 81, 0], "effect": "candle", "speed": 0.3, "camera": "on" },
@@ -24,5 +24,21 @@
     "scan": { "servo": "scanning", "color": [36, 84, 24], "effect": "pulse", "speed": 0.3, "camera": "on" },
     "nod": { "servo": "nod", "color": [107, 73, 13], "effect": "breathing", "speed": 0.5, "camera": "on" },
     "headshake": { "servo": "headshake", "color": [206, 77, 14], "effect": "breathing", "speed": 0.5, "camera": "on" }
+  },
+  "status_led": {
+    "ota": { "effect": "breathing", "color": [0, 255, 0], "speed": 3.0 },
+    "error": { "effect": "breathing", "color": [255, 0, 0], "speed": 3.0 },
+    "booting": { "effect": "breathing", "color": [0, 80, 255], "speed": 3.0 },
+    "connectivity": { "effect": "breathing", "color": [255, 80, 0], "speed": 3.0 },
+    "wifi_connecting": { "effect": "blink", "color": [0, 135, 255], "speed": 0.5 },
+    "hal_down": { "effect": "breathing", "color": [180, 0, 255], "speed": 3.0 },
+    "agent_down": { "effect": "breathing", "color": [0, 200, 200], "speed": 3.0 },
+    "hardware": { "effect": "breathing", "color": [255, 255, 0], "speed": 3.0 },
+    "ready_flash": { "effect": "notification_flash", "color": [255, 255, 255], "speed": 1.0 },
+    "ota_progress": { "effect": "breathing", "color": [255, 140, 0], "speed": 0.4 },
+    "ota_error": { "effect": "pulse", "color": [255, 30, 30], "speed": 1.5 },
+    "ota_success": { "effect": "notification_flash", "color": [0, 255, 80], "speed": 1.0 },
+    "setup": { "effect": "solid", "color": [255, 255, 255], "speed": 1.0 },
+    "mic_muted": { "effect": "breathing", "color": [10, 0, 0], "speed": 0.8 }
   }
 }
