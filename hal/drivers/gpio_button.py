@@ -3,12 +3,12 @@
 Supports four actions on a single button:
 - Single click: stop speaker / unmute mic (fires immediately on release)
 - Triple click: reboot OS (resolved after the click window)
-- Hold + release (5–10s):  shutdown OS
-- Hold + release (10s+):   factory-reset (wipe state, reboot to AP setup)
+- Hold + release (10–20s): shutdown OS
+- Hold + release (20s+):   factory-reset (wipe state, reboot to AP setup)
 
 Destructive actions commit ON RELEASE, not on a timer firing while held,
 so the user can cancel mid-hold by releasing before crossing a threshold
-(or keep holding past 10s to escalate from shutdown → factory-reset).
+(or keep holding past 20s to escalate from shutdown → factory-reset).
 
 The silent part of the single-click action (stop speaker / unmute mic)
 fires on the FIRST tap of a burst without waiting for the click window —
@@ -45,8 +45,8 @@ from hal.drivers.button_actions import (
 logger = logging.getLogger(__name__)
 
 # LED feedback during hold (Tier B design from the factory-reset discussion).
-# Red blink at 5–10s tells the user "shutdown is armed — releasing now
-# commits". Red solid at 10s+ tells them they've escalated to factory-reset.
+# Red blink at 10–20s tells the user "shutdown is armed — releasing now
+# commits". Red solid at 20s+ tells them they've escalated to factory-reset.
 # Both dispatch at HIGH priority so they preempt the current emotion LED.
 # Same red colour for both stages — blink vs solid is the differentiator.
 LED_SHUTDOWN_WARN = (255, 0, 0)     # red (blinking)
@@ -172,7 +172,7 @@ class GPIOButtonHandler:
             # on release based on hold duration — no timer fires while held,
             # so the user can always cancel by releasing before the next
             # threshold (or escalate from shutdown → factory-reset by
-            # holding past 10s). LED feedback runs in a watcher thread.
+            # holding past 20s). LED feedback runs in a watcher thread.
             self._press_start = time.monotonic()
             self._pressed = True
             # Signal any leftover watcher (shouldn't exist due to release
@@ -243,6 +243,12 @@ class GPIOButtonHandler:
                 daemon=True,
                 name="gpio-button-long-press",
             ).start()
+            return
+
+        # A 5–10 s hold is intentionally a neutral interval: it is too long
+        # to be treated as a tap, but does not arm shutdown until 10 s.
+        if held >= 5.0:
+            logger.info("GPIO button hold %.1fs -- no action (shutdown starts at 10s)", held)
             return
 
         # Short tap → count toward triple-click resolution. The SILENT part

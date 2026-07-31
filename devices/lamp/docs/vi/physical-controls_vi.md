@@ -29,10 +29,10 @@ Cả hai handler đều detect board qua `/proc/device-tree/model`:
 | **1 chạm** | Stop loa / unmute mic + speaker + chime ack (~120 ms ping) — tất cả fire ngay khi nhả nút (không đợi click window); cue "Mình nghe đây" phát sau khi click window 0.4 s phân giải xong | Tách y hệt — TTS đang nói bị cắt và chime ack kêu ~0.2 s sau khi nhấc tay (session đầu kết thúc); unmute + cue đợi decision window 1.2 s (chi phí tap-vs-pet, xem dưới) |
 | **2 chạm** (≤ 0.4 s, nút) / (≤ 1.2 s, TTP223) | Không thêm gì ngoài single-click đã fire ở chạm 1 (panic-click guard) | Pet response — TTS chọn ngẫu nhiên 1 câu từ pool theo ngôn ngữ |
 | **3 chạm** (≤ 0.4 s, nút) | Reboot OS (TTS báo → `sudo reboot`) | n/a — TTP223 dừng ở 2 (chạm thêm bị cooldown nuốt) |
-| **Giữ 5–10 s rồi nhả** | Shutdown OS (TTS báo → release servo → `sudo shutdown -h now`). LED nháy đỏ khi đã arm. | n/a — phần cứng TTP223 không hold đáng tin được (xem "FastMode" dưới) |
-| **Giữ 10 s+ rồi nhả** | Factory-reset: wipe state thiết bị + reboot vào AP setup (TTS báo → release servo → POST `/api/system/factory-reset` trên OS server). LED đỏ đứng khi đã arm. | n/a |
+| **Giữ 10–20 s rồi nhả** | Shutdown OS (TTS báo → release servo → `sudo shutdown -h now`). LED nháy đỏ khi đã arm. | n/a — phần cứng TTP223 không hold đáng tin được (xem "FastMode" dưới) |
+| **Giữ 20 s+ rồi nhả** | Factory-reset: wipe state thiết bị + reboot vào AP setup (TTS báo → release servo → POST `/api/system/factory-reset` trên OS server). LED đỏ đứng khi đã arm. | n/a |
 
-Destructive gesture (reboot, shutdown, factory-reset) cố tình chỉ có trên nút GPIO. Hành động phá huỷ cần cử chỉ chủ ý, và nút cơ học cho bằng chứng intent rõ ràng. Hai mức giữ **commit khi nhả, không phải khi timer fire lúc đang giữ** — nên user có thể huỷ bằng cách nhả tay trước khi vượt ngưỡng, hoặc giữ tiếp quá 10 s để escalate từ shutdown lên factory-reset (xem "Detect nút GPIO" dưới).
+Destructive gesture (reboot, shutdown, factory-reset) cố tình chỉ có trên nút GPIO. Hành động phá huỷ cần cử chỉ chủ ý, và nút cơ học cho bằng chứng intent rõ ràng. Hai mức giữ **commit khi nhả, không phải khi timer fire lúc đang giữ** — nên user có thể huỷ bằng cách nhả tay trước khi vượt ngưỡng, hoặc giữ tiếp quá 20 s để escalate từ shutdown lên factory-reset (xem "Detect nút GPIO" dưới).
 
 ## Cắt Lamp giữa câu (barge-in)
 
@@ -53,12 +53,13 @@ Khi bật, tail log để xem `Barge-in monitor session end: max_rms_seen=N` (pe
 
 ## Detect nút GPIO (`hal/drivers/gpio_button.py`)
 
-Driver đếm edge nơi **mọi destructive action commit ở rising edge (nhả) dựa trên thời lượng giữ** — không timer nào fire lúc đang giữ. Đây chính là cái cho phép user huỷ giữa chừng (nhả trước ngưỡng) hoặc escalate (giữ tiếp quá 10 s).
+Driver đếm edge nơi **mọi destructive action commit ở rising edge (nhả) dựa trên thời lượng giữ** — không timer nào fire lúc đang giữ. Đây chính là cái cho phép user huỷ giữa chừng (nhả trước ngưỡng) hoặc escalate (giữ tiếp quá 20 s).
 
 1. **Falling edge (nhấn):** ghi `press_start` (đồng hồ monotonic) và spawn thread hold-LED watcher (mỗi lần nhấn 1 thread, có stop `Event` riêng). Không arm timer action nào.
 2. **Rising edge (nhả):** dừng LED watcher, tính `held = now − press_start` rồi rẽ nhánh:
-   - `held >= 10 s` (`FACTORY_RESET_DURATION`) → scrub mọi click đang chờ, khoá LED đỏ đứng, chạy `factory_reset_action` off-thread.
-   - `held >= 5 s` (`LONG_PRESS_DURATION`) → scrub click đang chờ, freeze LED đỏ, chạy `long_press_action` (shutdown) off-thread.
+   - `held >= 20 s` (`FACTORY_RESET_DURATION`) → scrub mọi click đang chờ, khoá LED đỏ đứng, chạy `factory_reset_action` off-thread.
+   - `held >= 10 s` (`LONG_PRESS_DURATION`) → scrub click đang chờ, freeze LED đỏ, chạy `long_press_action` (shutdown) off-thread.
+   - `5 s <= held < 10 s` → không làm gì; khoảng trung tính này cố ý không được hiểu là một tap.
    - khác (tap ngắn) → `click_count += 1` và (re)start click-window timer 0.4 s. Ở tap **đầu tiên** của chuỗi, phần im lặng của `single_click_action` (`announce=False`) fire ngay off-thread — nó không phá huỷ ("cho tôi nói"), nên không cần đợi window. Cue nói được hoãn lại để không nói đè lên chuỗi triple-click đang bấm dở.
 3. Khi click window hết:
    - `count == 3` → `triple_click_action` (không cue — chỉ announce reboot)
@@ -72,9 +73,10 @@ Thread watcher poll thời lượng giữ và đẩy LED RGB ở priority HIGH (
 
 | Thời gian giữ | LED | Ý nghĩa |
 |---|---|---|
-| < 5 s | giữ nguyên | dưới ngưỡng shutdown — nhả ra là 1 tap |
-| 5–10 s | đỏ, nháy 2 Hz | đã arm shutdown — nhả bây giờ là tắt máy |
-| 10 s+ | đỏ, đứng | đã arm factory-reset — nhả bây giờ là wipe + reboot |
+| < 5 s | giữ nguyên | một tap ngắn |
+| 5–10 s | giữ nguyên | khoảng trung tính — nhả ra không làm gì |
+| 10–20 s | đỏ, nháy 2 Hz | đã arm shutdown — nhả bây giờ là tắt máy |
+| 20 s+ | đỏ, đứng | đã arm factory-reset — nhả bây giờ là wipe + reboot |
 
 Cùng màu đỏ cho cả hai mức arm; nháy vs đứng là cái phân biệt. LED là no-op im lặng khi RGB service không có (máy dev) — nút vẫn hoạt động.
 
@@ -125,7 +127,7 @@ Các action sống ở một chỗ để nút GPIO, TTP223, và mọi input tư�
 
 ### Factory-reset: wipe những gì
 
-`factory_reset_action` chỉ **báo + uỷ quyền** — phần reset thật nằm ở OS server (`system/server/system/factoryreset.go`), gọi được từ thiết bị qua loopback không cần Bearer token (authoritative nhờ hiện diện vật lý: giữ 10 s có chủ ý). `POST /api/system/factory-reset` là reset **mềm** (wipe state, không reflash — kernel / package OS / binary / `.venv` HAL không bị đụng):
+`factory_reset_action` chỉ **báo + uỷ quyền** — phần reset thật nằm ở OS server (`system/server/system/factoryreset.go`), gọi được từ thiết bị qua loopback không cần Bearer token (authoritative nhờ hiện diện vật lý: giữ 20 s có chủ ý). `POST /api/system/factory-reset` là reset **mềm** (wipe state, không reflash — kernel / package OS / binary / `.venv` HAL không bị đụng):
 
 1. Wipe state của agent backend đang chạy (OpenClaw hoặc Hermes, auto-detect từ `config.json` `agent_runtime`).
 2. Wipe các path state của thiết bị: `/root/config` (config.json — API key, channel token, MQTT creds), `/root/local/users` + `/root/local/strangers` (enrollment khuôn mặt/giọng), `/var/lib/hal/snapshots` (snapshot camera), và `/etc/wpa_supplicant/wpa_supplicant-wlan0.conf` (WiFi nhà → ép vào AP mode lần boot kế).

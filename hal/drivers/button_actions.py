@@ -32,8 +32,8 @@ from hal.presets import DEFAULT_LANG
 logger = logging.getLogger(__name__)
 
 DOUBLE_CLICK_WINDOW = 0.4  # seconds to wait for second click
-LONG_PRESS_DURATION = 5.0  # seconds held → shutdown on release
-FACTORY_RESET_DURATION = 10.0  # seconds held → factory-reset on release (supersedes shutdown)
+LONG_PRESS_DURATION = 10.0  # seconds held → shutdown on release
+FACTORY_RESET_DURATION = 20.0  # seconds held → factory-reset on release (supersedes shutdown)
 
 # OS server sensing endpoint. Head-pat notify is fire-and-forget — the
 # OS server appends a NO_REPLY hint so the agent records the event in
@@ -344,10 +344,10 @@ def factory_reset_action(source: str = "button"):
     into AP setup mode. HAL does NOT touch state itself — single source of
     truth for what gets wiped lives in the OS server's deviceWipePaths.
 
-    Authoritative because of physical presence: 10s deliberate hold + the
+    Authoritative because of physical presence: 20s deliberate hold + the
     /api/system/factory-reset endpoint allows loopback origin without Bearer
     (see os-server server.go adminOrLoopbackAuth)."""
-    logger.info("%s factory-reset hold (10s+) -- triggering soft reset", source)
+    logger.info("%s factory-reset hold (20s+) -- triggering soft reset", source)
     logger.info("%s LED: red solid (factory-reset armed)", source)
 
     # Suppress the lifespan-shutdown re-announce — same reason as
