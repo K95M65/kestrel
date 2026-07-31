@@ -129,14 +129,14 @@ EMOTION_PRESETS = {
     EMO_CURIOUS: {"servo": SERVO_CURIOUS, "color": [125, 81, 0], "effect": FX_CANDLE, "speed": 0.3, "camera": "on"},
     EMO_HAPPY: {"servo": SERVO_HAPPY_WIGGLE, "color": [105, 80, 10], "effect": FX_CANDLE, "speed": 0.2, "camera": "on"},
     EMO_SAD: {"servo": SERVO_SAD, "color": [20, 10, 10], "effect": FX_BREATHING, "speed": 0.4, "camera": "on"},
-    EMO_THINKING: {"servo": SERVO_THINKING_DEEP, "color": [50, 100, 35], "effect": FX_PULSE, "speed": 0.1,
+    EMO_THINKING: {"servo": SERVO_THINKING_DEEP, "color": [50, 100, 35], "effect": FX_PULSE, "speed": 0.3,
                    "camera": "on"},
     EMO_IDLE: {"servo": SERVO_IDLE, "color": [90, 60, 5], "effect": FX_BREATHING, "speed": 0.2},
     EMO_EXCITED: {"servo": SERVO_EXCITED, "color": [30, 21, 30], "effect": FX_CANDLE, "speed": 0.5, "camera": "on"},
     EMO_SHY: {"servo": SERVO_SHY, "color": [155, 70, 20], "effect": FX_BREATHING, "speed": 0.3, "camera": "on"},
     EMO_SHOCK: {"servo": SERVO_SHOCK, "color": [255, 255, 255], "effect": FX_NOTIFICATION_FLASH, "speed": 1.0,
                 "camera": "on"},
-    EMO_LISTENING: {"servo": SERVO_LISTENING, "color": [51, 121, 230], "effect": FX_PULSE, "speed": 0.1,
+    EMO_LISTENING: {"servo": SERVO_LISTENING, "color": [51, 121, 230], "effect": FX_PULSE, "speed": 0.3,
                     "camera": "on"},
     EMO_LAUGH: {"servo": SERVO_LAUGH, "color": [130, 91, 11], "effect": FX_CANDLE, "speed": 0.2, "camera": "on"},
     EMO_CONFUSED: {"servo": SERVO_CONFUSED, "color": [124, 71, 25], "effect": FX_CANDLE, "speed": 0.2, "camera": "on"},
@@ -235,7 +235,7 @@ STATUS_LED_PRESETS = {
     # it is tuned for "glanceable", not "bright". Red-only helps — at the same
     # value it carries ~1/4 the luminance of white. Don't go much lower or the
     # privacy indicator stops reading in a daylit room.
-    "mic_muted": {"effect": FX_BREATHING, "color": [90, 0, 0], "speed": 0.8},  # dark red — mic muted
+    "mic_muted": {"effect": FX_BREATHING, "color": [10, 0, 0], "speed": 0.8},  # dark red — mic muted
 }
 
 # Ambient resting look — what the strip settles into when no user LED state
