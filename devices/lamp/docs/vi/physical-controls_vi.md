@@ -29,10 +29,11 @@ Cả hai handler đều detect board qua `/proc/device-tree/model`:
 | **1 chạm** | Stop loa / unmute mic + speaker + chime ack (~120 ms ping) — tất cả fire ngay khi nhả nút (không đợi click window); cue "Mình nghe đây" phát sau khi click window 0.4 s phân giải xong | Tách y hệt — TTS đang nói bị cắt và chime ack kêu ~0.2 s sau khi nhấc tay (session đầu kết thúc); unmute + cue đợi decision window 1.2 s (chi phí tap-vs-pet, xem dưới) |
 | **2 chạm** (≤ 0.4 s, nút) / (≤ 1.2 s, TTP223) | Không thêm gì ngoài single-click đã fire ở chạm 1 (panic-click guard) | Pet response — TTS chọn ngẫu nhiên 1 câu từ pool theo ngôn ngữ |
 | **3 chạm** (≤ 0.4 s, nút) | Reboot OS (TTS báo → `sudo reboot`) | n/a — TTP223 dừng ở 2 (chạm thêm bị cooldown nuốt) |
+| **Giữ 3–10 s rồi nhả** | Vào emotion `sleepy`: LED tắt, camera/mic/speaker tắt; servo release sau 2 s. Khi đang giữ LED nháy tím sleepy. | n/a — phần cứng TTP223 không hold đáng tin được (xem "FastMode" dưới) |
 | **Giữ 10–20 s rồi nhả** | Shutdown OS (TTS báo → release servo → `sudo shutdown -h now`). LED nháy đỏ khi đã arm. | n/a — phần cứng TTP223 không hold đáng tin được (xem "FastMode" dưới) |
 | **Giữ 20 s+ rồi nhả** | Factory-reset: wipe state thiết bị + reboot vào AP setup (TTS báo → release servo → POST `/api/system/factory-reset` trên OS server). LED đỏ đứng khi đã arm. | n/a |
 
-Destructive gesture (reboot, shutdown, factory-reset) cố tình chỉ có trên nút GPIO. Hành động phá huỷ cần cử chỉ chủ ý, và nút cơ học cho bằng chứng intent rõ ràng. Hai mức giữ **commit khi nhả, không phải khi timer fire lúc đang giữ** — nên user có thể huỷ bằng cách nhả tay trước khi vượt ngưỡng, hoặc giữ tiếp quá 20 s để escalate từ shutdown lên factory-reset (xem "Detect nút GPIO" dưới).
+Gesture giữ chỉ có trên nút GPIO vì nút cơ học cho bằng chứng intent rõ ràng. Mức sleep và các mức destructive **commit khi nhả, không phải khi timer fire lúc đang giữ**. Các mức destructive escalate từ shutdown sang factory-reset sau 20 s (xem "Detect nút GPIO" dưới).
 
 ## Cắt Lamp giữa câu (barge-in)
 
@@ -59,7 +60,7 @@ Driver đếm edge nơi **mọi destructive action commit ở rising edge (nhả
 2. **Rising edge (nhả):** dừng LED watcher, tính `held = now − press_start` rồi rẽ nhánh:
    - `held >= 20 s` (`FACTORY_RESET_DURATION`) → scrub mọi click đang chờ, khoá LED đỏ đứng, chạy `factory_reset_action` off-thread.
    - `held >= 10 s` (`LONG_PRESS_DURATION`) → scrub click đang chờ, freeze LED đỏ, chạy `long_press_action` (shutdown) off-thread.
-   - `5 s <= held < 10 s` → không làm gì; khoảng trung tính này cố ý không được hiểu là một tap.
+   - `held >= 3 s` (`SLEEP_HOLD_DURATION`) → scrub click đang chờ, chạy `sleep_action` off-thread; nó gọi pipeline emotion `sleepy` chuẩn.
    - khác (tap ngắn) → `click_count += 1` và (re)start click-window timer 0.4 s. Ở tap **đầu tiên** của chuỗi, phần im lặng của `single_click_action` (`announce=False`) fire ngay off-thread — nó không phá huỷ ("cho tôi nói"), nên không cần đợi window. Cue nói được hoãn lại để không nói đè lên chuỗi triple-click đang bấm dở.
 3. Khi click window hết:
    - `count == 3` → `triple_click_action` (không cue — chỉ announce reboot)
@@ -73,12 +74,12 @@ Thread watcher poll thời lượng giữ và đẩy LED RGB ở priority HIGH (
 
 | Thời gian giữ | LED | Ý nghĩa |
 |---|---|---|
-| < 5 s | giữ nguyên | một tap ngắn |
-| 5–10 s | giữ nguyên | khoảng trung tính — nhả ra không làm gì |
+| < 3 s | giữ nguyên | một tap ngắn |
+| 3–10 s | tím sleepy, nháy 2 Hz | đã arm sleepy; nhả ra sẽ vào sleep (LED sau đó tắt) |
 | 10–20 s | đỏ, nháy 2 Hz | đã arm shutdown — nhả bây giờ là tắt máy |
 | 20 s+ | đỏ, đứng | đã arm factory-reset — nhả bây giờ là wipe + reboot |
 
-Cùng màu đỏ cho cả hai mức arm; nháy vs đứng là cái phân biệt. LED là no-op im lặng khi RGB service không có (máy dev) — nút vẫn hoạt động.
+Màu tím nhận diện mức sleep; đỏ nháy vs đỏ đứng phân biệt shutdown với factory-reset. LED là no-op im lặng khi RGB service không có (máy dev) — nút vẫn hoạt động.
 
 Debounce mỗi edge là 200 ms (tick nhấn và nhả track độc lập để tap nhanh không bị drop trong khi bounce lặp của cùng một edge bị lọc).
 
@@ -121,6 +122,7 @@ Các action sống ở một chỗ để nút GPIO, TTP223, và mọi input tư�
 |---|---|---|
 | `single_click_action(source)` | Gỡ mute loa do user/scene (bỏ qua khi `_enrolling`). Mic bị mute → unmute. Khác thì stop TTS + stop music. Rồi nói câu "Mình nghe đây" local với retry-on-busy. | Có — gọi `stop_tts()` và bản thân câu cue cũng preempt. |
 | `triple_click_action(source)` | Nói "Đang khởi động lại" → đợi 5 s cho clip cached → `sudo reboot`. | Có |
+| `sleep_action(source)` | Gọi `sleepy` không TTS: LED tắt, camera/mic/speaker tắt, rồi release servo sau 2 s. | Có — pipeline sleepy dừng TTS/nhạc đang phát. |
 | `long_press_action(source)` | Nói "Đang tắt máy" → đợi 5 s → `release_servos()` (để đèn không slam xuống giữa pose) → `sudo shutdown -h now`. | Có |
 | `factory_reset_action(source)` | Nói "Đang khôi phục cài đặt gốc. Đang khởi động lại" → `release_servos()` → POST `/api/system/factory-reset` trên OS server (server lo phần wipe + reboot, xem dưới). | Có |
 | `head_pat_action(source)` | Chọn ngẫu nhiên 1 câu pet local, nói qua `speak_cached` trên daemon thread. **Không cắt**: nếu TTS vẫn busy thì câu pet bị drop im lặng. Thực tế trên TTP223, session chạm đầu tiên đã cắt lời đang nói (`_grab_floor_if_speaking`) nên tới lúc pet fire thì TTS thường rảnh và câu giggle phát được. | Không |

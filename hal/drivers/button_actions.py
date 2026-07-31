@@ -32,6 +32,7 @@ from hal.presets import DEFAULT_LANG
 logger = logging.getLogger(__name__)
 
 DOUBLE_CLICK_WINDOW = 0.4  # seconds to wait for second click
+SLEEP_HOLD_DURATION = 3.0  # seconds held → sleepy emotion on release
 LONG_PRESS_DURATION = 10.0  # seconds held → shutdown on release
 FACTORY_RESET_DURATION = 20.0  # seconds held → factory-reset on release (supersedes shutdown)
 
@@ -292,6 +293,24 @@ def head_pat_action(source: str = "touch"):
         daemon=True,
         name=f"{source}-head-pat-tts",
     ).start()
+
+
+def sleep_action(source: str = "button"):
+    """Enter sleepy mode silently through the normal emotion pipeline."""
+    if state._sleeping:
+        logger.info("%s sleep hold -- already sleeping", source)
+        return
+
+    logger.info("%s sleep hold -- entering sleepy emotion", source)
+    try:
+        from hal.models import EmotionRequest
+        from hal.routes.emotion import express_emotion
+
+        # Reuse /emotion so sleep keeps one authoritative implementation for
+        # servo animation/release, LED off, camera off, and audio mute.
+        express_emotion(EmotionRequest(emotion="sleepy"))
+    except Exception as e:
+        logger.warning("%s sleep hold failed: %s", source, e)
 
 
 def long_press_action(source: str = "button"):
