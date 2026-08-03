@@ -27,6 +27,19 @@ from hal.drivers.voice._internal.config import (
 logger = logging.getLogger("hal.voice")
 
 
+def merge_wake_words(*word_lists: list[str]) -> list[str]:
+    """Merge wake-word aliases case-insensitively while preserving order."""
+    merged: list[str] = []
+    seen: set[str] = set()
+    for words in word_lists:
+        for word in words:
+            normalized = word.strip().casefold()
+            if normalized and normalized not in seen:
+                seen.add(normalized)
+                merged.append(normalized)
+    return merged
+
+
 class SpeakerDecorator:
     """Owns wake-word list + speaker recognizer + speech-emotion service."""
 

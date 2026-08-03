@@ -40,7 +40,7 @@ from hal.drivers.voice._internal.realtime_turn import (
 )
 from hal.drivers.voice._internal.sensing_sender import SensingSender
 from hal.drivers.voice._internal.session_finalize import finalize_session
-from hal.drivers.voice._internal.speaker_decorate import SpeakerDecorator
+from hal.drivers.voice._internal.speaker_decorate import SpeakerDecorator, merge_wake_words
 from hal.drivers.voice._internal.turn_dispatch import dispatch_turn
 from hal.drivers.voice._internal.vad_filters import SileroVADFilter, WebRTCVADFilter
 from hal.drivers.voice.backchannel import Backchannel
@@ -182,8 +182,12 @@ class VoiceService:
         # Speaker decoration (wake-word + speaker recognizer + SER). Speaker-ID and
         # SER (speech emotion) are voice people-perception — gated on the `audio`
         # capability (the mic), passed in via enable_people_perception.
+        # Device type is a permanent spoken alias ("hey lamp"); the runtime's
+        # current agent name is an additional alias ("hey Luna"). Runtime rename
+        # updates must never replace the device type alias.
+        self._device_wake_words = list(voice_cfg.DEFAULT_WAKE_WORDS)
         self._decorator = SpeakerDecorator(
-            wake_words=list(wake_words) if wake_words else list(voice_cfg.DEFAULT_WAKE_WORDS),
+            wake_words=merge_wake_words(self._device_wake_words, wake_words or []),
             nudge_cooldown_s=voice_cfg.ENROLL_NUDGE_COOLDOWN_S,
             enable_people_perception=enable_people_perception,
         )
@@ -235,7 +239,9 @@ class VoiceService:
 
     def set_wake_words(self, words: list) -> None:
         """Update wake word list at runtime (called when agent is renamed)."""
-        self._decorator.set_wake_words(words)
+        self._decorator.set_wake_words(
+            merge_wake_words(self._device_wake_words, words)
+        )
 
     @staticmethod
     def _set_emotion_local(emotion: str) -> None:

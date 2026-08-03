@@ -2,7 +2,7 @@
 
 import threading
 
-from hal.drivers.voice._internal.speaker_decorate import SpeakerDecorator
+from hal.drivers.voice._internal.speaker_decorate import SpeakerDecorator, merge_wake_words
 
 
 def _decorator(words: list[str]) -> SpeakerDecorator:
@@ -26,3 +26,9 @@ def test_wake_word_match_requires_a_prefix_and_word_boundary():
     assert not decorator.starts_with_wake_word("Mình vừa gặp Luna ngoài đường")
     assert not decorator.starts_with_wake_word("lunar calendar")
     assert decorator.starts_with_wake_word("luna, nghe mình nói này")
+
+
+def test_device_type_alias_is_retained_alongside_agent_name():
+    words = merge_wake_words(["hello lamp", "hey lamp"], ["hey luna", "luna"])
+
+    assert words == ["hello lamp", "hey lamp", "hey luna", "luna"]
