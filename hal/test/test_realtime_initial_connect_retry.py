@@ -22,6 +22,18 @@ class _Agent:
         self.available = False
 
 
+class _BlockingAgent(_Agent):
+    def __init__(self, entered: threading.Event, release: threading.Event) -> None:
+        super().__init__(fail=False)
+        self._entered = entered
+        self._release = release
+
+    def connect(self) -> None:
+        self._entered.set()
+        assert self._release.wait(timeout=1.0)
+        self.available = True
+
+
 class _Context:
     def build_instructions(self) -> str:
         return "test instructions"
@@ -32,6 +44,7 @@ def _orchestrator_for_initial_retry() -> RealtimeOrchestrator:
     orchestrator._agent = _Agent(fail=True)
     orchestrator._started = threading.Event()
     orchestrator._started.set()
+    orchestrator._lifecycle_lock = threading.Lock()
     orchestrator._connect_retry_stop = threading.Event()
     orchestrator._connect_retry_thread = None
     orchestrator._rebuild_lock = threading.Lock()
@@ -61,3 +74,32 @@ def test_initial_connection_failure_recovers_without_a_hal_restart(monkeypatch):
 
     assert orchestrator.available
     assert not orchestrator._connect_retry_thread.is_alive()
+
+
+def test_stopped_orchestrator_discards_a_retry_that_connected_late(monkeypatch):
+    """A retry must not resurrect a realtime socket after HAL has stopped."""
+    orchestrator = _orchestrator_for_initial_retry()
+    monkeypatch.setattr(
+        "hal.realtime.orchestrator.config.REALTIME_PROVIDER", "gemini"
+    )
+    entered = threading.Event()
+    release = threading.Event()
+    replacement = _BlockingAgent(entered, release)
+    orchestrator._make_agent = lambda provider, instructions: replacement
+    cancelled = threading.Event()
+
+    worker = threading.Thread(
+        target=orchestrator._rebuild_now,
+        args=("test-stop-race", cancelled),
+    )
+    worker.start()
+    assert entered.wait(timeout=1.0)
+    cancelled.set()
+    with orchestrator._lifecycle_lock:
+        orchestrator._started.clear()
+    release.set()
+    worker.join(timeout=1.0)
+
+    assert not worker.is_alive()
+    assert orchestrator._agent is not replacement
+    assert replacement.disconnected

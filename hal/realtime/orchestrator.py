@@ -249,6 +249,9 @@ class RealtimeOrchestrator:
         # connect() needs an orchestrator-owned retry loop.
         self._connect_retry_stop: threading.Event = threading.Event()
         self._connect_retry_thread: threading.Thread | None = None
+        # Serializes start/stop with session swaps. A reconnect that completes
+        # after stop must never publish a live agent back into the stopped HAL.
+        self._lifecycle_lock: threading.Lock = threading.Lock()
         self._consecutive_silent: int = 0  # zombie-session guard (see stream_output)
         # Idle session recycle (cost): when a turn arrives after a long silence,
         # rebuild the session AFTER that turn so the next turn drops the context
@@ -384,7 +387,12 @@ class RealtimeOrchestrator:
         self._rebuild_lock.release()
         self._rebuild_done.set()
 
-    def _rebuild_locked(self, reason: str, discard_old_on_failure: bool = False) -> bool:
+    def _rebuild_locked(
+        self,
+        reason: str,
+        discard_old_on_failure: bool = False,
+        cancel_event: threading.Event | None = None,
+    ) -> bool:
         """Build a replacement session while holding the rebuild reservation."""
         provider: str = config.REALTIME_PROVIDER.strip().lower()
         old = self._agent
@@ -397,7 +405,17 @@ class RealtimeOrchestrator:
                     self._agent = None
                 return False
             new.connect()
-            self._agent = new
+            with self._lifecycle_lock:
+                if (
+                    not self._started.is_set()
+                    or (cancel_event is not None and cancel_event.is_set())
+                ):
+                    logger.info(
+                        "[realtime] Discarding replacement session — orchestrator stopped"
+                    )
+                    new.disconnect()
+                    return False
+                self._agent = new
             self._consecutive_silent = 0
             self._idle_reset_pending = False
             self._turns_since_recycle = 0
@@ -432,7 +450,9 @@ class RealtimeOrchestrator:
                 except Exception:
                     logger.exception("[realtime] old agent disconnect failed")
 
-    def _rebuild_now(self, reason: str) -> bool:
+    def _rebuild_now(
+        self, reason: str, cancel_event: threading.Event | None = None
+    ) -> bool:
         """Synchronously swap in a fresh session before audio is streamed.
 
         Used for Gemini idle-gap recovery: if the proxy/SDK may have dropped an
@@ -441,7 +461,7 @@ class RealtimeOrchestrator:
         """
         if not self._begin_rebuild():
             return False
-        return self._rebuild_locked(reason)
+        return self._rebuild_locked(reason, cancel_event=cancel_event)
 
     def _rebuild_in_background(
         self, reason: str, thread_name: str, discard_old_on_failure: bool = False
@@ -452,7 +472,7 @@ class RealtimeOrchestrator:
         try:
             threading.Thread(
                 target=self._rebuild_locked,
-                args=(reason, discard_old_on_failure),
+                args=(reason, discard_old_on_failure, None),
                 daemon=True,
                 name=thread_name,
             ).start()
@@ -550,7 +570,9 @@ class RealtimeOrchestrator:
         """Try fresh sessions until the initial connection recovers or HAL stops."""
         delay_s = INITIAL_CONNECT_RETRY_DELAY_S
         while not self._connect_retry_stop.is_set():
-            if self._rebuild_now("initial-connect-retry"):
+            if self._rebuild_now(
+                "initial-connect-retry", cancel_event=self._connect_retry_stop
+            ):
                 logger.info("[realtime] Initial connection recovered automatically")
                 return
             logger.warning(
@@ -617,6 +639,10 @@ class RealtimeOrchestrator:
     def stop(self) -> None:
         """Disconnect the agent and summarize unsummarized memory."""
         self._connect_retry_stop.set()
+        with self._lifecycle_lock:
+            self._started.clear()
+            agent = self._agent
+            self._agent = None
         # Summarize remaining memory before shutdown
         try:
             self._context.summarize_device_memory()
@@ -624,13 +650,11 @@ class RealtimeOrchestrator:
         except Exception:
             logger.exception("[realtime] Failed to summarize memory on shutdown")
 
-        if self._agent is not None:
+        if agent is not None:
             try:
-                self._agent.disconnect()
+                agent.disconnect()
             except Exception:
                 logger.exception("Failed to disconnect realtime agent")
-            self._agent = None
-        self._started.clear()
         logger.info("Realtime orchestrator stopped")
 
     def append_audio(self, frame: npt.NDArray[np.float32]) -> None:

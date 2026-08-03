@@ -34,15 +34,15 @@ window, adding that many seconds of latency before the main agent even sees the
 request. The function result is already sent back to the model before the break;
 the dangling open turn is cleared by the next turn's `flush_output()`.
 
-An armed wake-word turn reaches the main agent whenever realtime does **not**
+An STT-final-confirmed wake-word turn reaches the main agent whenever realtime does **not**
 actually speak a reply: this includes an unavailable or failed realtime
 connection, a receive timeout, and an explicit delegate. Only a turn marked
 handled after realtime produced speech is suppressed from the normal STT →
 OS-server path, so a temporary Gemini failure cannot drop a voice command.
 
 If the **initial** provider connection fails during HAL startup, the
-orchestrator creates fresh sessions in a background retry loop (2s exponential
-backoff, capped at 60s). This is separate from provider send/receive reconnects,
+orchestrator creates fresh sessions in a background retry loop (an immediate
+fresh attempt, then 2s exponential backoff capped at 60s). This is separate from provider send/receive reconnects,
 which do not exist until the first `connect()` succeeds. No HAL restart or new
 audio is required; voice turns keep using the main-agent fallback until the
 connection recovers.
@@ -544,7 +544,7 @@ Each knob's `HAL_*` env var overrides the block (and is the dev-box path):
 | Variable | Default | Notes |
 |----------|---------|-------|
 | `HAL_REALTIME_ENABLED` | `true` | Master gate for the realtime pipeline |
-| `wakeword` | `false` | Top-level config-file wake-word gate. When true, HAL keeps listening with its active STT provider but only sends a turn to the realtime model after an interim transcript starts with a configured wake phrase. The supported prefixes are `hello`, `hey`, `hi`, `alo`, `okay`, `ok`, and `wake up`, applied to the permanent common alias (`hey autonomous`), device type (`hey lamp`), and current agent name (`hey Luna`). A runtime rename updates only the agent-name aliases. Bare names and other prefixes do not arm the gate. Direct realtime replies stay in HAL; only an explicit `delegate_to_main` is forwarded to os-server. If realtime is disabled, an armed final transcript instead follows the normal os-server path, so wake-word control still works. Missing/false preserves the existing always-listening flow. HAL restarts after a local Settings save or MQTT `wakeword.gate`. |
+| `wakeword` | `false` | Top-level config-file wake-word gate. When true, a matching interim transcript is provisional only: HAL commits buffered audio to realtime or forwards a command only after an STT **final** result confirms the configured leading wake phrase. The supported prefixes are `hello`, `hey`, `hi`, `alo`, `okay`, `ok`, and `wake up`, applied to the permanent common alias (`hey autonomous`), device type (`hey lamp`), and current agent name (`hey Luna`). A runtime rename updates only the agent-name aliases. Bare names and other prefixes do not arm the gate. A confirmed turn falls back to os-server whenever realtime is unavailable, silent, errors, or delegates; only a spoken realtime reply stays in HAL. If realtime is disabled, the confirmed final transcript follows the normal os-server path. Missing/false preserves the pre-gate always-listening flow unchanged. HAL restarts after a local Settings save or MQTT `wakeword.gate`. |
 | `HAL_REALTIME_PROVIDER` | `gemini` | `none` \| `gemini` \| `openai` \| `qwen` |
 | `HAL_REALTIME_TURN_DETECTION` | `off` | `server_vad` \| `semantic_vad` \| `off` (Gemini: off = manual activity detection) |
 | `HAL_REALTIME_RECV_QUEUE_TIMEOUT_S` | `8.0` | Max seconds `receive()` waits for the next output event before ending a silent turn (fallback to main agent) |

@@ -51,6 +51,7 @@ def _orchestrator_for_rebuild(
     orchestrator._rebuild_done.set()
     orchestrator._started = threading.Event()
     orchestrator._started.set()
+    orchestrator._lifecycle_lock = threading.Lock()
     orchestrator._agent = old
     orchestrator._context = _Context()
     orchestrator._make_agent = lambda provider, instructions: _NewAgent(entered, release)

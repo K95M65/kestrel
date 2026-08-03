@@ -942,29 +942,34 @@ class VoiceService:
             pre_frames_from_vad,
             device_rate,
         )
-        # The callback below runs in the STT listener thread. It only latches
-        # the match; the capture thread flushes retained audio immediately,
-        # preserving the opening wake phrase without touching realtime session
-        # state across threads.
+        # A partial match is provisional: STT can correct a name in its final
+        # result ("Moon" → "Mom"). It improves observability while the user is
+        # speaking, but a turn is not dispatched or committed to realtime until
+        # a final result confirms the wake phrase.
         wake_word_detected = threading.Event()
+        wake_word_confirmed = threading.Event()
+        capture_complete = threading.Event()
         # STT providers disagree on interim updates: some re-send the entire
         # hypothesis ("Hello" → "Hello Luna"), while others emit only the new
         # token ("Hello" → "Luna"). Retain a leading transcript hypothesis so
         # either shape can arm the gate as soon as the alias is complete.
-        wake_final_segments: list[str] = []
         wake_partial_hypothesis = [""]
+        wake_final_hypothesis = [""]
 
-        def wake_candidate(text: str, is_final: bool) -> str:
-            if is_final:
-                segment = merge_stt_hypothesis(wake_partial_hypothesis[0], text)
-                if segment:
-                    wake_final_segments.append(segment)
-                wake_partial_hypothesis[0] = ""
-            else:
-                wake_partial_hypothesis[0] = merge_stt_hypothesis(
-                    wake_partial_hypothesis[0], text
-                )
-            return " ".join(wake_final_segments + [wake_partial_hypothesis[0]]).strip()
+        def wake_partial_candidate(text: str) -> str:
+            wake_partial_hypothesis[0] = merge_stt_hypothesis(
+                wake_partial_hypothesis[0], text
+            )
+            return wake_partial_hypothesis[0]
+
+        def wake_final_candidate(text: str) -> str:
+            # Do not merge an interim hypothesis into the final one. That would
+            # preserve a corrected false-positive wake word indefinitely.
+            wake_final_hypothesis[0] = merge_stt_hypothesis(
+                wake_final_hypothesis[0], text
+            )
+            wake_partial_hypothesis[0] = ""
+            return wake_final_hypothesis[0]
 
         def open_wake_word_gate(candidate: str, source: str) -> None:
             if (
@@ -978,12 +983,22 @@ class VoiceService:
                     "Wake-word gate opened by STT %s: '%s'", source, candidate
                 )
 
+        def confirm_wake_word_gate(candidate: str) -> None:
+            if (
+                hal_config.WAKEWORD_ENABLED
+                and candidate
+                and self._decorator.starts_with_wake_word(candidate)
+            ):
+                wake_word_confirmed.set()
+                open_wake_word_gate(candidate, "final")
+                logger.info("Wake-word gate confirmed by STT final: '%s'", candidate)
+
         def on_transcript(text: str, is_final: bool):
             if text.strip():
                 self._last_transcript_ts = time.time()
             if not is_final:
                 logger.info("STT partial: '%s'", text)
-                candidate = wake_candidate(text, is_final=False)
+                candidate = wake_partial_candidate(text)
                 if hal_config.WAKEWORD_ENABLED:
                     logger.debug("Wake-word partial candidate: '%s'", candidate)
                     open_wake_word_gate(candidate, "partial")
@@ -999,10 +1014,7 @@ class VoiceService:
             # one utterance, so sending immediately would split a single sentence.
             logger.info("STT final segment: '%s'", text)
             if hal_config.WAKEWORD_ENABLED:
-                # Usually this has already armed on a partial. This fallback
-                # keeps the feature usable with providers that only emit the
-                # complete alias in their final callback.
-                open_wake_word_gate(wake_candidate(text, is_final=True), "final fallback")
+                confirm_wake_word_gate(wake_final_candidate(text))
             # Store final text + any partial accumulated before this final.
             # After final, STT resets partials to empty, so save longest_partial now.
             best = longest_partial[0] if len(longest_partial[0]) > len(text) else text
@@ -1017,6 +1029,7 @@ class VoiceService:
         # no frame is sent to the old, about-to-be-discarded activity.
         realtime_deferred = False
         realtime_turn_started = False
+        realtime_start_failed = False
 
         def start_realtime_turn() -> bool:
             """Open realtime as soon as the wake-word partial is available.
@@ -1026,11 +1039,43 @@ class VoiceService:
             once, including the opening wake phrase, then later frames stream
             straight through as in always-listening mode.
             """
-            nonlocal realtime_deferred, realtime_turn_started
-            if realtime_turn_started:
+            nonlocal realtime_deferred, realtime_turn_started, realtime_start_failed
+            if realtime_turn_started or realtime_start_failed:
                 return False
-            if hal_config.WAKEWORD_ENABLED and not wake_word_detected.is_set():
-                return False
+
+            if hal_config.WAKEWORD_ENABLED:
+                # Preserve the always-listening path below exactly. Wake-word
+                # turns defer all realtime I/O until capture is complete and a
+                # FINAL STT result confirms the phrase, so a rebuild cannot split
+                # one utterance across old/new sessions.
+                if (
+                    not capture_complete.is_set()
+                    or not wake_word_confirmed.is_set()
+                    or not hal_config.REALTIME_ENABLED
+                ):
+                    return False
+                if self._realtime.rebuilding or not self._realtime.available:
+                    logger.info(
+                        "[realtime] Wake-word turn falls back — session unavailable after final confirmation"
+                    )
+                    return False
+                try:
+                    self._realtime.send_text(build_turn_context())
+                    for audio_f32 in rt_audio_buffer:
+                        self._realtime.append_audio(audio_f32)
+                    realtime_turn_started = True
+                    logger.info(
+                        "[realtime] Wake-word confirmed; flushed %d buffered frame(s)",
+                        len(rt_audio_buffer),
+                    )
+                    return True
+                except Exception as e:
+                    realtime_start_failed = True
+                    logger.warning(
+                        "[realtime] Wake-word start failed; forwarding final STT to main agent: %s",
+                        e,
+                    )
+                    return False
 
             realtime_turn_started = True
             if not hal_config.REALTIME_ENABLED:
@@ -1259,6 +1304,15 @@ class VoiceService:
             combined, ser_audio_buffer, buf_duration = finalize_session(
                 audio_buffer, longest_partial, final_segments, last_speech_idx
             )
+            capture_complete.set()
+            if (
+                hal_config.WAKEWORD_ENABLED
+                and wake_word_detected.is_set()
+                and not wake_word_confirmed.is_set()
+            ):
+                logger.info(
+                    "Wake-word partial rejected — no matching final STT result; dropping turn"
+                )
 
             # Noise guard for empty-STT turns: a session can open on a noise blip
             # that fools the entry VAD, then STT finds no words. Re-check the FULL
@@ -1342,7 +1396,7 @@ class VoiceService:
             # --- Speaker recognition + OS server send + SER ---
             if should_dispatch_to_main(
                 hal_config.WAKEWORD_ENABLED,
-                wake_word_detected.is_set(),
+                wake_word_confirmed.is_set(),
                 hal_config.REALTIME_ENABLED,
                 rt,
             ):
@@ -1367,7 +1421,7 @@ class VoiceService:
                 # emotion while speaking its direct reply.
                 if (
                     hal_config.WAKEWORD_ENABLED
-                    and not wake_word_detected.is_set()
+                    and not wake_word_confirmed.is_set()
                     and listening_emotion_sent[0]
                 ):
                     self._set_emotion_local(presets.EMO_IDLE)
