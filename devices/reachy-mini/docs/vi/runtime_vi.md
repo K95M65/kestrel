@@ -324,13 +324,28 @@ Joint keys của Reachy trong HAL dùng độ/mm, dù SDK dùng radian/mét:
 - recovery/mode: `/servo/zero`, `/servo/hold`, `/servo/release`, `/servo/resume`
 - expression moves: `/servo/play` khi recorded-move library của Reachy sẵn sàng
 
+### Vòng lặp groove theo nhạc
+
+`POST /audio/play` phát `music_start` (kèm style đã detect) lúc bắt đầu và
+`music_stop` lúc kết thúc — `hal/routes/music.py`. Emotion tương ứng trên cùng
+đường đó chỉ áp LED/display (`_apply_emotion_led_display`), nên phần servo
+hoàn toàn đến từ hai event này.
+
+Driver xử lý cả hai: `music_start` set groove và thread play lặp lại move đó cho
+tới khi `music_stop`, giống backend Feetech
+(`animation_service._continue_playback`). Một dance move chỉ dài vài giây, nên
+nếu không lặp thì robot nhảy một lần rồi đứng im hết bài. Emotion phát giữa bài
+chạy one-shot xong trả servo lại cho groove; `hold`, `zero`, `release` và
+shutdown thì dừng hẳn. Mọi thứ còn lại vẫn one-shot — `/servo/play` thường
+không bao giờ lặp.
+
 Khác biệt đã biết so với Lamp:
 
 - Upload CSV servo recording là concept của Feetech/Lamp; `add_recording` của
   Reachy hiện no-op cho tới khi quyết định uploaded moves có cần cho body này
   hay không.
 - Idle/ambient motion do daemon hoặc recorded-move library quản lý, không phải
-  event loop Feetech.
+  event loop Feetech — groove theo nhạc là vòng lặp client-side duy nhất.
 - `/servo/track` chưa production-ready cho Reachy. `tracker_service` chung vẫn
   chạm vào internals kiểu Lamp/Feetech và cần chuyển sang accessor của
   `MotionService` trước.

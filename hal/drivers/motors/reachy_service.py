@@ -6,8 +6,10 @@ routes/servo.py works unchanged on Reachy Mini.
 Architecture: Pollen ships a daemon on the robot's Pi that owns hardware I/O,
 safety clamping, and the control loop; this driver is a thin client streaming
 targets to it (REST/WS on localhost:8000). Unlike the feetech backend there is
-no client-side animation event loop — the daemon holds poses by itself, so
-several protocol methods (ensure_running, freeze) reduce to flags/no-ops.
+no client-side per-frame animation event loop — the daemon holds poses by
+itself, so several protocol methods (ensure_running, freeze) reduce to
+flags/no-ops. The one exception is music: the play thread repeats the groove
+move until music_stop, mirroring the feetech backend (see _play_recording).
 
 Joint model exposed to HAL (degrees + millimeters, matching the deg-based
 safety policy and route error checks; the SDK itself speaks radians + meters):
@@ -100,7 +102,7 @@ _MOVE_MAP: Dict[str, str] = {
     P.SERVO_SCANNING:      "inquiring1",
     P.SERVO_HEADSHAKE:     "no1",
     P.SERVO_WAKE_UP:       "enthusiastic2",
-    # music grooves — Pollen has 3 dance moves, rotate through them
+    # music grooves — Pollen ships 3 dance moves, spread across the 8 styles
     P.SERVO_MUSIC_GROOVE:    "dance1",
     P.SERVO_MUSIC_JAZZ:      "dance2",
     P.SERVO_MUSIC_CLASSICAL: "dance3",
@@ -148,6 +150,12 @@ class ReachyMotionService:
         self._frozen = False
         self._moves = None          # lazy RecordedMoves loader (None=untried, False=failed)
         self._play_thread: Optional[threading.Thread] = None
+        # Bumped on every play request; the play thread stops repeating once its
+        # own generation is stale (a newer play owns the servo).
+        self._play_gen = 0
+        # Music groove state — the only thing that repeats on this backend.
+        self._music_playing = False
+        self._music_recording: Optional[str] = None
         # Read by GET /servo alongside get_available_recordings().
         self._current_recording: Optional[str] = None
 
@@ -196,6 +204,10 @@ class ReachyMotionService:
             logger.warning("[reachy] enable_motors failed — robot will not move: %s", e)
 
     def stop(self, timeout: float = 5.0) -> None:
+        # Clear music first: a groove that is still flagged as playing would
+        # start its next repeat right after cancel_move and outlive the join.
+        self._music_playing = False
+        self._music_recording = None
         self._cancel_move()
         if self._play_thread and self._play_thread.is_alive():
             self._play_thread.join(timeout=timeout)
@@ -222,10 +234,30 @@ class ReachyMotionService:
     def dispatch(self, event_type: str, payload: Any) -> None:
         if event_type == P.SERVO_CMD_PLAY and payload:
             self._play_recording(str(payload))
+        elif event_type == P.SERVO_CMD_MUSIC_START:
+            self._start_music(str(payload) if payload else P.SERVO_MUSIC_GROOVE)
+        elif event_type == P.SERVO_CMD_MUSIC_STOP:
+            self._stop_music()
         else:
-            # No client-side animation loop — idle/music grooves are a
-            # feetech-backend concept; the daemon owns ambient behavior.
+            # Idle/ambient motion stays daemon-owned — no client-side loop.
             logger.debug("[reachy] dispatch %s ignored", event_type)
+
+    def _start_music(self, recording: str) -> None:
+        """Groove until music_stop — the move repeats instead of playing once.
+
+        Matches the feetech backend (animation_service._handle_music_start):
+        a single dance move is a few seconds long, so without the repeat the
+        robot dances once and then sits still for the rest of the track.
+        """
+        self._music_recording = recording
+        self._music_playing = True
+        self._play_recording(recording)
+
+    def _stop_music(self) -> None:
+        """Stop grooving immediately — cancel the in-flight repeat."""
+        self._music_playing = False
+        self._music_recording = None
+        self._cancel_move()
 
     def get_available_recordings(self) -> List[str]:
         moves = self._recorded_moves()
@@ -259,6 +291,11 @@ class ReachyMotionService:
 
     def unfreeze(self) -> None:
         self._frozen = False
+        # freeze() cancels the in-flight pass, which ends the groove loop; the
+        # feetech backend only pauses servo writes, so resume the groove here
+        # instead of leaving the robot still for the rest of the track.
+        if self._music_playing and self._music_recording:
+            self._play_recording(self._music_recording)
 
     @property
     def is_frozen(self) -> bool:
@@ -318,12 +355,15 @@ class ReachyMotionService:
     # --- Postures & modes ---
 
     def zero_pose(self) -> None:
+        # Suppress before cancelling: the flag is what stops a groove repeat
+        # from starting the next pass and fighting the move to zero.
+        self._suppressed = True
         self._cancel_move()
         self._goto({k: 0.0 for k in JOINT_KEYS}, 2.0)
-        self._suppressed = True
 
     def release(self) -> Dict[str, str]:
         errors: Dict[str, str] = {}
+        self._suppressed = True  # before cancel — stops a groove repeat (see zero_pose)
         self._cancel_move()
         with self._lock:
             mini = self._require_mini()
@@ -352,8 +392,8 @@ class ReachyMotionService:
         self._suppressed = False
 
     def hold(self, explicit: bool = False) -> None:
+        self._suppressed = True  # before cancel — stops a groove repeat (see zero_pose)
         self._cancel_move()
-        self._suppressed = True
 
     def joint_status(self) -> Dict[str, dict]:
         with self._lock:
@@ -494,46 +534,80 @@ class ReachyMotionService:
                 self._moves = False
         return self._moves or None
 
+    def _play_move_once(self, move: Any, name: str) -> None:
+        """Play one pass of a recorded move (blocking), reconnecting once."""
+        with self._lock:
+            mini = self._require_mini()
+        # play_move blocks for the move duration — keep it out of _lock so
+        # state reads stay responsive; SDK serializes via the daemon.
+        try:
+            mini.play_move(move)
+        except Exception as e:
+            # Same stale-connection case as _call, but the retry cannot run
+            # under _lock: a move blocks for its whole duration and would
+            # stall every state read behind it.
+            if not _is_disconnect(e):
+                raise
+            logger.warning("[reachy] play '%s': connection lost — reconnecting", name)
+            with self._lock:
+                self._reconnect()
+                mini = self._mini
+            mini.play_move(move)
+
     def _play_recording(self, name: str) -> None:
         if self._suppressed or self._frozen:
             logger.debug("[reachy] play '%s' blocked (suppressed/frozen)", name)
             return
+        with self._lock:
+            self._play_gen += 1
+            gen = self._play_gen
         if self._play_thread and self._play_thread.is_alive():
             self._cancel_move()
-
-        hf_name = _MOVE_MAP.get(name, name)
-        if hf_name != name:
-            logger.debug("[reachy] mapped recording '%s' → HF move '%s'", name, hf_name)
 
         def _run():
             moves = self._recorded_moves()
             if moves is None:
                 logger.warning("[reachy] play '%s' skipped — no move library", name)
                 return
+            current = name
             try:
-                move = moves.get(hf_name)
-                self._current_recording = name
-                with self._lock:
-                    mini = self._require_mini()
-                # play_move blocks for the move duration — keep it out of _lock
-                # so state reads stay responsive; SDK serializes via the daemon.
-                try:
-                    mini.play_move(move)
-                except Exception as e:
-                    # Same stale-connection case as _call, but the retry cannot
-                    # run under _lock: a move blocks for its whole duration and
-                    # would stall every state read behind it.
-                    if not _is_disconnect(e):
-                        raise
-                    logger.warning("[reachy] play '%s': connection lost — reconnecting", name)
-                    with self._lock:
-                        self._reconnect()
-                        mini = self._mini
-                    mini.play_move(move)
-            except Exception as e:
-                logger.warning("[reachy] play '%s' (HF: '%s') failed: %s", name, hf_name, e)
+                while True:
+                    hf_name = _MOVE_MAP.get(current, current)
+                    if hf_name != current:
+                        logger.debug(
+                            "[reachy] mapped recording '%s' → HF move '%s'", current, hf_name
+                        )
+                    try:
+                        move = moves.get(hf_name)
+                    except Exception as e:
+                        logger.warning(
+                            "[reachy] move '%s' (HF: '%s') unavailable: %s", current, hf_name, e
+                        )
+                        return
+                    self._current_recording = current
+                    try:
+                        self._play_move_once(move, current)
+                    except Exception as e:
+                        logger.warning(
+                            "[reachy] play '%s' (HF: '%s') failed: %s", current, hf_name, e
+                        )
+                        return  # do not spin on a move that keeps failing
+                    # Repeat while music plays — the feetech backend does the
+                    # same in _continue_playback: a finished recording falls
+                    # back to the music groove (and an emotion played mid-track
+                    # hands the servo back to it) instead of stopping.
+                    # A newer play bumped the generation → that thread owns the
+                    # servo now, this one must not queue another pass.
+                    next_rec = self._music_recording
+                    if (gen != self._play_gen or not self._music_playing
+                            or not next_rec or self._suppressed or self._frozen):
+                        return
+                    current = next_rec
             finally:
-                self._current_recording = None
+                # Only the current owner clears it; a stale thread finishing
+                # late must not blank the recording a newer play just set.
+                if gen == self._play_gen:
+                    self._current_recording = None
 
         self._play_thread = threading.Thread(
             target=_run, daemon=True, name="reachy-play"

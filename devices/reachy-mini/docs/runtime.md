@@ -348,15 +348,31 @@ HAL emotion names (CSV stems on Lamp) are mapped to Pollen's HF moves in
 | `music_groove` | `dance1` |
 
 Unmapped names are tried verbatim (callers can send HF names directly).
-Music grooves rotate through `dance1`/`dance2`/`dance3`. Tests guard full
+The 8 music styles are spread across Pollen's 3 dance moves. Tests guard full
 preset coverage and validate all map values against the HF library.
+
+### Music Groove Loop
+
+`POST /audio/play` dispatches `music_start` (with the detected style) when
+playback begins and `music_stop` when it ends — `hal/routes/music.py`. The
+matching emotion applied on the same path is LED/display only
+(`_apply_emotion_led_display`), so the servo side comes entirely from these two
+events.
+
+The driver handles both: `music_start` sets the groove and the play thread
+repeats that move until `music_stop`, matching the Feetech backend
+(`animation_service._continue_playback`). One dance move is a few seconds long,
+so without the repeat the robot danced once and then sat still for the rest of
+the track. An emotion played mid-track runs its one-shot and then hands the
+servo back to the groove; `hold`, `zero`, `release`, and shutdown end it.
+Everything else stays one-shot — a plain `/servo/play` never repeats.
 
 Known deltas from Lamp:
 
 - CSV upload is a Feetech/Lamp animation concept; Reachy's `add_recording` is a
   no-op until we decide whether uploaded moves matter.
 - Idle/ambient motion is daemon-owned or recorded-move-library-owned, not the
-  Feetech event loop.
+  Feetech event loop — the music groove is the one client-side repeat.
 - `/servo/track` is not production-ready for Reachy yet. The shared
   `tracker_service` still reaches into Lamp/Feetech internals and must be moved
   to `MotionService` accessors first.
