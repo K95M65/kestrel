@@ -17,10 +17,11 @@ def _decorator(words: list[str]) -> SpeakerDecorator:
 
 
 def test_wake_word_match_is_case_and_punctuation_insensitive():
-    decorator = _decorator(["hello luna", "hey luna", "hi luna", "okay luna", "ok luna", "wake up luna"])
+    decorator = _decorator(["hello luna", "hey luna", "hi luna", "alo luna", "okay luna", "ok luna", "wake up luna"])
 
     assert decorator.starts_with_wake_word("Hey Luna, thời tiết hôm nay?")
     assert decorator.starts_with_wake_word("Hello Luna! kể chuyện đi")
+    assert decorator.starts_with_wake_word("Alo Luna ơi, kể chuyện đi")
     assert decorator.starts_with_wake_word("wake up Luna xem giúp mình")
 
 

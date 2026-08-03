@@ -1363,6 +1363,18 @@ class VoiceService:
                 )
             else:
                 self._decorator.submit_speech_emotion_from_session(ser_audio_buffer)
+                # A rejected utterance deliberately has no downstream agent to
+                # replace the listening cue with thinking/TTS/idle. Clear it
+                # immediately instead of leaving the blue pulse up for the
+                # generic 8-second safety timer below. Do not do this for an
+                # armed realtime turn: that path may already be expressing an
+                # emotion while speaking its direct reply.
+                if (
+                    hal_config.WAKEWORD_ENABLED
+                    and not wake_word_detected.is_set()
+                    and listening_emotion_sent[0]
+                ):
+                    self._set_emotion_local(presets.EMO_IDLE)
 
             # Close the sensing-suppression window (see the matching
             # voice_listening post above — neither event drives an LED).

@@ -1128,7 +1128,7 @@ def _build_wake_words(name: str) -> list[str]:
     n = name.lower()
     return [
         f"{prefix} {n}"
-        for prefix in ("hello", "hey", "hi", "okay", "ok", "wake up")
+        for prefix in ("hello", "hey", "hi", "alo", "okay", "ok", "wake up")
     ]
 
 
