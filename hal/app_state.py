@@ -1126,7 +1126,10 @@ def _read_agent_name() -> str:
 def _build_wake_words(name: str) -> list[str]:
     """Generate wake word variants from agent name."""
     n = name.lower()
-    return [f"hello {n}", f"hey {n}", n, f"n\u00e0y {n}", f"\u00ea {n}", f"{n} \u01a1i"]
+    return [
+        f"{prefix} {n}"
+        for prefix in ("hello", "hey", "hi", "okay", "ok", "wake up")
+    ]
 
 
 def _find_audio_device(output: bool = True) -> Optional[int]:

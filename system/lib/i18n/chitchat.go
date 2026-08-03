@@ -142,9 +142,7 @@ func BuildChitchatWakeWords(name string) []string {
 	}
 	return []string{
 		// Compound attention-call forms first (longest).
-		"hello " + n, "hey " + n, "này " + n, "ê " + n, n + " ơi",
-		// Bare name last.
-		n,
+		"wake up " + n, "hello " + n, "okay " + n, "hey " + n, "hi " + n, "ok " + n,
 	}
 }
 

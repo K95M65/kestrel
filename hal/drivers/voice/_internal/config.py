@@ -120,11 +120,10 @@ SPEECH_EMOTION_ENABLED = _hal_config.SPEECH_EMOTION_ENABLED
 # Last resort "friend" when device_type is also unavailable.
 # ---------------------------------------------------------------------------
 _wake_name = (_hal_config._os_cfg_get("device_type") or "friend").strip().lower()
+WAKE_WORD_PREFIXES = ("hello", "hey", "hi", "okay", "ok", "wake up")
 DEFAULT_WAKE_WORDS = [
-    "hello autonomous",
-    "hey autonomous",
-    f"hello {_wake_name}",
-    f"hey {_wake_name}",
+    *(f"{prefix} autonomous" for prefix in WAKE_WORD_PREFIXES),
+    *(f"{prefix} {_wake_name}" for prefix in WAKE_WORD_PREFIXES),
 ]
 
 

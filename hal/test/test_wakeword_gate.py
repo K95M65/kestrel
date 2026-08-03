@@ -13,32 +13,33 @@ def _decorator(words: list[str]) -> SpeakerDecorator:
 
 
 def test_wake_word_match_is_case_and_punctuation_insensitive():
-    decorator = _decorator(["hey luna", "luna ơi", "này luna"])
+    decorator = _decorator(["hello luna", "hey luna", "hi luna", "okay luna", "ok luna", "wake up luna"])
 
     assert decorator.starts_with_wake_word("Hey Luna, thời tiết hôm nay?")
-    assert decorator.starts_with_wake_word("LUNA ƠI! kể chuyện đi")
-    assert decorator.starts_with_wake_word("này Luna xem giúp mình")
+    assert decorator.starts_with_wake_word("Hello Luna! kể chuyện đi")
+    assert decorator.starts_with_wake_word("wake up Luna xem giúp mình")
 
 
 def test_wake_word_match_requires_a_prefix_and_word_boundary():
-    decorator = _decorator(["hey luna", "luna"])
+    decorator = _decorator(["hey luna", "wake up luna"])
 
     assert not decorator.starts_with_wake_word("Mình vừa gặp Luna ngoài đường")
     assert not decorator.starts_with_wake_word("lunar calendar")
-    assert decorator.starts_with_wake_word("luna, nghe mình nói này")
+    assert not decorator.starts_with_wake_word("luna, nghe mình nói này")
+    assert decorator.starts_with_wake_word("wake up luna, nghe mình nói này")
 
 
 def test_device_type_alias_is_retained_alongside_agent_name():
     words = merge_wake_words(
-        ["hello autonomous", "hey autonomous", "hello lamp", "hey lamp"],
+        ["hello autonomous", "hey autonomous", "hi lamp", "wake up lamp"],
         ["hey luna", "luna"],
     )
 
     assert words == [
         "hello autonomous",
         "hey autonomous",
-        "hello lamp",
-        "hey lamp",
+        "hi lamp",
+        "wake up lamp",
         "hey luna",
         "luna",
     ]
