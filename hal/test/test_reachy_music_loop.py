@@ -86,13 +86,23 @@ class FakeMini:
 
 
 class FakeMoves:
-    """RecordedMoves stand-in — a move IS its HF name, so calls are inspectable."""
+    """RecordedMoves stand-in — a move IS its HF name, so calls are inspectable.
+
+    Unknown names raise like the real library does (it has `dance1`, not `dance`).
+    """
+
+    _KNOWN = ("dance1", "dance2", "dance3", "curious1", "cheerful1", "thoughtful1")
 
     def get(self, name):
+        if name not in self._KNOWN:
+            raise RuntimeError(
+                f"Move {name} not found in recorded moves library "
+                "pollen-robotics/reachy-mini-emotions-library"
+            )
         return name
 
     def list_moves(self):
-        return ["dance1", "dance2", "dance3", "curious1"]
+        return list(self._KNOWN)
 
 
 def _wait_until(predicate, timeout=3.0):
@@ -156,6 +166,35 @@ class TestReachyPlaybackLoop(unittest.TestCase):
             _wait_until(lambda: self.mini.play_count("dance2") > played_after),
             f"groove did not resume after emotion: {self.mini.played}",
         )
+
+    def test_unknown_recording_during_music_keeps_the_groove(self):
+        """The agent sends names the HF library lacks (`dance`, not `dance1`).
+
+        That must not end the dance for the rest of the track — it did, which
+        is how the robot went still mid-song on the first live run.
+        """
+        self.svc.dispatch(P.SERVO_CMD_MUSIC_START, P.SERVO_MUSIC_GROOVE)
+        self.assertTrue(_wait_until(lambda: self.mini.play_count("dance1") >= 1))
+
+        self.svc.dispatch(P.SERVO_CMD_PLAY, "dance")   # not in the HF library
+        played_after = self.mini.play_count("dance1")
+        self.assertTrue(
+            _wait_until(lambda: self.mini.play_count("dance1") > played_after),
+            f"groove died on an unknown recording: {self.mini.played}",
+        )
+        self.assertEqual(self.mini.play_count("dance"), 0, "bogus move must not play")
+
+    def test_groove_move_that_always_fails_does_not_spin(self):
+        """A broken groove must end the thread, not busy-loop on failures."""
+        class DeadMoves(FakeMoves):
+            def get(self, name):
+                raise RuntimeError(f"Move {name} not found")
+
+        self.svc._moves = DeadMoves()
+        self.svc.dispatch(P.SERVO_CMD_MUSIC_START, P.SERVO_MUSIC_GROOVE)
+        self.svc._play_thread.join(timeout=2.0)
+        self.assertFalse(self.svc._play_thread.is_alive(), "play thread spun on a failing move")
+        self.assertEqual(self.mini.play_count(), 0)
 
     def test_hold_stops_the_groove(self):
         """suppress-then-cancel ordering: hold must not be outrun by a repeat."""

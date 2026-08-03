@@ -249,15 +249,45 @@ class ReachyMotionService:
         a single dance move is a few seconds long, so without the repeat the
         robot dances once and then sits still for the rest of the track.
         """
+        logger.info("[reachy] music groove '%s' — repeating until music_stop", recording)
         self._music_recording = recording
         self._music_playing = True
         self._play_recording(recording)
 
     def _stop_music(self) -> None:
         """Stop grooving immediately — cancel the in-flight repeat."""
+        if self._music_playing:
+            logger.info("[reachy] music groove stopped")
         self._music_playing = False
         self._music_recording = None
         self._cancel_move()
+
+    def _next_groove(self, played: str, gen: int, failed: bool = False) -> Optional[str]:
+        """Recording the play thread runs next, or None to end the thread.
+
+        Keeps the groove alive across everything that ends a single pass —
+        including a move that could not be played. The agent does send names
+        the HF library has no move for (`dance` instead of `dance1`); dropping
+        the groove there left the robot still for the rest of the track, while
+        the feetech backend just ignores the bad name and keeps looping.
+        """
+        if gen != self._play_gen:
+            return None                       # a newer play owns the servo now
+        if not self._music_playing:
+            return None
+        if self._suppressed or self._frozen:
+            logger.info(
+                "[reachy] groove interrupted — %s",
+                "frozen (camera)" if self._frozen else "suppressed",
+            )
+            return None
+        groove = self._music_recording
+        if not groove:
+            return None
+        if failed and played == groove:
+            logger.warning("[reachy] groove '%s' keeps failing — stopping the repeat", groove)
+            return None
+        return groove
 
     def get_available_recordings(self) -> List[str]:
         moves = self._recorded_moves()
@@ -577,30 +607,34 @@ class ReachyMotionService:
                         logger.debug(
                             "[reachy] mapped recording '%s' → HF move '%s'", current, hf_name
                         )
+                    failed = False
+                    move = None
                     try:
                         move = moves.get(hf_name)
                     except Exception as e:
                         logger.warning(
                             "[reachy] move '%s' (HF: '%s') unavailable: %s", current, hf_name, e
                         )
-                        return
-                    self._current_recording = current
-                    try:
-                        self._play_move_once(move, current)
-                    except Exception as e:
-                        logger.warning(
-                            "[reachy] play '%s' (HF: '%s') failed: %s", current, hf_name, e
-                        )
-                        return  # do not spin on a move that keeps failing
+                        failed = True
+                    if move is None:
+                        # No exception but nothing to play — treat as a failure
+                        # so the loop can't spin without doing any work.
+                        failed = True
+                    else:
+                        self._current_recording = current
+                        try:
+                            self._play_move_once(move, current)
+                        except Exception as e:
+                            logger.warning(
+                                "[reachy] play '%s' (HF: '%s') failed: %s", current, hf_name, e
+                            )
+                            failed = True
                     # Repeat while music plays — the feetech backend does the
                     # same in _continue_playback: a finished recording falls
                     # back to the music groove (and an emotion played mid-track
                     # hands the servo back to it) instead of stopping.
-                    # A newer play bumped the generation → that thread owns the
-                    # servo now, this one must not queue another pass.
-                    next_rec = self._music_recording
-                    if (gen != self._play_gen or not self._music_playing
-                            or not next_rec or self._suppressed or self._frozen):
+                    next_rec = self._next_groove(current, gen, failed=failed)
+                    if next_rec is None:
                         return
                     current = next_rec
             finally:
