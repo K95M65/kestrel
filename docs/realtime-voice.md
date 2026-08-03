@@ -34,6 +34,13 @@ window, adding that many seconds of latency before the main agent even sees the
 request. The function result is already sent back to the model before the break;
 the dangling open turn is cleared by the next turn's `flush_output()`.
 
+Gemini can similarly emit `generation_complete` before `turn_complete`: the
+latter is delayed while Gemini assumes the client is playing its audio in real
+time. HAL plays the generated response itself, so it ends the consumer turn on
+`generation_complete` and releases the next manual-VAD commit immediately.
+This avoids an otherwise unnecessary silent-watchdog delay after the reply;
+any late `turn_complete` is discarded before the next turn.
+
 Every STT-final-confirmed wake-word turn reaches dispatch. When realtime already
 spoke, dispatch sends a `voice_agent_handled` synchronization event so the main
 agent records the exchange but stays silent; unavailable, failed, timed-out, or

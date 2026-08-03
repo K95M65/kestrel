@@ -528,6 +528,22 @@ class GeminiLiveAgent(VoiceAgentBase):
                     self._recv_queue.put(TurnDoneEvent())
                     return
 
+                if getattr(content, "generation_complete", False):
+                    # Gemini Live can defer turn_complete until its assumed
+                    # real-time audio playback ends. HAL plays the received
+                    # response itself, so waiting for that acknowledgement
+                    # makes an already-spoken turn block until the consumer's
+                    # silent-output watchdog expires. generation_complete
+                    # guarantees that no more model content will arrive for
+                    # this turn, so release the next manual-VAD commit and
+                    # finish the consumer turn now. A late turn_complete is
+                    # harmless: flush_output() drops it before the next turn.
+                    logger.debug("[realtime] Generation complete")
+                    self._first_audio_received = False
+                    self._turn_done.set()
+                    self._recv_queue.put(TurnDoneEvent())
+                    return
+
             elif message.tool_call and message.tool_call.function_calls:
                 for fc in message.tool_call.function_calls:
                     logger.debug("[realtime] Function call: %s (call_id=%s)", fc.name, fc.id)

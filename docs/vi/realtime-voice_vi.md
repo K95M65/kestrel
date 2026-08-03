@@ -33,6 +33,13 @@ cộng thêm ngần ấy giây trễ trước khi agent chính nhìn thấy yêu
 result đã được gửi lại model trước khi break; turn còn mở dang dở sẽ được
 `flush_output()` của turn kế dọn.
 
+Gemini cũng có thể gửi `generation_complete` trước `turn_complete`: cờ sau bị
+trì hoãn trong lúc Gemini giả định client đang phát audio theo thời gian thực.
+HAL tự phát câu trả lời đã nhận nên kết thúc consumer turn ngay ở
+`generation_complete`, đồng thời nhả commit manual-VAD kế tiếp. Nhờ đó không
+còn chờ silent-watchdog vô ích sau khi đã trả lời; `turn_complete` đến muộn sẽ
+được bỏ trước lượt sau.
+
 Mọi lượt wake-word đã được STT final xác nhận đều đi qua dispatch. Nếu realtime
 đã nói, dispatch gửi event đồng bộ `voice_agent_handled` để agent chính ghi nhớ
 nhưng im lặng; realtime unavailable, lỗi, timeout hoặc delegate đi theo đường
