@@ -32,7 +32,7 @@ def test_wake_word_match_requires_a_prefix_and_word_boundary():
 def test_device_type_alias_is_retained_alongside_agent_name():
     words = merge_wake_words(
         ["hello autonomous", "hey autonomous", "hi lamp", "wake up lamp"],
-        ["hey luna", "luna"],
+        ["hey luna", "wake up luna"],
     )
 
     assert words == [
@@ -41,5 +41,5 @@ def test_device_type_alias_is_retained_alongside_agent_name():
         "hi lamp",
         "wake up lamp",
         "hey luna",
-        "luna",
+        "wake up luna",
     ]

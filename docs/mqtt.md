@@ -324,6 +324,7 @@ optional `error`, and an optional `data` payload.
 |------|---------|---------------|
 | `tts.set` | Persist TTS voice/provider/language config | `provider`, `voice`, `language` |
 | `tts.preview` | One-shot TTS preview (no config write) | `text` (required), optional `provider`/`voice`/`language` |
+| `wakeword.gate` | Set the top-level wake-word gate (async; acks `starting`) | `enabled` (required boolean) |
 | `timezone.set` | Apply the device's IANA timezone (async; acks `starting`) | `timezone` (required, e.g. `Asia/Ho_Chi_Minh`) |
 | `oauth.set` | Store/replace an OAuth token for a provider | `provider`, `access_token`, optional `refresh_token`/`token_type`/`expires_at`/`scopes`/`user_email`/`client_id` |
 | `oauth.remove` | Delete the stored OAuth token for a provider | `provider` |
@@ -392,6 +393,20 @@ local HAL `/version` endpoint, `openclaw` from the agent monitor's cached probe
 (`openclaw_detected` distinguishes "not installed" from "installed but unparseable").
 
 An unrecognized `kind` replies with `status:"failure"` and `error:"unknown kind: <kind>"`.
+
+#### `wakeword.gate`
+
+Turns the top-level `wakeword` flag on or off. It uses the same asynchronous
+acknowledgement pattern as `realtime.set`: the device acknowledges receipt,
+persists the flag to `config.json`, restarts HAL when the value changes, then
+publishes the outcome.
+
+**Receive:** `{"cmd":"data","kind":"wakeword.gate","data":{"enabled":true}}`
+
+The terminal success acknowledgement echoes `{"enabled":true}`. Omitting
+`enabled` or supplying invalid JSON returns `status:"failure"`. `success`
+means the flag was saved and HAL is restarting; it does not wait for HAL to be
+ready.
 
 #### `timezone.set`
 

@@ -239,6 +239,8 @@ func (h *DeviceMQTTHandler) dispatchData(env domain.MQTTDataCommand) error {
 		return h.handleTTSSet(env)
 	case domain.KindRealtimeSet:
 		return h.handleRealtimeSet(env)
+	case domain.KindWakeWordGate:
+		return h.handleWakeWordGate(env)
 	case domain.KindTimezoneSet:
 		return h.handleTimezoneSet(env)
 	case domain.KindHermesSetup:

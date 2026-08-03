@@ -203,3 +203,19 @@ func TestApplyUpdateWakeWordRestartsHAL(t *testing.T) {
 		t.Fatal("wakeword not persisted")
 	}
 }
+
+func TestApplyWakeWord(t *testing.T) {
+	c := baseConfig()
+	if !applyWakeWord(c, true) {
+		t.Fatal("false to true must report a change")
+	}
+	if c.WakeWord == nil || !*c.WakeWord {
+		t.Fatal("wakeword true not persisted")
+	}
+	if applyWakeWord(c, true) {
+		t.Fatal("re-applying true must not report a change")
+	}
+	if !applyWakeWord(c, false) {
+		t.Fatal("true to false must report a change")
+	}
+}

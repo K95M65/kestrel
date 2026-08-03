@@ -314,6 +314,7 @@ metadata device/version chuẩn cộng với `kind`, `status` (`success|failure`
 |------|----------|--------------------|
 | `tts.set` | Lưu cấu hình TTS voice/provider/language | `provider`, `voice`, `language` |
 | `tts.preview` | Preview TTS một lần (không ghi config) | `text` (bắt buộc), tùy chọn `provider`/`voice`/`language` |
+| `wakeword.gate` | Bật/tắt wake-word gate top-level (bất đồng bộ; ack `starting`) | `enabled` (boolean bắt buộc) |
 | `timezone.set` | Áp dụng múi giờ IANA của device (bất đồng bộ; ack `starting`) | `timezone` (bắt buộc, ví dụ `Asia/Ho_Chi_Minh`) |
 | `oauth.set` | Lưu/thay token OAuth cho một provider | `provider`, `access_token`, tùy chọn `refresh_token`/`token_type`/`expires_at`/`scopes`/`user_email`/`client_id` |
 | `oauth.remove` | Xóa token OAuth đã lưu của provider | `provider` |
@@ -381,6 +382,18 @@ local, `openclaw` từ probe cache của agent monitor (`openclaw_detected` phâ
 "chưa cài" với "đã cài nhưng không parse được").
 
 `kind` không hợp lệ sẽ phản hồi `status:"failure"` kèm `error:"unknown kind: <kind>"`.
+
+#### `wakeword.gate`
+
+Bật hoặc tắt cờ `wakeword` top-level. Lệnh dùng cùng kiểu ack bất đồng bộ như
+`realtime.set`: device ack đã nhận, lưu cờ vào `config.json`, restart HAL khi
+giá trị thay đổi, rồi publish kết quả.
+
+**Nhận:** `{"cmd":"data","kind":"wakeword.gate","data":{"enabled":true}}`
+
+Ack `success` cuối cùng echo lại `{"enabled":true}`. Thiếu `enabled` hoặc JSON
+không hợp lệ trả `status:"failure"`. `success` nghĩa là cờ đã được lưu và HAL
+đang restart; không đợi HAL sẵn sàng.
 
 #### `timezone.set`
 

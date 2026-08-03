@@ -329,6 +329,7 @@ const (
 	KindOAuthSet     = "oauth.set"     // store/replace OAuth token for a provider
 	KindOAuthRemove  = "oauth.remove"  // delete OAuth token for a provider
 	KindRealtimeSet  = "realtime.set"  // persist realtime voice-agent config (provider/voice/reasoning…)
+	KindWakeWordGate = "wakeword.gate" // persist the top-level wake-word gate
 	KindTimezoneSet  = "timezone.set"  // apply device IANA timezone (/etc/localtime + /etc/timezone)
 	// KindDeviceSoftReset wipes the device's config.json and restarts os-server so
 	// the device drops back into AP setup mode WITHOUT rebooting or rolling back
@@ -1092,6 +1093,25 @@ type MQTTRealtimeSetAck struct {
 	Status string           `json:"status"`
 	Error  string           `json:"error,omitempty"`
 	Data   *RealtimeSetData `json:"data,omitempty"`
+}
+
+// WakeWordGateData controls the top-level wakeword config flag. Enabled is a
+// pointer so an omitted field can be rejected instead of silently disabling the
+// gate.
+//
+//	{ "cmd": "data", "kind": "wakeword.gate", "data": { "enabled": true } }
+type WakeWordGateData struct {
+	Enabled *bool `json:"enabled" validate:"required"`
+}
+
+// MQTTWakeWordGateAck is published to fd_channel after applying (or failing) a
+// wakeword.gate downlink. status: "starting" | "success" | "failure".
+type MQTTWakeWordGateAck struct {
+	MQTTInfoResponse
+	Kind   string            `json:"kind"`
+	Status string            `json:"status"`
+	Error  string            `json:"error,omitempty"`
+	Data   *WakeWordGateData `json:"data,omitempty"`
 }
 
 // AgentRuntimeSetData carries the target backend for a runtime switch. The MQTT
