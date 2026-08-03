@@ -40,6 +40,13 @@ connection, a receive timeout, and an explicit delegate. Only a turn marked
 handled after realtime produced speech is suppressed from the normal STT →
 OS-server path, so a temporary Gemini failure cannot drop a voice command.
 
+If the **initial** provider connection fails during HAL startup, the
+orchestrator creates fresh sessions in a background retry loop (2s exponential
+backoff, capped at 60s). This is separate from provider send/receive reconnects,
+which do not exist until the first `connect()` succeeds. No HAL restart or new
+audio is required; voice turns keep using the main-agent fallback until the
+connection recovers.
+
 ## Emotion expression (fire-and-forget)
 
 If the device declares the `expression` capability

@@ -53,6 +53,8 @@ from hal.realtime.voice_agent.base import VoiceAgentBase
 logger = logging.getLogger(__name__)
 
 DEFAULT_SAMPLE_RATE: int = 16000
+INITIAL_CONNECT_RETRY_DELAY_S: float = 2.0
+INITIAL_CONNECT_RETRY_MAX_DELAY_S: float = 60.0
 
 DELEGATE_TOOL_NAME: str = "delegate_to_main"
 DELEGATE_TOOL_DESCRIPTION: str = (
@@ -241,6 +243,12 @@ class RealtimeOrchestrator:
         self._last_look_sent_monotonic: float = 0.0
         self._agent: VoiceAgentBase | None = None
         self._started: threading.Event = threading.Event()
+        # A provider can be unreachable while HAL starts (network/DNS outage,
+        # temporary quota error, upstream maintenance). VoiceAgentBase can only
+        # reconnect after its send/receive loops exist, so a failure in its first
+        # connect() needs an orchestrator-owned retry loop.
+        self._connect_retry_stop: threading.Event = threading.Event()
+        self._connect_retry_thread: threading.Thread | None = None
         self._consecutive_silent: int = 0  # zombie-session guard (see stream_output)
         # Idle session recycle (cost): when a turn arrives after a long silence,
         # rebuild the session AFTER that turn so the next turn drops the context
@@ -380,6 +388,7 @@ class RealtimeOrchestrator:
         """Build a replacement session while holding the rebuild reservation."""
         provider: str = config.REALTIME_PROVIDER.strip().lower()
         old = self._agent
+        new: VoiceAgentBase | None = None
         try:
             instructions = self._context.build_instructions()
             new = self._make_agent(provider, instructions)
@@ -401,6 +410,14 @@ class RealtimeOrchestrator:
             return True
         except Exception:
             logger.exception("[realtime] Pre-turn session rebuild failed")
+            # A failed connect can still have allocated a provider transport or
+            # event-loop thread. Retry loops must tear it down before creating
+            # another fresh agent, otherwise a persistent outage leaks workers.
+            if new is not None:
+                try:
+                    new.disconnect()
+                except Exception:
+                    logger.exception("[realtime] failed replacement disconnect failed")
             # A dropped Manual-VAD activity must never become the next user
             # turn when its clean replacement could not connect. Mark it dead
             # so voice_service falls back with the STT transcript instead.
@@ -509,12 +526,49 @@ class RealtimeOrchestrator:
         overlapping rebuilds while one is in flight."""
         self._rebuild_in_background("zombie-recovery", "rt-zombie-rebuild")
 
+    def _start_connect_retry_loop(self) -> None:
+        """Reconnect after the initial provider connection failed.
+
+        The initial ``VoiceAgentBase.connect()`` fails before it starts the
+        provider's send/receive loops, so no provider-level retry can occur.
+        Keep retries off the voice thread and back off boundedly; voice turns
+        continue through the main-agent fallback until a session is available.
+        """
+        if (
+            self._connect_retry_thread is not None
+            and self._connect_retry_thread.is_alive()
+        ):
+            return
+        self._connect_retry_thread = threading.Thread(
+            target=self._connect_retry_loop,
+            daemon=True,
+            name="rt-initial-connect-retry",
+        )
+        self._connect_retry_thread.start()
+
+    def _connect_retry_loop(self) -> None:
+        """Try fresh sessions until the initial connection recovers or HAL stops."""
+        delay_s = INITIAL_CONNECT_RETRY_DELAY_S
+        while not self._connect_retry_stop.is_set():
+            if self._rebuild_now("initial-connect-retry"):
+                logger.info("[realtime] Initial connection recovered automatically")
+                return
+            logger.warning(
+                "[realtime] Initial connection still unavailable — retrying in %.0fs",
+                delay_s,
+            )
+            if self._connect_retry_stop.wait(delay_s):
+                return
+            delay_s = min(delay_s * 2, INITIAL_CONNECT_RETRY_MAX_DELAY_S)
+
     def start(self) -> None:
         """Create the agent based on config and connect."""
         provider: str = config.REALTIME_PROVIDER.strip().lower()
         if provider in ("none", "off", "disabled", ""):
             logger.info("Realtime orchestrator disabled (provider=%s)", provider)
             return
+
+        self._connect_retry_stop.clear()
 
         instructions: str = self._context.build_instructions()
         logger.info(
@@ -534,9 +588,11 @@ class RealtimeOrchestrator:
             )
         except Exception:
             logger.exception(
-                "[realtime] Failed to connect realtime agent — will retry on next audio"
+                "[realtime] Failed to connect realtime agent — retrying in background"
             )
         self._started.set()
+        if not self.available:
+            self._start_connect_retry_loop()
 
         # Catch up on any unsummarized memory from a previous (possibly crashed)
         # session in the background. This is an LLM call and is NOT needed to serve
@@ -560,6 +616,7 @@ class RealtimeOrchestrator:
 
     def stop(self) -> None:
         """Disconnect the agent and summarize unsummarized memory."""
+        self._connect_retry_stop.set()
         # Summarize remaining memory before shutdown
         try:
             self._context.summarize_device_memory()

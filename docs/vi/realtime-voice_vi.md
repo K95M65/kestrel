@@ -39,6 +39,12 @@ chờ nhận output, hoặc model delegate rõ ràng. Chỉ lượt được đ�
 khi realtime đã phát lời nói mới bị chặn khỏi đường STT → OS-server thông thường;
 vì vậy Gemini lỗi tạm thời không thể làm rơi một voice command.
 
+Nếu kết nối provider **ban đầu** lỗi ngay khi HAL khởi động, orchestrator tạo
+session mới bằng retry loop nền (backoff luỹ thừa từ 2s, tối đa 60s). Nó tách biệt
+với reconnect send/receive của provider, vì các loop đó chưa tồn tại trước khi
+`connect()` thành công. Không cần restart HAL hay chờ audio mới; các lượt voice
+vẫn fallback xuống agent chính cho tới khi kết nối hồi phục.
+
 ## Biểu cảm cảm xúc (fire-and-forget)
 
 Nếu thiết bị khai báo capability `expression`
