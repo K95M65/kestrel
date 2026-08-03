@@ -324,6 +324,12 @@ Joint keys của Reachy trong HAL dùng độ/mm, dù SDK dùng radian/mét:
 - recovery/mode: `/servo/zero`, `/servo/hold`, `/servo/release`, `/servo/resume`
 - expression moves: `/servo/play` khi recorded-move library của Reachy sẵn sàng
 
+`GET /servo` trả `available_recordings` cùng vốn từ với field `current`: move đã
+map thì liệt kê theo tên HAL (`music_groove`, không phải `dance1`), phần còn lại
+của thư viện giữ nguyên tên HF. Trước đây list toàn tên HF nên hai field lệch
+nhau — web monitor highlight mục trùng `current`, thành ra không bao giờ
+highlight khi đang chạy move đã map.
+
 ### Vòng lặp groove theo nhạc
 
 `POST /audio/play` phát `music_start` (kèm style đã detect) lúc bắt đầu và

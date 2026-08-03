@@ -351,6 +351,12 @@ Unmapped names are tried verbatim (callers can send HF names directly).
 The 8 music styles are spread across Pollen's 3 dance moves. Tests guard full
 preset coverage and validate all map values against the HF library.
 
+`GET /servo` reports `available_recordings` in the same vocabulary as its
+`current` field: a mapped move is listed under its HAL name (`music_groove`,
+not `dance1`), the rest of the library verbatim. Listing raw HF names split the
+two fields — the web monitor highlights the entry equal to `current`, so
+nothing ever highlighted while a mapped move played.
+
 ### Music Groove Loop
 
 `POST /audio/play` dispatches `music_start` (with the detected style) when

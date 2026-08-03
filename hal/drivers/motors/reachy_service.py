@@ -290,14 +290,27 @@ class ReachyMotionService:
         return groove
 
     def get_available_recordings(self) -> List[str]:
+        """Playable names, reported in HAL vocabulary wherever one exists.
+
+        GET /servo returns this list next to `current`, and `current` is the
+        HAL recording name (`music_groove`), not the HF move the daemon
+        actually played (`dance1`). Listing raw HF names put the two fields in
+        different vocabularies: the web monitor highlights the entry matching
+        `current`, so nothing ever highlighted and the same behavior appeared
+        under two names. Mapped moves are listed under their HAL name; the rest
+        of the library is listed verbatim and stays playable — _play_recording
+        passes unknown names straight through.
+        """
         moves = self._recorded_moves()
         if moves is None:
             return []
         try:
-            return sorted(moves.list_moves())
+            hf_moves = set(moves.list_moves())
         except Exception as e:
             logger.warning("[reachy] list_moves failed: %s", e)
             return []
+        mapped = {hal for hal, hf in _MOVE_MAP.items() if hf in hf_moves}
+        return sorted(mapped | (hf_moves - set(_MOVE_MAP.values())))
 
     def add_recording(self, name: str, actions: List[Dict[str, float]]) -> None:
         # CSV joint recordings are a feetech-backend concept; Reachy moves are

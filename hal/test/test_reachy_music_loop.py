@@ -91,7 +91,7 @@ class FakeMoves:
     Unknown names raise like the real library does (it has `dance1`, not `dance`).
     """
 
-    _KNOWN = ("dance1", "dance2", "dance3", "curious1", "cheerful1", "thoughtful1")
+    _KNOWN = ("dance1", "dance2", "dance3", "curious1", "cheerful1", "thoughtful1", "amazed1")
 
     def get(self, name):
         if name not in self._KNOWN:
@@ -216,6 +216,34 @@ class TestReachyPlaybackLoop(unittest.TestCase):
         settled = self.mini.play_count()
         time.sleep(_MOVE_DURATION_S * 5)
         self.assertEqual(self.mini.play_count(), settled, "groove survived stop()")
+
+
+class TestAvailableRecordings(unittest.TestCase):
+    """GET /servo must list the same vocabulary its `current` field reports."""
+
+    def setUp(self):
+        self.svc = ReachyMotionService()
+        self.svc._moves = FakeMoves()
+
+    def test_mapped_moves_are_listed_under_their_hal_name(self):
+        listed = self.svc.get_available_recordings()
+        self.assertIn(P.SERVO_MUSIC_GROOVE, listed)       # not 'dance1'
+        self.assertIn(P.SERVO_THINKING_DEEP, listed)      # not 'thoughtful1'
+        self.assertNotIn("dance1", listed)
+        self.assertNotIn("thoughtful1", listed)
+
+    def test_unmapped_hf_moves_stay_listed_verbatim(self):
+        self.assertIn("amazed1", self.svc.get_available_recordings())
+
+    def test_current_recording_is_always_in_the_list(self):
+        """What the web highlights (`current`) must exist among the items."""
+        listed = set(self.svc.get_available_recordings())
+        for name in (P.SERVO_MUSIC_GROOVE, P.SERVO_CURIOUS, P.SERVO_HAPPY_WIGGLE):
+            self.assertIn(name, listed)
+
+    def test_no_move_library_returns_empty(self):
+        self.svc._moves = False
+        self.assertEqual(self.svc.get_available_recordings(), [])
 
 
 if __name__ == "__main__":
