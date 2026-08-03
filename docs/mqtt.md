@@ -335,7 +335,7 @@ optional `error`, and an optional `data` payload.
 | `skills.uninstall` | Remove one installed skill from the active runtime (synchronous) | `name` |
 | `skills.save` | Write one authored skill into the active runtime's skills dir (synchronous) | `name`, `description`, `instructions` |
 | `chat.file.get` | Fetch one device-local file a turn named (synchronous) | `path` (required), optional `session_id`/`run_id` |
-| `chat.send` | Start an agent turn from the backend and stream it back (acks a run id, then emits `chat.event`) | `message` (required), optional `image`/`session_id`/`speak` |
+| `chat.send` | Start an agent turn from the backend and stream it back (acks a run id, then emits `chat.event`) | `message` (required), optional `image`/`file`/`session_id`/`speak` |
 | `system.info` | Aggregate snapshot: versions + network + host | _(none)_ |
 | `system.version` | Component versions only (cheaper than `system.info`) | _(none)_ |
 | `system.network` | network facts of the default-route interface only | _(none)_ |
@@ -722,13 +722,24 @@ mobile ◀── SSE ── backend ◀── fd: chat.event × N ── device
 {"cmd": "data", "kind": "chat.send", "data": {
   "message": "what do you see?",
   "image": "<base64 jpeg, optional>",
+  "file": {"name": "report.pdf", "mime": "application/pdf", "content": "<base64>"},
   "session_id": "abc123",
   "speak": false
 }}
 ```
 
 `message` is required. `image` is the same base64 the web chat puts in the
-sensing event, so a phone attaches a photo the same way. `session_id` is opaque
+sensing event, so a phone attaches a photo the same way.
+
+`file` is for anything that is NOT a photo — a PDF, a CSV. Deliberately its own
+field rather than more traffic through `image`: an image goes through the
+device's describe-first vision gate, and a document must not (it would fail
+there). It lands in `/tmp` with its **real** extension and the turn carries a
+`[file: <path> (<name>)]` tag so the agent can open it; `name` is used only for
+that extension and the display label, never as the path, so a hostile filename
+cannot steer the write. Capped at 10 MB decoded (`agentfile.InboundMaxBytes`),
+matching the web composer's own check. `mime` is advisory — the device decides
+nothing from it. Both fields may be sent together. `session_id` is opaque
 to the device — echoed on the ack and on every event so the backend can fan the
 stream to the right client; the device does **not** partition conversation state
 by it, since there is one agent and one history, exactly as if two people stood

@@ -324,7 +324,7 @@ metadata device/version chuẩn cộng với `kind`, `status` (`success|failure`
 | `skills.files` | Đọc file của một skill đã cài — danh sách, hoặc nội dung một file (đồng bộ) | `name`, `path` tuỳ chọn |
 | `skills.uninstall` | Xoá một skill đã cài khỏi runtime đang chạy (đồng bộ) | `name` |
 | `chat.file.get` | Lấy một file trên device mà turn đã gọi tên (đồng bộ) | `path` (bắt buộc), tuỳ chọn `session_id`/`run_id` |
-| `chat.send` | Mở một turn của agent từ backend rồi stream ngược về (ack một run id, sau đó bắn `chat.event`) | `message` (bắt buộc), tuỳ chọn `image`/`session_id`/`speak` |
+| `chat.send` | Mở một turn của agent từ backend rồi stream ngược về (ack một run id, sau đó bắn `chat.event`) | `message` (bắt buộc), tuỳ chọn `image`/`file`/`session_id`/`speak` |
 | `skills.save` | Ghi một skill soạn sẵn vào thư mục skill của runtime đang chạy (đồng bộ) | `name`, `description`, `instructions` |
 | `system.info` | Snapshot tổng hợp: versions + network + host | _(không)_ |
 | `system.version` | Chỉ versions các thành phần (rẻ hơn `system.info`) | _(không)_ |
@@ -701,13 +701,24 @@ mobile ◀── SSE ── backend ◀── fd: chat.event × N ── device
 {"cmd": "data", "kind": "chat.send", "data": {
   "message": "cậu thấy gì?",
   "image": "<base64 jpeg, tuỳ chọn>",
+  "file": {"name": "report.pdf", "mime": "application/pdf", "content": "<base64>"},
   "session_id": "abc123",
   "speak": false
 }}
 ```
 
 `message` bắt buộc. `image` chính là base64 mà chat web bỏ vào sensing event, nên
-điện thoại đính ảnh y hệt cách đó. `session_id` device **không hiểu** gì về nó —
+điện thoại đính ảnh y hệt cách đó.
+
+`file` dành cho thứ **không phải ảnh** — PDF, CSV. Cố ý tách riêng field chứ
+không nhét thêm vào `image`: ảnh phải đi qua gate describe-first của device, còn
+tài liệu thì không được (đi qua là fail). File rơi vào `/tmp` với **đúng đuôi
+thật**, và turn mang tag `[file: <path> (<name>)]` để agent mở được; `name` chỉ
+dùng để lấy đuôi và làm nhãn hiển thị, không bao giờ là path, nên tên file độc
+hại không lái được chỗ ghi. Giới hạn 10 MB sau khi decode
+(`agentfile.InboundMaxBytes`), khớp với check phía composer web. `mime` chỉ mang
+tính tham khảo — device không quyết định gì từ nó. Gửi cả hai field cùng lúc
+cũng được. `session_id` device **không hiểu** gì về nó —
 chỉ echo lại trên ack và trên mọi event để backend fan-out đúng client; device
 **không** tách state hội thoại theo nó, vì chỉ có một agent và một history, y như
 hai người cùng đứng cạnh cái máy. `speak` (mặc định false) cho device đọc to câu
