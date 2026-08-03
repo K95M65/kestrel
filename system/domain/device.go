@@ -886,9 +886,27 @@ type MQTTSkillsFilesData struct {
 	Path string `json:"path"`
 }
 
+// InboundFile is a file the USER attached to a turn, carried inbound so the
+// agent's tools can open it. Separate from the `image` field, which stays for
+// photos: an image goes through the describe-first vision gate, a document must
+// not (a PDF fed to a vision model fails, and used to land as `.jpg` besides).
+type InboundFile struct {
+	// Name is the client's filename. Used ONLY for its extension — the path
+	// written on disk is generated, so a hostile name can't steer the write.
+	Name string `json:"name"`
+	// MIME is advisory, for a client that wants to label the attachment. The
+	// device does not trust it to decide anything.
+	MIME string `json:"mime,omitempty"`
+	// Content is the file base64-encoded, capped at agentfile.InboundMaxBytes.
+	Content string `json:"content"`
+}
+
 // MQTTChatSendData is the Data payload for kind:"chat.send".
 type MQTTChatSendData struct {
 	Message string `json:"message"`
+	// File is an optional non-image attachment (PDF, CSV, …). Use Image for
+	// photos — that path runs the vision gate, this one does not.
+	File *InboundFile `json:"file,omitempty"`
 	// Image is an optional base64 JPEG, exactly what the web chat puts in the
 	// sensing event's `image` field — so a phone can attach a photo the same way.
 	Image string `json:"image,omitempty"`

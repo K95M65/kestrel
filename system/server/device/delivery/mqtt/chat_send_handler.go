@@ -57,7 +57,8 @@ func (h *DeviceMQTTHandler) handleChatSend(env domain.MQTTDataCommand) error {
 
 	slog.Info("chat.send accepted", "component", "mqtt-chat",
 		"run_id", runID, "session_id", data.SessionID,
-		"speak", data.Speak, "has_image", data.Image != "", "msg_len", len(data.Message))
+		"speak", data.Speak, "has_image", data.Image != "",
+		"has_file", data.File != nil, "msg_len", len(data.Message))
 
 	return h.publishDataResult(env.Kind, "success", "", domain.MQTTChatSendResult{
 		RunID:     runID,
@@ -69,9 +70,10 @@ func (h *DeviceMQTTHandler) handleChatSend(env domain.MQTTDataCommand) error {
 // the endpoint's own struct: that lives in a package which would import back
 // into this one.
 type sensingRequest struct {
-	Type    string `json:"type"`
-	Message string `json:"message"`
-	Image   string `json:"image,omitempty"`
+	Type    string              `json:"type"`
+	Message string              `json:"message"`
+	Image   string              `json:"image,omitempty"`
+	File    *domain.InboundFile `json:"file,omitempty"`
 }
 
 // sensingReply is the standard envelope: {"status":1,"data":{"runId":"..."}}.
@@ -97,6 +99,7 @@ func (h *DeviceMQTTHandler) forwardChatToSensing(data domain.MQTTChatSendData) (
 		Type:    evtType,
 		Message: data.Message,
 		Image:   data.Image,
+		File:    data.File,
 	})
 	if err != nil {
 		return "", fmt.Errorf("marshal sensing event: %w", err)

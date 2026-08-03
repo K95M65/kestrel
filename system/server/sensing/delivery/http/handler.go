@@ -18,6 +18,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 
+	"go.autonomous.ai/os/system/agentfile"
 	"go.autonomous.ai/os/system/device"
 	"go.autonomous.ai/os/system/domain"
 	"go.autonomous.ai/os/system/intent"
@@ -60,6 +61,12 @@ type SensingEventRequest struct {
 	// field is not part of Message and is never concatenated into the outgoing
 	// chat text). Served back to the UI via GetAudio.
 	Audio string `json:"audio,omitempty"`
+	// File is an optional NON-IMAGE attachment from a chat client (a PDF, a
+	// CSV). Kept separate from Image because the two need opposite handling: an
+	// image goes through the describe-first vision gate, a document must not —
+	// it would fail there, and before this field existed every attachment rode
+	// the Image field and was written as `.jpg` regardless of what it was.
+	File *domain.InboundFile `json:"file,omitempty"`
 }
 
 // SensingHandler handles incoming sensing events from HAL and forwards them to the agent.
@@ -267,6 +274,33 @@ func (h *SensingHandler) PostEvent(c *gin.Context) {
 			if werr := os.WriteFile(tmpPath, imgData, 0644); werr == nil {
 				req.Message += "\n[image: " + tmpPath + "]"
 			}
+		}
+	}
+
+	// Non-image attachment: land it with its REAL extension and tag it as a
+	// file, not an image. Deliberately its own branch rather than more work in
+	// the block above — a document must skip the describe-first gate below,
+	// which keys off req.Image. Same placement, BEFORE the busy fork, so a
+	// queued turn replays carrying the tag.
+	//
+	// This is the one place both chat paths converge: the web composer POSTs
+	// here directly, and the MQTT chat.send handler re-enters over loopback, so
+	// a phone and a browser attach files through identical code.
+	if req.File != nil && req.File.Content != "" {
+		path, ferr := agentfile.SaveInbound("/tmp", req.File.Name, req.File.Content, time.Now().UnixMilli())
+		if ferr != nil {
+			// Best-effort: the turn still runs, just without the attachment. The
+			// user's question usually stands on its own.
+			slog.Warn("chat attachment not saved", "component", "sensing",
+				"name", req.File.Name, "error", ferr)
+		} else {
+			name := strings.TrimSpace(req.File.Name)
+			if name == "" {
+				name = filepath.Base(path)
+			}
+			// Both the display name and the path: the agent needs the path to
+			// open the file, and the name is what the user will call it.
+			req.Message += fmt.Sprintf("\n[file: %s (%s)]", path, name)
 		}
 	}
 

@@ -1,9 +1,11 @@
 package agentfile
 
 import (
+	"encoding/base64"
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -245,5 +247,86 @@ func TestScanIsCandidatesOnly(t *testing.T) {
 	}
 	if _, _, err := Resolve(got[0], Roots()); err == nil {
 		t.Error("a scanned path that doesn't exist must still fail Resolve")
+	}
+}
+
+// The client picks the filename, and it decides a path on disk — only its
+// extension may be used, and only when it is a plain short suffix.
+func TestSafeExt(t *testing.T) {
+	cases := []struct{ name, want string }{
+		{"report.pdf", ".pdf"},
+		{"photo.JPG", ".jpg"},
+		{"notes.md", ".md"},
+		{"archive.tar.gz", ".gz"}, // last suffix only
+		{"noext", ".bin"},
+		{"", ".bin"},
+		{"trailing.", ".bin"},
+		{"../../etc/passwd", ".bin"}, // no extension survives Base()
+		{"evil.jpg/../../../etc/shadow", ".bin"},
+		{"weird.a b", ".bin"},        // space is not an extension char
+		{"long.abcdefghijk", ".bin"}, // over 8 chars
+		{"dotfile.p", ".p"},
+	}
+	for _, tc := range cases {
+		if got := SafeExt(tc.name); got != tc.want {
+			t.Errorf("SafeExt(%q) = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+// A document must land with its REAL extension: writing every attachment as
+// .jpg is what made a PDF arrive looking like a photo and fail the vision gate.
+func TestSaveInboundKeepsRealExtension(t *testing.T) {
+	dir := t.TempDir()
+	content := base64.StdEncoding.EncodeToString([]byte("%PDF-1.4 hello"))
+
+	path, err := SaveInbound(dir, "quarterly report.pdf", content, 1785393455291)
+	if err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	if filepath.Ext(path) != ".pdf" {
+		t.Errorf("path = %q, want a .pdf suffix", path)
+	}
+	// The filename is generated — the client's name is never the path.
+	if strings.Contains(filepath.Base(path), "quarterly") {
+		t.Errorf("client filename leaked into %q", path)
+	}
+	if filepath.Dir(path) != dir {
+		t.Errorf("wrote outside dir: %q", path)
+	}
+	body, err := os.ReadFile(path)
+	if err != nil || string(body) != "%PDF-1.4 hello" {
+		t.Errorf("content = %q, err %v", body, err)
+	}
+}
+
+// A hostile name must not steer the write out of dir.
+func TestSaveInboundIgnoresHostileNames(t *testing.T) {
+	dir := t.TempDir()
+	content := base64.StdEncoding.EncodeToString([]byte("x"))
+
+	for _, name := range []string{"../../etc/passwd", "/etc/shadow", "a/../../b.jpg", ""} {
+		path, err := SaveInbound(dir, name, content, 1)
+		if err != nil {
+			t.Fatalf("%q: %v", name, err)
+		}
+		if filepath.Dir(path) != dir {
+			t.Errorf("%q escaped to %q", name, path)
+		}
+	}
+}
+
+func TestSaveInboundRejectsBadInput(t *testing.T) {
+	dir := t.TempDir()
+
+	if _, err := SaveInbound(dir, "a.jpg", "", 1); err == nil {
+		t.Error("empty content must fail")
+	}
+	if _, err := SaveInbound(dir, "a.jpg", "not!base64!", 1); err == nil {
+		t.Error("undecodable content must fail")
+	}
+	big := base64.StdEncoding.EncodeToString(make([]byte, InboundMaxBytes+1))
+	if _, err := SaveInbound(dir, "a.jpg", big, 1); err == nil {
+		t.Error("oversized attachment must fail")
 	}
 }

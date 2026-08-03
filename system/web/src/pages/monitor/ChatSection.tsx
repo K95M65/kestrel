@@ -683,6 +683,7 @@ export function ChatSection({ events, isActive }: Props) {
   const [filePreview, setFilePreview] = useState<string | null>(null);    // data: URL (images only)
   const [fileBase64, setFileBase64] = useState<string | null>(null);      // raw base64 for API
   const [fileName, setFileName] = useState<string | null>(null);
+  const [fileMime, setFileMime] = useState("");
   const [fileSize, setFileSize] = useState<number>(0);
   const [fileIsImage, setFileIsImage] = useState(false);
   // Desktop (≥768px) always opens history by default; user can still collapse
@@ -1296,6 +1297,7 @@ export function ChatSection({ events, isActive }: Props) {
       const dataUrl = reader.result as string;
       setFileBase64(dataUrl.split(",")[1] ?? null);
       setFileName(file.name);
+      setFileMime(file.type);
       setFileSize(file.size);
       setFileIsImage(isImage);
       setFilePreview(isImage ? dataUrl : null);
@@ -1313,6 +1315,7 @@ export function ChatSection({ events, isActive }: Props) {
     setFilePreview(null);
     setFileBase64(null);
     setFileName(null);
+    setFileMime("");
     setFileSize(0);
     setFileIsImage(false);
   };
@@ -1429,11 +1432,19 @@ export function ChatSection({ events, isActive }: Props) {
     setSending(true);
     setTimeout(scrollToBottom, 50);
 
-    const sendImage = attachedImage ?? fileBase64;
+    // Images ride `image` (the device runs its describe-first vision gate on
+    // that field); anything else rides `file`, which lands on disk with its real
+    // extension. They used to share `image`, so a PDF was written as `.jpg` and
+    // then failed the vision gate.
+    const sendImage = attachedImage ?? (fileIsImage ? fileBase64 : null);
+    const sendFile = !fileIsImage && fileBase64
+      ? { name: fileName ?? "attachment", mime: fileMime, content: fileBase64 }
+      : null;
 
     try {
-      const body: Record<string, string> = { type: "web_chat", message: text };
+      const body: Record<string, unknown> = { type: "web_chat", message: text };
       if (sendImage) body.image = sendImage;
+      if (sendFile) body.file = sendFile;
       const res = await fetch(`${API}/sensing/event`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1513,7 +1524,7 @@ export function ChatSection({ events, isActive }: Props) {
         ),
       );
     }
-  }, [activeId, sending, updateMessages, filePreview, fileBase64, fileIsImage, fileName, fileSize]);
+  }, [activeId, sending, updateMessages, filePreview, fileBase64, fileIsImage, fileName, fileMime, fileSize]);
 
   const send = () => { sendText(input.trim(), fileBase64); };
 

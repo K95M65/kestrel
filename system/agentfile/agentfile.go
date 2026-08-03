@@ -1,5 +1,7 @@
-// Package agentfile decides which device-local files an agent turn is allowed to
-// hand out, and finds the ones a turn named.
+// Package agentfile owns the files that cross an agent turn's boundary in both
+// directions: which device-local files a turn is allowed to hand OUT (and the
+// scanner that finds the ones a turn named), and where a file attached IN by the
+// user lands on disk.
 //
 // A turn can only NAME a file it produced — "take a photo" ends with an absolute
 // path like /root/.openclaw/media/hal-snapshots/snap_*.jpg. Two very different
@@ -17,7 +19,9 @@
 package agentfile
 
 import (
+	"encoding/base64"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -182,4 +186,63 @@ func Scan(text string) []string {
 		out = append(out, p)
 	}
 	return out
+}
+
+// ─── Inbound ─────────────────────────────────────────────────────────────────
+//
+// The other direction: a file the USER attached to a turn, which has to land on
+// disk so the agent's tools can open it.
+//
+// This used to only work for images. Everything a client attached — a PDF, a
+// CSV — was sent in the sensing event's `image` field and written as
+// `/tmp/web-chat-<ms>.jpg`, so a document arrived mislabelled as a photo and
+// then failed the describe-first vision gate. Inbound files now carry their own
+// name and land with their real extension.
+
+// InboundMaxBytes caps one attached file, decoded. Matches the web composer's
+// 10 MB client-side check so the two can't disagree about what is acceptable.
+const InboundMaxBytes = 10 << 20
+
+// extRE is the shape an extension must have to be used verbatim: the name comes
+// from the client, and it decides a path on disk.
+var extRE = regexp.MustCompile(`^[a-z0-9]{1,8}$`)
+
+// SaveInbound decodes a base64 attachment and writes it into dir, returning the
+// path. name is used ONLY for its extension — the filename itself is generated,
+// so a name like "../../etc/passwd" can never steer the write.
+//
+// An unusable extension degrades to ".bin" rather than failing: the agent can
+// still be told a file is there, which beats dropping the user's attachment.
+// Note the file lands in /tmp, which is an outbound root — but the outbound
+// whitelist (Types) still governs what may be read back out, so an attachment
+// of a type this device won't serve cannot be laundered into one that is.
+func SaveInbound(dir, name, contentB64 string, stamp int64) (string, error) {
+	if contentB64 == "" {
+		return "", errors.New("empty attachment")
+	}
+	body, err := base64.StdEncoding.DecodeString(contentB64)
+	if err != nil {
+		return "", fmt.Errorf("decode attachment: %w", err)
+	}
+	if len(body) > InboundMaxBytes {
+		return "", fmt.Errorf("attachment is %d bytes (max %d)", len(body), InboundMaxBytes)
+	}
+
+	path := filepath.Join(dir, fmt.Sprintf("chat-attachment-%d%s", stamp, SafeExt(name)))
+	if err := os.WriteFile(path, body, 0644); err != nil {
+		return "", fmt.Errorf("write attachment: %w", err)
+	}
+	return path, nil
+}
+
+// SafeExt returns the leading-dot extension to write a client-named file with,
+// or ".bin" when the name carries nothing usable. Never returns a path
+// separator or a multi-part suffix, so the result can be concatenated onto a
+// generated filename safely.
+func SafeExt(name string) string {
+	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(filepath.Base(name)), "."))
+	if !extRE.MatchString(ext) {
+		return ".bin"
+	}
+	return "." + ext
 }
