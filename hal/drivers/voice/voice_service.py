@@ -182,9 +182,10 @@ class VoiceService:
         # Speaker decoration (wake-word + speaker recognizer + SER). Speaker-ID and
         # SER (speech emotion) are voice people-perception — gated on the `audio`
         # capability (the mic), passed in via enable_people_perception.
-        # Device type is a permanent spoken alias ("hey lamp"); the runtime's
-        # current agent name is an additional alias ("hey Luna"). Runtime rename
-        # updates must never replace the device type alias.
+        # "Autonomous" and device type are permanent spoken aliases ("hey
+        # autonomous", "hey lamp"); the runtime's current agent name is an
+        # additional alias ("hey Luna"). Runtime rename updates must never
+        # replace the permanent aliases.
         self._device_wake_words = list(voice_cfg.DEFAULT_WAKE_WORDS)
         self._decorator = SpeakerDecorator(
             wake_words=merge_wake_words(self._device_wake_words, wake_words or []),
