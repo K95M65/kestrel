@@ -132,9 +132,10 @@ var (
 	chitchatWakeWords []string
 )
 
-// BuildChitchatWakeWords derives the strip tokens from a device/agent name
-// (e.g. its device_type), longest forms first so the caller strips the maximal
-// leading match. "" → no tokens (stripping is then a no-op).
+// BuildChitchatWakeWords derives local-intent attention tokens from a
+// device/agent name. This list is independent of the HAL voice wake-word
+// aliases: local chitchat has always accepted Vietnamese attention forms and a
+// bare name, regardless of whether the optional voice gate is enabled.
 func BuildChitchatWakeWords(name string) []string {
 	n := strings.ToLower(strings.TrimSpace(name))
 	if n == "" {
@@ -142,7 +143,23 @@ func BuildChitchatWakeWords(name string) []string {
 	}
 	return []string{
 		// Compound attention-call forms first (longest).
-		"wake up " + n, "hello " + n, "okay " + n, "hey " + n, "hi " + n, "alo " + n, "ok " + n,
+		"hello " + n, "hey " + n, "này " + n, "ê " + n, n + " ơi",
+		// Bare name last.
+		n,
+	}
+}
+
+// BuildVoiceWakeWords derives the English-prefix aliases understood by HAL's
+// STT wake-word gate. Keep it separate from BuildChitchatWakeWords so enabling
+// or changing voice wake words cannot alter local-intent matching.
+func BuildVoiceWakeWords(name string) []string {
+	n := strings.ToLower(strings.TrimSpace(name))
+	if n == "" {
+		return nil
+	}
+	return []string{
+		"wake up " + n, "hello " + n, "okay " + n, "hey " + n,
+		"hi " + n, "alo " + n, "ok " + n,
 	}
 }
 

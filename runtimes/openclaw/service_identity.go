@@ -254,7 +254,7 @@ func parseIdentityName(content string) string {
 }
 
 // buildWakeWords keeps OpenClaw's runtime update aligned with every other
-// runtime and HAL's English-only wake-word aliases.
+// runtime and HAL's English-prefix voice wake-word aliases.
 func buildWakeWords(name string) []string {
-	return i18n.BuildChitchatWakeWords(name)
+	return i18n.BuildVoiceWakeWords(name)
 }

@@ -379,14 +379,12 @@ func ProvideConfig() *Config {
 			slog.Error("seed realtime config failed", "component", "config", "error", err)
 		}
 	}
-	// Seed the top-level wake-word switch for config files created before it was
-	// introduced. It stays false by default, preserving always-listening mode.
+	// Default the top-level wake-word switch in memory for config files created
+	// before it was introduced. Do not write this compatibility default: merely
+	// upgrading must not change the HAL config hash and restart voice playback.
 	if cfg.WakeWord == nil {
 		wakeWord := false
 		cfg.WakeWord = &wakeWord
-		if err := cfg.Save(); err != nil {
-			slog.Error("seed wakeword config failed", "component", "config", "error", err)
-		}
 	}
 
 	// OTA metadata URL lives in bootstrap.json (single source of truth); config.json

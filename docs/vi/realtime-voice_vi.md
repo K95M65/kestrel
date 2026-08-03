@@ -33,11 +33,11 @@ cộng thêm ngần ấy giây trễ trước khi agent chính nhìn thấy yêu
 result đã được gửi lại model trước khi break; turn còn mở dang dở sẽ được
 `flush_output()` của turn kế dọn.
 
-Một lượt wake-word đã được STT final xác nhận luôn xuống agent chính nếu realtime **không**
-thực sự nói câu trả lời: gồm lúc kết nối realtime không có/failed, hết thời gian
-chờ nhận output, hoặc model delegate rõ ràng. Chỉ lượt được đánh dấu handled sau
-khi realtime đã phát lời nói mới bị chặn khỏi đường STT → OS-server thông thường;
-vì vậy Gemini lỗi tạm thời không thể làm rơi một voice command.
+Mọi lượt wake-word đã được STT final xác nhận đều đi qua dispatch. Nếu realtime
+đã nói, dispatch gửi event đồng bộ `voice_agent_handled` để agent chính ghi nhớ
+nhưng im lặng; realtime unavailable, lỗi, timeout hoặc delegate đi theo đường
+agent chính bình thường. Dispatch cũng tiêu thụ vision handoff một-lượt, nên
+Gemini lỗi tạm thời không thể làm rơi voice command hoặc làm frame rò sang lượt sau.
 
 Nếu kết nối provider **ban đầu** lỗi ngay khi HAL khởi động, orchestrator tạo
 session mới bằng retry loop nền (thử lại một lần ngay, rồi backoff luỹ thừa từ 2s,
@@ -515,14 +515,15 @@ TRIGGER identifier snake_case cho corpus leak DeepSeek); xem
 `docs/vi/flow-monitor_vi.md` § "CoT-leak filter (đường agent)". Harden bên nào
 thì nhớ sync bên kia.
 
-### Biến môi trường (`hal/config.py`)
+### Cấu hình runtime (`hal/config.py` + `config.json`)
 
-Mỗi knob có thể bị `HAL_*` env override (thắng block, và là đường cho dev-box):
+Mỗi biến môi trường `HAL_*` ghi đè setting tương ứng; `wakeword` là cờ top-level
+trong `config.json`:
 
 | Biến | Mặc định | Ghi chú |
 |------|----------|---------|
 | `HAL_REALTIME_ENABLED` | `true` | Cổng tổng cho pipeline realtime |
-| `wakeword` | `false` | Cổng wake word top-level trong config file. Khi bật, partial khớp chỉ là tín hiệu tạm: HAL chỉ commit audio buffer sang realtime hoặc forward command sau khi STT **final** xác nhận wake phrase ở đầu câu. Các prefix hỗ trợ là `hello`, `hey`, `hi`, `alo`, `okay`, `ok`, `wake up`, áp dụng cho alias chung cố định (`hey autonomous`), device type (`hey lamp`) và tên agent hiện tại (`hey Luna`). Runtime rename chỉ cập nhật alias theo tên agent. Bare name và các prefix khác không mở gate. Lượt đã được xác nhận sẽ fallback xuống os-server khi realtime unavailable, im lặng, lỗi hoặc delegate; chỉ câu trả lời realtime đã nói mới ở lại HAL. Nếu realtime tắt, final transcript đã xác nhận đi theo đường os-server thường. Thiếu/`false` giữ nguyên luồng luôn lắng nghe trước gate. HAL restart sau khi lưu ở local Settings hoặc MQTT `wakeword.gate`. |
+| `wakeword` | `false` | Cổng wake word top-level trong config file. Khi bật, partial khớp chỉ là tín hiệu tạm: HAL chỉ commit audio buffer sang realtime hoặc forward command sau khi STT **final** xác nhận wake phrase ở đầu câu. Các prefix hỗ trợ là `hello`, `hey`, `hi`, `alo`, `okay`, `ok`, `wake up`, áp dụng cho alias chung cố định (`hey autonomous`), device type (`hey lamp`) và tên agent hiện tại (`hey Luna`). Runtime rename chỉ cập nhật alias theo tên agent. Bare name và các prefix khác không mở gate. Mọi lượt đã xác nhận đều dispatch sang os-server: câu realtime đã nói thành event đồng bộ im lặng `voice_agent_handled`; realtime unavailable, im lặng, lỗi hoặc delegate đi theo đường thường. Nếu realtime tắt, final transcript đã xác nhận đi theo đường os-server thường. Thiếu/`false` giữ nguyên luồng luôn lắng nghe trước gate. HAL restart sau khi lưu ở local Settings hoặc MQTT `wakeword.gate`. |
 | `HAL_REALTIME_PROVIDER` | `gemini` | `none` \| `gemini` \| `openai` \| `qwen` |
 | `HAL_REALTIME_TURN_DETECTION` | `off` | `server_vad` \| `semantic_vad` \| `off` (Gemini: off = activity detection thủ công) |
 | `HAL_REALTIME_RECV_QUEUE_TIMEOUT_S` | `8.0` | Số giây tối đa `receive()` chờ output event kế tiếp trước khi kết thúc lượt im lặng (fallback sang main agent) |

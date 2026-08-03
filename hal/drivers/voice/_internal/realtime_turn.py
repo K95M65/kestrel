@@ -123,22 +123,19 @@ class RealtimeTurnResult(NamedTuple):
 
 def should_dispatch_to_main(
     wakeword_enabled: bool,
-    wake_word_detected: bool,
-    realtime_enabled: bool,
-    rt: RealtimeTurnResult,
+    wake_word_confirmed: bool,
 ) -> bool:
     """Return whether the finalized STT turn must reach the main agent.
 
     Wake-word mode suppresses ambient speech until STT has armed the turn. Once
-    armed, an enabled realtime agent owns the reply only when it actually
-    handled it. A failed connection, unavailable agent, timeout, or an explicit
-    ``delegate_to_main`` must all preserve the normal OS-server fallback.
+    confirmed, every turn reaches dispatch: a realtime-handled turn becomes a
+    `voice_agent_handled` synchronization event, while unavailable, silent,
+    failed, and delegated turns take the normal main-agent path. This keeps
+    memory and one-turn vision handoff behavior identical to always-listening.
     """
     if not wakeword_enabled:
         return True
-    if not wake_word_detected:
-        return False
-    return not realtime_enabled or not rt.handled
+    return wake_word_confirmed
 
 
 def is_noise_turn(

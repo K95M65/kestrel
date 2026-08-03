@@ -1397,8 +1397,6 @@ class VoiceService:
             if should_dispatch_to_main(
                 hal_config.WAKEWORD_ENABLED,
                 wake_word_confirmed.is_set(),
-                hal_config.REALTIME_ENABLED,
-                rt,
             ):
                 # A realtime connection failure or silent timeout is not a
                 # handled turn. Preserve the STT fallback so a wake-word command

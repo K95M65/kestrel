@@ -34,11 +34,12 @@ window, adding that many seconds of latency before the main agent even sees the
 request. The function result is already sent back to the model before the break;
 the dangling open turn is cleared by the next turn's `flush_output()`.
 
-An STT-final-confirmed wake-word turn reaches the main agent whenever realtime does **not**
-actually speak a reply: this includes an unavailable or failed realtime
-connection, a receive timeout, and an explicit delegate. Only a turn marked
-handled after realtime produced speech is suppressed from the normal STT →
-OS-server path, so a temporary Gemini failure cannot drop a voice command.
+Every STT-final-confirmed wake-word turn reaches dispatch. When realtime already
+spoke, dispatch sends a `voice_agent_handled` synchronization event so the main
+agent records the exchange but stays silent; unavailable, failed, timed-out, or
+delegated realtime takes the normal main-agent path. This also consumes a
+one-turn vision handoff, so a temporary Gemini failure cannot drop a voice
+command or leak a frame into the next turn.
 
 If the **initial** provider connection fails during HAL startup, the
 orchestrator creates fresh sessions in a background retry loop (an immediate
@@ -537,14 +538,15 @@ port of this filter — `system/server/agent/delivery/http/cot_leak_filter.go`
 `docs/flow-monitor.md` § "CoT-leak filter (agent path)". Keep the two in sync
 when hardening either side.
 
-### Environment variables (`hal/config.py`)
+### Runtime configuration (`hal/config.py` + `config.json`)
 
-Each knob's `HAL_*` env var overrides the block (and is the dev-box path):
+Each `HAL_*` environment variable overrides its corresponding setting; `wakeword`
+is a top-level `config.json` flag:
 
 | Variable | Default | Notes |
 |----------|---------|-------|
 | `HAL_REALTIME_ENABLED` | `true` | Master gate for the realtime pipeline |
-| `wakeword` | `false` | Top-level config-file wake-word gate. When true, a matching interim transcript is provisional only: HAL commits buffered audio to realtime or forwards a command only after an STT **final** result confirms the configured leading wake phrase. The supported prefixes are `hello`, `hey`, `hi`, `alo`, `okay`, `ok`, and `wake up`, applied to the permanent common alias (`hey autonomous`), device type (`hey lamp`), and current agent name (`hey Luna`). A runtime rename updates only the agent-name aliases. Bare names and other prefixes do not arm the gate. A confirmed turn falls back to os-server whenever realtime is unavailable, silent, errors, or delegates; only a spoken realtime reply stays in HAL. If realtime is disabled, the confirmed final transcript follows the normal os-server path. Missing/false preserves the pre-gate always-listening flow unchanged. HAL restarts after a local Settings save or MQTT `wakeword.gate`. |
+| `wakeword` | `false` | Top-level config-file wake-word gate. When true, a matching interim transcript is provisional only: HAL commits buffered audio to realtime or forwards a command only after an STT **final** result confirms the configured leading wake phrase. The supported prefixes are `hello`, `hey`, `hi`, `alo`, `okay`, `ok`, and `wake up`, applied to the permanent common alias (`hey autonomous`), device type (`hey lamp`), and current agent name (`hey Luna`). A runtime rename updates only the agent-name aliases. Bare names and other prefixes do not arm the gate. Every confirmed turn dispatches to os-server: a spoken realtime reply becomes a silent `voice_agent_handled` sync event; unavailable, silent, failed, or delegated realtime follows the normal path. If realtime is disabled, the confirmed final transcript follows the normal os-server path. Missing/false preserves the pre-gate always-listening flow unchanged. HAL restarts after a local Settings save or MQTT `wakeword.gate`. |
 | `HAL_REALTIME_PROVIDER` | `gemini` | `none` \| `gemini` \| `openai` \| `qwen` |
 | `HAL_REALTIME_TURN_DETECTION` | `off` | `server_vad` \| `semantic_vad` \| `off` (Gemini: off = manual activity detection) |
 | `HAL_REALTIME_RECV_QUEUE_TIMEOUT_S` | `8.0` | Max seconds `receive()` waits for the next output event before ending a silent turn (fallback to main agent) |
