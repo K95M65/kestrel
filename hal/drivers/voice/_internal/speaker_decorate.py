@@ -344,9 +344,13 @@ class SpeakerDecorator:
             return None
 
     def submit_speech_emotion_from_session(
-        self, audio_buffer: list[bytes], user: str,
+        self, audio_buffer: list[bytes], user: str = "unknown",
     ) -> None:
-        """Submit SER on the full mic-session buffer (async via the service)."""
+        """Submit SER on the full mic-session buffer (async via the service).
+
+        A turn ignored by the wake-word gate does not run speaker
+        identification, so its SER record intentionally uses ``unknown``.
+        """
         if self._speech_emotion is None or not self._speech_emotion.available:
             logger.info(
                 "Speech emotion submit skipped: service_init=%s available=%s",
