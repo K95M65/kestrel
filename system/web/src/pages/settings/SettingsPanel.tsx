@@ -104,7 +104,7 @@ export function SettingsPanel({ activeSection }: { activeSection: SettingsSectio
   const [ttsVoice, setTtsVoice] = useState("Rachel");
   const [ttsVoices, setTtsVoices] = useState<string[]>([]);
   const [realtimeEnabled, setRealtimeEnabled] = useState(true);
-  const [realtimeWakeWord, setRealtimeWakeWord] = useState(false);
+  const [wakeWord, setWakeWord] = useState(false);
   const [realtimeProvider, setRealtimeProvider] = useState("gemini");
   const [realtimeVoice, setRealtimeVoice] = useState("Kore");
   const [realtimeReasoning, setRealtimeReasoning] = useState("MINIMAL");
@@ -153,7 +153,7 @@ export function SettingsPanel({ activeSection }: { activeSection: SettingsSectio
     llmUrl: string; llmModel: string; llmDisableThinking: boolean;
     sttBaseUrl: string; sttProvider: SttProvider; sttLanguage: string;
     ttsBaseUrl: string; ttsProvider: string; ttsVoice: string;
-    realtimeWakeWord: boolean;
+    wakeWord: boolean;
     channel: ChannelType;
     teleUserId: string; slackUserId: string;
     discordGuildId: string; discordUserId: string;
@@ -194,7 +194,7 @@ export function SettingsPanel({ activeSection }: { activeSection: SettingsSectio
         setTtsBaseUrl(cfg.tts_base_url ?? "");
         setTtsProvider(cfg.tts_provider || "elevenlabs");
         setTtsVoice(cfg.tts_voice || "Rachel");
-        setRealtimeWakeWord(cfg.wakeword ?? false);
+        setWakeWord(cfg.wakeword ?? false);
         if (cfg.realtime) {
           setRealtimeEnabled(cfg.realtime.enabled ?? true);
           setRealtimeProvider(cfg.realtime.provider || "gemini");
@@ -267,7 +267,7 @@ export function SettingsPanel({ activeSection }: { activeSection: SettingsSectio
           ttsBaseUrl: (cfg.tts_base_url ?? "") || llmUrlInit,
           ttsProvider: cfg.tts_provider || "elevenlabs",
           ttsVoice: cfg.tts_voice || "Rachel",
-          realtimeWakeWord: cfg.wakeword ?? false,
+          wakeWord: cfg.wakeword ?? false,
           channel: (cfg.channel as ChannelType) || "telegram",
           teleUserId: cfg.telegram_user_id ?? "",
           slackUserId: cfg.slack_user_id ?? "",
@@ -333,7 +333,7 @@ export function SettingsPanel({ activeSection }: { activeSection: SettingsSectio
     ttsBaseUrl !== baseline.ttsBaseUrl ||
     ttsProvider !== baseline.ttsProvider ||
     ttsVoice !== baseline.ttsVoice ||
-    realtimeWakeWord !== baseline.realtimeWakeWord ||
+    wakeWord !== baseline.wakeWord ||
     channel !== baseline.channel ||
     teleUserId !== baseline.teleUserId ||
     slackUserId !== baseline.slackUserId ||
@@ -388,7 +388,7 @@ export function SettingsPanel({ activeSection }: { activeSection: SettingsSectio
       if (realtimeBaseUrl) realtime.base_url = realtimeBaseUrl;
       if (realtimeApiKey) realtime.api_key = realtimeApiKey;
       body.realtime = realtime;
-      body.wakeword = realtimeWakeWord;
+      body.wakeword = wakeWord;
       if (llmApiKey) body.llm_api_key = llmApiKey;
       if (ttsApiKey) body.tts_api_key = ttsApiKey;
       if (mqttPassword) body.mqtt_password = mqttPassword;
@@ -424,7 +424,7 @@ export function SettingsPanel({ activeSection }: { activeSection: SettingsSectio
         llmUrl, llmModel, llmDisableThinking,
         sttBaseUrl, sttProvider, sttLanguage,
         ttsBaseUrl, ttsProvider, ttsVoice,
-        realtimeWakeWord,
+        wakeWord,
         channel,
         teleUserId, slackUserId,
         discordGuildId, discordUserId,
@@ -450,7 +450,7 @@ export function SettingsPanel({ activeSection }: { activeSection: SettingsSectio
     sttProvider, sttLanguage, sttLoaded,
     ttsApiKey, ttsBaseUrl, ttsProvider, ttsVoice, deviceId,
     mqttEndpoint, mqttUsername, mqttPassword, mqttPort, faChannel, fdChannel,
-    realtimeEnabled, realtimeWakeWord, realtimeProvider, realtimeVoice, realtimeReasoning, realtimeApiKey, realtimeBaseUrl,
+    realtimeEnabled, wakeWord, realtimeProvider, realtimeVoice, realtimeReasoning, realtimeApiKey, realtimeBaseUrl,
   ]);
 
   // Save is hidden for sections that aren't part of the form's PUT flow: Face/My
@@ -510,6 +510,8 @@ export function SettingsPanel({ activeSection }: { activeSection: SettingsSectio
               mac={mac}
               rotateAdminPassword={adminPassword}
               setRotateAdminPassword={setAdminPassword}
+              wakeWord={wakeWord}
+              setWakeWord={setWakeWord}
             />
 
             <WifiSection
@@ -562,7 +564,6 @@ export function SettingsPanel({ activeSection }: { activeSection: SettingsSectio
               realtimeLoaded={realtimeLoaded}
               llmLoaded={llmLoaded}
               enabled={realtimeEnabled} setEnabled={setRealtimeEnabled}
-              wakeWord={realtimeWakeWord} setWakeWord={setRealtimeWakeWord}
               provider={realtimeProvider} setProvider={setRealtimeProvider}
               voice={realtimeVoice} setVoice={setRealtimeVoice}
               reasoning={realtimeReasoning} setReasoning={setRealtimeReasoning}

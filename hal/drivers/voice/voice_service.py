@@ -40,7 +40,11 @@ from hal.drivers.voice._internal.realtime_turn import (
 )
 from hal.drivers.voice._internal.sensing_sender import SensingSender
 from hal.drivers.voice._internal.session_finalize import finalize_session
-from hal.drivers.voice._internal.speaker_decorate import SpeakerDecorator, merge_wake_words
+from hal.drivers.voice._internal.speaker_decorate import (
+    SpeakerDecorator,
+    merge_stt_hypothesis,
+    merge_wake_words,
+)
 from hal.drivers.voice._internal.turn_dispatch import dispatch_turn
 from hal.drivers.voice._internal.vad_filters import SileroVADFilter, WebRTCVADFilter
 from hal.drivers.voice.backchannel import Backchannel
@@ -942,19 +946,46 @@ class VoiceService:
         # preserving the opening wake phrase without touching realtime session
         # state across threads.
         wake_word_detected = threading.Event()
+        # STT providers disagree on interim updates: some re-send the entire
+        # hypothesis ("Hello" → "Hello Luna"), while others emit only the new
+        # token ("Hello" → "Luna"). Retain a leading transcript hypothesis so
+        # either shape can arm the gate as soon as the alias is complete.
+        wake_final_segments: list[str] = []
+        wake_partial_hypothesis = [""]
+
+        def wake_candidate(text: str, is_final: bool) -> str:
+            if is_final:
+                segment = merge_stt_hypothesis(wake_partial_hypothesis[0], text)
+                if segment:
+                    wake_final_segments.append(segment)
+                wake_partial_hypothesis[0] = ""
+            else:
+                wake_partial_hypothesis[0] = merge_stt_hypothesis(
+                    wake_partial_hypothesis[0], text
+                )
+            return " ".join(wake_final_segments + [wake_partial_hypothesis[0]]).strip()
+
+        def open_wake_word_gate(candidate: str, source: str) -> None:
+            if (
+                hal_config.WAKEWORD_ENABLED
+                and candidate
+                and self._decorator.starts_with_wake_word(candidate)
+                and not wake_word_detected.is_set()
+            ):
+                wake_word_detected.set()
+                logger.info(
+                    "Wake-word gate opened by STT %s: '%s'", source, candidate
+                )
 
         def on_transcript(text: str, is_final: bool):
             if text.strip():
                 self._last_transcript_ts = time.time()
             if not is_final:
                 logger.info("STT partial: '%s'", text)
-                if (
-                    hal_config.WAKEWORD_ENABLED
-                    and self._decorator.starts_with_wake_word(text)
-                    and not wake_word_detected.is_set()
-                ):
-                    wake_word_detected.set()
-                    logger.info("Wake-word gate opened by STT partial")
+                candidate = wake_candidate(text, is_final=False)
+                if hal_config.WAKEWORD_ENABLED:
+                    logger.debug("Wake-word partial candidate: '%s'", candidate)
+                    open_wake_word_gate(candidate, "partial")
                 if len(text) > len(longest_partial[0]):
                     longest_partial[0] = text
                 self._backchannel.on_partial(text)
@@ -966,6 +997,11 @@ class VoiceService:
             # Flux model fires multiple EndOfTurn events for natural pauses within
             # one utterance, so sending immediately would split a single sentence.
             logger.info("STT final segment: '%s'", text)
+            if hal_config.WAKEWORD_ENABLED:
+                # Usually this has already armed on a partial. This fallback
+                # keeps the feature usable with providers that only emit the
+                # complete alias in their final callback.
+                open_wake_word_gate(wake_candidate(text, is_final=True), "final fallback")
             # Store final text + any partial accumulated before this final.
             # After final, STT resets partials to empty, so save longest_partial now.
             best = longest_partial[0] if len(longest_partial[0]) > len(text) else text

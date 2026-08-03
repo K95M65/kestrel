@@ -40,6 +40,33 @@ def merge_wake_words(*word_lists: list[str]) -> list[str]:
     return merged
 
 
+def merge_stt_hypothesis(previous: str, current: str) -> str:
+    """Merge cumulative and delta-style STT transcript updates.
+
+    Providers do not agree on interim semantics. One may send ``Hello`` then
+    ``Hello Luna``; another may send ``Hello`` then only the new token
+    ``Luna``. The wake-word gate needs a single leading hypothesis for both
+    shapes, without waiting for end-of-speech.
+    """
+    previous_words = re.findall(r"\w+", previous.casefold())
+    current_words = re.findall(r"\w+", current.casefold())
+    if not previous_words:
+        return " ".join(current_words)
+    if not current_words:
+        return " ".join(previous_words)
+    if current_words[:len(previous_words)] == previous_words:
+        return " ".join(current_words)
+    if previous_words[:len(current_words)] == current_words:
+        return " ".join(current_words)
+
+    # Delta-style updates can repeat their boundary word ("hello luna" then
+    # "luna what time is it"). Keep the longest shared suffix/prefix once.
+    overlap = min(len(previous_words), len(current_words))
+    while overlap and previous_words[-overlap:] != current_words[:overlap]:
+        overlap -= 1
+    return " ".join(previous_words + current_words[overlap:])
+
+
 class SpeakerDecorator:
     """Owns wake-word list + speaker recognizer + speech-emotion service."""
 

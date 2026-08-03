@@ -2,7 +2,11 @@
 
 import threading
 
-from hal.drivers.voice._internal.speaker_decorate import SpeakerDecorator, merge_wake_words
+from hal.drivers.voice._internal.speaker_decorate import (
+    SpeakerDecorator,
+    merge_stt_hypothesis,
+    merge_wake_words,
+)
 
 
 def _decorator(words: list[str]) -> SpeakerDecorator:
@@ -27,6 +31,18 @@ def test_wake_word_match_requires_a_prefix_and_word_boundary():
     assert not decorator.starts_with_wake_word("lunar calendar")
     assert not decorator.starts_with_wake_word("luna, nghe mình nói này")
     assert decorator.starts_with_wake_word("wake up luna, nghe mình nói này")
+
+
+def test_partial_hypothesis_reassembles_cumulative_and_delta_updates():
+    decorator = _decorator(["hello luna"])
+
+    cumulative = merge_stt_hypothesis("hello", "hello luna")
+    delta = merge_stt_hypothesis("hello", "luna")
+    overlapping = merge_stt_hypothesis("hello luna", "luna what time is it")
+
+    assert decorator.starts_with_wake_word(cumulative)
+    assert decorator.starts_with_wake_word(delta)
+    assert overlapping == "hello luna what time is it"
 
 
 def test_device_type_alias_is_retained_alongside_agent_name():
