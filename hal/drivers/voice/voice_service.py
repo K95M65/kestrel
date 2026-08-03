@@ -37,6 +37,7 @@ from hal.drivers.voice._internal.realtime_turn import (
     build_turn_context,
     is_noise_turn,
     run_realtime_turn,
+    should_dispatch_to_main,
 )
 from hal.drivers.voice._internal.sensing_sender import SensingSender
 from hal.drivers.voice._internal.session_finalize import finalize_session
@@ -1339,20 +1340,15 @@ class VoiceService:
                 rt = RealtimeTurnResult()
 
             # --- Speaker recognition + OS server send + SER ---
-            if not hal_config.WAKEWORD_ENABLED:
-                dispatch_turn(
-                    self._decorator,
-                    self._sensing_sender,
-                    combined,
-                    audio_buffer,
-                    ser_audio_buffer,
-                    rt,
-                )
-            elif wake_word_detected.is_set() and (
-                not hal_config.REALTIME_ENABLED or rt.delegated
+            if should_dispatch_to_main(
+                hal_config.WAKEWORD_ENABLED,
+                wake_word_detected.is_set(),
+                hal_config.REALTIME_ENABLED,
+                rt,
             ):
-                # With realtime disabled the armed final transcript follows the
-                # normal Go path. Otherwise, Go sees only an explicit delegate.
+                # A realtime connection failure or silent timeout is not a
+                # handled turn. Preserve the STT fallback so a wake-word command
+                # never disappears just because Gemini is temporarily down.
                 dispatch_turn(
                     self._decorator,
                     self._sensing_sender,

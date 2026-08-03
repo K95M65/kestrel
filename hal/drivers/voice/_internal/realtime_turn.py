@@ -121,6 +121,26 @@ class RealtimeTurnResult(NamedTuple):
     delegate_msg: str = ""
 
 
+def should_dispatch_to_main(
+    wakeword_enabled: bool,
+    wake_word_detected: bool,
+    realtime_enabled: bool,
+    rt: RealtimeTurnResult,
+) -> bool:
+    """Return whether the finalized STT turn must reach the main agent.
+
+    Wake-word mode suppresses ambient speech until STT has armed the turn. Once
+    armed, an enabled realtime agent owns the reply only when it actually
+    handled it. A failed connection, unavailable agent, timeout, or an explicit
+    ``delegate_to_main`` must all preserve the normal OS-server fallback.
+    """
+    if not wakeword_enabled:
+        return True
+    if not wake_word_detected:
+        return False
+    return not realtime_enabled or not rt.handled
+
+
 def is_noise_turn(
     combined: str, buf_duration: float, audio_is_speech: bool = True
 ) -> bool:

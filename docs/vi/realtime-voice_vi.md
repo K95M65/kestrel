@@ -33,6 +33,12 @@ cộng thêm ngần ấy giây trễ trước khi agent chính nhìn thấy yêu
 result đã được gửi lại model trước khi break; turn còn mở dang dở sẽ được
 `flush_output()` của turn kế dọn.
 
+Một lượt đã được wake-word arm luôn xuống agent chính nếu realtime **không**
+thực sự nói câu trả lời: gồm lúc kết nối realtime không có/failed, hết thời gian
+chờ nhận output, hoặc model delegate rõ ràng. Chỉ lượt được đánh dấu handled sau
+khi realtime đã phát lời nói mới bị chặn khỏi đường STT → OS-server thông thường;
+vì vậy Gemini lỗi tạm thời không thể làm rơi một voice command.
+
 ## Biểu cảm cảm xúc (fire-and-forget)
 
 Nếu thiết bị khai báo capability `expression`

@@ -34,6 +34,12 @@ window, adding that many seconds of latency before the main agent even sees the
 request. The function result is already sent back to the model before the break;
 the dangling open turn is cleared by the next turn's `flush_output()`.
 
+An armed wake-word turn reaches the main agent whenever realtime does **not**
+actually speak a reply: this includes an unavailable or failed realtime
+connection, a receive timeout, and an explicit delegate. Only a turn marked
+handled after realtime produced speech is suppressed from the normal STT →
+OS-server path, so a temporary Gemini failure cannot drop a voice command.
+
 ## Emotion expression (fire-and-forget)
 
 If the device declares the `expression` capability
