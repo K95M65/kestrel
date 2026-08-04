@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"go.autonomous.ai/os/system/domain"
+	"go.autonomous.ai/os/system/lib/i18n"
 	"go.autonomous.ai/os/system/server/config"
 )
 
@@ -217,5 +218,31 @@ func TestApplyWakeWord(t *testing.T) {
 	}
 	if !applyWakeWord(c, false) {
 		t.Fatal("true to false must report a change")
+	}
+}
+
+func TestGetPublicConfigReturnsEffectiveWakePhrases(t *testing.T) {
+	i18n.SetDeviceName("Luna")
+	t.Cleanup(func() { i18n.SetDeviceName("autonomous") })
+
+	s := &Service{config: &config.Config{DeviceType: "lamp"}}
+	cfg := s.GetPublicConfig()
+	if cfg.AgentName != "luna" {
+		t.Fatalf("AgentName = %q, want luna", cfg.AgentName)
+	}
+	if len(cfg.WakePhrases) != 21 {
+		t.Fatalf("WakePhrases = %v, want 21 phrases", cfg.WakePhrases)
+	}
+	for _, phrase := range []string{"hey autonomous", "hey lamp", "hey luna"} {
+		found := false
+		for _, got := range cfg.WakePhrases {
+			if got == phrase {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("WakePhrases = %v, missing %q", cfg.WakePhrases, phrase)
+		}
 	}
 }

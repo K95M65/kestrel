@@ -105,6 +105,8 @@ export function SettingsPanel({ activeSection }: { activeSection: SettingsSectio
   const [ttsVoices, setTtsVoices] = useState<string[]>([]);
   const [realtimeEnabled, setRealtimeEnabled] = useState(true);
   const [wakeWord, setWakeWord] = useState(false);
+  const [agentName, setAgentName] = useState("");
+  const [wakePhrases, setWakePhrases] = useState<string[]>([]);
   const [realtimeProvider, setRealtimeProvider] = useState("gemini");
   const [realtimeVoice, setRealtimeVoice] = useState("Kore");
   const [realtimeReasoning, setRealtimeReasoning] = useState("MINIMAL");
@@ -195,6 +197,8 @@ export function SettingsPanel({ activeSection }: { activeSection: SettingsSectio
         setTtsProvider(cfg.tts_provider || "elevenlabs");
         setTtsVoice(cfg.tts_voice || "Rachel");
         setWakeWord(cfg.wakeword ?? false);
+        setAgentName(cfg.agent_name ?? "");
+        setWakePhrases(cfg.wake_phrases ?? []);
         if (cfg.realtime) {
           setRealtimeEnabled(cfg.realtime.enabled ?? true);
           setRealtimeProvider(cfg.realtime.provider || "gemini");
@@ -512,6 +516,8 @@ export function SettingsPanel({ activeSection }: { activeSection: SettingsSectio
               setRotateAdminPassword={setAdminPassword}
               wakeWord={wakeWord}
               setWakeWord={setWakeWord}
+              agentName={agentName}
+              wakePhrases={wakePhrases}
             />
 
             <WifiSection

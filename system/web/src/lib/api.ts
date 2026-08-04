@@ -308,6 +308,8 @@ export interface DeviceConfig {
   tts_provider: string;
   tts_voice: string;
   wakeword: boolean;
+  agent_name: string;
+  wake_phrases: string[];
   realtime?: {
     enabled?: boolean;
     provider?: string;
