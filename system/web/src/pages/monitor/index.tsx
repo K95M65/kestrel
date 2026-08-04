@@ -363,7 +363,20 @@ export default function Monitor() {
   const [theme, toggleTheme, themeClass] = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
-  const isDebug = new URLSearchParams(window.location.search).get("debug") === "true";
+  const isDebug = new URLSearchParams(location.search).get("debug") === "true";
+
+  // Keep every existing query parameter and the current section hash while
+  // enabling or disabling the debug-only Monitor and Settings sections.
+  const toggleDebug = useCallback(() => {
+    const params = new URLSearchParams(location.search);
+    if (isDebug) {
+      params.delete("debug");
+    } else {
+      params.set("debug", "true");
+    }
+    const search = params.toString();
+    navigate(`${location.pathname}${search ? `?${search}` : ""}${location.hash}`);
+  }, [isDebug, location.hash, location.pathname, location.search, navigate]);
 
   // Area is derived from the route path: /setting → "setting", else "monitor".
   const area: Area = location.pathname.startsWith("/setting") ? "setting" : "monitor";
@@ -402,8 +415,7 @@ export default function Monitor() {
       return;
     }
     setSectionRaw(resolveSection(area, location.hash, isDebug));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.pathname, location.hash, area]);
+  }, [location.pathname, location.hash, location.search, area, isDebug, navigate]);
 
   const sectionLeaf = allNavLeaves().find((n) => n.id === section);
   const sectionLabel = sectionLeaf?.label ?? "Monitor";
@@ -720,7 +732,7 @@ export default function Monitor() {
 
       {/* Main */}
       <main style={S.main}>
-        {/* Topbar: hamburger (mobile-only, left) + theme toggle (right). */}
+        {/* Topbar: hamburger (mobile-only, left) + display/debug controls (right). */}
         <div style={S.topbar}>
           <button
             className="lm-hamburger"
@@ -736,6 +748,25 @@ export default function Monitor() {
             <span>{sectionLabel}</span>
           </span>
           <span style={{ flex: 1 }} />
+          <button onClick={toggleDebug} style={{
+            display: "flex", alignItems: "center", gap: 6, background: "none",
+            border: "1px solid var(--lm-border)", borderRadius: 6, cursor: "pointer", fontSize: 12,
+            color: isDebug ? "var(--lm-amber)" : "var(--lm-text-muted)", padding: "4px 10px", marginRight: 8,
+          }} title={isDebug ? "Disable debug mode" : "Enable debug mode"} role="switch" aria-checked={isDebug}>
+            <span>Debug</span>
+            <span style={{
+              width: 30, height: 16, padding: 2, borderRadius: 999,
+              display: "flex", alignItems: "center",
+              justifyContent: isDebug ? "flex-end" : "flex-start",
+              background: isDebug ? "var(--lm-amber)" : "var(--lm-border)",
+              transition: "background 150ms ease, justify-content 150ms ease",
+            }}>
+              <span style={{
+                width: 12, height: 12, borderRadius: "50%", background: "var(--lm-card)",
+                boxShadow: "0 1px 2px rgba(0,0,0,0.25)", transition: "transform 150ms ease",
+              }} />
+            </span>
+          </button>
           <button onClick={toggleTheme} style={{
             background: "none", border: "1px solid var(--lm-border)", cursor: "pointer",
             fontSize: 12, color: "var(--lm-text-muted)", padding: "4px 10px",
