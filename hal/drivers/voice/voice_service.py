@@ -1043,6 +1043,11 @@ class VoiceService:
         realtime_deferred = False
         realtime_turn_started = False
         realtime_start_failed = False
+        # Voice speaker-ID for THIS turn — resolved once after capture (below) and
+        # passed into build_turn_context() so the realtime reply names the actual
+        # speaker. None until resolved / on unknown → face fallback.
+        turn_identity = None  # (final_msg, se_user, display) or None
+        turn_speaker_display = None
 
         def start_realtime_turn() -> bool:
             """Open realtime as soon as the wake-word partial is available.
@@ -1073,7 +1078,7 @@ class VoiceService:
                     )
                     return False
                 try:
-                    self._realtime.send_text(build_turn_context())
+                    self._realtime.send_text(build_turn_context(turn_speaker_display))
                     for audio_f32 in rt_audio_buffer:
                         self._realtime.append_audio(audio_f32)
                     realtime_turn_started = True
@@ -1098,7 +1103,7 @@ class VoiceService:
             realtime_deferred = self._realtime.rebuilding
             if not realtime_deferred and self._realtime.available:
                 try:
-                    self._realtime.send_text(build_turn_context())
+                    self._realtime.send_text(build_turn_context(turn_speaker_display))
                     for audio_f32 in rt_audio_buffer:
                         self._realtime.append_audio(audio_f32)
                     if hal_config.WAKEWORD_ENABLED:
@@ -1351,6 +1356,29 @@ class VoiceService:
                 except Exception as e:
                     logger.warning("Realtime noise-guard buffer decode failed: %s", e)
 
+            # Speaker-ID prepass: resolve the voice speaker ONCE now that capture
+            # is complete, so build_turn_context() can name the correct user. The
+            # result is reused by dispatch_turn below (recognition never runs
+            # twice). Unknown / gate-reject → display None → face fallback. Wrapped
+            # defensively: it now runs on the reply path, so a recognizer error
+            # must not kill the turn.
+            if combined:
+                _final_text, _ = self._decorator.classify_wake_word(combined)
+                try:
+                    turn_identity = self._decorator.identify_and_decorate(
+                        _final_text, audio_buffer
+                    )
+                    turn_speaker_display = turn_identity[2]
+                except Exception as e:
+                    logger.warning("[realtime] speaker-ID prepass failed: %s", e)
+                logger.info(
+                    "[realtime] speaker-ID prepass: display=%r (se_user=%r) → "
+                    "realtime context %s",
+                    turn_speaker_display,
+                    turn_identity[1] if turn_identity else None,
+                    "names voice speaker" if turn_speaker_display else "falls back to face",
+                )
+
             # Capture can end just after the STT callback. One final check
             # avoids dropping a matched partial that raced the loop exit.
             start_realtime_turn()
@@ -1370,7 +1398,7 @@ class VoiceService:
             ):
                 if self._realtime.wait_until_available():
                     try:
-                        self._realtime.send_text(build_turn_context())
+                        self._realtime.send_text(build_turn_context(turn_speaker_display))
                         for audio_f32 in rt_audio_buffer:
                             self._realtime.append_audio(audio_f32)
                         logger.info(
@@ -1391,7 +1419,7 @@ class VoiceService:
                         "falling back to main agent"
                     )
 
-            # --- Realtime voice agent (runs first, before speaker ID / OS server) ---
+            # --- Realtime voice agent (speaks the reply for this turn) ---------
             # Wake-word mode only commits a turn authorized by a final wake
             # phrase or the short follow-up focus window.
             if realtime_turn_started:
@@ -1407,7 +1435,7 @@ class VoiceService:
             else:
                 rt = RealtimeTurnResult()
 
-            # --- Speaker recognition + OS server send + SER ---
+            # --- OS server send + SER (reuses the prepass speaker-ID) ----------
             wakeword_authorized = wake_word_confirmed.is_set() or wakeword_followup_active
             if should_dispatch_to_main(
                 hal_config.WAKEWORD_ENABLED,
@@ -1428,6 +1456,7 @@ class VoiceService:
                         if wakeword_followup_active and not wake_word_confirmed.is_set()
                         else None
                     ),
+                    identity=turn_identity,
                 )
                 if combined and hal_config.WAKEWORD_ENABLED and wakeword_authorized:
                     if self._wakeword_focus.refresh():

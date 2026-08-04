@@ -371,6 +371,70 @@ DL_SPEAKER_ENDPOINT = os.environ.get("DL_SPEAKER_ENDPOINT", "/hal/api/dl/audio-r
 SPEAKER_EMBEDDING_API_URL: str = DL_BACKEND_URL.rstrip("/") + "/" + DL_SPEAKER_ENDPOINT.strip("/") if DL_BACKEND_URL else ""
 SPEAKER_EMBEDDING_API_KEY: str = DL_API_KEY
 
+# --- Sensing: Speaker recognition — on-device audio preprocessing ---
+SPEAKER_PROC_TARGET_SR: int = int(os.environ.get("HAL_SPEAKER_PROC_TARGET_SR", "16000"))
+SPEAKER_PROC_ENABLE_MONO: bool = (
+    os.environ.get("HAL_SPEAKER_PROC_ENABLE_MONO", "true").lower() == "true"
+)
+SPEAKER_PROC_ENABLE_RESAMPLE: bool = (
+    os.environ.get("HAL_SPEAKER_PROC_ENABLE_RESAMPLE", "true").lower() == "true"
+)
+SPEAKER_PROC_ENABLE_HIGH_PASS: bool = (
+    os.environ.get("HAL_SPEAKER_PROC_ENABLE_HIGH_PASS", "false").lower() == "true"
+)
+SPEAKER_PROC_HIGH_PASS_CUTOFF_HZ: float = float(
+    os.environ.get("HAL_SPEAKER_PROC_HIGH_PASS_CUTOFF_HZ", "80.0")
+)
+SPEAKER_PROC_ENABLE_NOISE_REDUCE: bool = (
+    os.environ.get("HAL_SPEAKER_PROC_ENABLE_NOISE_REDUCE", "false").lower() == "true"
+)
+SPEAKER_PROC_NOISE_STATIONARY: bool = (
+    os.environ.get("HAL_SPEAKER_PROC_NOISE_STATIONARY", "false").lower() == "true"
+)
+SPEAKER_PROC_ENABLE_VAD: bool = (
+    os.environ.get("HAL_SPEAKER_PROC_ENABLE_VAD", "true").lower() == "true"
+)
+SPEAKER_PROC_VAD_MIN_DURATION_SEC: float = float(
+    os.environ.get("HAL_SPEAKER_PROC_VAD_MIN_DURATION_SEC", "0.5")
+)
+SPEAKER_PROC_VAD_MIN_VOICE_RATIO: float = float(
+    os.environ.get("HAL_SPEAKER_PROC_VAD_MIN_VOICE_RATIO", "0.4")
+)
+# Silero speech-probability threshold used to detect (and trim to) speech. Onset
+# triggers at this value, offset at (threshold - 0.15). Higher = segments close
+# sooner = more aggressive trailing/leading silence trimming. Silero's own
+# default is 0.5; we default to 0.6 to cut soft trailing tails (breath, room
+# tone) that a 0.5/0.35-offset would otherwise keep. Raise toward 0.7 for very
+# noisy rooms; lower to 0.5 if quiet talkers get clipped.
+SPEAKER_PROC_VAD_SPEECH_PROB_THRESHOLD: float = float(
+    os.environ.get("HAL_SPEAKER_PROC_VAD_SPEECH_PROB_THRESHOLD", "0.6")
+)
+SPEAKER_PROC_ENABLE_RMS_NORMALIZE: bool = (
+    os.environ.get("HAL_SPEAKER_PROC_ENABLE_RMS_NORMALIZE", "true").lower() == "true"
+)
+SPEAKER_PROC_RMS_TARGET: float = float(
+    os.environ.get("HAL_SPEAKER_PROC_RMS_TARGET", "0.1")
+)
+# STOI intelligibility gate (SQUIM-STOI ONNX) — rejects noisy / broken-voice
+# audio before it reaches the embedding server. Runs after VAD, once per
+# utterance; ~20 MB model loaded once. Chunked by CHUNK_SEC + mean-aggregated to
+# bound memory on long clips. The ~20 MB weight is NOT committed — it downloads
+# on first use from the CDN into /root/local/models (same convention as the pose
+# / faceid weights); if it can't be resolved the gate is skipped with a warning.
+SPEAKER_PROC_ENABLE_STOI: bool = (
+    os.environ.get("HAL_SPEAKER_PROC_ENABLE_STOI", "true").lower() == "true"
+)
+SPEAKER_PROC_STOI_MODEL_PATH: str = os.environ.get(
+    "HAL_SPEAKER_PROC_STOI_MODEL_PATH",
+    "/root/local/models/squimm_stoi.onnx",
+)
+SPEAKER_PROC_STOI_THRESHOLD: float = float(
+    os.environ.get("HAL_SPEAKER_PROC_STOI_THRESHOLD", "0.75")
+)
+SPEAKER_PROC_STOI_CHUNK_SEC: float = float(
+    os.environ.get("HAL_SPEAKER_PROC_STOI_CHUNK_SEC", "5.0")
+)
+
 # --- Sensing: Speech emotion recognition (SER via perception-service) ---
 SPEECH_EMOTION_ENABLED: bool = (
     os.environ.get("HAL_SPEECH_EMOTION_ENABLED", "true").lower() == "true"

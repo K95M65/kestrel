@@ -15,9 +15,10 @@ Lamp identifies who is speaking via **WeSpeaker ResNet34** (256-dim embedding, O
 │  VoiceService._stream_session()                                     │
 │    ├─ STT transcript ready                                          │
 │    ├─ _identify_and_decorate(transcript)                            │
-│    │   ├─ audio_buffer → WAV bytes → base64                        │
-│    │   ├─ POST /audio-recognizer/embed → perception-service (RunPod)        │
-│    │   │   └─ WeSpeaker ResNet34 ONNX → 256-dim L2-normalized      │
+│    │   ├─ audio_buffer → WAV → on-device preprocess (VAD gate)     │
+│    │   │   └─ Mono→Resample→[HPF]→[NR]→VAD→[STOI]→RMS; reject clip  │
+│    │   ├─ POST /audio-recognizer/embed  (preprocess=false)         │
+│    │   │   └─ WeSpeaker ONNX → 256-dim L2-normalized (embed only)  │
 │    │   ├─ Per-chunk voting vs enrolled embeddings                   │
 │    │   ├─ Match ≥ 0.7 → "Speaker - Name: transcript"               │
 │    │   └─ No match → _format_unknown_speaker()                     │
@@ -85,16 +86,26 @@ Four layers prevent the agent from repeatedly asking "who are you?":
 
 ### Recognition Algorithm
 
-1. Audio → preprocess (noise reduce, VAD, HPF, RMS normalize)
-2. Extract per-chunk embeddings `[M, 256]`
+1. Audio → **on-device** preprocess on HAL (`Mono → Resample → [HighPass] → [NoiseReduce] → VAD → [STOI] → RMS`). Clips that fail the VAD/STOI/quality gate are rejected locally (treated as "unknown") and **never uploaded**.
+2. Cleaned WAV → `POST /audio-recognizer/embed` with `preprocess=false`; the server skips its own preprocessing and only extracts per-chunk embeddings `[M, 256]` (it still windows/chunks the waveform itself)
 3. Cosine similarity against all enrolled speaker embeddings
 4. Per-chunk voting: each chunk votes for its closest match
 5. Winner = most votes (tiebreak by average confidence)
 6. `confidence ≥ 0.7` → match; else unknown
 
+### Audio preprocessing (on-device)
+
+The filter/VAD/normalize pipeline that used to run inside perception-service now runs on HAL, next to the mic — the same processors, in the same order, with the same defaults, ported to `hal/drivers/voice/speaker_recognizer/audio_processors/` (mirrors `AudioProcessorFactory` in perception-service). This keeps rejected audio off the network and puts the gate decision on the device.
+
+- **Default chain**: `MonoConverter → Resampler(16k) → VoiceActivityFilter(silero) → SpeechIntelligibilityFilter(0.75) → RMSNormalizer(0.1)`. `HighPassFilter` and `NoiseReducer` exist but are **off by default** (same as perception).
+- **VAD gate** (silero-vad): trims leading/trailing non-voice and rejects a clip when it removes all speech, the remaining audio is `< 0.5s`, or the voice ratio is `< 0.4`. A rejected clip raises `PreprocessRejected` → HAL returns "unknown" for recognize and skips the sample for enroll — exactly the behavior it had when perception returned HTTP 400.
+- **STOI gate** (`SpeechIntelligibilityFilter`, reference-free SQUIM-OBJECTIVE STOI): runs **after VAD, before RMS**. Scores the trimmed clip in 5 s chunks and **mean**-aggregates, then rejects when the mean STOI is `< 0.75` (a NaN chunk from silence also rejects), raising `PreprocessRejected(reason="low_intelligibility")` → the same audio-level reject path as VAD (recognize → "unknown", enroll → skip the sample, keeping existing on-disk samples). The ONNX estimator (~20 MB, downloaded on first use from the CDN into `/root/local/models/squimm_stoi.onnx` — see `audio_processors/model_store.py`, same convention as the pose/faceid weights — onnxruntime CPU with the mem-arena off) loads once as a lazy singleton alongside silero VAD and only runs after VAD passes — at most once per utterance. If the weight can't be resolved (unreachable CDN / unknown filename) the gate is skipped with a warning (no crash).
+- **Server flag**: HAL sends `preprocess=false`; perception's `/embed` is embed-only and now defaults to `preprocess=false` too (HAL is the only caller). A caller that uploads raw audio can pass `preprocess=true` to have the server clean it.
+- **Consistency**: enroll and recognize share this one pipeline, so enrollments made after the move stay self-consistent. Voices enrolled under the **old server-side** pipeline should be re-enrolled if match quality drops.
+
 ### Enrollment Quality
 
-1. Each WAV sample → embedding via perception-service
+1. Each WAV sample → on-device preprocess (as above) → embedding via perception-service (`preprocess=false`)
 2. Filter by consistency threshold `0.7` (cosine similarity between samples)
 3. Aggregate remaining embeddings via weighted average
 4. Store L2-normalized vector at `/root/local/users/{name}/voice/embedding.npy`
@@ -105,7 +116,7 @@ Every unknown voice is locally clustered so the server can say "this is the same
 
 1. After embedding the query audio, the recognizer aggregates per-chunk embeddings into a single L2-normalized vector.
 2. Compare against stored stranger-cluster centroids (cosine similarity).
-3. Match ≥ `HAL_VOICE_STRANGER_MATCH_THRESHOLD` (default `0.65`, lower than the 0.7 known-speaker threshold so same voice clusters instead of fragmenting) → reuse existing label `voice_N`.
+3. Match ≥ `SPEAKER_MATCH_THRESHOLD` (default `0.75` — the **same** threshold as known-speaker matching; there is no separate stranger threshold) → reuse existing label `voice_N`.
 4. No match → allocate new label `voice_{counter}`, append centroid to on-disk state.
 5. Cap at `HAL_MAX_VOICE_STRANGERS` (default `50`) — oldest evicted when exceeded.
 6. The assigned hash is:
@@ -127,10 +138,54 @@ Every unknown voice is locally clustered so the server can say "this is the same
 | Min duration for enroll nudge | 2.0s | Hardcoded in `_should_request_enroll()` | Audio duration gate |
 | Lamp nudge cooldown | 5 min | Hardcoded in `domain/voice.go` | Don't re-inject SKILL instruction globally |
 | Per-voiceprint nudge cooldown | 30 min | `HAL_ENROLL_NUDGE_COOLDOWN_S` | Don't re-ask name for same voiceprint cluster |
-| Voice stranger match threshold | 0.65 | `HAL_VOICE_STRANGER_MATCH_THRESHOLD` | Cosine similarity to cluster unknown voice into existing `voice_N` |
+| Voice stranger match threshold | _(shared)_ | `SPEAKER_MATCH_THRESHOLD` | Reuses the known-speaker match threshold to cluster an unknown voice into an existing `voice_N` — no separate knob |
 | Max voice strangers | 50 | `HAL_MAX_VOICE_STRANGERS` | Cluster cap; oldest evicted when exceeded |
 | Voice strangers dir | `/root/local/voice_strangers` | `HAL_VOICE_STRANGERS_DIR` | Persist cluster embeddings (survives reboot) |
 | Speaker recognition enabled | true | `HAL_SPEAKER_RECOGNITION_ENABLED` | Master toggle (default on; gated on the `audio` capability) |
+
+### On-device preprocessing knobs
+
+Mirror perception's `AudioProcessorSetting` defaults; override via env (all prefixed `HAL_SPEAKER_PROC_`).
+
+| Parameter | Default | Env var | Description |
+|-----------|---------|---------|-------------|
+| Target sample rate | 16000 | `HAL_SPEAKER_PROC_TARGET_SR` | Resampler target |
+| Mono | on | `HAL_SPEAKER_PROC_ENABLE_MONO` | Downmix to mono |
+| Resample | on | `HAL_SPEAKER_PROC_ENABLE_RESAMPLE` | Resample to target SR |
+| High-pass | off | `HAL_SPEAKER_PROC_ENABLE_HIGH_PASS` / `..._HIGH_PASS_CUTOFF_HZ` (80.0) | Butterworth HPF |
+| Noise reduce | off | `HAL_SPEAKER_PROC_ENABLE_NOISE_REDUCE` / `..._NOISE_STATIONARY` | `noisereduce` (lazy import) |
+| VAD | on | `HAL_SPEAKER_PROC_ENABLE_VAD` | silero-vad gate |
+| VAD min duration | 0.5s | `HAL_SPEAKER_PROC_VAD_MIN_DURATION_SEC` | Reject if stripped audio shorter |
+| VAD min voice ratio | 0.4 | `HAL_SPEAKER_PROC_VAD_MIN_VOICE_RATIO` | Reject if voice fraction lower |
+| VAD speech-prob threshold | 0.6 | `HAL_SPEAKER_PROC_VAD_SPEECH_PROB_THRESHOLD` | Silero onset threshold (offset = −0.15); higher trims trailing/leading silence more (silero default 0.5) |
+| STOI gate | on | `HAL_SPEAKER_PROC_ENABLE_STOI` | SQUIM-OBJECTIVE intelligibility gate (after VAD, before RMS) |
+| STOI model path | `/root/local/models/squimm_stoi.onnx` | `HAL_SPEAKER_PROC_STOI_MODEL_PATH` | ONNX estimator (~20 MB), downloaded from CDN on first use; gate skipped if unresolvable |
+| STOI threshold | 0.75 | `HAL_SPEAKER_PROC_STOI_THRESHOLD` | Reject if mean STOI below this |
+| STOI chunk | 5.0s | `HAL_SPEAKER_PROC_STOI_CHUNK_SEC` | Chunk length scored, then mean-aggregated |
+| RMS normalize | on | `HAL_SPEAKER_PROC_ENABLE_RMS_NORMALIZE` / `..._RMS_TARGET` (0.1) | Fixed-loudness normalize |
+
+### Debug tracing (temporary)
+
+`speaker_recognizer.py` carries a self-contained diagnostic tracer, tagged `SPEAKER-DEBUG` throughout the file, for tuning recognition thresholds on real audio. **It is OFF by default (production-safe) — set `HAL_SPEAKER_DEBUG=true` to enable it during development**, and it is meant to be deleted entirely before a final deploy. `grep -n "SPEAKER-DEBUG"` finds every line belonging to it; no other module or config file is involved.
+
+Each `recognize()` / `enroll()` call writes one directory:
+
+```
+<root>/recognize/<ts>_<class>_<confidence>/     class = enrolled name | stranger-<N> | unknown
+<root>/recognize/<ts>_FAIL-<reason>/            no-voice | low-voice | low-stoi | too-short | server-error | …
+<root>/enroll/<ts>_<norm>_<cohesion>/           cohesion = mean sim of kept samples to the centroid
+<root>/enroll/<ts>_FAIL-<reason>/
+```
+
+holding `input.wav` (raw) plus `preprocessed.wav` (post VAD/STOI/RMS — the audio actually uploaded) / `sample_new_NN.wav`, the embeddings as `.npy`, and `result.json`. A recognize records a `preprocessing` block (cleaned duration/RMS, the STOI score the clip passed with, and the threshold it cleared) so you can tell a "bad audio" miss from a "wrong speaker" miss; a clip killed by the gate instead files a `FAIL-<reason>` dir whose `preprocessing_reject` holds the structured reason and its measurements. For a recognize the JSON carries the **full** decision breakdown — not just the top-3 `candidates` the API returns, but `speaker_summary` (votes + mean/max similarity for *every* enrolled speaker, including 0-vote losers) and `per_chunk_scores` (each chunk vs every speaker, plus which speaker that chunk voted for). The same matrix is saved as `chunk_scores.npy` (`[chunks × speakers]`, columns in `enrolled_speakers` order). Unknown speakers also record the stranger-cluster match score and which cluster was closest.
+
+| Parameter | Default | Env var | Description |
+|-----------|---------|---------|-------------|
+| Debug tracing | **off** | `HAL_SPEAKER_DEBUG` | Set `true` to enable. Read once at construction — restart HAL after changing |
+| Output root | `speaker_logs/` next to `speaker_recognizer.py` | `HAL_SPEAKER_DEBUG_DIR` | Falls back to a temp dir if the source tree is read-only (device deploy) |
+| Max entries | 1000 | `HAL_SPEAKER_DEBUG_MAX_ENTRIES` | Per-kind directory cap, oldest pruned; `0` = unbounded |
+
+The default output dir is git-ignored — never commit trace output. The tracer swallows all of its own errors, so a failing trace can never break recognition.
 
 ## Storage
 
@@ -170,7 +225,7 @@ Every unknown voice is locally clustered so the server can say "this is the same
 
 | HTTP | When | Skill behavior |
 |------|------|----------------|
-| `400` | Audio-level reject (too short, silent, VAD found no speech, perception-service returned 4xx) | Ask user to re-record / speak more clearly |
+| `400` | Audio-level reject (too short, silent, VAD found no speech, mean STOI below threshold → `low_intelligibility`, perception-service returned 4xx) | Ask user to re-record / speak more clearly |
 | `503` | Embedding service unreachable (network, 5xx, malformed response) | Tell user to try again shortly — nothing on disk was modified |
 
 `/speaker/recognize` never fails with 5xx for embedding outages — it returns `200` with `{name: "unknown", error: "<reason>"}` so the skill can gracefully degrade. Only input-level problems (missing WAV, bad base64) return `400`.
