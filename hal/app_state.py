@@ -16,6 +16,7 @@ from hal.presets import (
     AMBIENT_RESTING_LED,
     ambient_resting_is_dark,
     EMO_IDLE,
+    EMO_LISTENING,
     EMO_SLEEPY,
     EMO_THINKING,
     EMOTION_PRESETS,
@@ -820,6 +821,21 @@ def _restore_user_led():
                 )
     except Exception as e:
         logger.warning("LED restore failed: %s", e)
+
+
+def clear_listening_cue() -> bool:
+    """Clear a stale voice-listening cue without leaving the idle LED active.
+
+    A rejected wake-word turn never starts TTS, so it cannot rely on the normal
+    TTS-complete restore. Only clear the cue when it still owns the visual state;
+    another concurrent emotion must remain untouched.
+    """
+    global _current_emotion
+    if _current_emotion != EMO_LISTENING:
+        return False
+    _current_emotion = EMO_IDLE
+    _restore_user_led()
+    return True
 
 
 def _schedule_led_restore(delay_s: float):
