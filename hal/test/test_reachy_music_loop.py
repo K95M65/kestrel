@@ -381,6 +381,90 @@ class TestServoOwnership(unittest.TestCase):
         self.assertEqual(self.mini.play_count(), 0)
 
 
+class TestFreezeAndHold(unittest.TestCase):
+    """Camera freeze and /servo/hold must not shred animations or gag emotions."""
+
+    def setUp(self):
+        self.svc = ReachyMotionService()
+        self.mini = FakeMini()
+        self.svc._mini = self.mini
+        self.svc._moves = FakeMoves()
+
+    def tearDown(self):
+        self.svc._music_playing = False
+        self.svc._music_recording = None
+        self.svc._released = True
+        self.mini.cancel_move()
+        if self.svc._play_thread:
+            self.svc._play_thread.join(timeout=2.0)
+
+    def test_freeze_does_not_cancel_the_move_in_flight(self):
+        """A vision snapshot every few seconds must not chop the animation."""
+        self.svc.dispatch(P.SERVO_CMD_PLAY, P.SERVO_CURIOUS)
+        self.assertTrue(_wait_until(lambda: self.mini.play_count("curious1") >= 1))
+        before = self.mini.cancels
+
+        self.svc.freeze()
+        self.assertEqual(self.mini.cancels, before, "freeze cancelled a running move")
+        self.assertTrue(self.svc.is_frozen)
+
+    def test_freeze_stops_the_groove_at_the_next_pass(self):
+        self.svc.dispatch(P.SERVO_CMD_MUSIC_START, P.SERVO_MUSIC_GROOVE)
+        self.assertTrue(_wait_until(lambda: self.mini.play_count("dance1") >= 1))
+
+        self.svc.freeze()
+        if self.svc._play_thread:
+            self.svc._play_thread.join(timeout=2.0)
+        settled = self.mini.play_count()
+        time.sleep(_MOVE_DURATION_S * 5)
+        self.assertEqual(self.mini.play_count(), settled, "groove kept going while frozen")
+
+        self.svc.unfreeze()
+        self.assertTrue(
+            _wait_until(lambda: self.mini.play_count() > settled),
+            "groove did not resume after unfreeze",
+        )
+
+    def test_emotion_still_plays_during_a_hold(self):
+        """The emotion route decides what a hold blocks — the driver must not
+        drop what the route let through."""
+        self.svc.hold()
+        self.svc.dispatch(P.SERVO_CMD_PLAY, P.SERVO_GREETING)
+        self.assertTrue(
+            _wait_until(lambda: self.mini.play_count("welcoming1") >= 1),
+            "hold swallowed an emotion the route allowed",
+        )
+
+    def test_hold_exposes_the_flags_the_routes_read(self):
+        self.svc.hold(explicit=True)
+        self.assertTrue(self.svc._hold_mode)
+        self.assertTrue(self.svc._hold_explicit)
+        self.assertTrue(self.svc.is_suppressed)      # /servo/play refuses
+
+        self.svc.resume()
+        self.assertFalse(self.svc._hold_mode)
+        self.assertFalse(self.svc._hold_explicit)
+        self.assertFalse(self.svc.is_suppressed)
+
+    def test_hold_stops_ambient_motion(self):
+        self.svc.dispatch(P.SERVO_CMD_MUSIC_START, P.SERVO_MUSIC_GROOVE)
+        self.assertTrue(_wait_until(lambda: self.mini.play_count("dance1") >= 1))
+
+        self.svc.hold()
+        if self.svc._play_thread:
+            self.svc._play_thread.join(timeout=2.0)
+        settled = self.mini.play_count()
+        time.sleep(_MOVE_DURATION_S * 5)
+        self.assertEqual(self.mini.play_count(), settled, "groove survived hold()")
+
+    def test_released_robot_refuses_every_play(self):
+        self.svc.release()
+        self.svc.dispatch(P.SERVO_CMD_PLAY, P.SERVO_CURIOUS)
+        time.sleep(0.15)
+        self.assertEqual(self.mini.play_count(), 0)
+        self.assertTrue(self.svc.is_suppressed)
+
+
 class TestAvailableRecordings(unittest.TestCase):
     """GET /servo must list the same vocabulary its `current` field reports."""
 

@@ -375,6 +375,32 @@ ngay lúc khởi tạo (`server.py`), do không có route nào mang giúp.
 Frame 0 đọc qua `RecordedMove.evaluate(0.0)`, trả về đúng bộ ba (head pose,
 antennas, body yaw) mà hàm chuyển joint đang dùng.
 
+### Suppression, hold và freeze
+
+Suppression được tách đúng theo cách các route đọc, không gộp thành một cờ:
+
+| Cờ | Set bởi | Tác dụng |
+|----|---------|----------|
+| `_released` | `/servo/release` | tắt torque — mọi play bị từ chối tới khi `/servo/resume` |
+| `_zero_mode` | `/servo/zero` | đã park; `/servo/play` bị từ chối (`is_suppressed`) |
+| `_hold_mode` | `/servo/hold`, scene preset | không có motion tự phát; `/servo/play` bị từ chối |
+| `_hold_explicit` | chỉ `/servo/hold` | `routes/emotion.py` từ chối cả emotion scene-change |
+| `_frozen` | camera capture | không motion tự phát khi consumer còn giữ freeze |
+
+`is_suppressed` = zero ∨ hold ∨ released, khớp backend Feetech. Emotion là quyết
+định của emotion route: route đọc `_hold_mode`/`_hold_explicit`, driver tôn trọng
+những gì route cho qua. Trước đây Reachy thiếu cả hai cờ nên route tưởng không
+hold, vẫn dispatch, còn driver thì drop kèm mỗi dòng log `debug` — robot im lặng
+sau khi hold mà không rõ lý do.
+
+`freeze()` không bao giờ huỷ move đang chạy: snapshot vision diễn ra thường
+xuyên, chặt move cho từng lần vừa phá animation đang xem vừa làm groove khởi động
+lại từ frame 0 mỗi vài giây. Thay vào đó nó chặn pass **kế tiếp**, nên đầu đứng
+yên ngay khi move hiện tại kết thúc và giữ yên suốt thời gian freeze;
+`unfreeze()` chỉ bật lại groove nếu freeze thật sự kéo dài qua hết một pass.
+Feetech đạt cùng mục tiêu bằng cách tạm ngưng ghi servo rồi chạy tiếp giữa
+recording — điều mà player nằm ở daemon không làm được.
+
 Khác biệt đã biết so với Lamp:
 
 - Upload CSV servo recording là concept của Feetech/Lamp; `add_recording` của

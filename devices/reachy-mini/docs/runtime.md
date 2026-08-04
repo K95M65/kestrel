@@ -404,6 +404,33 @@ policy at construction (`server.py`), having no route to carry it.
 Frame 0 is read through `RecordedMove.evaluate(0.0)`, which returns the same
 (head pose, antennas, body yaw) triple the joint conversion already speaks.
 
+### Suppression, Hold And Freeze
+
+Suppression is split the way the routes read it, not collapsed into one flag:
+
+| Flag | Set by | Effect |
+|------|--------|--------|
+| `_released` | `/servo/release` | torque off — every play refused until `/servo/resume` |
+| `_zero_mode` | `/servo/zero` | parked; `/servo/play` refused (`is_suppressed`) |
+| `_hold_mode` | `/servo/hold`, scene presets | no ambient motion; `/servo/play` refused |
+| `_hold_explicit` | `/servo/hold` only | `routes/emotion.py` also refuses scene-change emotions |
+| `_frozen` | camera capture | no ambient motion while a consumer holds it |
+
+`is_suppressed` = zero ∨ hold ∨ released, matching the Feetech backend. Emotions
+are the emotion route's call: it reads `_hold_mode`/`_hold_explicit` and the
+driver honours whatever it lets through. Both flags used to be missing here, so
+the route saw no hold at all, dispatched anyway, and the driver dropped the
+animation with only a debug line — the robot went quiet after a hold for no
+visible reason.
+
+`freeze()` never cancels the move in flight: vision snapshots are frequent, and
+chopping a move for each one broke the animation being watched and restarted the
+groove from frame 0 every few seconds. It stops the *next* pass instead, so the
+head settles as soon as the current move ends and stays still for as long as the
+freeze is held; `unfreeze()` restarts the groove only if the freeze actually
+outlived a pass. The Feetech backend reaches the same place by pausing servo
+writes and resuming mid-recording, which the daemon-side player cannot do.
+
 Known deltas from Lamp:
 
 - CSV upload is a Feetech/Lamp animation concept; Reachy's `add_recording` is a

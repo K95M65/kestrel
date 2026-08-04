@@ -184,7 +184,21 @@ class ReachyMotionService:
         self._play_lock = threading.Lock()
         # Last commanded targets; fallback state when the daemon can't be read.
         self._target: Dict[str, float] = {k: 0.0 for k in JOINT_KEYS}
-        self._suppressed = False
+        # Suppression, split the way the feetech backend splits it, because the
+        # routes read the pieces separately (routes/emotion.py, routes/scene.py):
+        #   _released  — release(): torque is off, nothing may move until resume
+        #   _zero_mode — zero_pose(): parked, /servo/play refused until resume
+        #   _hold_mode — /servo/hold or a scene preset: no ambient motion, but
+        #                the emotion route still decides which emotions pass
+        #   _hold_explicit — the hold came from an explicit /servo/hold, so even
+        #                scene-change emotions are refused (see emotion.py)
+        # Reachy used to collapse all of this into one `_suppressed` flag that
+        # also gagged /emotion, so after a hold the robot went quiet with only a
+        # debug line to show for it.
+        self._released = False
+        self._zero_mode = False
+        self._hold_mode = False
+        self._hold_explicit = False
         self._frozen = False
         self._moves = None          # lazy RecordedMoves loader (None=untried, False=failed)
         self._play_thread: Optional[threading.Thread] = None
@@ -313,11 +327,8 @@ class ReachyMotionService:
             return None                       # a newer play owns the servo now
         if not self._music_playing:
             return None
-        if self._suppressed or self._frozen:
-            logger.info(
-                "[reachy] groove interrupted — %s",
-                "frozen (camera)" if self._frozen else "suppressed",
-            )
+        if self._ambient_blocked:
+            logger.info("[reachy] groove interrupted — %s", self._ambient_block_reason)
             return None
         groove = self._music_recording
         if not groove:
@@ -362,21 +373,55 @@ class ReachyMotionService:
 
     @property
     def is_suppressed(self) -> bool:
-        return self._suppressed
+        """True when /servo/play must be refused — same rule as the feetech
+        backend (zero or hold), plus a released (limp) robot."""
+        return self._zero_mode or self._hold_mode or self._released
+
+    @property
+    def _ambient_blocked(self) -> bool:
+        """True when self-driven motion (the music groove) must not continue.
+
+        Wider than is_suppressed: a camera freeze also stops ambient motion,
+        while an explicit play the routes let through is still honoured.
+        """
+        return self.is_suppressed or self._frozen
+
+    @property
+    def _ambient_block_reason(self) -> str:
+        if self._released:
+            return "released"
+        if self._zero_mode:
+            return "zero pose"
+        if self._hold_mode:
+            return "hold"
+        return "frozen (camera)"
 
     # --- Freeze (camera stabilization) ---
 
     def freeze(self) -> None:
+        """Stop self-driven motion so a camera consumer can get a still frame.
+
+        Deliberately does NOT cancel the move in flight. Vision snapshots are
+        frequent, and killing a move mid-pose for each one both broke the
+        animation the user was watching and restarted the music groove from
+        frame 0 every few seconds. The flag stops the NEXT pass instead: the
+        head goes still as soon as the current move ends and stays still for as
+        long as a consumer holds the freeze. The feetech backend reaches the
+        same place by pausing servo writes — its playback resumes where it left
+        off, which the daemon-side player has no way to do.
+        """
         self._frozen = True
-        self._take_servo()
 
     def unfreeze(self) -> None:
+        was_frozen = self._frozen
         self._frozen = False
-        # freeze() cancels the in-flight pass, which ends the groove loop; the
-        # feetech backend only pauses servo writes, so resume the groove here
-        # instead of leaving the robot still for the rest of the track.
-        if self._music_playing and self._music_recording:
-            self._play_recording(self._music_recording)
+        # Restart the groove only if the freeze actually outlived a pass and
+        # left nothing playing — otherwise the move still running owns it.
+        if not was_frozen or not (self._music_playing and self._music_recording):
+            return
+        if self._play_thread is not None and self._play_thread.is_alive():
+            return
+        self._play_recording(self._music_recording)
 
     @property
     def is_frozen(self) -> bool:
@@ -432,13 +477,13 @@ class ReachyMotionService:
     def zero_pose(self) -> None:
         # Suppress before claiming: the flag is what stops a groove repeat
         # from starting the next pass and fighting the move to zero.
-        self._suppressed = True
+        self._zero_mode = True
         self._take_servo()
         self._goto({k: 0.0 for k in JOINT_KEYS}, 2.0)
 
     def release(self) -> Dict[str, str]:
         errors: Dict[str, str] = {}
-        self._suppressed = True  # before the claim — stops a groove repeat (see zero_pose)
+        self._released = True  # before the claim — stops a groove repeat (see zero_pose)
         self._take_servo()
         with self._lock:
             mini = self._require_mini()
@@ -450,10 +495,14 @@ class ReachyMotionService:
                 mini.disable_motors()
             except Exception as e:
                 errors["torque"] = str(e)
-        self._suppressed = True
         return errors
 
     def resume(self) -> None:
+        # Clears every suppression the way the feetech backend's resume does —
+        # zero, hold and release all end here.
+        self._zero_mode = False
+        self._hold_mode = False
+        self._hold_explicit = False
         with self._lock:
             mini = self._require_mini()
             try:
@@ -464,10 +513,15 @@ class ReachyMotionService:
                 mini.wake_up()
             except Exception as e:
                 logger.warning("[reachy] wake_up failed: %s", e)
-        self._suppressed = False
+        self._released = False
 
     def hold(self, explicit: bool = False) -> None:
-        self._suppressed = True  # before the claim — stops a groove repeat (see zero_pose)
+        # Set before the claim — the flag stops a groove repeat (see zero_pose).
+        # explicit is honoured now: routes/emotion.py reads _hold_mode and
+        # _hold_explicit to decide whether a scene-change emotion may still
+        # play, and both were missing on this backend.
+        self._hold_mode = True
+        self._hold_explicit = explicit
         self._take_servo()
 
     def joint_status(self) -> Dict[str, dict]:
@@ -641,7 +695,7 @@ class ReachyMotionService:
             if gen != self._play_gen:
                 return                       # something else claimed the servo
             groove = self._music_recording
-            if groove and self._music_playing and not (self._suppressed or self._frozen):
+            if groove and self._music_playing and not self._ambient_blocked:
                 self._play_recording(groove)
 
         timer = threading.Timer(max(delay, 0.0), _resume)
@@ -737,8 +791,14 @@ class ReachyMotionService:
         return True
 
     def _play_recording(self, name: str) -> None:
-        if self._suppressed or self._frozen:
-            logger.debug("[reachy] play '%s' blocked (suppressed/frozen)", name)
+        # Only a limp robot refuses outright. A hold is the routes' call — the
+        # emotion route decides which emotions survive one (routes/emotion.py
+        # reads _hold_mode/_hold_explicit) and /servo/play is already gated on
+        # is_suppressed — and a camera freeze must not swallow an explicit
+        # animation either: dropping them here is what made the robot go quiet
+        # after a hold, with nothing but a debug line to explain it.
+        if self._released:
+            logger.info("[reachy] play '%s' refused — servos released", name)
             return
         with self._lock:
             self._play_gen += 1
