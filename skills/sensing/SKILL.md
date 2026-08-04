@@ -11,7 +11,7 @@ description: React to passive sensing events from the device — presence, sound
 
 | Event | Handled by |
 |---|---|
-| `[activity]` (Activity detected: ...) | `wellbeing/SKILL.md` only — whether the label is `drink`, `break`, `celebrate`, or a sedentary raw label (`using computer`, `writing`, etc.). Activity events never route to music-suggestion. |
+| `[activity]` (Activity detected: ...) | `wellbeing/SKILL.md` only — whether the label is `drink`, `break`, `celebrate`, `yawning`, a raw eat label (`eating burger`, `dining`, …), or a sedentary raw label (`using computer`, `writing`, etc.). Activity events never route to music-suggestion. |
 | `[emotion]` (Emotion detected: ...) | `user-emotion-detection/SKILL.md` is the router; it logs the mood signal and picks ONE response route (`music` → `music-suggestion/SKILL.md`, `checkin` / `action` → emitted inline by router, `silent` → NO_REPLY). Backend pre-injects `[emotion_context: ...]` (no read tool calls needed); agent emits writes as inline `[HW:/mood/log:...]` / `[HW:/music-suggestion/log:...]` markers (no write tool calls either). |
 | `[speech_emotion]` (Speech emotion detected: ...) | Same skill — `user-emotion-detection/SKILL.md` accepts both face and voice triggers. Same `[emotion_context: ...]` injection, same router. Only difference: the mood `signal` row logs `source:"voice"` instead of `"camera"` (the skill picks this from the event prefix). |
 | Any sensing event while guard mode is on | `guard/SKILL.md` — dramatic reactions, Telegram broadcast |

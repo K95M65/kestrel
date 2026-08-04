@@ -24,6 +24,7 @@ from hal.drivers.sensing.perceptions.processors.motion import (
     ACTIVITY_GROUP,
     MotionDetection,
     RemoteMotionChecker,
+    coarse_classes,
 )
 from hal.drivers.sensing.perceptions.typing import SendEventCallable
 from hal.drivers.sensing.perceptions.utils import PerceptionStateObservers
@@ -344,10 +345,13 @@ class MotionPerFacePerception(Perception[FaceDetectionData]):
                     continue
                 if group == "emotional":
                     continue
-                if group == "sedentary":
+                if group in ("sedentary", "tired"):
                     labels.add(a)
                 else:
                     labels.add(group)
+                # NOTE: drifted from MotionPerception — that path also keeps
+                # `eat` raw and applies _RAW_LABEL_EMIT_REMAP (reading book /
+                # newspaper → reading). Not mirrored here.
 
             if not labels:
                 continue
@@ -364,9 +368,7 @@ class MotionPerFacePerception(Perception[FaceDetectionData]):
             # bypasses the floor but is itself min-gapped against detection
             # flicker. Checked BEFORE the per-face dedup so a floored label
             # isn't marked sent and can still fire once the floor clears.
-            classes: frozenset[str] = frozenset(
-                ACTIVITY_GROUP.get(label, label) for label in labels
-            )
+            classes: frozenset[str] = coarse_classes(labels)
             class_changed: bool = (
                 self._last_sent_class is not None
                 and classes != self._last_sent_class

@@ -1,6 +1,8 @@
 # Sleep wind-down route
 
-Fires only when the routing table in `SKILL.md` picks `sleep-winddown` (row #3: `current_hour >= 21`, sedentary labels (no `drink`/`break`), `sleep_winddown_done_today == false`). Otherwise STOP.
+Fires only when the routing table in `SKILL.md` picks `sleep-winddown` (row #3: `current_hour >= 21`, sedentary and/or `yawning` labels (no `drink`/`break`), `sleep_winddown_done_today == false`). Otherwise STOP.
+
+> A `yawning` label in the message confirms the route and outranks the yawn reaction (#1b), which is capped at `current_hour < 21` precisely so the evening yawn lands here instead. You **may** name the yawn — *"that yawn was loud"* — but it does **not** change the register: stay soft either way, per the phrasing rules below. Naming the yawn is fine; naming the camera is not.
 
 ## Intent
 

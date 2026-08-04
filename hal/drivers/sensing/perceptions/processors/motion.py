@@ -31,9 +31,11 @@ logger = logging.getLogger(__name__)
 
 RESOURCES_DIR = Path(__file__).parent / "resources"
 
-# Map raw Kinetics action labels to high-level activity groups.
-# The OS server receives the raw labels — the agent infers the group. The mapping here
-# is kept only to filter out emotional actions (handled by a separate channel).
+# Map raw Kinetics action labels to high-level activity groups. The bucket
+# decides three things at flush time: whether the label is emitted at all
+# (emotional is dropped), whether it is emitted raw or collapsed to the bucket
+# name (see _RAW_LABEL_GROUPS), and whether it participates in the coarse-class
+# cooldown (see coarse_classes).
 # Boot-scoped dedup sidecar — survives HAL service restarts so the first
 # flush after a deploy/OTA doesn't re-fire "Activity detected" as if the
 # activity were news (same pattern as the presence and scene sidecars).
@@ -54,7 +56,10 @@ ACTIVITY_GROUP: dict[str, str] = {
     "drinking beer": "drink",
     "drinking shots": "drink",
     "tasting beer": "drink",
-    "opening bottle": "drink",
+    # "opening bottle": "drink",  # prep, not the act — opening a bottle says
+    # nothing about whether the user drank. The bucket collapses to the word
+    # "drink", so it would reset the hydration timer and make the agent assert
+    # "that's your 3rd drink" over an unopened glass. Same reason as making tea.
     # "making tea": "drink",
     # break — reset break timer (stretching, movement)
     "stretching arm": "break",
@@ -92,12 +97,41 @@ ACTIVITY_GROUP: dict[str, str] = {
     "reading": "sedentary",
     "drawing": "sedentary",
     "playing controller": "sedentary",
+    # tired — fatigue evidence. Emits the RAW label (same hybrid as
+    # sedentary/eat) so the agent can reference the yawn directly instead of
+    # reading a bucket word. Deliberately NOT in `sedentary`: has_sedentary
+    # below starts the sedentary streak and opens the pose window, and a yawn
+    # mid-stretch would keep a real break from resetting either.
+    "yawning": "tired",
     # emotional — always speak, log mood
     "laughing": "emotional",
     "crying": "emotional",
-    "yawning": "emotional",
     "singing": "emotional",
 }
+
+# Buckets whose raw Kinetics label is emitted verbatim instead of collapsing to
+# the bucket name. sedentary/eat keep the label for UI icons + phrasing; tired
+# keeps it because "yawning" is the whole signal.
+_RAW_LABEL_GROUPS: frozenset[str] = frozenset({"sedentary", "eat", "tired"})
+
+
+def coarse_classes(labels: set[str]) -> frozenset[str]:
+    """Coarse activity classes for the cooldown floor's transition bypass.
+
+    `tired` is excluded while any real activity is present: a yawn is a
+    MODIFIER on what the user is doing, not a change of activity. Counting it
+    as one would make `using computer` ↔ `using computer + yawning` look like a
+    computer→eat style transition every time the detection blinks, bypassing
+    the cooldown floor on its own min gap. A tired-only flush still gets its
+    own class — nothing else was detected, so it is the activity.
+    """
+    core = frozenset(
+        ACTIVITY_GROUP.get(label, label)
+        for label in labels
+        if ACTIVITY_GROUP.get(label) != "tired"
+    )
+    return core or frozenset({"tired"})
+
 
 # Some raw Kinetics labels are folded to a coarser spoken label at emit time
 # while still routing through their real bucket. reading book / reading
@@ -607,15 +641,16 @@ class MotionPerception(Perception[cv2.typing.MatLike]):
         if actions:
             logger.info("[motion] raw actions in window: %s", actions)
 
-        # Hybrid output: drink/break collapse to bucket name, sedentary + eat
-        # keep the raw Kinetics label. Bucket names are enough for hydration
-        # and break timer resets — the agent doesn't need the specific drink
-        # or movement type. Sedentary keeps the raw label so the agent can
-        # ground nudge phrasing and music-genre choice in the concrete
-        # activity (writing / reading book / playing controller / …). Eat
-        # keeps the raw label so reaction phrasing can reference the actual
+        # Hybrid output: drink/break/celebrate collapse to bucket name,
+        # sedentary + eat + tired keep the raw Kinetics label. Bucket names are
+        # enough for hydration and break timer resets — the agent doesn't need
+        # the specific drink or movement type. Sedentary keeps the raw label so
+        # the agent can ground nudge phrasing and music-genre choice in the
+        # concrete activity (writing / reading book / playing controller / …).
+        # Eat keeps the raw label so reaction phrasing can reference the actual
         # food (burger / dining / spaghetti / …) and the per-food UI icons
-        # render.
+        # render. Tired keeps it because "yawning" IS the signal — the wellbeing
+        # skill reads the label itself to shorten the break threshold.
         labels: set[str] = set()
 
         for a in reversed(actions):
@@ -630,7 +665,7 @@ class MotionPerception(Perception[cv2.typing.MatLike]):
                 # until then emotional detections are silently ignored
                 # here so motion.activity stays purely about physical actions.
                 continue
-            if group in ("sedentary", "eat"):
+            if group in _RAW_LABEL_GROUPS:
                 labels.add(_RAW_LABEL_EMIT_REMAP.get(a, a))
             else:
                 labels.add(group)
@@ -652,10 +687,22 @@ class MotionPerception(Perception[cv2.typing.MatLike]):
         # static activity. Starts on the first sedentary flush, stays warm
         # while subsequent flushes still contain a sedentary label, resets
         # the moment the activity transitions to something non-sedentary.
+        #
+        # A tired-only flush is NEUTRAL — it neither starts nor ends the
+        # streak. The classifier scoring one 10s clip as just "yawning" is not
+        # evidence the user left the desk, and resetting on it would restart
+        # [computer_streak_min] from zero mid-session, so a 3h stretch would be
+        # reported to the posture nudge as a few minutes. Same reasoning as
+        # coarse_classes(): tired modifies an activity, it isn't one.
+        tired_only: bool = bool(labels) and all(
+            ACTIVITY_GROUP.get(label) == "tired" for label in labels
+        )
         has_sedentary: bool = any(
             ACTIVITY_GROUP.get(label) == "sedentary" for label in labels
         )
-        if has_sedentary:
+        if tired_only:
+            pass
+        elif has_sedentary:
             if self._sedentary_streak_start_ts <= 0:
                 self._sedentary_streak_start_ts = cur_ts
             # Sedentary is the SOLE trigger to open the pose tumbling
@@ -750,9 +797,7 @@ class MotionPerception(Perception[cv2.typing.MatLike]):
         # react to now, not up to a cooldown later. The transition bypass has
         # its own min gap so a flickering detection (drink blinking in and out
         # of the frame every ~10s flush) can't re-open the spam faucet.
-        classes: frozenset[str] = frozenset(
-            ACTIVITY_GROUP.get(label, label) for label in labels
-        )
+        classes: frozenset[str] = coarse_classes(labels)
         class_changed: bool = (
             self._last_sent_class is not None and classes != self._last_sent_class
         )

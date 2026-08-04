@@ -1,8 +1,8 @@
 // Package wellbeing provides a per-user activity history logger.
 //
-// Logs user activity groups observed from motion.activity events
-// (drink, break, sedentary, emotional). Agent posts one entry per
-// observed activity with optional free-text notes.
+// Logs user activity observed from motion.activity events — bucket names for
+// drink / break / celebrate, raw Kinetics labels for sedentary / eat / tired
+// (`yawning`). HAL posts one entry per outbound label before firing the event.
 //
 // Usage:
 //
@@ -28,7 +28,7 @@ type Event struct {
 	TS     float64 `json:"ts"`     // Unix seconds
 	Seq    int64   `json:"seq"`    // global sequence
 	Hour   int     `json:"hour"`   // hour of day (0-23)
-	Action string  `json:"action"` // drink, break, sedentary, emotional, enter, leave
+	Action string  `json:"action"` // drink, break, celebrate, raw sedentary/eat labels, yawning, enter, leave
 	Notes  string  `json:"notes"`  // optional agent observation
 }
 

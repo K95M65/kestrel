@@ -37,17 +37,21 @@ const (
 // excluded — counting them would explode the map and isn't useful phrasing.
 var reactionCountActions = []string{"drink", "break"}
 
-// nonActivityActions are wellbeing-log rows that don't represent a user
-// motion.activity event: presence boundaries written by the backend, and
-// agent-written nudge/reminder logs. Used to decide first_activity_today —
-// the morning-greeting route fires on the first REAL motion event of the
-// day, not on a presence.enter row that landed at wake-up.
+// nonActivityActions are wellbeing-log rows that don't count as the user
+// DOING something: presence boundaries written by the backend, agent-written
+// nudge/reminder logs, and `yawning` (HAL logs it like any other raw label,
+// but it is a state the user leaked, not an activity they performed). Used to
+// decide first_activity_today — the morning-greeting route fires on the first
+// REAL activity of the day, not on a presence.enter row that landed at
+// wake-up, and not on the first yawn of the morning.
 var nonActivityActions = map[string]bool{
 	"enter":            true,
 	"leave":            true,
+	"yawning":          true,
 	"nudge_hydration":  true,
 	"nudge_break":      true,
 	"nudge_toilet":     true,
+	"noted_yawn":       true,
 	"morning_greeting": true,
 	"sleep_winddown":   true,
 	"meal_reminder":    true,
@@ -97,6 +101,7 @@ type wellbeingContext struct {
 	MealSignalInWindow       bool                     `json:"meal_signal_in_window"`       // true when a meal signal (meal_reminder log OR any raw eat label) was already logged in the current window today — gates meal-reminder so the agent doesn't ask "ăn chưa?" after a real meal
 	MorningGreetingDoneToday bool                     `json:"morning_greeting_done_today"` // true when a morning_greeting action exists today
 	SleepWinddownDoneToday   bool                     `json:"sleep_winddown_done_today"`   // true when a sleep_winddown action exists today
+	YawnAckAgeMin            int                      `json:"yawn_ack_age_min"`            // minutes since the agent last acknowledged a yawn (noted_yawn); -1 if never today — gates the yawn reaction to once an hour
 	DrinksSinceToiletNudge   int                      `json:"drinks_since_toilet_nudge"`   // count of `drink` rows logged after the most recent `nudge_toilet` today (or all today's drinks if none); resets via nudge_toilet POST
 	Patterns                 map[string]patternDigest `json:"patterns,omitempty"`          // wellbeing_patterns from patterns.json, keyed by action ("drink"/"break")
 	BootstrapNeeded          bool                     `json:"bootstrap_needed"`            // patterns missing/stale AND days >= 3 → invoke habit Flow A only when nudging
@@ -124,6 +129,7 @@ func BuildWellbeingContext(user string) string {
 	today := now.Format("2006-01-02")
 
 	events := wellbeing.Query(user, today, 0)
+	yawnAckAge := computeDeltaMin(events, now, []string{"noted_yawn"})
 	hydrationDelta := computeDeltaMin(events, now, []string{"drink", "enter", "nudge_hydration"})
 	breakDelta := computeDeltaMin(events, now, []string{"break", "enter", "nudge_break"})
 	latestActivity := latestAction(events)
@@ -156,6 +162,7 @@ func BuildWellbeingContext(user string) string {
 		MealSignalInWindow:       mealSignalInWindow,
 		MorningGreetingDoneToday: morningGreetingDone,
 		SleepWinddownDoneToday:   sleepWinddownDone,
+		YawnAckAgeMin:            yawnAckAge,
 		DrinksSinceToiletNudge:   drinksSinceToiletNudge,
 		Patterns:                 patterns,
 		BootstrapNeeded:          bootstrapNeeded,

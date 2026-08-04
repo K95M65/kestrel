@@ -40,6 +40,7 @@ const WELLBEING_ICONS: Record<string, { icon: string; title: string }> = {
   morning_greeting: { icon: "🌅", title: "Morning greeting" },
   sleep_winddown: { icon: "🌙", title: "Sleep wind-down" },
   meal_reminder: { icon: "🍽", title: "Meal reminder" },
+  noted_yawn: { icon: "🥱", title: "Noted: yawn" },
 };
 
 // Per raw Kinetics label icons. When notes carries a raw label (sedentary /
@@ -51,6 +52,7 @@ const RAW_LABEL_ICON: Record<string, string> = {
   "drinking beer": "🍺",
   "drinking shots": "🥃",
   "tasting beer": "🍺",
+  // de-whitelisted (not in HAL's white_list.txt) — kept so old rows still render
   "opening bottle": "🍾",
   "making tea": "🍵",
   // break
@@ -86,6 +88,8 @@ const RAW_LABEL_ICON: Record<string, string> = {
   "reading newspaper": "📰",
   "drawing": "🎨",
   "playing controller": "🎮",
+  // tired
+  "yawning": "🥱",
 };
 
 function rawLabelIcon(notes: string, fallback: string): string {
