@@ -1438,17 +1438,19 @@ class VoiceService:
             else:
                 self._decorator.submit_speech_emotion_from_session(ser_audio_buffer)
                 # A rejected utterance deliberately has no downstream agent to
-                # replace the listening cue with thinking/TTS/idle. Clear it
-                # immediately instead of leaving the blue pulse up for the
-                # generic 8-second safety timer below. Do not do this for an
-                # armed realtime turn: that path may already be expressing an
-                # emotion while speaking its direct reply.
+                # replace the listening cue with thinking or TTS. Restore the
+                # prior resting LED immediately rather than setting EMO_IDLE:
+                # idle is a persistent amber effect, not a cleanup state. Do
+                # not do this for an armed realtime turn: that path may already
+                # be expressing an emotion while speaking its direct reply.
                 if (
                     hal_config.WAKEWORD_ENABLED
                     and not wake_word_confirmed.is_set()
                     and listening_emotion_sent[0]
                 ):
-                    self._set_emotion_local(presets.EMO_IDLE)
+                    from hal import app_state
+
+                    app_state.clear_listening_cue()
 
             # Close the sensing-suppression window (see the matching
             # voice_listening post above — neither event drives an LED).
@@ -1476,8 +1478,7 @@ class VoiceService:
                     try:
                         from hal import app_state
 
-                        if app_state._current_emotion == presets.EMO_LISTENING:
-                            self._set_emotion_local(presets.EMO_IDLE)
+                        app_state.clear_listening_cue()
                     except Exception as e:
                         logger.warning("listening idle-reset failed: %s", e)
 

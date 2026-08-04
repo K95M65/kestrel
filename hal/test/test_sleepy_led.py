@@ -9,7 +9,7 @@ import unittest
 from unittest import mock
 
 import hal.app_state as state
-from hal.presets import EMO_SLEEPY
+from hal.presets import EMO_HAPPY, EMO_IDLE, EMO_LISTENING, EMO_SLEEPY
 
 
 class _FakeRGB:
@@ -107,6 +107,24 @@ class TestSleepyLED(unittest.TestCase):
             state._start_mic_muted_effect()
 
         start_effect.assert_called_once_with(state.STATUS_LED_PRESETS["mic_muted"], "led-mic-muted")
+
+    def test_clear_listening_cue_restores_led_without_persistent_idle_effect(self):
+        state._sleeping = False
+        state._current_emotion = EMO_LISTENING
+
+        with mock.patch.object(state, "_restore_user_led") as restore:
+            self.assertTrue(state.clear_listening_cue())
+
+        self.assertEqual(state._current_emotion, EMO_IDLE)
+        restore.assert_called_once()
+
+    def test_clear_listening_cue_preserves_newer_emotion(self):
+        state._current_emotion = EMO_HAPPY
+
+        with mock.patch.object(state, "_restore_user_led") as restore:
+            self.assertFalse(state.clear_listening_cue())
+
+        restore.assert_not_called()
 
 if __name__ == "__main__":
     unittest.main()
