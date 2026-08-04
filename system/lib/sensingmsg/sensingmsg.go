@@ -13,7 +13,7 @@ import (
 )
 
 // Build returns the message that should be forwarded to the agent for a
-// sensing event. Precedence: voice_command > voice > web_chat > guard >
+// sensing event. Precedence: voice_command/voice_followup > voice > web_chat > guard >
 // passive sensing.
 //
 //   - currentUser: resolved attribution string. Pass the request payload's
@@ -29,8 +29,9 @@ import (
 // by HAL's MotionPerception. The wellbeing skill reads those blocks.
 func Build(eventType, message, currentUser, guardTag string) string {
 	switch eventType {
-	case "voice_command":
-		// Wake word confirmed. `[user]` lifts to top priority in batched turns.
+	case "voice_command", "voice_followup":
+		// Wake word confirmed or an authorized follow-up. `[user]` lifts to top
+		// priority in batched turns.
 		return domain.AppendEnrollNudge("[user] " + message)
 	case "voice":
 		// Ambient speech — no wake word. `[user]` for batched-turn priority,

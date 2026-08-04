@@ -13,7 +13,11 @@ def test_confirmed_handled_turn_still_synchronizes_main_agent():
 
 
 def test_wakeword_gate_still_rejects_unarmed_ambient_speech():
-    assert not should_dispatch_to_main(True, False)
+	assert not should_dispatch_to_main(True, False)
+
+
+def test_wakeword_focus_authorizes_a_followup_turn():
+    assert should_dispatch_to_main(True, True)
 
 
 def test_wakeword_disabled_preserves_the_always_listening_main_agent_sync():

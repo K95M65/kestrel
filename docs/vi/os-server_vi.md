@@ -111,7 +111,7 @@ Config field: `guard_mode` trong `config/config.json` (bool, mặc định `fals
 **Request body:**
 ```json
 {
-  "type": "voice_command|voice|web_chat|motion|sound|presence.enter|presence.leave|presence.away|light.level|motion.activity",
+  "type": "voice_command|voice_followup|voice|web_chat|motion|sound|presence.enter|presence.leave|presence.away|light.level|motion.activity",
   "message": "...",
   "image": "<base64 JPEG, optional>"
 }
@@ -121,7 +121,7 @@ Config field: `guard_mode` trong `config/config.json` (bool, mặc định `fals
 
 | Type | Nguồn | Có ảnh? | Mô tả |
 |------|-------|---------|-------|
-| `voice_command` / `voice` | Mic (Deepgram STT) | Không | Lệnh giọng nói |
+| `voice_command` / `voice_followup` / `voice` | Mic (Deepgram STT) | Không | `voice_command` đã xác nhận wake word; `voice_followup` được cửa sổ focus wake word cho phép; `voice` là STT ambient |
 | `web_chat` | Web Monitor `/chat` UI | Có (file/clipboard attach) | Tin nhắn gõ từ web monitor — TTS suppressed (reply hiện trong UI), không wake đèn vật lý, không opening filler |
 | `motion` | Camera (frame diff) | Có (large motion) | Phát hiện chuyển động |
 | `presence.enter` | Camera (InsightFace recognition) | Có (JPEG bbox-annotated) | Phát hiện khuôn mặt — phân loại friend hoặc stranger |
@@ -132,7 +132,7 @@ Config field: `guard_mode` trong `config/config.json` (bool, mặc định `fals
 | `motion.activity` | MotionPerception (khi PRESENT) | Không | Phát hiện hoạt động khi user có mặt — emotional actions được ghi qua Mood skill |
 
 **Flow xử lý:**
-1. `voice_command` hoặc `voice` + local intent enabled → match intent → thực thi trực tiếp (~50ms). `web_chat` skip local intent (text gõ ≠ wake-word voice).
+1. `voice_command`, `voice_followup` hoặc `voice` + local intent enabled → match intent → thực thi trực tiếp (~50ms). `voice_followup` có cùng độ ưu tiên người dùng như `voice_command`; `web_chat` skip local intent (text gõ ≠ wake-word voice).
 2. Ambient turn floor: `motion.activity`, `emotion.detected`, `speech_emotion.detected`, `sound`, `presence.away`, `light.level` bị drop khi agent turn gần nhất mà handler này tạo (bất kể type) cách đây chưa tới `sensing_turn_floor_s` giây (key config, mặc định `120`, `0` = tắt; guard mode bypass). Một floor xuyên-type đè trên các gate per-type độc lập của HAL — một loạt event khác type chỉ tốn tối đa 1 agent turn mỗi window. Event bị drop hiện thành `sensing_drop` (reason `ambient_floor`) trong Flow Monitor.
 3. Không match → forward OpenClaw qua WebSocket `chat.send`
 4. Nếu event có `image` → gọi `SendChatMessageWithImage` → gửi ảnh kèm text cho AI vision phân tích. Với `web_chat`, ảnh attach được lưu vào `/tmp/web-chat-*.jpg` và gắn tag `[image: <path>]` để agent reference (vd: face enrollment).
@@ -330,7 +330,7 @@ HAL (Python): FastAPI standard JSON responses.
 
 ## Local Intent Matching
 
-Khi nhận `voice_command` hoặc `voice` event, OS server check local intent trước (~50ms):
+Khi nhận event `voice_command`, `voice_followup` hoặc `voice`, OS server check local intent trước (~50ms):
 
 | Lệnh | Hành động |
 |-------|-----------|

@@ -22,7 +22,7 @@ voice_service._stream_session(...) finally:                      ← every mic s
     │       → (final_msg, user_name | None)
     │  user = user_name or "unknown"
     │
-    ├─ if combined: _send_to_lamp(final_msg, event_type)         ← OS server message path
+    ├─ if combined: _send_to_lamp(final_msg, event_type)         ← `voice_command` / `voice_followup` / `voice`
     │
     └─ _submit_speech_emotion_from_session(audio_buffer, user)   ← ALWAYS — SER pipeline
             └─ _session_wav_for_ser(buffer) → (wav, duration_s)
@@ -248,7 +248,8 @@ Called from `VoiceService._stream_session`'s `finally` block. Speaker recognize 
 event_type = "voice"
 final_text = combined
 if combined:
-# ... preserve the complete transcript; set event_type = "voice_command" if matched
+# ... preserve the complete transcript; set event_type = "voice_command" if matched,
+# or "voice_followup" when an active wake-word focus window authorized it
 
 # 2. Single speaker recognize per session
 final_msg, se_user = self._identify_and_decorate(final_text, audio_buffer)
@@ -303,7 +304,7 @@ Speaker recognize fires **once** per mic session. The single `(final_msg, user_n
 1. The OS server POST (`_send_to_lamp(final_msg, event_type)`) — when STT had a transcript.
 2. The SER submit (`_submit_speech_emotion_from_session(..., user=...)`) — always.
 
-This is the reason the finally block ordering is: wake-word classification → `_identify_and_decorate` once → OS server POST → SER submit. The leading wake phrase is retained in the transcript; `voice_command` is the metadata that identifies a confirmed command. `_submit_speech_emotion_from_session` accepts `user` as an argument now; it no longer issues its own `/embed` request.
+This is the reason the finally block ordering is: wake-word classification → `_identify_and_decorate` once → OS server POST → SER submit. The leading wake phrase is retained in the transcript; `voice_command` identifies a confirmed command and `voice_followup` identifies the next authorized conversational turns. `_submit_speech_emotion_from_session` accepts `user` as an argument now; it no longer issues its own `/embed` request.
 
 ---
 

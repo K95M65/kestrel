@@ -458,6 +458,12 @@ REALTIME_PROVIDER: str = _rt_str("HAL_REALTIME_PROVIDER", _RT.get("provider"), "
 # interim transcript starts with one of the configured wake phrases. This is a
 # top-level config.json setting because it also gates the non-realtime Go path.
 WAKEWORD_ENABLED: bool = _os_cfg_get("wakeword", False) is True
+# Once a wake-word command has been accepted, allow a short sequence of
+# follow-up turns without repeating the phrase. Set to 0 to require the wake
+# phrase for every mic session even when WAKEWORD_ENABLED is true.
+WAKEWORD_FOLLOWUP_TIMEOUT_S: float = max(
+    0.0, float(os.environ.get("HAL_WAKEWORD_FOLLOWUP_TIMEOUT_S", "20"))
+)
 # Max seconds receive() waits for the NEXT output event from the agent's recv
 # queue before giving up on the turn. This is the gap between events, not the
 # whole turn: a streaming reply puts events on the queue sub-second apart and

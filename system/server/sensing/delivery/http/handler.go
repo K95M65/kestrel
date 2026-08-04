@@ -109,9 +109,10 @@ func (h *SensingHandler) PostEvent(c *gin.Context) {
 
 	slog.Info("sensing event received", "component", "sensing", "type", req.Type, "message", req.Message)
 
-	// Voice command from physical device — log for tracing (LED feedback is handled by HAL).
-	if req.Type == "voice_command" {
-		slog.Info("voice_command received", "component", "sensing", "message", req.Message)
+	// Wake-word command or authorized follow-up from physical device — log for
+	// tracing (LED feedback is handled by HAL).
+	if req.Type == "voice_command" || req.Type == "voice_followup" {
+		slog.Info("authorized voice received", "component", "sensing", "type", req.Type, "message", req.Message)
 	}
 	// voice_listening / voice_listening_end are internal LED signals — don't forward to agent.
 	// Also gate sensing events: suppress passive sensing during the voice conversation window
@@ -158,7 +159,7 @@ func (h *SensingHandler) PostEvent(c *gin.Context) {
 	}
 
 	// Voice commands: try local intent matching first for instant response
-	if (req.Type == "voice" || req.Type == "voice_command") && h.config.LocalIntentEnabled() {
+	if (req.Type == "voice" || req.Type == "voice_command" || req.Type == "voice_followup") && h.config.LocalIntentEnabled() {
 		if result := intent.Match(req.Message); result != nil {
 			// Generate a dedicated local-intent trace ID so this turn doesn't
 			// share the global trace of an in-flight agent turn.
@@ -199,13 +200,14 @@ func (h *SensingHandler) PostEvent(c *gin.Context) {
 
 	// Sleep guard: while the agent is in "sleepy" state, drop all passive sensing
 	// (light.level, motion, sound) so they don't wake the agent and override the
-	// sleepy emotion. Only presence.enter, fire_hazard.detected, and voice_command can wake the device.
+	// sleepy emotion. Only presence.enter, fire_hazard.detected, and authorized
+	// voice commands/follow-ups can wake the device.
 	// web_chat is user-initiated text from the monitor UI — bypasses sleep-drop
 	// (forwarded to agent, TTS suppressed) but does NOT trigger physical wake.
 	// web_chat counts as passive for busy-gate so it queues on agent busy
 	// instead of racing the in-flight turn (agent merges same-session messages).
-	isVoice := req.Type == "voice" || req.Type == "voice_command"
-	isVoiceCommand := req.Type == "voice_command"
+	isVoice := req.Type == "voice" || req.Type == "voice_command" || req.Type == "voice_followup"
+	isVoiceCommand := req.Type == "voice_command" || req.Type == "voice_followup"
 	isWebChat := req.Type == "web_chat"
 	isPassive := !isVoiceCommand
 	if isPassive && !isVoice && !isWebChat && req.Type != "presence.enter" && req.Type != "fire_hazard.detected" && h.isSleeping != nil && h.isSleeping() {
@@ -351,7 +353,7 @@ func (h *SensingHandler) PostEvent(c *gin.Context) {
 	}
 
 	// When agent is busy:
-	// - voice_command (wake word confirmed) always passes through immediately.
+	// - voice_command / voice_followup (wake-word authorized) always pass through immediately.
 	// - voice (ambient STT), presence.enter/leave are queued and replayed when agent becomes idle.
 	// - During voice window: all passive sensing is queued (not dropped) so events aren't lost.
 	// - Outside voice window: motion/light/sound dropped when busy (low priority, high frequency).
@@ -414,7 +416,7 @@ func (h *SensingHandler) PostEvent(c *gin.Context) {
 		turnStart := flow.Start("sensing_input", startPayload, notReadyRunID)
 		flow.End("sensing_input", turnStart, map[string]any{"error": "agent not connected"}, notReadyRunID)
 		// Announce once via TTS so user knows the brain is restarting (cooldown 60s).
-		if req.Type == "voice_command" || req.Type == "presence.enter" {
+		if req.Type == "voice_command" || req.Type == "voice_followup" || req.Type == "presence.enter" {
 			now := time.Now().UnixMilli()
 			if last := h.lastNotReadyTTS.Load(); now-last > 60_000 {
 				if h.lastNotReadyTTS.CompareAndSwap(last, now) {
@@ -1238,6 +1240,7 @@ func (h *SensingHandler) PostMusicSuggestionStatus(c *gin.Context) {
 // cross-type turn floor (config.SensingTurnFloorSeconds). Everything here is
 // ambient/advisory — each emitter re-offers on its own heartbeat, so dropping
 // one occurrence only delays awareness. User-initiated types (voice, voice_command,
+// voice_followup,
 // voice_agent_handled, web_chat, touch.head_pat), safety (fire_hazard.detected),
 // and presence enter/leave (greeting UX + session bookkeeping) are deliberately
 // NOT floored.
