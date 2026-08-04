@@ -525,7 +525,7 @@ When the user is already present (PRESENT state), foreground motion triggers a `
 - **PRESENT** → sends a single `motion.activity` event. Message format:
   - `Activity detected: <labels>.` — HAL already categorises: physical actions collapse to the bucket name (`drink`, `break`, `celebrate`), sedentary activities keep the raw Kinetics label (`using computer`, `writing`, `texting`, `reading`, `drawing`, `playing controller`). One exception to "keep the raw label": `reading book` + `reading newspaper` both collapse to the single generic `reading` label. The agent logs each label verbatim — no mapping required at the agent level.
   - Emotional X3D actions (`laughing`, `crying`, `singing`) are **intentionally dropped** here. A dedicated `motion.emotional` event type will be added later; until then emotional detections are silently ignored. `motion.activity` stays purely physical.
-  - `yawning` is **not** emotional — it lives in its own `tired` bucket and IS emitted, as a raw label, as fatigue evidence for the wellbeing skill (shortens the break threshold, confirms sleep wind-down).
+  - `yawning` is **not** emotional — it lives in its own `tired` bucket and IS emitted, as a raw label, for the wellbeing skill. The agent names the yawn out loud like a drink or a meal (throttled to once an hour by a `noted_yawn` marker, and only before 21h), shortens the break threshold to 20 min, and treats it as confirmation for sleep wind-down.
   - No images attached — saves tokens. Friend recognition is **not** required.
 - **Otherwise** → event is **skipped** (logged, not sent). Lamp only expects `motion.activity` — plain `motion` from X3D/pose has no handler and wastes agent tokens.
 

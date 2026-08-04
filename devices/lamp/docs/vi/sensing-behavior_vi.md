@@ -528,7 +528,7 @@ Khi user đang ở trạng thái PRESENT và camera phát hiện chuyển độn
 - **PRESENT** → gửi 1 event `motion.activity` duy nhất. Format message:
   - `Activity detected: <labels>.` — HAL đã categorize: physical actions gộp thành bucket (`drink`, `break`, `celebrate`); sedentary activities giữ raw Kinetics label (`using computer`, `writing`, `texting`, `reading`, `drawing`, `playing controller`). Một ngoại lệ của "giữ raw label": `reading book` + `reading newspaper` đều gộp về một label chung `reading`. Agent log từng label nguyên văn — không map gì thêm ở phía agent.
   - Emotional X3D actions (`laughing`, `crying`, `singing`) **cố ý bị drop** ở đây. Một event type riêng `motion.emotional` sẽ được thêm sau; cho đến khi đó, detection emotional bị bỏ qua im lặng. `motion.activity` giữ thuần vật lý.
-  - `yawning` **không** phải emotional — nó nằm trong bucket `tired` riêng và ĐƯỢC phát ra dưới dạng nhãn thô, làm bằng chứng mệt mỏi cho wellbeing skill (rút ngắn ngưỡng break, xác nhận sleep wind-down).
+  - `yawning` **không** phải emotional — nó nằm trong bucket `tired` riêng và ĐƯỢC phát ra dưới dạng nhãn thô cho wellbeing skill. Agent nói ra cái ngáp như với drink hay bữa ăn (giới hạn mỗi giờ một lần bằng marker `noted_yawn`, và chỉ trước 21h), rút ngắn ngưỡng break xuống 20 phút, và coi đó là xác nhận cho sleep wind-down.
   - Không gửi ảnh — tiết kiệm tokens. **Không** yêu cầu nhận diện friend.
 - **Còn lại** → event bị **skip** (log, không gửi). Lamp chỉ expect `motion.activity` — plain `motion` từ X3D/pose không có handler và lãng phí agent tokens.
 

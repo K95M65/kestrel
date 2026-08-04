@@ -64,9 +64,9 @@ HAL đã categorize trước khi gửi. Trên dòng `Activity detected:`:
 
 - yawning — ngáp
 
-Not in `sedentary` on purpose: `has_sedentary` starts the sedentary streak and opens the pose window, so a yawn mid-stretch would stop a real break from resetting either. It is also excluded from the coarse-class set used by the cooldown's transition bypass — a yawn modifies what the user is doing, it isn't a change of activity. Downstream: lowers the break-nudge threshold to `BREAK_THRESHOLD_TIRED` (20 min) and confirms sleep-winddown. Never a reaction label — the agent doesn't acknowledge a yawn out loud.
+Not in `sedentary` on purpose: `has_sedentary` starts the sedentary streak and opens the pose window, so a yawn mid-stretch would stop a real break from resetting either. It is also excluded from the coarse-class set used by the cooldown's transition bypass — a yawn modifies what the user is doing, it isn't a change of activity. Downstream: the agent acknowledges the yawn out loud like a drink or a meal (route #1b, throttled to once an hour via a `noted_yawn` marker, and only before 21h so the evening yawn goes to sleep wind-down instead), lowers the break-nudge threshold to `BREAK_THRESHOLD_TIRED` (20 min), and confirms sleep-winddown.
 
-Cố ý không đặt vào `sedentary`: `has_sedentary` khởi động sedentary streak và mở pose window, nên một cái ngáp giữa lúc vươn vai sẽ khiến break thật không reset được. Nó cũng bị loại khỏi coarse-class set của transition bypass — ngáp là modifier chứ không phải đổi hoạt động. Downstream: hạ ngưỡng break-nudge xuống `BREAK_THRESHOLD_TIRED` (20 phút) và xác nhận sleep-winddown. Không bao giờ là reaction label — agent không nói ra là đã thấy ngáp.
+Cố ý không đặt vào `sedentary`: `has_sedentary` khởi động sedentary streak và mở pose window, nên một cái ngáp giữa lúc vươn vai sẽ khiến break thật không reset được. Nó cũng bị loại khỏi coarse-class set của transition bypass — ngáp là modifier chứ không phải đổi hoạt động. Downstream: agent nói ra cái ngáp như với drink hay bữa ăn (route #1b, giới hạn mỗi giờ một lần qua marker `noted_yawn`, và chỉ trước 21h để cái ngáp buổi tối nhường cho sleep wind-down), hạ ngưỡng break-nudge xuống `BREAK_THRESHOLD_TIRED` (20 phút), và xác nhận sleep-winddown.
 
 ## emotional — filtered out (future `motion.emotional`) / Bị filter (event `motion.emotional` sau)
 

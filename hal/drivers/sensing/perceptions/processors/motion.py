@@ -687,10 +687,22 @@ class MotionPerception(Perception[cv2.typing.MatLike]):
         # static activity. Starts on the first sedentary flush, stays warm
         # while subsequent flushes still contain a sedentary label, resets
         # the moment the activity transitions to something non-sedentary.
+        #
+        # A tired-only flush is NEUTRAL — it neither starts nor ends the
+        # streak. The classifier scoring one 10s clip as just "yawning" is not
+        # evidence the user left the desk, and resetting on it would restart
+        # [computer_streak_min] from zero mid-session, so a 3h stretch would be
+        # reported to the posture nudge as a few minutes. Same reasoning as
+        # coarse_classes(): tired modifies an activity, it isn't one.
+        tired_only: bool = bool(labels) and all(
+            ACTIVITY_GROUP.get(label) == "tired" for label in labels
+        )
         has_sedentary: bool = any(
             ACTIVITY_GROUP.get(label) == "sedentary" for label in labels
         )
-        if has_sedentary:
+        if tired_only:
+            pass
+        elif has_sedentary:
             if self._sedentary_streak_start_ts <= 0:
                 self._sedentary_streak_start_ts = cur_ts
             # Sedentary is the SOLE trigger to open the pose tumbling
