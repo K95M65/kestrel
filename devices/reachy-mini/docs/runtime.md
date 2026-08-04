@@ -389,10 +389,20 @@ in the (slow) first HF library load never streams on top of a newer one.
 The feetech backend gets this for free: `aim` stops the animation event loop
 before moving, and that loop is the only writer.
 
-Still open: a play → play transition snaps, because Pollen moves are absolute
-trajectories starting at their own first pose and nothing ramps the head there
-first — the Feetech backend interpolates `current_state → actions[0]` over
-`duration` before playing frames.
+### Play Ramp
+
+Pollen moves are absolute trajectories starting at their own frame 0, and
+`play_move`'s `initial_goto_duration` defaults to `0.0` — the daemon snaps the
+head there from wherever the previous move was interrupted. Every play now
+passes a ramp instead (`HAL_REACHY_PLAY_RAMP_S`, default 0.5s — shorter than the
+Feetech `HAL_SERVO_PLAY_RAMP_S` of 2.0s because a Pollen move is only ~3s and
+the ramp is charged on top of it). When frame 0 is far from the current pose the
+ramp is stretched by the SAFETY.md `motion.max_speed` gate, the same
+`min_move_duration` aim/nudge use — which is why the driver takes the safety
+policy at construction (`server.py`), having no route to carry it.
+
+Frame 0 is read through `RecordedMove.evaluate(0.0)`, which returns the same
+(head pose, antennas, body yaw) triple the joint conversion already speaks.
 
 Known deltas from Lamp:
 

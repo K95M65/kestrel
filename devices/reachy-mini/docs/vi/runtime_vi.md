@@ -361,9 +361,19 @@ thread đang kẹt trong lần tải thư viện HF đầu tiên (chậm) không
 Backend Feetech có sẵn tính chất này: `aim` dừng event loop trước khi move, và
 loop đó là nguồn ghi duy nhất.
 
-Còn tồn: chuyển play → play vẫn giật, vì move của Pollen là quỹ đạo tuyệt đối
-bắt đầu ở pose frame-0 của chính nó mà không có bước đưa đầu tới đó trước —
-Feetech nội suy `current_state → actions[0]` trong `duration` rồi mới chạy frame.
+### Ramp khi vào animation
+
+Move của Pollen là quỹ đạo tuyệt đối bắt đầu ở frame 0 của chính nó, mà
+`initial_goto_duration` của `play_move` mặc định `0.0` — daemon giật đầu tới đó
+từ vị trí move trước bị cắt ngang. Giờ mọi lần play đều truyền ramp
+(`HAL_REACHY_PLAY_RAMP_S`, mặc định 0.5s — ngắn hơn `HAL_SERVO_PLAY_RAMP_S` 2.0s
+của Feetech vì move Pollen chỉ ~3s và ramp bị tính thêm vào). Khi frame 0 ở xa
+pose hiện tại, ramp được kéo dài theo `motion.max_speed` trong SAFETY.md, đúng
+hàm `min_move_duration` mà aim/nudge dùng — vì vậy driver nhận safety policy
+ngay lúc khởi tạo (`server.py`), do không có route nào mang giúp.
+
+Frame 0 đọc qua `RecordedMove.evaluate(0.0)`, trả về đúng bộ ba (head pose,
+antennas, body yaw) mà hàm chuyển joint đang dùng.
 
 Khác biệt đã biết so với Lamp:
 

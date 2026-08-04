@@ -115,6 +115,15 @@ _MOVE_MAP: Dict[str, str] = {
 
 _MIN_MOVE_DURATION_S = 0.1
 
+# Seconds the daemon takes to interpolate into a move's first pose
+# (play_move(initial_goto_duration=...)). The SDK default is 0.0: it jumps
+# there as fast as the controller allows, which is the snap you feel when one
+# emotion interrupts another mid-pose. Shorter than the feetech ramp
+# (HAL_SERVO_PLAY_RAMP_S, 2.0s) because a Pollen move is only ~3s long and this
+# is charged on top of it; stretched further by the safety speed gate when the
+# head has a long way to travel.
+_PLAY_RAMP_S = float(os.environ.get("HAL_REACHY_PLAY_RAMP_S", "0.5"))
+
 # The SDK client holds one long-lived connection to the daemon. Anything that
 # restarts the daemon — an OS reboot, `systemctl restart reachy-mini-daemon`, an
 # update — leaves this side holding a dead socket that only reports itself when
@@ -134,13 +143,39 @@ def _is_disconnect(err: Exception) -> bool:
     return any(m in str(err).lower() for m in _RECONNECT_MARKERS)
 
 
+def _joints_from_sdk(head_pose: Any, antennas: Any, body_yaw_rad: Any) -> Dict[str, float]:
+    """SDK pose (4x4 meters/rad, antennas rad, body yaw rad) → HAL joints (deg/mm).
+
+    Inverse of _compose. Shared by the live pose read and the play ramp, which
+    reads a move's first pose through RecordedMove.evaluate(0.0) — that call
+    returns exactly this triple.
+    """
+    xyz = np.asarray(head_pose)[:3, 3] * 1000.0
+    rpy = Rotation.from_matrix(np.asarray(head_pose)[:3, :3]).as_euler("xyz", degrees=True)
+    return {
+        "head_x.pos": float(xyz[0]),
+        "head_y.pos": float(xyz[1]),
+        "head_z.pos": float(xyz[2]),
+        "head_roll.pos": float(rpy[0]),
+        "head_pitch.pos": float(rpy[1]),
+        "head_yaw.pos": float(rpy[2]),
+        "antenna_right.pos": math.degrees(float(antennas[0])),
+        "antenna_left.pos": math.degrees(float(antennas[1])),
+        _BODY_KEY: math.degrees(float(body_yaw_rad)),
+    }
+
+
 class ReachyMotionService:
     """MotionService implementation backed by the Pollen reachy_mini daemon."""
 
-    def __init__(self, host: Optional[str] = None, port: Optional[int] = None):
+    def __init__(self, host: Optional[str] = None, port: Optional[int] = None,
+                 safety_policy: Any = None):
         # HAL runs on the robot's own Pi, so the daemon is local by default.
         self._host = host or os.getenv("REACHY_DAEMON_HOST", "localhost")
         self._port = int(port or os.getenv("REACHY_DAEMON_PORT", "8000"))
+        # Used to stretch the play ramp under motion.max_speed. aim/nudge get
+        # the policy from the route; a recorded move has no route to carry it.
+        self._safety_policy = safety_policy
         self._mini: Optional[ReachyMini] = None
         # The SDK client documents no thread-safety guarantee — one writer.
         self._lock = threading.RLock()
@@ -372,24 +407,10 @@ class ReachyMotionService:
                 return dict(self._target)
             try:
                 pose = self._mini.get_current_head_pose()  # 4x4, meters/rad
-                xyz = np.asarray(pose)[:3, 3] * 1000.0
-                rpy = Rotation.from_matrix(np.asarray(pose)[:3, :3]).as_euler(
-                    "xyz", degrees=True
-                )
                 # head list order: body_rotation, stewart_1..6 (rad);
                 # antenna order is [right, left] in the SDK.
                 head_joints, ant = self._mini.get_current_joint_positions()
-                return {
-                    "head_x.pos": float(xyz[0]),
-                    "head_y.pos": float(xyz[1]),
-                    "head_z.pos": float(xyz[2]),
-                    "head_roll.pos": float(rpy[0]),
-                    "head_pitch.pos": float(rpy[1]),
-                    "head_yaw.pos": float(rpy[2]),
-                    "antenna_right.pos": math.degrees(float(ant[0])),
-                    "antenna_left.pos": math.degrees(float(ant[1])),
-                    _BODY_KEY: math.degrees(float(head_joints[0])),
-                }
+                return _joints_from_sdk(pose, ant, head_joints[0])
             except Exception as e:
                 logger.warning("[reachy] get_positions read failed, using last target: %s", e)
                 return dict(self._target)
@@ -592,6 +613,12 @@ class ReachyMotionService:
         with self._lock:
             self._play_gen += 1
             gen = self._play_gen
+        # The pose command owns the servo now, so no recording is running. The
+        # play thread cannot report that itself: it only clears the field when
+        # its own generation is still current, precisely so a thread dying late
+        # cannot blank what a newer play just set. Without this, GET /servo kept
+        # naming the cancelled animation for the whole pose command.
+        self._current_recording = None
         # Skip the daemon round-trip when nothing is streaming — send_positions
         # is a per-frame tracking path, not a one-shot command.
         if self._play_thread is not None and self._play_thread.is_alive():
@@ -641,6 +668,33 @@ class ReachyMotionService:
                 self._moves = False
         return self._moves or None
 
+    def _ramp_for(self, move: Any) -> float:
+        """Seconds to interpolate into the move's first pose before playing it.
+
+        Pollen moves are absolute trajectories that start at their own frame 0.
+        With the SDK default (initial_goto_duration=0.0) the daemon snaps the
+        head there from wherever the previous move was interrupted — the jolt
+        you feel when one emotion cuts another. The feetech backend has the same
+        ramp, client-side (animation_service._handle_play interpolates
+        current_state → actions[0] over HAL_SERVO_PLAY_RAMP_S).
+
+        Stretched by the SAFETY.md motion.max_speed gate when frame 0 is far
+        from the current pose, exactly like aim/nudge.
+        """
+        if self._safety_policy is None:
+            return _PLAY_RAMP_S
+        try:
+            from hal.safety.policy import min_move_duration
+
+            head, antennas, body_yaw = move.evaluate(0.0)
+            target = _joints_from_sdk(head, antennas, body_yaw)
+            return min_move_duration(
+                self._safety_policy, target, self._current_or_target(), _PLAY_RAMP_S
+            )
+        except Exception as e:
+            logger.debug("[reachy] ramp estimate failed (%s) — using %.2fs", e, _PLAY_RAMP_S)
+            return _PLAY_RAMP_S
+
     def _play_move_once(self, move: Any, name: str, gen: int) -> bool:
         """Play one pass of a recorded move (blocking). False if superseded.
 
@@ -655,12 +709,20 @@ class ReachyMotionService:
             if gen != self._play_gen:
                 logger.debug("[reachy] play '%s' superseded before start", name)
                 return False
+            # Report the recording only from the thread that actually owns the
+            # servo: a superseded thread waiting on this lock used to publish
+            # its name after the winner had already published (and finished),
+            # leaving GET /servo naming an animation nobody was playing.
+            self._current_recording = name
             with self._lock:
                 mini = self._require_mini()
+            # Read the ramp before the move starts — it compares frame 0 with
+            # the pose the head is actually sitting at right now.
+            ramp = self._ramp_for(move)
             # play_move blocks for the move duration — keep it out of _lock so
             # state reads stay responsive; SDK serializes via the daemon.
             try:
-                mini.play_move(move)
+                mini.play_move(move, initial_goto_duration=ramp)
             except Exception as e:
                 # Same stale-connection case as _call, but the retry cannot run
                 # under _lock: a move blocks for its whole duration and would
@@ -671,7 +733,7 @@ class ReachyMotionService:
                 with self._lock:
                     self._reconnect()
                     mini = self._mini
-                mini.play_move(move)
+                mini.play_move(move, initial_goto_duration=ramp)
         return True
 
     def _play_recording(self, name: str) -> None:
@@ -711,8 +773,9 @@ class ReachyMotionService:
                         # so the loop can't spin without doing any work.
                         failed = True
                     else:
-                        self._current_recording = current
                         try:
+                            # _play_move_once publishes _current_recording once
+                            # it has confirmed this thread still owns the servo.
                             if not self._play_move_once(move, current, gen):
                                 return   # a newer play owns the servo
                         except Exception as e:

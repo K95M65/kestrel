@@ -313,7 +313,10 @@ async def lifespan(app: FastAPI):
                     duration=SERVO_PLAY_RAMP_S, hold_s=SERVO_HOLD_S,
                 )
             else:
-                svc = AnimationService()
+                # SDK backends carry the safety policy themselves: their play
+                # ramp is computed in the driver, with no route to pass it in
+                # the way aim/nudge do.
+                svc = AnimationService(safety_policy=_safety)
             svc.start()
             state.animation_service = svc
             logger.info("Motion service started (%s)", type(svc).__name__)
