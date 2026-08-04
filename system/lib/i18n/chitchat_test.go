@@ -27,3 +27,20 @@ func TestBuildVoiceWakeWordsUsesHALPrefixes(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildSupportedVoiceWakeWordsIncludesCurrentAndPermanentAliases(t *testing.T) {
+	words := BuildSupportedVoiceWakeWords("Luna", "lamp")
+	want := []string{
+		"wake up autonomous", "hello autonomous", "okay autonomous", "hey autonomous", "hi autonomous", "alo autonomous", "ok autonomous",
+		"wake up lamp", "hello lamp", "okay lamp", "hey lamp", "hi lamp", "alo lamp", "ok lamp",
+		"wake up luna", "hello luna", "okay luna", "hey luna", "hi luna", "alo luna", "ok luna",
+	}
+	if len(words) != len(want) {
+		t.Fatalf("BuildSupportedVoiceWakeWords() = %v, want %v", words, want)
+	}
+	for i, word := range want {
+		if words[i] != word {
+			t.Fatalf("BuildSupportedVoiceWakeWords() = %v, want %v", words, want)
+		}
+	}
+}

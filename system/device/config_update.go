@@ -27,6 +27,8 @@ func (s *Service) GetPublicConfig() domain.ConfigPublicResponse {
 	if deviceID == "" {
 		deviceID = GetDeviceMac()
 	}
+	agentName := i18n.DeviceName()
+	deviceType := s.config.DeviceTypeOrDefault()
 	return domain.ConfigPublicResponse{
 		Channel:            s.config.Channel,
 		TelegramUserID:     s.config.TelegramUserID,
@@ -44,6 +46,8 @@ func (s *Service) GetPublicConfig() domain.ConfigPublicResponse {
 		TTSProvider:        s.config.TTSProvider,
 		TTSVoice:           s.config.TTSVoice,
 		WakeWord:           s.config.WakeWordEnabled(),
+		AgentName:          agentName,
+		WakePhrases:        i18n.BuildSupportedVoiceWakeWords(agentName, deviceType),
 		DeviceID:           deviceID,
 		Mac:                GetDeviceMac(),
 		NetworkSSID:        s.config.NetworkSSID,

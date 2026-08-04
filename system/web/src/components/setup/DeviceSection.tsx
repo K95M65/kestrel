@@ -187,6 +187,7 @@ export function DeviceSection({
   adminPasswordConfirm, setAdminPasswordConfirm,
   rotateAdminPassword, setRotateAdminPassword,
   wakeWord, setWakeWord,
+  agentName, wakePhrases,
 }: {
   active: boolean;
   deviceId: string;
@@ -207,6 +208,10 @@ export function DeviceSection({
   // debug-only realtime configuration.
   wakeWord?: boolean;
   setWakeWord?: (v: boolean) => void;
+  // Settings mode receives the effective phrases from the server, including
+  // the active runtime's current agent name.
+  agentName?: string;
+  wakePhrases?: string[];
 }) {
   const showAdminPasswordFields = setAdminPassword !== undefined;
   const showRotateField = setRotateAdminPassword !== undefined;
@@ -273,6 +278,20 @@ export function DeviceSection({
           <div style={{ marginTop: 5, marginLeft: 23, fontSize: 11.5, lineHeight: 1.45, color: C.textMuted }}>
             When off, your device keeps its existing always-listening behavior.
           </div>
+          {!!wakePhrases?.length && (
+            <div style={{ marginTop: 10, marginLeft: 23, fontSize: 11.5, lineHeight: 1.45, color: C.textMuted }}>
+              <div style={{ marginBottom: 6 }}>
+                Say one of these exact phrases first{agentName ? ` (current agent: ${agentName})` : ""}:
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {wakePhrases.map((phrase) => (
+                  <code key={phrase} style={{ padding: "3px 6px", borderRadius: 5, background: C.surface, border: `1px solid ${C.border}`, color: C.text }}>
+                    {phrase}
+                  </code>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

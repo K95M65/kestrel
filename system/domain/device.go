@@ -1243,30 +1243,32 @@ type RealtimePublic struct {
 }
 
 type ConfigPublicResponse struct {
-	Channel            string `json:"channel"`
-	TelegramUserID     string `json:"telegram_user_id"`
-	SlackUserID        string `json:"slack_user_id"`
-	DiscordGuildID     string `json:"discord_guild_id"`
-	DiscordUserID      string `json:"discord_user_id"`
-	WhatsappUserID     string `json:"whatsapp_user_id"`
-	LLMModel           string `json:"llm_model"`
-	LLMBaseURL         string `json:"llm_base_url"`
-	LLMDisableThinking bool   `json:"llm_disable_thinking"`
-	STTBaseURL         string `json:"stt_base_url"`
-	TTSBaseURL         string `json:"tts_base_url"`
-	STTLanguage        string `json:"stt_language"`
-	STTModel           string `json:"stt_model"`
-	TTSProvider        string `json:"tts_provider"`
-	TTSVoice           string `json:"tts_voice"`
-	WakeWord           bool   `json:"wakeword"`
-	DeviceID           string `json:"device_id"`
-	Mac                string `json:"mac"`
-	NetworkSSID        string `json:"network_ssid"`
-	MQTTEndpoint       string `json:"mqtt_endpoint"`
-	MQTTUsername       string `json:"mqtt_username"`
-	MQTTPort           int    `json:"mqtt_port"`
-	FAChannel          string `json:"fa_channel"`
-	FDChannel          string `json:"fd_channel"`
+	Channel            string   `json:"channel"`
+	TelegramUserID     string   `json:"telegram_user_id"`
+	SlackUserID        string   `json:"slack_user_id"`
+	DiscordGuildID     string   `json:"discord_guild_id"`
+	DiscordUserID      string   `json:"discord_user_id"`
+	WhatsappUserID     string   `json:"whatsapp_user_id"`
+	LLMModel           string   `json:"llm_model"`
+	LLMBaseURL         string   `json:"llm_base_url"`
+	LLMDisableThinking bool     `json:"llm_disable_thinking"`
+	STTBaseURL         string   `json:"stt_base_url"`
+	TTSBaseURL         string   `json:"tts_base_url"`
+	STTLanguage        string   `json:"stt_language"`
+	STTModel           string   `json:"stt_model"`
+	TTSProvider        string   `json:"tts_provider"`
+	TTSVoice           string   `json:"tts_voice"`
+	WakeWord           bool     `json:"wakeword"`
+	AgentName          string   `json:"agent_name"`
+	WakePhrases        []string `json:"wake_phrases"`
+	DeviceID           string   `json:"device_id"`
+	Mac                string   `json:"mac"`
+	NetworkSSID        string   `json:"network_ssid"`
+	MQTTEndpoint       string   `json:"mqtt_endpoint"`
+	MQTTUsername       string   `json:"mqtt_username"`
+	MQTTPort           int      `json:"mqtt_port"`
+	FAChannel          string   `json:"fa_channel"`
+	FDChannel          string   `json:"fd_channel"`
 
 	// Realtime voice-agent config — RESOLVED active-provider values for the web to
 	// render the form. Write back via UpdateConfig's `realtime` field. The api_key
