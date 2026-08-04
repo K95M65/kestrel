@@ -13,7 +13,7 @@ VoiceService._stream_session(...) finally   ← cuối MỌI phiên mic
     │
     ├─ Trim đuôi im lặng trên audio_buffer
     │
-    ├─ Wake-word split trên `combined` → final_text + event_type
+    ├─ Phân loại wake word ở đầu `combined` → final_text nguyên văn + event_type
     │       (chỉ chạy khi STT có transcript)
     │
     ├─ _identify_and_decorate(final_text, audio_buffer)   ← 1 LẦN duy nhất / phiên
@@ -76,7 +76,7 @@ VoiceService._stream_session(...) finally   ← cuối MỌI phiên mic
 | `_identify_and_decorate` | Speaker `/embed` + prefix transcript (`Alice: ...` / `Unknown Speaker: ...`). Trả `(final_msg, user_name)`: `user_name` = tên khi match; `UNKNOWN_USER_LABEL` (`"unknown"`) khi API OK nhưng không match; `None` khi skip/lỗi/tắt speaker. **Không gọi SER.** |
 | `_session_wav_for_ser` | Mono 16 kHz WAV + `duration_s` từ `audio_buffer` (cần `>= SPEAKER_MIN_AUDIO_S`, mặc định 0.8s). |
 | `_submit_speech_emotion_from_session` | Orchestrator mới: build WAV → gọi `_identify_and_decorate("", buffer)` lấy `user_name` → fallback `"unknown"` → `SpeechEmotionService.submit(...)`. Được gọi **bất điều kiện** trong `_stream_session` finally. |
-| `_stream_session` finally | Inline toàn bộ: wake-word split → 1 lần `_identify_and_decorate(final_text, buffer)` → POST OS server `voice` / `voice_command` (nếu có transcript) → `_submit_speech_emotion_from_session(buffer, user)`. Closure `_send_best` cũ đã được gỡ. |
+| `_stream_session` finally | Inline toàn bộ: phân loại wake word ở đầu → 1 lần `_identify_and_decorate(final_text, buffer)` → POST OS server `voice` / `voice_command` (nếu có transcript) → `_submit_speech_emotion_from_session(buffer, user)`. Transcript giữ nguyên wake phrase; `voice_command` là metadata báo lệnh đã được xác nhận. Closure `_send_best` cũ đã được gỡ. |
 
 ### Gán `user` cho SER
 

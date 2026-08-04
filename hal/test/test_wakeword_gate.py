@@ -34,6 +34,19 @@ def test_wake_word_match_requires_a_prefix_and_word_boundary():
     assert decorator.starts_with_wake_word("wake up luna, nghe mình nói này")
 
 
+def test_wake_word_command_keeps_the_original_transcript():
+    decorator = _decorator(["hey lamp"])
+
+    assert decorator.classify_wake_word("Hey lamp, how are you?") == (
+        "Hey lamp, how are you?",
+        "voice_command",
+    )
+    assert decorator.classify_wake_word("I said hey lamp earlier") == (
+        "I said hey lamp earlier",
+        "voice",
+    )
+
+
 def test_partial_hypothesis_reassembles_cumulative_and_delta_updates():
     decorator = _decorator(["hello luna"])
 

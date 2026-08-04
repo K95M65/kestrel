@@ -164,11 +164,12 @@ class SpeakerDecorator:
                 return True
         return False
 
-    def resolve_wake_word_split(self, combined: str) -> tuple[str, str]:
-        """Detect wake word in `combined` and split it off.
+    def classify_wake_word(self, combined: str) -> tuple[str, str]:
+        """Classify a leading wake phrase without modifying the transcript.
 
         Returns (final_text, event_type):
-          * final_text — text sent to the OS server (wake word stripped on command).
+          * final_text — original text sent to the OS server, including the
+            wake phrase.
           * event_type — "voice_command" if a wake word matched at the start,
                          else "voice".
 
@@ -177,18 +178,9 @@ class SpeakerDecorator:
         if not combined:
             return "", "voice"
 
-        normalized = re.sub(r"[^\w\s]", "", combined.lower())
-        with self._wake_words_lock:
-            wake_words = list(self._wake_words)
-        if not any(w in normalized for w in wake_words):
-            return combined, "voice"
-
-        cmd = normalized
-        for w in wake_words:
-            if cmd.startswith(w):
-                cmd = cmd[len(w):].strip()
-                break
-        return (cmd or combined), "voice_command"
+        if self.starts_with_wake_word(combined):
+            return combined, "voice_command"
+        return combined, "voice"
 
     # ------------------------------------------------------------------
     # Speaker identification

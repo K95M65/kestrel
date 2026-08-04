@@ -74,7 +74,7 @@ def dispatch_turn(decorator, sensing_sender, combined, audio_buffer, ser_audio_b
     # (so a handled turn that already used it doesn't leak it to a later delegate).
     vision_hint, vision_image = _take_vision_handoff()
 
-    final_text, event_type = decorator.resolve_wake_word_split(combined)
+    final_text, event_type = decorator.classify_wake_word(combined)
     user = UNKNOWN_USER_LABEL
 
     if combined:

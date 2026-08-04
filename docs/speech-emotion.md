@@ -16,7 +16,7 @@ This is the voice-side twin of facial emotion detection (`emotion.detected`). Th
 voice_service._stream_session(...) finally:                      ← every mic session end
     ├─ trim trailing silence on audio_buffer
     │
-    ├─ wake-word split on `combined` → final_text + event_type
+    ├─ classify leading wake word on `combined` → original final_text + event_type
     │
     ├─ _identify_and_decorate(final_text, audio_buffer)           ← single speaker recognize per session
     │       → (final_msg, user_name | None)
@@ -244,11 +244,11 @@ Called from `VoiceService._stream_session`'s `finally` block. Speaker recognize 
 ```python
 # In _stream_session finally, after trim:
 
-# 1. Wake-word split (only when transcript exists)
+# 1. Classify a leading wake word (only when transcript exists)
 event_type = "voice"
 final_text = combined
 if combined:
-# ... strip wake word; set event_type = "voice_command" if matched
+# ... preserve the complete transcript; set event_type = "voice_command" if matched
 
 # 2. Single speaker recognize per session
 final_msg, se_user = self._identify_and_decorate(final_text, audio_buffer)
@@ -303,7 +303,7 @@ Speaker recognize fires **once** per mic session. The single `(final_msg, user_n
 1. The OS server POST (`_send_to_lamp(final_msg, event_type)`) — when STT had a transcript.
 2. The SER submit (`_submit_speech_emotion_from_session(..., user=...)`) — always.
 
-This is the reason the finally block ordering is: wake-word split → `_identify_and_decorate` once → OS server POST → SER submit. `_submit_speech_emotion_from_session` accepts `user` as an argument now; it no longer issues its own `/embed` request.
+This is the reason the finally block ordering is: wake-word classification → `_identify_and_decorate` once → OS server POST → SER submit. The leading wake phrase is retained in the transcript; `voice_command` is the metadata that identifies a confirmed command. `_submit_speech_emotion_from_session` accepts `user` as an argument now; it no longer issues its own `/embed` request.
 
 ---
 
