@@ -121,8 +121,9 @@ _MIN_MOVE_DURATION_S = 0.1
 # emotion interrupts another mid-pose. Shorter than the feetech ramp
 # (HAL_SERVO_PLAY_RAMP_S, 2.0s) because a Pollen move is only ~3s long and this
 # is charged on top of it; stretched further by the safety speed gate when the
-# head has a long way to travel.
-_PLAY_RAMP_S = float(os.environ.get("HAL_REACHY_PLAY_RAMP_S", "0.5"))
+# head has a long way to travel. Tuned by feel on a Wireless unit — 0.5s still
+# read as a flick when one emotion cut another mid-pose.
+_PLAY_RAMP_S = float(os.environ.get("HAL_REACHY_PLAY_RAMP_S", "0.8"))
 
 # The SDK client holds one long-lived connection to the daemon. Anything that
 # restarts the daemon — an OS reboot, `systemctl restart reachy-mini-daemon`, an
@@ -225,7 +226,11 @@ class ReachyMotionService:
                 self._mini.wake_up()
             except Exception as e:
                 logger.warning("[reachy] wake_up failed (continuing): %s", e)
-        logger.info("[reachy] connected to daemon at %s:%s", self._host, self._port)
+        logger.info(
+            "[reachy] connected to daemon at %s:%s (play ramp %.2fs%s)",
+            self._host, self._port, _PLAY_RAMP_S,
+            "" if self._safety_policy is not None else ", no safety policy",
+        )
 
     def _enable_motors(self) -> None:
         """Put torque on the motors (caller holds _lock).
