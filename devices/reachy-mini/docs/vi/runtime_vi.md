@@ -345,6 +345,26 @@ chạy one-shot xong trả servo lại cho groove; `hold`, `zero`, `release` và
 shutdown thì dừng hẳn. Mọi thứ còn lại vẫn one-shot — `/servo/play` thường
 không bao giờ lặp.
 
+### Mỗi lúc chỉ một nguồn ghi
+
+Recorded move và `goto_target`/`set_target` là hai luồng target độc lập vào
+daemon — daemon nhận cả hai, mỗi chu kỳ điều khiển bên nào ghi sau thì thắng,
+nên aim giữa lúc đang chạy animation trông như motor đánh nhau. Vì vậy mọi lệnh
+pose trực tiếp (`move_to`, `send_positions`, `aim`, `nudge`, `zero`, `hold`,
+`release`, `freeze`) phải giành servo trước: vô hiệu thread play và huỷ move
+đang chạy. Lệnh one-shot trả servo lại cho groove sau khi hết duration; còn
+`send_positions` của tracker thì giữ luôn. Hai thread play cũng không thể chồng
+nhau — mỗi pass giữ lock và kiểm tra lại quyền sở hữu trước khi bắt đầu, nên
+thread đang kẹt trong lần tải thư viện HF đầu tiên (chậm) không bao giờ stream
+đè lên thread mới.
+
+Backend Feetech có sẵn tính chất này: `aim` dừng event loop trước khi move, và
+loop đó là nguồn ghi duy nhất.
+
+Còn tồn: chuyển play → play vẫn giật, vì move của Pollen là quỹ đạo tuyệt đối
+bắt đầu ở pose frame-0 của chính nó mà không có bước đưa đầu tới đó trước —
+Feetech nội suy `current_state → actions[0]` trong `duration` rồi mới chạy frame.
+
 Khác biệt đã biết so với Lamp:
 
 - Upload CSV servo recording là concept của Feetech/Lamp; `add_recording` của

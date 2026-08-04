@@ -373,6 +373,27 @@ the track. An emotion played mid-track runs its one-shot and then hands the
 servo back to the groove; `hold`, `zero`, `release`, and shutdown end it.
 Everything else stays one-shot — a plain `/servo/play` never repeats.
 
+### One Writer At A Time
+
+A recorded move and a `goto_target`/`set_target` are two independent target
+streams into the daemon — it accepts both, and the last writer wins each
+control cycle, so an aim issued during an animation reads as the motors
+fighting each other. Every direct-pose entry point (`move_to`, `send_positions`,
+`aim`, `nudge`, `zero`, `hold`, `release`, `freeze`) therefore claims the servo
+first: it invalidates the play thread and cancels the move in flight. One-shot
+commands hand the servo back to the music groove after the move duration; the
+tracker's `send_positions` keeps it. Two play threads cannot overlap either —
+a pass holds a lock and re-checks ownership before it starts, so a thread stalled
+in the (slow) first HF library load never streams on top of a newer one.
+
+The feetech backend gets this for free: `aim` stops the animation event loop
+before moving, and that loop is the only writer.
+
+Still open: a play → play transition snaps, because Pollen moves are absolute
+trajectories starting at their own first pose and nothing ramps the head there
+first — the Feetech backend interpolates `current_state → actions[0]` over
+`duration` before playing frames.
+
 Known deltas from Lamp:
 
 - CSV upload is a Feetech/Lamp animation concept; Reachy's `add_recording` is a

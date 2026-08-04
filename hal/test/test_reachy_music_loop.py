@@ -50,17 +50,28 @@ class FakeMini:
 
     def __init__(self):
         self.played = []
+        self.gotos = []
+        self.cancels = 0
+        self.max_concurrent_plays = 0
+        self._playing = 0
         self._lock = threading.Lock()
         self._cancel = threading.Event()
 
     def play_move(self, move):
         with self._lock:
             self.played.append(move)
-        # A real move blocks for its duration; cancel_move cuts it short.
-        self._cancel.wait(_MOVE_DURATION_S)
-        self._cancel.clear()
+            self._playing += 1
+            self.max_concurrent_plays = max(self.max_concurrent_plays, self._playing)
+        try:
+            # A real move blocks for its duration; cancel_move cuts it short.
+            self._cancel.wait(_MOVE_DURATION_S)
+            self._cancel.clear()
+        finally:
+            with self._lock:
+                self._playing -= 1
 
     def cancel_move(self):
+        self.cancels += 1
         self._cancel.set()
 
     def enable_motors(self):
@@ -76,7 +87,16 @@ class FakeMini:
         pass
 
     def goto_target(self, **kwargs):
-        pass
+        self.gotos.append(kwargs)
+
+    def set_target(self, **kwargs):
+        self.gotos.append(kwargs)
+
+    def get_current_head_pose(self):
+        raise RuntimeError("no pose read in tests — driver falls back to _target")
+
+    def get_current_joint_positions(self):
+        raise RuntimeError("no joint read in tests")
 
     def play_count(self, name=None):
         with self._lock:
@@ -216,6 +236,85 @@ class TestReachyPlaybackLoop(unittest.TestCase):
         settled = self.mini.play_count()
         time.sleep(_MOVE_DURATION_S * 5)
         self.assertEqual(self.mini.play_count(), settled, "groove survived stop()")
+
+
+class SlowMoves(FakeMoves):
+    """First get() is slow — reproduces a play thread stalled in the HF load."""
+
+    def __init__(self, delay=0.15):
+        self._delay = delay
+
+    def get(self, name):
+        time.sleep(self._delay)
+        return super().get(name)
+
+
+class TestServoOwnership(unittest.TestCase):
+    """One writer at a time: a pose command and a move must not both stream."""
+
+    def setUp(self):
+        self.svc = ReachyMotionService()
+        self.mini = FakeMini()
+        self.svc._mini = self.mini
+        self.svc._moves = FakeMoves()
+
+    def tearDown(self):
+        self.svc._music_playing = False
+        self.svc._music_recording = None
+        self.svc._suppressed = True
+        self.mini.cancel_move()
+        if self.svc._play_thread:
+            self.svc._play_thread.join(timeout=2.0)
+
+    def test_move_to_cancels_a_running_animation(self):
+        self.svc.dispatch(P.SERVO_CMD_PLAY, P.SERVO_CURIOUS)
+        self.assertTrue(_wait_until(lambda: self.mini.play_count("curious1") >= 1))
+        before = self.mini.cancels
+
+        self.svc.move_to({"head_yaw.pos": 10.0}, duration=0.05)
+        self.assertGreater(self.mini.cancels, before, "move_to streamed against a move")
+        self.assertTrue(self.mini.gotos, "move_to did not reach the daemon")
+
+    def test_aim_hands_the_servo_back_to_the_groove(self):
+        self.svc.dispatch(P.SERVO_CMD_MUSIC_START, P.SERVO_MUSIC_GROOVE)
+        self.assertTrue(_wait_until(lambda: self.mini.play_count("dance1") >= 1))
+
+        self.svc.aim(P.AIM_LEFT, 0.05, self.svc.get_positions(), None)
+        played = self.mini.play_count("dance1")
+        self.assertTrue(
+            _wait_until(lambda: self.mini.play_count("dance1") > played),
+            "groove never resumed after aim",
+        )
+
+    def test_two_plays_never_overlap(self):
+        for name in (P.SERVO_CURIOUS, P.SERVO_HAPPY_WIGGLE, P.SERVO_THINKING_DEEP,
+                     P.SERVO_CURIOUS, P.SERVO_HAPPY_WIGGLE):
+            self.svc.dispatch(P.SERVO_CMD_PLAY, name)
+        if self.svc._play_thread:
+            self.svc._play_thread.join(timeout=3.0)
+        self.assertLessEqual(
+            self.mini.max_concurrent_plays, 1,
+            f"two move streams overlapped: {self.mini.played}",
+        )
+
+    def test_play_stalled_in_the_library_never_starts_late(self):
+        """The cancel misses a thread still inside moves.get() — it must skip."""
+        self.svc._moves = SlowMoves()
+        self.svc.dispatch(P.SERVO_CMD_PLAY, P.SERVO_CURIOUS)
+        self.svc.dispatch(P.SERVO_CMD_PLAY, P.SERVO_HAPPY_WIGGLE)
+        if self.svc._play_thread:
+            self.svc._play_thread.join(timeout=3.0)
+        time.sleep(0.25)   # let the superseded thread finish its slow get()
+        self.assertEqual(
+            self.mini.play_count("curious1"), 0,
+            f"superseded play started anyway: {self.mini.played}",
+        )
+        self.assertEqual(self.mini.play_count("cheerful1"), 1)
+
+    def test_aim_without_music_does_not_start_an_animation(self):
+        self.svc.aim(P.AIM_RIGHT, 0.05, self.svc.get_positions(), None)
+        time.sleep(0.15)
+        self.assertEqual(self.mini.play_count(), 0)
 
 
 class TestAvailableRecordings(unittest.TestCase):

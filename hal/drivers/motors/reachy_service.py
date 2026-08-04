@@ -144,6 +144,9 @@ class ReachyMotionService:
         self._mini: Optional[ReachyMini] = None
         # The SDK client documents no thread-safety guarantee — one writer.
         self._lock = threading.RLock()
+        # Held for the whole of one recorded-move pass, so a play thread that
+        # lost the servo cannot stream on top of the one that took it.
+        self._play_lock = threading.Lock()
         # Last commanded targets; fallback state when the daemon can't be read.
         self._target: Dict[str, float] = {k: 0.0 for k in JOINT_KEYS}
         self._suppressed = False
@@ -208,7 +211,7 @@ class ReachyMotionService:
         # start its next repeat right after cancel_move and outlive the join.
         self._music_playing = False
         self._music_recording = None
-        self._cancel_move()
+        self._take_servo()
         if self._play_thread and self._play_thread.is_alive():
             self._play_thread.join(timeout=timeout)
         with self._lock:
@@ -330,7 +333,7 @@ class ReachyMotionService:
 
     def freeze(self) -> None:
         self._frozen = True
-        self._cancel_move()
+        self._take_servo()
 
     def unfreeze(self) -> None:
         self._frozen = False
@@ -347,8 +350,13 @@ class ReachyMotionService:
     # --- Motion primitives ---
 
     def move_to(self, target_positions: Dict[str, float], duration: float = 2.0) -> None:
+        gen = self._take_servo()
+        # Read the pose AFTER the claim: mid-move it returns a transient pose,
+        # and the joints this command does not name would be pinned to it.
         merged = {**self._current_or_target(), **target_positions}
-        self._goto(merged, max(duration, _MIN_MOVE_DURATION_S))
+        eff = max(duration, _MIN_MOVE_DURATION_S)
+        self._goto(merged, eff)
+        self._release_servo(gen, eff)
 
     def move_and_hold(self, target_positions: Dict[str, float], duration: float = 2.0) -> None:
         # The daemon holds the last commanded pose by itself; identical to
@@ -387,6 +395,9 @@ class ReachyMotionService:
                 return dict(self._target)
 
     def send_positions(self, positions: Dict[str, float]) -> None:
+        # No _release_servo: this is the tracker's streaming path, it keeps the
+        # servo for as long as it is running rather than for one command.
+        self._take_servo()
         merged = {**self._current_or_target(), **positions}
         head, antennas, body_yaw = self._compose(merged)
         self._call(
@@ -398,16 +409,16 @@ class ReachyMotionService:
     # --- Postures & modes ---
 
     def zero_pose(self) -> None:
-        # Suppress before cancelling: the flag is what stops a groove repeat
+        # Suppress before claiming: the flag is what stops a groove repeat
         # from starting the next pass and fighting the move to zero.
         self._suppressed = True
-        self._cancel_move()
+        self._take_servo()
         self._goto({k: 0.0 for k in JOINT_KEYS}, 2.0)
 
     def release(self) -> Dict[str, str]:
         errors: Dict[str, str] = {}
-        self._suppressed = True  # before cancel — stops a groove repeat (see zero_pose)
-        self._cancel_move()
+        self._suppressed = True  # before the claim — stops a groove repeat (see zero_pose)
+        self._take_servo()
         with self._lock:
             mini = self._require_mini()
             try:
@@ -435,8 +446,8 @@ class ReachyMotionService:
         self._suppressed = False
 
     def hold(self, explicit: bool = False) -> None:
-        self._suppressed = True  # before cancel — stops a groove repeat (see zero_pose)
-        self._cancel_move()
+        self._suppressed = True  # before the claim — stops a groove repeat (see zero_pose)
+        self._take_servo()
 
     def joint_status(self) -> Dict[str, dict]:
         with self._lock:
@@ -467,8 +478,13 @@ class ReachyMotionService:
             logger.warning("[reachy] unknown aim direction %r — defaulting to center", direction)
             target = _AIM_TARGETS[P.AIM_CENTER]
         positions = {**current_positions, **target}
-        eff = min_move_duration(safety_policy, positions, current_positions, duration)
-        self._goto({**self._current_or_target(), **positions}, max(eff, _MIN_MOVE_DURATION_S))
+        eff = max(
+            min_move_duration(safety_policy, positions, current_positions, duration),
+            _MIN_MOVE_DURATION_S,
+        )
+        gen = self._take_servo()
+        self._goto({**self._current_or_target(), **positions}, eff)
+        self._release_servo(gen, eff)
         return positions
 
     def nudge(self, yaw: float, pitch: float, duration: float,
@@ -482,8 +498,13 @@ class ReachyMotionService:
         if pitch != 0:
             positions["head_pitch.pos"] = current_positions.get("head_pitch.pos", 0.0) + pitch
 
-        eff = min_move_duration(safety_policy, positions, current_positions, duration)
-        self._goto({**self._current_or_target(), **positions}, max(eff, _MIN_MOVE_DURATION_S))
+        eff = max(
+            min_move_duration(safety_policy, positions, current_positions, duration),
+            _MIN_MOVE_DURATION_S,
+        )
+        gen = self._take_servo()
+        self._goto({**self._current_or_target(), **positions}, eff)
+        self._release_servo(gen, eff)
         return positions
 
     # --- Internals ---
@@ -557,6 +578,49 @@ class ReachyMotionService:
         )
         self._target = dict(positions)
 
+    def _take_servo(self) -> int:
+        """Claim the servo for a direct pose command. Returns the new generation.
+
+        A recorded move and a goto/set_target are two independent target
+        streams into the daemon: it accepts both and the last writer wins each
+        control cycle, which is what made an aim during an animation look like
+        the motors were fighting each other. The feetech backend never has two
+        writers — aim stops the animation event loop before moving
+        (animation_service.aim) — so this is the equivalent claim: invalidate
+        the play thread, then cancel whatever it still has in flight.
+        """
+        with self._lock:
+            self._play_gen += 1
+            gen = self._play_gen
+        # Skip the daemon round-trip when nothing is streaming — send_positions
+        # is a per-frame tracking path, not a one-shot command.
+        if self._play_thread is not None and self._play_thread.is_alive():
+            self._cancel_move()
+        return gen
+
+    def _release_servo(self, gen: int, delay: float) -> None:
+        """Hand the servo back to the music groove once the pose command lands.
+
+        Deferred by the move duration: goto_target is not guaranteed to block
+        for the whole interpolation, and restarting the groove on top of a
+        moving head is the very conflict _take_servo just removed. Mirrors the
+        feetech backend, which parks an `__aim_hold__` pose and then falls back
+        into the groove (animation_service.aim + _continue_playback).
+        """
+        if not self._music_playing or not self._music_recording:
+            return
+
+        def _resume():
+            if gen != self._play_gen:
+                return                       # something else claimed the servo
+            groove = self._music_recording
+            if groove and self._music_playing and not (self._suppressed or self._frozen):
+                self._play_recording(groove)
+
+        timer = threading.Timer(max(delay, 0.0), _resume)
+        timer.daemon = True
+        timer.start()
+
     def _cancel_move(self) -> None:
         with self._lock:
             if self._mini is None:
@@ -577,25 +641,38 @@ class ReachyMotionService:
                 self._moves = False
         return self._moves or None
 
-    def _play_move_once(self, move: Any, name: str) -> None:
-        """Play one pass of a recorded move (blocking), reconnecting once."""
-        with self._lock:
-            mini = self._require_mini()
-        # play_move blocks for the move duration — keep it out of _lock so
-        # state reads stay responsive; SDK serializes via the daemon.
-        try:
-            mini.play_move(move)
-        except Exception as e:
-            # Same stale-connection case as _call, but the retry cannot run
-            # under _lock: a move blocks for its whole duration and would
-            # stall every state read behind it.
-            if not _is_disconnect(e):
-                raise
-            logger.warning("[reachy] play '%s': connection lost — reconnecting", name)
+    def _play_move_once(self, move: Any, name: str, gen: int) -> bool:
+        """Play one pass of a recorded move (blocking). False if superseded.
+
+        _play_lock is what keeps two passes from overlapping. Cancelling the
+        old move is not enough on its own: a play thread can sit in
+        moves.get() (the first HF load is slow) while the cancel goes by, then
+        stream its move on top of the newer one — two move streams into the
+        same daemon. The generation is re-checked here, under the lock, so a
+        thread that lost the servo while waiting never plays at all.
+        """
+        with self._play_lock:
+            if gen != self._play_gen:
+                logger.debug("[reachy] play '%s' superseded before start", name)
+                return False
             with self._lock:
-                self._reconnect()
-                mini = self._mini
-            mini.play_move(move)
+                mini = self._require_mini()
+            # play_move blocks for the move duration — keep it out of _lock so
+            # state reads stay responsive; SDK serializes via the daemon.
+            try:
+                mini.play_move(move)
+            except Exception as e:
+                # Same stale-connection case as _call, but the retry cannot run
+                # under _lock: a move blocks for its whole duration and would
+                # stall every state read behind it.
+                if not _is_disconnect(e):
+                    raise
+                logger.warning("[reachy] play '%s': connection lost — reconnecting", name)
+                with self._lock:
+                    self._reconnect()
+                    mini = self._mini
+                mini.play_move(move)
+        return True
 
     def _play_recording(self, name: str) -> None:
         if self._suppressed or self._frozen:
@@ -636,7 +713,8 @@ class ReachyMotionService:
                     else:
                         self._current_recording = current
                         try:
-                            self._play_move_once(move, current)
+                            if not self._play_move_once(move, current, gen):
+                                return   # a newer play owns the servo
                         except Exception as e:
                             logger.warning(
                                 "[reachy] play '%s' (HF: '%s') failed: %s", current, hf_name, e
