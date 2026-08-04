@@ -53,6 +53,7 @@ OS server sử dụng MQTT để giao tiếp với backend server (báo cáo tr�
   "id": "{DeviceID}",
   "mac": "{MAC address}",
   "time": "2026-03-26T17:00:00Z",
+  "wakeword_enabled": false,
   "agent_runtime": "openclaw"
 }
 ```
@@ -63,7 +64,9 @@ rồi `gateway.default` trong `DEVICE.md` của device, cuối cùng mặc đị
 Phản hồi còn kèm các field tùy chọn khi có: `hal_version`, `openclaw_version`,
 `hermes_version`, `picoclaw_version`, `codex_version`, `claudecode_version`,
 `opencode_version`, `local_ip`, `tts_provider`, `tts_voice`, `stt_language`, `timezone`,
-`unsupported_channels`, `skills`. `timezone` là múi giờ IANA **trực tiếp** của device (ví dụ
+`unsupported_channels`, `skills`. `wakeword_enabled` luôn có mặt và báo trạng thái
+effective của wake-word gate top-level trong config (`true` hoặc `false`; config legacy
+thiếu giá trị này sẽ báo `false`). `timezone` là múi giờ IANA **trực tiếp** của device (ví dụ
 `Asia/Ho_Chi_Minh`), đọc tươi từ `/etc/timezone` (fallback về config), không chỉ là
 bản ghi trong config. Cả sáu version per-runtime đều được probe lúc startup (mỗi cái
 từ `--version` riêng) và bắn cạnh nhau; `agent_runtime` cho biết cái nào đang active.
@@ -87,7 +90,7 @@ nhưng chỉ `handleInfo` set nó, nên reply `data` không bao giờ mang theo.
 (`POST {llm_base}/ping`, build bởi `system/device.buildPingPayload`, gửi qua
 `system/beclient`) mang cùng bộ field trạng thái thiết bị như uplink `info`
 này — `local_ip`, `device`, `device_id`, `timezone`, `tts_provider`,
-`tts_voice`, `stt_language`, `hal_version`, `unsupported_channels` — cộng thêm
+`tts_voice`, `stt_language`, `wakeword_enabled`, `hal_version`, `unsupported_channels` — cộng thêm
 `agent_runtime` và `agent_runtime_version`. Khác với `info` (báo version của
 mọi backend đã cài cạnh nhau), ping chỉ gửi **version của runtime đang
 active**. Ping bắn ở: (1) ngay sau khi join WiFi lúc setup (status

@@ -194,7 +194,8 @@ func (c *Client) Ping(token string, payload PingPayload) (*PingResponse, error) 
 // PingPayload is the ping body. Beyond the original status fields it mirrors
 // the device-state fields of the MQTT `info` uplink (MQTTInfoResponse) — same
 // JSON names — so the backend can read them from either channel without a
-// second schema. All optional; a backend that ignores them loses nothing.
+// second schema. All fields are optional except WakeWordEnabled; a backend that
+// ignores them loses nothing.
 type PingPayload struct {
 	Status         string `json:"status,omitempty"`
 	SetupCompleted bool   `json:"setup_completed,omitempty"`
@@ -225,6 +226,9 @@ type PingPayload struct {
 	TTSProvider string `json:"tts_provider,omitempty"`
 	TTSVoice    string `json:"tts_voice,omitempty"`
 	STTLanguage string `json:"stt_language,omitempty"`
+	// WakeWordEnabled is the effective top-level wake-word gate. It is not omitted so
+	// the backend receives an explicit enabled or disabled state on every ping.
+	WakeWordEnabled bool `json:"wakeword_enabled"`
 	// UnsupportedChannels lists configured channels the active runtime cannot
 	// run (populated by ChannelReconcile after a runtime switch).
 	UnsupportedChannels []string `json:"unsupported_channels,omitempty"`

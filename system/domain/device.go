@@ -619,6 +619,10 @@ type MQTTInfoResponse struct {
 	TTSProvider string `json:"tts_provider,omitempty"`
 	TTSVoice    string `json:"tts_voice,omitempty"`
 	STTLanguage string `json:"stt_language,omitempty"`
+	// WakeWordEnabled is the effective top-level wake-word gate from config. It is
+	// intentionally not omitted so MQTT consumers can distinguish disabled
+	// from an older device that does not report the setting.
+	WakeWordEnabled bool `json:"wakeword_enabled"`
 	// Timezone is the device's active IANA zone (e.g. "Asia/Ho_Chi_Minh"). The
 	// base constructor seeds it from config (the record); the info / system.info
 	// handlers override it with the live system value via device.Service.
@@ -659,16 +663,17 @@ type MQTTInfoResponse struct {
 // NewDeviceMessage creates a base message with required fields populated from config.
 func NewMQTTInfoResponse(cfg *config.Config, msgType string, mac string) MQTTInfoResponse {
 	return MQTTInfoResponse{
-		Device:      cfg.DeviceTypeOrDefault(),
-		Type:        msgType,
-		Version:     config.OSVersion,
-		ID:          cfg.DeviceID,
-		Mac:         mac,
-		Time:        time.Now().UTC().Format(time.RFC3339Nano),
-		TTSProvider: cfg.TTSProvider,
-		TTSVoice:    cfg.TTSVoice,
-		STTLanguage: cfg.STTLanguage,
-		Timezone:    cfg.Timezone,
+		Device:          cfg.DeviceTypeOrDefault(),
+		Type:            msgType,
+		Version:         config.OSVersion,
+		ID:              cfg.DeviceID,
+		Mac:             mac,
+		Time:            time.Now().UTC().Format(time.RFC3339Nano),
+		TTSProvider:     cfg.TTSProvider,
+		TTSVoice:        cfg.TTSVoice,
+		STTLanguage:     cfg.STTLanguage,
+		WakeWordEnabled: cfg.WakeWordEnabled(),
+		Timezone:        cfg.Timezone,
 	}
 }
 

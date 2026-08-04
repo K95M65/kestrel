@@ -16,7 +16,7 @@ import (
 
 // buildPingPayload assembles the backend ping body with the same device-state
 // fields the MQTT `info` uplink publishes (local_ip, versions, runtime,
-// voice/STT, timezone) so the backend can read them from either channel. The
+// voice/STT, wake-word gate, timezone) so the backend can read them from either channel. The
 // critical field is LocalIP: the setup web popup's parent page polls the
 // backend for it to rescue the AP→STA redirect when both the AP-alive window
 // and mDNS fail (see docs/setup-flow.md). Every field is omitempty — a backend
@@ -36,6 +36,7 @@ func (s *Service) buildPingPayload(status string) beclient.PingPayload {
 		TTSProvider:         s.config.TTSProvider,
 		TTSVoice:            s.config.TTSVoice,
 		STTLanguage:         s.config.STTLanguage,
+		WakeWordEnabled:     s.config.WakeWordEnabled(),
 		UnsupportedChannels: s.config.ChannelsUnsupported,
 	}
 	if ip, err := s.networkService.GetCurrentIP(); err == nil && ip != apSetupIP {

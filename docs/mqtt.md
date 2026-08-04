@@ -53,6 +53,7 @@ The OS server uses MQTT to communicate with the backend server (status reporting
   "id": "{DeviceID}",
   "mac": "{MAC address}",
   "time": "2026-03-26T17:00:00Z",
+  "wakeword_enabled": false,
   "agent_runtime": "openclaw"
 }
 ```
@@ -63,7 +64,9 @@ The OS server uses MQTT to communicate with the backend server (status reporting
 `openclaw`. The response also carries these optional fields when known:
 `hal_version`, `openclaw_version`, `hermes_version`, `picoclaw_version`,
 `codex_version`, `claudecode_version`, `opencode_version`, `local_ip`, `tts_provider`, `tts_voice`,
-`stt_language`, `timezone`, `unsupported_channels`, `skills`. `timezone` is the device's
+`stt_language`, `timezone`, `unsupported_channels`, `skills`. `wakeword_enabled` is always
+present and reports the effective top-level wake-word gate from config
+(`true` or `false`; a missing legacy config value reports `false`). `timezone` is the device's
 **live** IANA zone (e.g. `Asia/Ho_Chi_Minh`), read fresh from `/etc/timezone`
 (falling back to config), not just the config record. The six per-runtime
 versions are all probed at startup (each from its own `--version`) and
@@ -90,7 +93,7 @@ populates it, so `data` results never carry it.
 (`POST {llm_base}/ping`, built by `system/device.buildPingPayload`, sent via
 `system/beclient`) carries the same device-state fields as this `info` uplink —
 `local_ip`, `device`, `device_id`, `timezone`, `tts_provider`, `tts_voice`,
-`stt_language`, `hal_version`, `unsupported_channels` — plus `agent_runtime` and
+`stt_language`, `wakeword_enabled`, `hal_version`, `unsupported_channels` — plus `agent_runtime` and
 `agent_runtime_version`. Unlike `info` (which reports every installed backend's
 version side by side), the ping sends **only the active runtime's version**. It
 fires (1) right after WiFi join during setup (status `setting_up`,
