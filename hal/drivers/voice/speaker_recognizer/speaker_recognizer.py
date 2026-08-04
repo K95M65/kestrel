@@ -4,10 +4,15 @@ Stores per-user voice embeddings under ``/root/local/users/<name>/voice/`` and
 recognizes speakers via cosine similarity. Embeddings are computed by a
 configurable external API (see ``SPEAKER_EMBEDDING_API_URL``).
 
+Audio preprocessing (Mono → Resample → [HighPass] → [NoiseReduce] → VAD → RMS)
+runs ON THIS DEVICE (see ``audio_processors/``), next to the mic. Only audio that
+passes the VAD/quality gate is uploaded; the server is told to skip its own
+preprocessing (``preprocess=false``) and just compute the embedding.
+
 External API contract:
     POST {SPEAKER_EMBEDDING_API_URL}
     Headers: X-API-Key: {SPEAKER_EMBEDDING_API_KEY} (optional)
-    Body:    {"audios_b64": ["<base64 WAV>", ...]}
+    Body:    {"audios_b64": ["<base64 WAV>", ...], "preprocess": false}
     Response: {"embedding": [float, float, ...]}  (single 1-D vector
               aggregated from all inputs, any dimension)
 
@@ -107,15 +112,6 @@ _VOICE_STRANGER_DIR_RE = re.compile(r"^voice_\d+$")
 # Target sample rate for stored/enrolled audio (matches STT pipeline).
 _TARGET_SR = 16000
 
-# Chunk window the /embed endpoint slices the waveform with before per-chunk
-# embedding extraction. Bumped from the perception-service default (0.5s) because
-# device audio is overwhelmingly single-speaker per turn — longer chunks
-# yield smoother per-chunk embeddings, at the cost of fewer votes in
-# recognize() and reduced ability to detect a speaker switch mid-turn.
-# Audio shorter than this collapses to a single chunk (voting degenerates to
-# plain 1-vs-1 cosine match).
-_CHUNK_SECONDS = float(os.environ.get("HAL_SPEAKER_CHUNK_SECONDS", "3.0"))
-
 
 class SpeakerRecognizerError(Exception):
     """Raised on invalid input or external API failure."""
@@ -130,6 +126,83 @@ class EmbeddingAPIUnavailableError(SpeakerRecognizerError):
     instead of skipping the sample, to avoid misattributing an outage to
     bad audio and to avoid destructive cleanup of valid on-disk samples.
     """
+
+
+class AudioGateRejectedError(SpeakerRecognizerError):
+    """Raised when the on-device preprocessing gate (VAD/quality) rejects audio.
+
+    Still a ``SpeakerRecognizerError`` so recognize() degrades to "unknown" and
+    the enroll new-sample loop skips the clip — same as when perception used to
+    return HTTP 400. Kept DISTINCT from a plain decode/corrupt failure so the
+    enroll path does NOT delete a previously-accepted on-disk sample just
+    because the gate got stricter (the gate is a moving target; a stored WAV is
+    not "corrupt" merely because today's VAD trims it below threshold).
+    """
+
+
+# ---------------------------------------------------------------------------
+# On-device audio preprocessing (moved from perception-service).
+#
+# The filter/VAD/normalize chain (Mono -> Resample -> [HighPass] ->
+# [NoiseReduce] -> VAD -> RMS) now runs HERE, next to the mic. Only audio that
+# passes the VAD/quality gate is uploaded; the embedding server is then told to
+# skip its own preprocessing (preprocess=false) and just compute the embedding.
+# The composite processor is a lazily-built singleton because the silero VAD
+# model loads once and is reused across every enroll/recognize call.
+# ---------------------------------------------------------------------------
+_audio_processor: Optional[Any] = None
+_audio_processor_lock = threading.Lock()
+
+
+def _get_audio_processor() -> Any:
+    """Lazily build + start the composite preprocessor (silero VAD loads once)."""
+    global _audio_processor
+    if _audio_processor is not None:
+        return _audio_processor
+    with _audio_processor_lock:
+        if _audio_processor is None:
+            # Heavy imports (torch / silero-vad) are deferred to first use so
+            # module import stays light and lint doesn't require the VAD deps.
+            from hal.drivers.voice.speaker_recognizer.audio_processors.factory import (
+                AudioProcessorFactory,
+            )
+
+            factory = AudioProcessorFactory(
+                target_sample_rate=config.SPEAKER_PROC_TARGET_SR,
+                enable_mono=config.SPEAKER_PROC_ENABLE_MONO,
+                enable_resample=config.SPEAKER_PROC_ENABLE_RESAMPLE,
+                enable_high_pass=config.SPEAKER_PROC_ENABLE_HIGH_PASS,
+                high_pass_cutoff_hz=config.SPEAKER_PROC_HIGH_PASS_CUTOFF_HZ,
+                enable_noise_reduce=config.SPEAKER_PROC_ENABLE_NOISE_REDUCE,
+                noise_reduce_stationary=config.SPEAKER_PROC_NOISE_STATIONARY,
+                enable_vad=config.SPEAKER_PROC_ENABLE_VAD,
+                vad_min_duration_sec=config.SPEAKER_PROC_VAD_MIN_DURATION_SEC,
+                vad_min_voice_ratio=config.SPEAKER_PROC_VAD_MIN_VOICE_RATIO,
+                enable_rms_normalize=config.SPEAKER_PROC_ENABLE_RMS_NORMALIZE,
+                rms_target=config.SPEAKER_PROC_RMS_TARGET,
+            )
+            try:
+                proc = factory.create()
+                proc.start()  # loads the silero VAD model
+            except Exception as e:
+                # Missing dep / model-load failure is systemic, not audio-level.
+                # Raise EmbeddingAPIUnavailableError so enroll aborts cleanly
+                # (never deletes on-disk samples) and recognize degrades to
+                # "unknown" instead of crashing every turn with a 500.
+                logger.error(
+                    "Failed to init on-device audio preprocessor: %s", e)
+                raise EmbeddingAPIUnavailableError(
+                    f"audio preprocessor unavailable: {e}"
+                ) from e
+            _audio_processor = proc
+            logger.info(
+                "On-device audio preprocessor ready "
+                "(mono=%s resample=%s highpass=%s noise=%s vad=%s rms=%s)",
+                config.SPEAKER_PROC_ENABLE_MONO, config.SPEAKER_PROC_ENABLE_RESAMPLE,
+                config.SPEAKER_PROC_ENABLE_HIGH_PASS, config.SPEAKER_PROC_ENABLE_NOISE_REDUCE,
+                config.SPEAKER_PROC_ENABLE_VAD, config.SPEAKER_PROC_ENABLE_RMS_NORMALIZE,
+            )
+    return _audio_processor
 
 
 def _normalize_label(name: str) -> str:
@@ -442,7 +515,7 @@ class SpeakerRecognizer:
 
         body: dict[str, Any] = {
             "audios_b64": audios_b64,
-            "chunk_seconds": _CHUNK_SECONDS,
+            "preprocess": False,
         }
         if return_chunks:
             body["return_chunks"] = True
@@ -527,41 +600,54 @@ class SpeakerRecognizer:
         return vec / norm
 
     def _prepare_wav_for_embedding(self, wav_bytes: bytes) -> list[str]:
-        """Validate + wrap a single WAV as a one-element base64 list.
+        """Run the on-device preprocessing pipeline and wrap the cleaned WAV.
 
-        The ``/embed`` endpoint accepts a list of audios but concatenates
-        them into one waveform before preprocessing/VAD/chunking, so
-        pre-splitting long audio client-side would only add a lossy
-        float32 → PCM_16 round-trip per slice. Pass the whole WAV through
-        and let the server window it with its own chunk_with_stride.
+        HAL now runs the full filter/VAD/normalize chain locally (Mono →
+        Resample → [HighPass] → [NoiseReduce] → VAD → RMS) — the pipeline that
+        used to run inside perception-service. Only audio that PASSES the gate
+        is returned for upload; ``_call_embedding_api`` then asks the server to
+        skip its own preprocessing (``preprocess=false``) and just compute the
+        embedding on this cleaned waveform.
 
-        Two gates before we hit the network:
+        The ``/embed`` endpoint still windows/chunks the waveform itself, so we
+        pass the whole cleaned WAV as a single element and let the server slice
+        it (client-side splitting would only add a lossy float32 → PCM_16
+        round-trip per slice).
 
-        * **Duration ≥ 0.5s.** The server's windowing uses
-          ``min_chunk_sec ≈ 0.4s`` *after* VAD trims silence, so leaving a
-          100 ms headroom on the raw audio prevents the server from
-          silently returning "no embeddings produced".
-        * **RMS ≥ 1e-4 (~−80 dBFS).** A silent file would also pass 0.5s;
-          we check loudness on the raw signal to reject it early, even
-          though VAD might have caught it server-side. This also dodges
-          ONNX crashes (``Invalid input shape: {80, 0}``) when kaldi fbank
-          produces an empty feature tensor.
+        Raises ``SpeakerRecognizerError`` (audio-level) when the pipeline
+        rejects the clip — recognize() maps that to "unknown" and enroll()
+        skips the sample, exactly as when the server returned HTTP 400. Note
+        this is deliberately NOT ``EmbeddingAPIUnavailableError``: a rejected
+        clip is a bad recording, not a server outage.
         """
+        # Light submodule imports (Audio / PreprocessRejected) avoid pulling in
+        # torch/silero at module import time — those load in _get_audio_processor.
+        from hal.drivers.voice.speaker_recognizer.audio_processors.base import Audio
+        from hal.drivers.voice.speaker_recognizer.audio_processors.exceptions import (
+            PreprocessRejected,
+        )
+
         waveform = _wav_bytes_to_float32_16k_mono(wav_bytes)
+        if waveform.shape[0] == 0:
+            raise SpeakerRecognizerError("empty audio for embedding")
 
-        min_samples = int(0.5 * _TARGET_SR)
-        if waveform.shape[0] < min_samples:
-            raise SpeakerRecognizerError(
-                f"audio too short for embedding: {waveform.shape[0]/_TARGET_SR:.2f}s < 0.5s"
-            )
+        processor = _get_audio_processor()
+        try:
+            cleaned = processor.process(
+                Audio(waveform=waveform, sample_rate=_TARGET_SR))
+        except PreprocessRejected as e:
+            # AudioGateRejectedError (not a plain SpeakerRecognizerError) so the
+            # enroll path keeps previously-accepted on-disk samples instead of
+            # deleting them when the gate gets stricter.
+            raise AudioGateRejectedError(
+                f"audio rejected by preprocessing gate [{e.reason}]: {e}"
+            ) from e
 
-        rms = float(np.sqrt(np.mean(waveform.astype(np.float64) ** 2)))
-        if rms < 1e-4:
-            raise SpeakerRecognizerError(
-                f"audio too silent for embedding: rms={rms:.6f} < 1e-4"
-            )
+        out = np.asarray(cleaned.waveform, dtype=np.float32)
+        if out.shape[0] == 0:
+            raise SpeakerRecognizerError("preprocessing produced empty audio")
 
-        return [base64.b64encode(_float32_waveform_to_wav_bytes(waveform)).decode("ascii")]
+        return [base64.b64encode(_float32_waveform_to_wav_bytes(out)).decode("ascii")]
 
     # ------------------------------------------------------------- metadata
 
@@ -862,7 +948,20 @@ class SpeakerRecognizer:
         for p in existing_on_disk:
             try:
                 payload = self._prepare_wav_for_embedding(p.read_bytes())
+            except EmbeddingAPIUnavailableError:
+                # Preprocessor unavailable (systemic) — abort, never delete.
+                raise
+            except AudioGateRejectedError as e:
+                # The gate (VAD/quality) rejected a previously-accepted sample.
+                # The gate is a moving target, so KEEP the file — deleting it
+                # would silently shrink an enrollment as thresholds change.
+                logger.warning(
+                    "Enroll: skipping existing sample %s — gate rejected (%s), file kept",
+                    p.name, e,
+                )
+                continue
             except SpeakerRecognizerError as e:
+                # Genuine decode/corrupt failure — safe to delete.
                 logger.warning(
                     "Enroll: removing broken existing sample %s — %s",
                     p.name, e,
