@@ -4,10 +4,11 @@ Stores per-user voice embeddings under ``/root/local/users/<name>/voice/`` and
 recognizes speakers via cosine similarity. Embeddings are computed by a
 configurable external API (see ``SPEAKER_EMBEDDING_API_URL``).
 
-Audio preprocessing (Mono → Resample → [HighPass] → [NoiseReduce] → VAD → RMS)
-runs ON THIS DEVICE (see ``audio_processors/``), next to the mic. Only audio that
-passes the VAD/quality gate is uploaded; the server is told to skip its own
-preprocessing (``preprocess=false``) and just compute the embedding.
+Audio preprocessing (Mono → Resample → [HighPass] → [NoiseReduce] → VAD →
+[STOI gate] → RMS) runs ON THIS DEVICE (see ``audio_processors/``), next to the
+mic. Only audio that passes the VAD + STOI intelligibility gate is uploaded; the
+server is told to skip its own preprocessing (``preprocess=false``) and just
+compute the embedding.
 
 External API contract:
     POST {SPEAKER_EMBEDDING_API_URL}
@@ -144,11 +145,12 @@ class AudioGateRejectedError(SpeakerRecognizerError):
 # On-device audio preprocessing (moved from perception-service).
 #
 # The filter/VAD/normalize chain (Mono -> Resample -> [HighPass] ->
-# [NoiseReduce] -> VAD -> RMS) now runs HERE, next to the mic. Only audio that
-# passes the VAD/quality gate is uploaded; the embedding server is then told to
-# skip its own preprocessing (preprocess=false) and just compute the embedding.
-# The composite processor is a lazily-built singleton because the silero VAD
-# model loads once and is reused across every enroll/recognize call.
+# [NoiseReduce] -> VAD -> [STOI gate] -> RMS) now runs HERE, next to the mic.
+# Only audio that passes the VAD + STOI intelligibility gate is uploaded; the
+# embedding server is then told to skip its own preprocessing (preprocess=false)
+# and just compute the embedding. The composite processor is a lazily-built
+# singleton because the silero VAD + STOI models load once and are reused across
+# every enroll/recognize call.
 # ---------------------------------------------------------------------------
 _audio_processor: Optional[Any] = None
 _audio_processor_lock = threading.Lock()
@@ -180,6 +182,10 @@ def _get_audio_processor() -> Any:
                 vad_min_voice_ratio=config.SPEAKER_PROC_VAD_MIN_VOICE_RATIO,
                 enable_rms_normalize=config.SPEAKER_PROC_ENABLE_RMS_NORMALIZE,
                 rms_target=config.SPEAKER_PROC_RMS_TARGET,
+                enable_stoi=config.SPEAKER_PROC_ENABLE_STOI,
+                stoi_model_path=config.SPEAKER_PROC_STOI_MODEL_PATH,
+                stoi_threshold=config.SPEAKER_PROC_STOI_THRESHOLD,
+                stoi_chunk_sec=config.SPEAKER_PROC_STOI_CHUNK_SEC,
             )
             try:
                 proc = factory.create()
@@ -197,10 +203,11 @@ def _get_audio_processor() -> Any:
             _audio_processor = proc
             logger.info(
                 "On-device audio preprocessor ready "
-                "(mono=%s resample=%s highpass=%s noise=%s vad=%s rms=%s)",
+                "(mono=%s resample=%s highpass=%s noise=%s vad=%s stoi=%s rms=%s)",
                 config.SPEAKER_PROC_ENABLE_MONO, config.SPEAKER_PROC_ENABLE_RESAMPLE,
                 config.SPEAKER_PROC_ENABLE_HIGH_PASS, config.SPEAKER_PROC_ENABLE_NOISE_REDUCE,
-                config.SPEAKER_PROC_ENABLE_VAD, config.SPEAKER_PROC_ENABLE_RMS_NORMALIZE,
+                config.SPEAKER_PROC_ENABLE_VAD, config.SPEAKER_PROC_ENABLE_STOI,
+                config.SPEAKER_PROC_ENABLE_RMS_NORMALIZE,
             )
     return _audio_processor
 
@@ -802,8 +809,9 @@ class SpeakerRecognizer:
         """Run the on-device preprocessing pipeline and wrap the cleaned WAV.
 
         HAL now runs the full filter/VAD/normalize chain locally (Mono →
-        Resample → [HighPass] → [NoiseReduce] → VAD → RMS) — the pipeline that
-        used to run inside perception-service. Only audio that PASSES the gate
+        Resample → [HighPass] → [NoiseReduce] → VAD → [STOI] → RMS) — the
+        pipeline that used to run inside perception-service, plus the HAL-only
+        STOI intelligibility gate. Only audio that PASSES the gate
         is returned for upload; ``_call_embedding_api`` then asks the server to
         skip its own preprocessing (``preprocess=false``) and just compute the
         embedding on this cleaned waveform.
