@@ -1,6 +1,6 @@
 ---
 name: wellbeing
-description: Proactive coaching across hydration, breaks, meals AND posture. Use when an [activity] event fires (message starts with `[activity] Activity detected: <labels>.` — labels include drink, break, celebrate, or sedentary raw labels like "using computer"; sedentary events may also carry a [posture_summary: {...}] block when the user has been at the computer long enough for posture to drift), or when the user asks if they should drink water / take a break / fix their posture. Thresholds are computed from per-user logs, never guessed.
+description: Proactive coaching across hydration, breaks, meals AND posture. Use when an [activity] event fires (message starts with `[activity] Activity detected: <labels>.` — labels include drink, break, celebrate, the fatigue label "yawning", or sedentary raw labels like "using computer"; sedentary events may also carry a [posture_summary: {...}] block when the user has been at the computer long enough for posture to drift), or when the user asks if they should drink water / take a break / fix their posture. Thresholds are computed from per-user logs, never guessed.
 ---
 
 # Wellbeing
@@ -27,10 +27,11 @@ description: Proactive coaching across hydration, breaks, meals AND posture. Use
 ```
 HYDRATION_THRESHOLD_MIN = 45
 BREAK_THRESHOLD_MIN     = 30
+BREAK_THRESHOLD_TIRED   = 20    # replaces the above when `yawning` is in the labels
 TOILET_DRINK_THRESHOLD  = 2     # count-based — fires once per N drinks since last nudge
 ```
 
-**The backend writes activities; you only write nudges.** Rows for `drink` / `break` / `celebrate` / sedentary labels are posted by the backend directly when `motion.activity` fires — before the event reaches you. Do NOT re-log them. You still POST `nudge_hydration` / `nudge_break` because only you know when you actually spoke.
+**The backend writes activities; you only write nudges.** Rows for `drink` / `break` / `celebrate` / `yawning` / sedentary labels are posted by the backend directly when `motion.activity` fires — before the event reaches you. Do NOT re-log them. You still POST `nudge_hydration` / `nudge_break` because only you know when you actually spoke.
 
 **Presence rows** (`enter` / `leave`) are written by the backend on `presence.*` events. You never POST those either.
 
@@ -38,7 +39,7 @@ TOILET_DRINK_THRESHOLD  = 2     # count-based — fires once per N drinks since 
 
 1. **Only** call `http://127.0.0.1:5000/api/openclaw/wellbeing-history` to read history. **Never** read `/root/local/users/*/wellbeing/*.jsonl` or `/root/local/users/*/posture/*.jsonl` with `cat`, `ls`, `head`, `tail`, `grep`, or any filesystem tool. Posture history is digested into `last_posture_nudge_age_min` upstream — no agent-side read is needed.
 2. **Only** POST to `http://127.0.0.1:5000/api/wellbeing/log` (hydration / break / toilet / morning / sleep / meal) or `http://127.0.0.1:5000/api/posture/log` (nudge_posture / praise_posture). **Never** substitute `5001`, `8080`, or any other port. **Never** omit `http://` or hardcode `localhost`.
-3. **Only** write these action values: `nudge_hydration`, `nudge_break`, `nudge_toilet`, `morning_greeting`, `sleep_winddown`, `meal_reminder` (wellbeing log), `nudge_posture`, `praise_posture` (posture log). Never invent new actions. (Activity rows — `drink`, `break`, raw sedentary labels, raw eat labels like `eating burger` / `dining` / `tasting food` — are written by the backend, never by you. There are no agent-written `posture_alert` rows; HAL's per-frame samples live in a separate debug JSONL on the device and never reach the posture history API.)
+3. **Only** write these action values: `nudge_hydration`, `nudge_break`, `nudge_toilet`, `morning_greeting`, `sleep_winddown`, `meal_reminder` (wellbeing log), `nudge_posture`, `praise_posture` (posture log). Never invent new actions. (Activity rows — `drink`, `break`, `yawning`, raw sedentary labels, raw eat labels like `eating burger` / `dining` / `tasting food` — are written by the backend, never by you. There are no agent-written `posture_alert` rows; HAL's per-frame samples live in a separate debug JSONL on the device and never reach the posture history API.)
 4. On a non-2xx response from a POST → you used the wrong port or path. Fix the URL and retry **once**. Do not give up silently — the nudge row must land, or the skill will spam reminders forever.
 5. **Never** infer `user` from memory, `KNOWLEDGE.md`, chat history, or `senderLabel`. Only the `[context: current_user=X]` tag counts.
 6. **Trust the log, not memory.** If the history response contains no `nudge_hydration` entry, no nudge has happened — ignore any self-memory claim otherwise.
@@ -118,11 +119,11 @@ Read the `[activity] Activity detected: <labels>.` message + the `[wellbeing_con
 |---|---|---|---|
 | 1 | labels list contains `drink`, `break`, or `celebrate` OR any raw eat label (`eating burger`, `dining`, `tasting food`, … — i.e. any `eating *` / `dining` / `tasting food`) | **reaction** | 1–3 sentence acknowledgment per the **Reaction** section. **No HW marker** (the backend already logged the row upstream). |
 | 2 | `first_activity_today == true` AND `current_hour ∈ [5, 11)` AND `morning_greeting_done_today == false` | **morning-greeting** | See `reference/morning-greeting.md`. Logs `morning_greeting` action to gate next firings today. |
-| 3 | `current_hour >= 21` AND labels are sedentary (no `drink`/`break`) AND `sleep_winddown_done_today == false` | **sleep-winddown** | See `reference/sleep-winddown.md`. Logs `sleep_winddown` action. Replaces break nudge in late evening. |
+| 3 | `current_hour >= 21` AND labels are sedentary and/or `yawning` (no `drink`/`break`) AND `sleep_winddown_done_today == false` | **sleep-winddown** | See `reference/sleep-winddown.md`. Logs `sleep_winddown` action. Replaces break nudge in late evening. A `yawning` label riding alongside a sedentary one does **not** disqualify this route — it is the strongest possible confirmation for it. |
 | 4 | `meal_window` is non-empty AND `meal_signal_in_window == false` | **meal-reminder** | See `reference/meal-reminder.md`. Logs `meal_reminder` action with trigger `lunch` / `dinner`. Gate covers BOTH a prior reminder you already fired AND a real eat label the backend logged — so we don't ask "have you eaten?" after a real meal. |
 | 5 | `[posture_summary]` block present in the message | **posture-nudge** | Speak a posture nudge per the **Posture phrasing** section + post `nudge_posture` to the **posture log** (NOT wellbeing log). Anchor the line on `dominant_region` and `streak_min`. Outranks plain break/hydration nudges so we don't double-up on "stand up". |
 | 6 | `hydration_delta_min >= HYDRATION_THRESHOLD_MIN` | **hydration-nudge** | Speak a hydration nudge per the **Phrasing** section + post `nudge_hydration` HW marker. |
-| 7 | `break_delta_min >= BREAK_THRESHOLD_MIN` | **break-nudge** | Speak a break nudge + post `nudge_break` HW marker. |
+| 7 | `break_delta_min >= BREAK_THRESHOLD_MIN`, **or** `break_delta_min >= BREAK_THRESHOLD_TIRED` when the labels contain `yawning` | **break-nudge** | Speak a break nudge + post `nudge_break` HW marker. When the yawn is what brought the threshold down, use the **Tired break tone** table — the standard lines claim the user has been at it "a while", which is false at 20 minutes. |
 | 8 | `drinks_since_toilet_nudge >= TOILET_DRINK_THRESHOLD` | **toilet-nudge** | Speak a toilet nudge per the **Phrasing** section + post `nudge_toilet` HW marker. The POST resets the counter to 0 → next nudge only after another full N drinks. |
 | 9 | anything else (sedentary under threshold, or any delta == `-1` → no reset today yet) | **silent** | `NO_REPLY`. |
 
@@ -137,6 +138,8 @@ Read the `[activity] Activity detected: <labels>.` message + the `[wellbeing_con
 ## Reaction (when the user just did the thing)
 
 When the activity labels include `drink`, `break`, `celebrate`, or any raw eat label (`eating burger`, `dining`, `tasting food`, …), **always speak** — silence on a positive action makes the device feel dead. This is the path the user explicitly asked for: short, surprised, casual acknowledgments instead of stoic NO_REPLY.
+
+> **`yawning` is NOT a reaction label.** It is fatigue evidence, not something the user accomplished, and it recurs — acknowledging it ("you yawned!") reads as surveillance. A yawn never opens this route on its own; it only sharpens routes #3 and #7 once one of those wins. If the labels are `yawning` alone and no threshold route matches, the answer is `NO_REPLY`.
 
 **Inputs to weave in (use what fits, ignore what doesn't):**
 - `count_today.drink` / `count_today.break` — N-th of the day, streak, milestone.
@@ -244,6 +247,19 @@ shape live in `reference/posture.md`.
 | `playing controller` | *"Wrap up this round, then stand and stretch your legs. Sitting still tightens up your circulation — you'll feel it tonight if you don't."* |
 | (no label) | *"You've been parked in one spot a while. Up on your feet for a quick lap, get the body waking up again."* |
 
+### Tired break tone (paraphrase — never copy)
+
+Use when `yawning` is what brought route #7 forward to `BREAK_THRESHOLD_TIRED`. The standard break lines lean on *"you've been at it a while"*, which is untrue at 20 minutes — anchor on how they seem instead of how long it's been. Never mention the camera or say you saw them yawn; *"you seem"* is the register, not *"I detected"*.
+
+| Vibe | Example tone |
+|---|---|
+| gentle | *"You're flagging a bit. Get up for two minutes — it'll do more than pushing through will."* |
+| practical | *"Energy's dipping. Stand up, get some water in you, come back — twenty seconds of ceiling does wonders."* |
+| light | *"You're running on fumes there. Quick lap around the room, then back to it."* |
+| direct | *"Take five. You'll get more done after a break than you will grinding through this stretch."* |
+
+Pair it with the sedentary label when one is present (*"eyes are done, not just you"*). Do **not** stack this with the standard break table — pick one register.
+
 ### Toilet tone (new — paraphrase — never copy)
 
 This only fires after several drinks, so the natural opener is "you've had a fair bit to drink already". Keep it casual — bathroom talk isn't shy, but it isn't a lecture either.
@@ -308,6 +324,7 @@ Backend writes the `enter` / `leave` rows. You do nothing for these events — s
 | `celebrate` | the backend (on `motion.activity`) | User celebrated (clap / applause / celebration), collapsed to the bucket name. Reaction only — **not** a reset point for break/hydration timers. |
 | Raw eat labels — `eating burger`, `eating cake`, `eating carrots`, `eating doughnuts`, `eating hotdog`, `eating ice cream`, `eating spaghetti`, `eating watermelon`, `dining`, `tasting food` | the backend (on `motion.activity`) | User ate. Raw labels kept (same hybrid as sedentary) so reaction phrasing can ground in the specific food. **Counts as meal signal** for the meal-reminder gate, **not** as a reset for break/hydration timers. |
 | `using computer`, `writing`, `texting`, `reading`, `drawing`, `playing controller` | the backend (on `motion.activity`) | Sedentary — logged for timeline + phrasing. `reading` covers book/newspaper (collapsed in HAL). **Not a reset point.** |
+| `yawning` | the backend (on `motion.activity`) | Fatigue evidence, kept raw like the sedentary labels. Lowers the break threshold to `BREAK_THRESHOLD_TIRED` (route #7) and confirms sleep-winddown (route #3). **Not a reset point**, **not** a reaction label — never acknowledge a yawn out loud on its own, and it does not count as the day's first activity. |
 | `enter`, `leave` | Backend (on `presence.*` events) | Session boundary; deduped against last presence row, so stranger-ID churn collapses. **Reset point.** |
 | `nudge_hydration`, `nudge_break` | **You**, after speaking a nudge | Wellbeing log. Timeline + reset for next window. |
 | `nudge_toilet` | **You**, after a toilet nudge | Wellbeing log. Resets `drinks_since_toilet_nudge` counter to 0. Sparse by design: only re-fires after another N drinks. |
@@ -317,4 +334,4 @@ Backend writes the `enter` / `leave` rows. You do nothing for these events — s
 | `nudge_posture` | **You**, on the posture-nudge route | **Posture log** (separate JSONL). Carries `nudge_level=4`. HAL's cooldown already gates re-firing for ~30 min — your POST does not by itself reset it. |
 | `praise_posture` | **You**, when the user clearly fixed posture after a recent nudge | **Posture log**. Rare — only when context shows improvement following an agent nudge in the last ~30 min. |
 
-Emotional labels (`laughing`, `crying`, `yawning`, `singing`) are filtered upstream and never reach this skill via `motion.activity` — they'll arrive on a separate `motion.emotional` event in a future version.
+Emotional labels (`laughing`, `crying`, `singing`) are filtered upstream and never reach this skill via `motion.activity` — they'll arrive on a separate `motion.emotional` event in a future version. `yawning` is the exception: it is NOT emotional, it's fatigue evidence, and it does reach you as a raw label (see route #7 and the action reference below).

@@ -51,6 +51,7 @@ const RAW_LABEL_ICON: Record<string, string> = {
   "drinking beer": "🍺",
   "drinking shots": "🥃",
   "tasting beer": "🍺",
+  // de-whitelisted (not in HAL's white_list.txt) — kept so old rows still render
   "opening bottle": "🍾",
   "making tea": "🍵",
   // break
@@ -86,6 +87,8 @@ const RAW_LABEL_ICON: Record<string, string> = {
   "reading newspaper": "📰",
   "drawing": "🎨",
   "playing controller": "🎮",
+  // tired
+  "yawning": "🥱",
 };
 
 function rawLabelIcon(notes: string, fallback: string): string {

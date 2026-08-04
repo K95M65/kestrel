@@ -1,6 +1,8 @@
 # Sleep wind-down route
 
-Fires only when the routing table in `SKILL.md` picks `sleep-winddown` (row #3: `current_hour >= 21`, sedentary labels (no `drink`/`break`), `sleep_winddown_done_today == false`). Otherwise STOP.
+Fires only when the routing table in `SKILL.md` picks `sleep-winddown` (row #3: `current_hour >= 21`, sedentary and/or `yawning` labels (no `drink`/`break`), `sleep_winddown_done_today == false`). Otherwise STOP.
+
+> A `yawning` label in the message confirms the route — it does **not** change the register. Stay soft either way: the phrasing rules below hold whether the trigger was the clock alone or the clock plus a yawn. Don't tell them you saw them yawn.
 
 ## Intent
 

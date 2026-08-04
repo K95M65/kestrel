@@ -37,14 +37,17 @@ const (
 // excluded — counting them would explode the map and isn't useful phrasing.
 var reactionCountActions = []string{"drink", "break"}
 
-// nonActivityActions are wellbeing-log rows that don't represent a user
-// motion.activity event: presence boundaries written by the backend, and
-// agent-written nudge/reminder logs. Used to decide first_activity_today —
-// the morning-greeting route fires on the first REAL motion event of the
-// day, not on a presence.enter row that landed at wake-up.
+// nonActivityActions are wellbeing-log rows that don't count as the user
+// DOING something: presence boundaries written by the backend, agent-written
+// nudge/reminder logs, and `yawning` (HAL logs it like any other raw label,
+// but it is a state the user leaked, not an activity they performed). Used to
+// decide first_activity_today — the morning-greeting route fires on the first
+// REAL activity of the day, not on a presence.enter row that landed at
+// wake-up, and not on the first yawn of the morning.
 var nonActivityActions = map[string]bool{
 	"enter":            true,
 	"leave":            true,
+	"yawning":          true,
 	"nudge_hydration":  true,
 	"nudge_break":      true,
 	"nudge_toilet":     true,
