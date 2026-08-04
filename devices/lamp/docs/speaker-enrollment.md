@@ -158,6 +158,29 @@ Mirror perception's `AudioProcessorSetting` defaults; override via env (all pref
 | VAD min voice ratio | 0.4 | `HAL_SPEAKER_PROC_VAD_MIN_VOICE_RATIO` | Reject if voice fraction lower |
 | RMS normalize | on | `HAL_SPEAKER_PROC_ENABLE_RMS_NORMALIZE` / `..._RMS_TARGET` (0.1) | Fixed-loudness normalize |
 
+### Debug tracing (temporary)
+
+`speaker_recognizer.py` carries a self-contained diagnostic tracer, tagged `SPEAKER-DEBUG` throughout the file, for tuning recognition thresholds on real audio. **It is OFF by default (production-safe) — set `HAL_SPEAKER_DEBUG=true` to enable it during development**, and it is meant to be deleted entirely before a final deploy. `grep -n "SPEAKER-DEBUG"` finds every line belonging to it; no other module or config file is involved.
+
+Each `recognize()` / `enroll()` call writes one directory:
+
+```
+<root>/recognize/<ts>_<class>_<confidence>/     class = enrolled name | stranger-<N> | unknown
+<root>/recognize/<ts>_FAIL-<reason>/            no-voice | low-voice | too-short | server-error | …
+<root>/enroll/<ts>_<norm>_<cohesion>/           cohesion = mean sim of kept samples to the centroid
+<root>/enroll/<ts>_FAIL-<reason>/
+```
+
+holding `input.wav` / `sample_new_NN.wav`, the embeddings as `.npy`, and `result.json`. For a recognize the JSON carries the **full** decision breakdown — not just the top-3 `candidates` the API returns, but `speaker_summary` (votes + mean/max similarity for *every* enrolled speaker, including 0-vote losers) and `per_chunk_scores` (each chunk vs every speaker, plus which speaker that chunk voted for). The same matrix is saved as `chunk_scores.npy` (`[chunks × speakers]`, columns in `enrolled_speakers` order). Unknown speakers also record the stranger-cluster match score and which cluster was closest.
+
+| Parameter | Default | Env var | Description |
+|-----------|---------|---------|-------------|
+| Debug tracing | **off** | `HAL_SPEAKER_DEBUG` | Set `true` to enable. Read once at construction — restart HAL after changing |
+| Output root | `speaker_logs/` next to `speaker_recognizer.py` | `HAL_SPEAKER_DEBUG_DIR` | Falls back to a temp dir if the source tree is read-only (device deploy) |
+| Max entries | 1000 | `HAL_SPEAKER_DEBUG_MAX_ENTRIES` | Per-kind directory cap, oldest pruned; `0` = unbounded |
+
+The default output dir is git-ignored — never commit trace output. The tracer swallows all of its own errors, so a failing trace can never break recognition.
+
 ## Storage
 
 ```

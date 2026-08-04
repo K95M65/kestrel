@@ -159,6 +159,29 @@ Khớp giá trị mặc định của `AudioProcessorSetting` bên perception; o
 | VAD min voice ratio | 0.4 | `HAL_SPEAKER_PROC_VAD_MIN_VOICE_RATIO` | Loại nếu tỉ lệ tiếng nói thấp hơn |
 | RMS normalize | bật | `HAL_SPEAKER_PROC_ENABLE_RMS_NORMALIZE` / `..._RMS_TARGET` (0.1) | Chuẩn hoá độ lớn cố định |
 
+### Debug tracing (tạm thời)
+
+`speaker_recognizer.py` có sẵn một bộ tracer chẩn đoán độc lập, đánh dấu `SPEAKER-DEBUG` xuyên suốt file, dùng để tinh chỉnh ngưỡng nhận diện trên audio thật. **Mặc định TẮT (an toàn cho production) — đặt `HAL_SPEAKER_DEBUG=true` để bật khi phát triển**, và nên xoá hẳn trước khi deploy chính thức. `grep -n "SPEAKER-DEBUG"` sẽ ra mọi dòng thuộc về nó; không đụng tới module hay file config nào khác.
+
+Mỗi lần gọi `recognize()` / `enroll()` sẽ ghi ra một thư mục:
+
+```
+<root>/recognize/<ts>_<class>_<confidence>/     class = tên đã đăng ký | stranger-<N> | unknown
+<root>/recognize/<ts>_FAIL-<reason>/            no-voice | low-voice | too-short | server-error | …
+<root>/enroll/<ts>_<norm>_<cohesion>/           cohesion = sim trung bình của các mẫu giữ lại so với centroid
+<root>/enroll/<ts>_FAIL-<reason>/
+```
+
+chứa `input.wav` / `sample_new_NN.wav`, các embedding dạng `.npy`, và `result.json`. Với recognize, file JSON mang **toàn bộ** diễn giải quyết định — không chỉ top-3 `candidates` mà API trả về, mà còn `speaker_summary` (số vote + sim trung bình/lớn nhất cho *mọi* người đã đăng ký, kể cả người 0 vote) và `per_chunk_scores` (từng chunk so với mọi người, kèm người mà chunk đó vote). Cùng ma trận đó được lưu ở `chunk_scores.npy` (`[chunks × speakers]`, cột theo thứ tự `enrolled_speakers`). Giọng lạ còn ghi thêm điểm khớp cụm stranger và cụm nào gần nhất.
+
+| Tham số | Mặc định | Env var | Mô tả |
+|---------|----------|---------|-------|
+| Debug tracing | **tắt** | `HAL_SPEAKER_DEBUG` | Đặt `true` để bật. Chỉ đọc một lần lúc khởi tạo — đổi xong phải restart HAL |
+| Thư mục output | `speaker_logs/` cạnh `speaker_recognizer.py` | `HAL_SPEAKER_DEBUG_DIR` | Tự chuyển sang thư mục temp nếu source tree chỉ đọc (khi deploy lên thiết bị) |
+| Số entry tối đa | 1000 | `HAL_SPEAKER_DEBUG_MAX_ENTRIES` | Giới hạn thư mục theo từng loại, xoá cũ nhất; `0` = không giới hạn |
+
+Thư mục output mặc định đã được git-ignore — tuyệt đối không commit dữ liệu trace. Tracer tự nuốt mọi lỗi của chính nó, nên một lần trace hỏng không bao giờ làm hỏng luồng nhận diện.
+
 ## Lưu trữ
 
 ```
