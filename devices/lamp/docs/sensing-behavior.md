@@ -473,7 +473,7 @@ Mood history tracks the **user's emotional state** only — not system events or
 
 | Source | How it works |
 |---|---|
-| **Camera** (`source: "camera"`) | `motion.activity` detects emotional action (laughing, crying, yawning, singing) → Emotion Detection skill triggers → agent logs mood |
+| **Camera** (`source: "camera"`) | `motion.activity` detects emotional action (laughing, crying, singing) → Emotion Detection skill triggers → agent logs mood |
 | **Conversation** (`source: "conversation"`) | Agent detects mood two ways: (1) **single message** — explicit ("I'm tired") or implied ("work is killing me" → stressed); (2) **conversation flow** — after chatting for a while, read the overall vibe (tone shifts, short/curt replies, repeated topics, rising/fading energy). Agent trusts its gut and infers boldly: a small hint is enough, better to log a maybe-mood than miss a real one. Works across all channels (Telegram, voice, web). |
 
 #### Voice mood nudge
@@ -524,7 +524,8 @@ When the user is already present (PRESENT state), foreground motion triggers a `
 `MotionPerception` buffers snapshots and action names, flushing them periodically (`MOTION_FLUSH_S`). On flush it checks `PresenceService.state`:
 - **PRESENT** → sends a single `motion.activity` event. Message format:
   - `Activity detected: <labels>.` — HAL already categorises: physical actions collapse to the bucket name (`drink`, `break`, `celebrate`), sedentary activities keep the raw Kinetics label (`using computer`, `writing`, `texting`, `reading`, `drawing`, `playing controller`). One exception to "keep the raw label": `reading book` + `reading newspaper` both collapse to the single generic `reading` label. The agent logs each label verbatim — no mapping required at the agent level.
-  - Emotional X3D actions (`laughing`, `crying`, `yawning`, `singing`) are **intentionally dropped** here. A dedicated `motion.emotional` event type will be added later; until then emotional detections are silently ignored. `motion.activity` stays purely physical.
+  - Emotional X3D actions (`laughing`, `crying`, `singing`) are **intentionally dropped** here. A dedicated `motion.emotional` event type will be added later; until then emotional detections are silently ignored. `motion.activity` stays purely physical.
+  - `yawning` is **not** emotional — it lives in its own `tired` bucket and IS emitted, as a raw label, as fatigue evidence for the wellbeing skill (shortens the break threshold, confirms sleep wind-down).
   - No images attached — saves tokens. Friend recognition is **not** required.
 - **Otherwise** → event is **skipped** (logged, not sent). Lamp only expects `motion.activity` — plain `motion` from X3D/pose has no handler and wastes agent tokens.
 

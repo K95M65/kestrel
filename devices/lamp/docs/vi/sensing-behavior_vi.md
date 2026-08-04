@@ -476,7 +476,7 @@ Mood history lưu per-user tại `/root/local/users/{name}/mood/YYYY-MM-DD.jsonl
 
 | Source | Cách hoạt động |
 |---|---|
-| **Camera** (`source: "camera"`) | `motion.activity` detect action cảm xúc (laughing, crying, yawning, singing) → Emotion Detection skill trigger → agent log mood |
+| **Camera** (`source: "camera"`) | `motion.activity` detect action cảm xúc (laughing, crying, singing) → Emotion Detection skill trigger → agent log mood |
 | **Conversation** (`source: "conversation"`) | Agent detect mood theo 2 cách: (1) **single message** — explicit ("I'm tired") hoặc implied ("work is killing me" → stressed); (2) **conversation flow** — sau khi nói chuyện một lúc, đọc vibe tổng thể (tone shift, reply ngắn cộc lốc, topic lặp lại, năng lượng tăng/giảm). Agent tin trực giác và mạnh dạn suy luận: chỉ cần một gợi ý nhỏ là đủ, log nhầm còn hơn bỏ sót. Hoạt động trên mọi channel (Telegram, voice, web). |
 
 #### Voice mood nudge
@@ -527,7 +527,8 @@ Khi user đang ở trạng thái PRESENT và camera phát hiện chuyển độn
 `MotionPerception` buffer snapshots và action names, flush theo interval (`MOTION_FLUSH_S`). Khi flush, check `PresenceService.state`:
 - **PRESENT** → gửi 1 event `motion.activity` duy nhất. Format message:
   - `Activity detected: <labels>.` — HAL đã categorize: physical actions gộp thành bucket (`drink`, `break`, `celebrate`); sedentary activities giữ raw Kinetics label (`using computer`, `writing`, `texting`, `reading`, `drawing`, `playing controller`). Một ngoại lệ của "giữ raw label": `reading book` + `reading newspaper` đều gộp về một label chung `reading`. Agent log từng label nguyên văn — không map gì thêm ở phía agent.
-  - Emotional X3D actions (`laughing`, `crying`, `yawning`, `singing`) **cố ý bị drop** ở đây. Một event type riêng `motion.emotional` sẽ được thêm sau; cho đến khi đó, detection emotional bị bỏ qua im lặng. `motion.activity` giữ thuần vật lý.
+  - Emotional X3D actions (`laughing`, `crying`, `singing`) **cố ý bị drop** ở đây. Một event type riêng `motion.emotional` sẽ được thêm sau; cho đến khi đó, detection emotional bị bỏ qua im lặng. `motion.activity` giữ thuần vật lý.
+  - `yawning` **không** phải emotional — nó nằm trong bucket `tired` riêng và ĐƯỢC phát ra dưới dạng nhãn thô, làm bằng chứng mệt mỏi cho wellbeing skill (rút ngắn ngưỡng break, xác nhận sleep wind-down).
   - Không gửi ảnh — tiết kiệm tokens. **Không** yêu cầu nhận diện friend.
 - **Còn lại** → event bị **skip** (log, không gửi). Lamp chỉ expect `motion.activity` — plain `motion` từ X3D/pose không có handler và lãng phí agent tokens.
 

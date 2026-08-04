@@ -98,7 +98,7 @@ $SSH "curl -s -X POST http://127.0.0.1:5000/api/sensing/event \
 # → {"status":1,"data":{"runId":"lamp-chat-<seq>-<ms>"},"message":null}
 ```
 
-Emotional cues (`laughing`, `crying`, `yawning`, `singing`) are filtered at HAL and never reach Lamp — there is no way to inject them via `motion.activity` anymore. A future `motion.emotional` event will carry them.
+Emotional cues (`laughing`, `crying`, `singing`) are filtered at HAL and never reach Lamp — there is no way to inject them via `motion.activity` anymore. A future `motion.emotional` event will carry them. `yawning` is not one of them: it sits in its own `tired` bucket and IS emitted, as a raw label.
 
 Common test payloads (raw Kinetics labels — agent maps each to `drink`/`break`/`sedentary` bucket):
 
