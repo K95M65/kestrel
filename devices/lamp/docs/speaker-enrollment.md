@@ -171,12 +171,12 @@ Each `recognize()` / `enroll()` call writes one directory:
 
 ```
 <root>/recognize/<ts>_<class>_<confidence>/     class = enrolled name | stranger-<N> | unknown
-<root>/recognize/<ts>_FAIL-<reason>/            no-voice | low-voice | too-short | server-error | …
+<root>/recognize/<ts>_FAIL-<reason>/            no-voice | low-voice | low-stoi | too-short | server-error | …
 <root>/enroll/<ts>_<norm>_<cohesion>/           cohesion = mean sim of kept samples to the centroid
 <root>/enroll/<ts>_FAIL-<reason>/
 ```
 
-holding `input.wav` / `sample_new_NN.wav`, the embeddings as `.npy`, and `result.json`. For a recognize the JSON carries the **full** decision breakdown — not just the top-3 `candidates` the API returns, but `speaker_summary` (votes + mean/max similarity for *every* enrolled speaker, including 0-vote losers) and `per_chunk_scores` (each chunk vs every speaker, plus which speaker that chunk voted for). The same matrix is saved as `chunk_scores.npy` (`[chunks × speakers]`, columns in `enrolled_speakers` order). Unknown speakers also record the stranger-cluster match score and which cluster was closest.
+holding `input.wav` (raw) plus `preprocessed.wav` (post VAD/STOI/RMS — the audio actually uploaded) / `sample_new_NN.wav`, the embeddings as `.npy`, and `result.json`. A recognize records a `preprocessing` block (cleaned duration/RMS, the STOI score the clip passed with, and the threshold it cleared) so you can tell a "bad audio" miss from a "wrong speaker" miss; a clip killed by the gate instead files a `FAIL-<reason>` dir whose `preprocessing_reject` holds the structured reason and its measurements. For a recognize the JSON carries the **full** decision breakdown — not just the top-3 `candidates` the API returns, but `speaker_summary` (votes + mean/max similarity for *every* enrolled speaker, including 0-vote losers) and `per_chunk_scores` (each chunk vs every speaker, plus which speaker that chunk voted for). The same matrix is saved as `chunk_scores.npy` (`[chunks × speakers]`, columns in `enrolled_speakers` order). Unknown speakers also record the stranger-cluster match score and which cluster was closest.
 
 | Parameter | Default | Env var | Description |
 |-----------|---------|---------|-------------|

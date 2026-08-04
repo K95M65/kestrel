@@ -66,9 +66,9 @@ class SpeechIntelligibilityFilter(AudioProcessorBase):
         self._expected_sr: int = int(expected_sample_rate)
         self._session: Any = None
         self._input_name: Optional[str] = None
-        # Last mean STOI computed (pass OR reject). A reject carries its score on
-        # the PreprocessRejected; this exposes the score of a clip that PASSED,
-        # for callers that want to log gate margin. NaN until the first clip.
+        # Last mean STOI computed (pass OR reject) — read by the SPEAKER-DEBUG
+        # tracer to log the score of a clip that PASSED the gate (a reject
+        # already carries its score on the PreprocessRejected). NaN until set.
         self.last_score: float = float("nan")
 
     @override
@@ -150,7 +150,7 @@ class SpeechIntelligibilityFilter(AudioProcessorBase):
         finite = scores[~np.isnan(scores)]
         # NaN-aware mean; all-NaN → NaN, which rejects below.
         mean_score = float(np.mean(finite)) if finite.size else float("nan")
-        self.last_score = mean_score  # exposed for pass-margin logging
+        self.last_score = mean_score  # exposed for the SPEAKER-DEBUG tracer
 
         # `not (mean >= thr)` so NaN (every chunk failed) also rejects.
         if not (mean_score >= self._threshold):

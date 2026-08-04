@@ -172,12 +172,12 @@ Mỗi lần gọi `recognize()` / `enroll()` sẽ ghi ra một thư mục:
 
 ```
 <root>/recognize/<ts>_<class>_<confidence>/     class = tên đã đăng ký | stranger-<N> | unknown
-<root>/recognize/<ts>_FAIL-<reason>/            no-voice | low-voice | too-short | server-error | …
+<root>/recognize/<ts>_FAIL-<reason>/            no-voice | low-voice | low-stoi | too-short | server-error | …
 <root>/enroll/<ts>_<norm>_<cohesion>/           cohesion = sim trung bình của các mẫu giữ lại so với centroid
 <root>/enroll/<ts>_FAIL-<reason>/
 ```
 
-chứa `input.wav` / `sample_new_NN.wav`, các embedding dạng `.npy`, và `result.json`. Với recognize, file JSON mang **toàn bộ** diễn giải quyết định — không chỉ top-3 `candidates` mà API trả về, mà còn `speaker_summary` (số vote + sim trung bình/lớn nhất cho *mọi* người đã đăng ký, kể cả người 0 vote) và `per_chunk_scores` (từng chunk so với mọi người, kèm người mà chunk đó vote). Cùng ma trận đó được lưu ở `chunk_scores.npy` (`[chunks × speakers]`, cột theo thứ tự `enrolled_speakers`). Giọng lạ còn ghi thêm điểm khớp cụm stranger và cụm nào gần nhất.
+chứa `input.wav` (audio thô) cùng `preprocessed.wav` (sau VAD/STOI/RMS — chính là audio đã upload) / `sample_new_NN.wav`, các embedding dạng `.npy`, và `result.json`. Mỗi lần recognize ghi thêm khối `preprocessing` (thời lượng/RMS sau khi làm sạch, điểm STOI mà clip đã đạt, và ngưỡng nó vượt qua) để phân biệt "audio kém" với "nhận nhầm người"; clip bị cổng loại sẽ tạo thư mục `FAIL-<reason>` với `preprocessing_reject` chứa lý do có cấu trúc kèm số đo. Với recognize, file JSON mang **toàn bộ** diễn giải quyết định — không chỉ top-3 `candidates` mà API trả về, mà còn `speaker_summary` (số vote + sim trung bình/lớn nhất cho *mọi* người đã đăng ký, kể cả người 0 vote) và `per_chunk_scores` (từng chunk so với mọi người, kèm người mà chunk đó vote). Cùng ma trận đó được lưu ở `chunk_scores.npy` (`[chunks × speakers]`, cột theo thứ tự `enrolled_speakers`). Giọng lạ còn ghi thêm điểm khớp cụm stranger và cụm nào gần nhất.
 
 | Tham số | Mặc định | Env var | Mô tả |
 |---------|----------|---------|-------|
