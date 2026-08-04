@@ -414,18 +414,36 @@ turn ("hello") right after a restart would leak to the main agent.
    locally, then sends it once in order when the replacement session is ready.
    A slow/failed reconnect falls back to the main agent with the STT transcript;
    it never drops the opening audio or commits it to the old activity.
-3. **Speaker-ID prepass + prime context.** At session end (after capture), HAL runs
-   the speaker-ID prepass **once** (`identify_and_decorate`), then offers
-   `[TURN CONTEXT]` (time, reply-language reminder, current user) as non-response
-   text. The **current user is the VOICE speaker** identified this turn — it
-   overrides the face-derived `current_user`, and falls back to the face identity
-   when there is no voice ID (unknown / gate-reject / no transcript). It is sent
-   **after** the audio has streamed so the context can name who actually spoke (the
-   speaker cannot be known before the utterance exists). Gemini Live intentionally
-   drops the injection because repeated SDK `clientContent(turn_complete=False)`
-   messages can collide with later audio turns and close with WS 1011, so on that
-   model the name does not reach the reply; OpenAI still accepts it. The prepass
-   result is reused downstream — speaker recognition never runs twice.
+3. **Turn context + speaker-ID prepass.** `[TURN CONTEXT]` (time, reply-language
+   reminder, current user) is sent as non-response text. The **current user is the
+   VOICE speaker** identified this turn — it overrides the face-derived
+   `current_user`, and falls back to the face identity when there is no voice ID
+   (unknown / gate-reject / no transcript).
+
+   **When each part runs depends on the mode**, because a voiceprint needs the
+   completed utterance and therefore cannot exist at session open:
+
+   | Mode | `[TURN CONTEXT]` sent | Speaker known? |
+   |------|----------------------|----------------|
+   | Always-listening (`wakeword=false`) | at session **open**, before any audio | No → face fallback, then corrected |
+   | Wake-word / follow-up | after capture, once a final wake phrase confirms | Yes |
+   | Deferred (noise-drop rebuild) | after capture, on the replacement session | Yes |
+
+   In always-listening mode the speaker-ID prepass (`identify_and_decorate`, run
+   **once** at session end) resolves the voice speaker *after* the context already
+   went out with the face name. HAL then sends a `[TURN CONTEXT UPDATE]` correction
+   naming the real speaker — still **before** `commit_audio()`, so it is part of the
+   same turn. Skipped when the context already carried the right name, or when the
+   turn is noise. The prepass result is reused downstream — speaker recognition
+   never runs twice.
+
+   **Gemini native-audio caveat:** `send_text()` drops **all** non-response text on
+   Gemini `*native-audio*` models (`gemini_needs_idle_workaround()`), because
+   repeated SDK `clientContent(turn_complete=False)` messages collide with later
+   audio turns and close with WS 1011. On those models neither the context nor the
+   correction reaches the reply, and the model falls back to whatever identity its
+   session memory holds. `gemini-3.1-flash-live` and OpenAI accept both. Every drop
+   is logged (`[realtime->model] DROPPED …`).
 4. **Commit.** At session end, if enabled + `available` + audio buffered,
    `commit_audio()` fires. A `thinking` emotion cue fires with the commit
    (face + servo + a FORCED purple LED pulse — `thinking` is normally a

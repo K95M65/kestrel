@@ -1162,10 +1162,19 @@ class RealtimeOrchestrator:
             # Keep its live session on the same wire shape as the browser probe:
             # audio realtimeInput + tool responses only. 3.1 is NOT sensitive →
             # allow text context (so per-turn [TURN CONTEXT] reaches the model).
-            logger.debug("[realtime] Gemini native-audio: skipping non-response text context")
+            # INFO, not debug: this silently drops [TURN CONTEXT] (speaker identity,
+            # language reminder) and the symptom downstream is "the model addresses
+            # the wrong person" with nothing in the log to explain it.
+            logger.info(
+                "[realtime->model] DROPPED (gemini native-audio wire-shape guard): %r",
+                text[:200],
+            )
             return
-        if self._agent is not None:
-            self._agent.send([TextInput(text=text)])
+        if self._agent is None:
+            logger.info("[realtime->model] DROPPED (no agent session): %r", text[:200])
+            return
+        logger.info("[realtime->model] TEXT: %r", text[:300])
+        self._agent.send([TextInput(text=text)])
 
     def save_turn(self, user_text: str, agent_text: str) -> None:
         """Save a conversation turn to realtime memory."""

@@ -34,6 +34,7 @@ from hal.drivers.voice._internal.audio_dsp import resample_to_stt, rms
 from hal.drivers.voice._internal.audio_recorder import ArecordStream
 from hal.drivers.voice._internal.realtime_turn import (
     RealtimeTurnResult,
+    build_speaker_correction,
     build_turn_context,
     is_noise_turn,
     run_realtime_turn,
@@ -1048,6 +1049,13 @@ class VoiceService:
         # speaker. None until resolved / on unknown → face fallback.
         turn_identity = None  # (final_msg, se_user, display) or None
         turn_speaker_display = None
+        # Which speaker name actually WENT OUT in this turn's [TURN CONTEXT].
+        # In always-listening mode the context is sent when the session opens —
+        # before a single audio frame exists — so the prepass below cannot have
+        # run yet and this is the face-derived user (or None). Compared against
+        # the prepass result to decide whether a late correction is needed.
+        sent_turn_speaker = None
+        turn_context_sent = False
 
         def start_realtime_turn() -> bool:
             """Open realtime as soon as the wake-word partial is available.
@@ -1058,6 +1066,7 @@ class VoiceService:
             straight through as in always-listening mode.
             """
             nonlocal realtime_deferred, realtime_turn_started, realtime_start_failed
+            nonlocal sent_turn_speaker, turn_context_sent
             if realtime_turn_started or realtime_start_failed:
                 return False
 
@@ -1079,6 +1088,8 @@ class VoiceService:
                     return False
                 try:
                     self._realtime.send_text(build_turn_context(turn_speaker_display))
+                    sent_turn_speaker = turn_speaker_display
+                    turn_context_sent = True
                     for audio_f32 in rt_audio_buffer:
                         self._realtime.append_audio(audio_f32)
                     realtime_turn_started = True
@@ -1103,7 +1114,13 @@ class VoiceService:
             realtime_deferred = self._realtime.rebuilding
             if not realtime_deferred and self._realtime.available:
                 try:
+                    # ALWAYS-LISTENING PATH. This fires at session open, so
+                    # turn_speaker_display is still None here by construction —
+                    # the voiceprint needs the completed capture. The speaker-ID
+                    # prepass in the finally block sends a correction afterwards.
                     self._realtime.send_text(build_turn_context(turn_speaker_display))
+                    sent_turn_speaker = turn_speaker_display
+                    turn_context_sent = True
                     for audio_f32 in rt_audio_buffer:
                         self._realtime.append_audio(audio_f32)
                     if hal_config.WAKEWORD_ENABLED:
@@ -1357,9 +1374,11 @@ class VoiceService:
                     logger.warning("Realtime noise-guard buffer decode failed: %s", e)
 
             # Speaker-ID prepass: resolve the voice speaker ONCE now that capture
-            # is complete, so build_turn_context() can name the correct user. The
-            # result is reused by dispatch_turn below (recognition never runs
-            # twice). Unknown / gate-reject → display None → face fallback. Wrapped
+            # is complete — the voiceprint needs the whole utterance, so this is
+            # the EARLIEST point it can run, and in always-listening mode it is
+            # already later than the [TURN CONTEXT] send (hence the correction
+            # below). The result is reused by dispatch_turn (recognition never
+            # runs twice). Unknown / gate-reject → display None → face fallback. Wrapped
             # defensively: it now runs on the reply path, so a recognizer error
             # must not kill the turn.
             if combined:
@@ -1372,11 +1391,14 @@ class VoiceService:
                 except Exception as e:
                     logger.warning("[realtime] speaker-ID prepass failed: %s", e)
                 logger.info(
-                    "[realtime] speaker-ID prepass: display=%r (se_user=%r) → "
-                    "realtime context %s",
+                    "[realtime] speaker-ID prepass: display=%r (se_user=%r) — "
+                    "context already sent with speaker=%r → %s",
                     turn_speaker_display,
                     turn_identity[1] if turn_identity else None,
-                    "names voice speaker" if turn_speaker_display else "falls back to face",
+                    sent_turn_speaker,
+                    "correction needed"
+                    if (turn_speaker_display and turn_speaker_display != sent_turn_speaker)
+                    else "no correction needed",
                 )
 
             # Capture can end just after the STT callback. One final check
@@ -1399,6 +1421,8 @@ class VoiceService:
                 if self._realtime.wait_until_available():
                     try:
                         self._realtime.send_text(build_turn_context(turn_speaker_display))
+                        sent_turn_speaker = turn_speaker_display
+                        turn_context_sent = True
                         for audio_f32 in rt_audio_buffer:
                             self._realtime.append_audio(audio_f32)
                         logger.info(
@@ -1422,6 +1446,36 @@ class VoiceService:
             # --- Realtime voice agent (speaks the reply for this turn) ---------
             # Wake-word mode only commits a turn authorized by a final wake
             # phrase or the short follow-up focus window.
+            # Late identity correction. The always-listening path sends this
+            # turn's [TURN CONTEXT] at session open, when no audio exists yet and
+            # the voice speaker is therefore unknowable — so the prepass result
+            # above never reached the model and the reply named the face-derived
+            # user (or whoever session memory held). Send the correction now,
+            # still BEFORE run_realtime_turn commits the audio, so it is part of
+            # this turn. Skipped when the context already carried the right name
+            # (wake-word / deferred paths, which send after the prepass).
+            if (
+                realtime_turn_started
+                and turn_context_sent
+                and turn_speaker_display
+                and turn_speaker_display != sent_turn_speaker
+                and hal_config.REALTIME_ENABLED
+                and self._realtime.available
+                and not is_noise_turn(combined, buf_duration, rt_audio_is_speech)
+            ):
+                try:
+                    self._realtime.send_text(
+                        build_speaker_correction(turn_speaker_display)
+                    )
+                    logger.info(
+                        "[realtime] speaker correction sent: context went out with "
+                        "%r, voice ID resolved %r",
+                        sent_turn_speaker,
+                        turn_speaker_display,
+                    )
+                except Exception as e:
+                    logger.warning("[realtime] speaker correction send failed: %s", e)
+
             if realtime_turn_started:
                 rt = run_realtime_turn(
                     self._realtime,
