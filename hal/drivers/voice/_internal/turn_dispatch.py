@@ -58,7 +58,15 @@ def _take_vision_handoff() -> tuple[str, str]:
     return hint, image_b64
 
 
-def dispatch_turn(decorator, sensing_sender, combined, audio_buffer, ser_audio_buffer, rt):
+def dispatch_turn(
+    decorator,
+    sensing_sender,
+    combined,
+    audio_buffer,
+    ser_audio_buffer,
+    rt,
+    event_type_override: str | None = None,
+):
     """Identify the speaker, send the turn to the OS server, and submit SER.
 
     Routing by the realtime outcome ``rt``:
@@ -75,6 +83,8 @@ def dispatch_turn(decorator, sensing_sender, combined, audio_buffer, ser_audio_b
     vision_hint, vision_image = _take_vision_handoff()
 
     final_text, event_type = decorator.classify_wake_word(combined)
+    if event_type_override is not None:
+        event_type = event_type_override
     user = UNKNOWN_USER_LABEL
 
     if combined:

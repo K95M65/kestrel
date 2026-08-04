@@ -41,12 +41,15 @@ time. HAL plays the generated response itself, so it ends the consumer turn on
 This avoids an otherwise unnecessary silent-watchdog delay after the reply;
 any late `turn_complete` is discarded before the next turn.
 
-Every STT-final-confirmed wake-word turn reaches dispatch. When realtime already
-spoke, dispatch sends a `voice_agent_handled` synchronization event so the main
-agent records the exchange but stays silent; unavailable, failed, timed-out, or
-delegated realtime takes the normal main-agent path. This also consumes a
-one-turn vision handoff, so a temporary Gemini failure cannot drop a voice
-command or leak a frame into the next turn.
+Every STT-final-confirmed wake-word turn reaches dispatch. It opens a 20-second
+follow-up focus window (reset after every authorized turn), so the next spoken
+turn can omit the wake phrase and is sent as `voice_followup`. A follow-up has
+the same user priority as `voice_command`, but remains separately observable.
+When realtime already spoke, dispatch sends a `voice_agent_handled`
+synchronization event so the main agent records the exchange but stays silent;
+unavailable, failed, timed-out, or delegated realtime takes the normal
+main-agent path. This also consumes a one-turn vision handoff, so a temporary
+Gemini failure cannot drop a voice command or leak a frame into the next turn.
 
 If the **initial** provider connection fails during HAL startup, the
 orchestrator creates fresh sessions in a background retry loop (an immediate
@@ -553,7 +556,8 @@ is a top-level `config.json` flag:
 | Variable | Default | Notes |
 |----------|---------|-------|
 | `HAL_REALTIME_ENABLED` | `true` | Master gate for the realtime pipeline |
-| `wakeword` | `false` | Top-level config-file wake-word gate. When true, a matching interim transcript is provisional only: HAL commits buffered audio to realtime or forwards a command only after an STT **final** result confirms the configured leading wake phrase. The supported prefixes are `hello`, `hey`, `hi`, `alo`, `okay`, `ok`, and `wake up`, applied to the permanent common alias (`hey autonomous`), device type (`hey lamp`), and current agent name (`hey Luna`). A runtime rename updates only the agent-name aliases. Bare names and other prefixes do not arm the gate. Every confirmed turn dispatches to os-server: a spoken realtime reply becomes a silent `voice_agent_handled` sync event; unavailable, silent, failed, or delegated realtime follows the normal path. If realtime is disabled, the confirmed final transcript follows the normal os-server path. Missing/false preserves the pre-gate always-listening flow unchanged. HAL restarts after a local Settings save or MQTT `wakeword.gate`. |
+| `wakeword` | `false` | Top-level config-file wake-word gate. When true, a matching interim transcript is provisional only: HAL commits buffered audio to realtime or forwards a command only after an STT **final** result confirms the configured leading wake phrase. The supported prefixes are `hello`, `hey`, `hi`, `alo`, `okay`, `ok`, and `wake up`, applied to the permanent common alias (`hey autonomous`), device type (`hey lamp`), and current agent name (`hey Luna`). A runtime rename updates only the agent-name aliases. Bare names and other prefixes do not arm the gate. A confirmed turn opens the follow-up focus window; turns in that window are forwarded as `voice_followup` without another phrase. Every authorized turn dispatches to os-server: a spoken realtime reply becomes a silent `voice_agent_handled` sync event; unavailable, silent, failed, or delegated realtime follows the normal path. If realtime is disabled, the confirmed final transcript follows the normal os-server path. Missing/false preserves the pre-gate always-listening flow unchanged. HAL restarts after a local Settings save or MQTT `wakeword.gate`. |
+| `HAL_WAKEWORD_FOLLOWUP_TIMEOUT_S` | `20` | Idle seconds for the short post-command focus window. Each accepted `voice_command` or `voice_followup` refreshes it. `0` disables follow-ups and requires a wake phrase for every mic session. Ignored when `wakeword` is false. |
 | `HAL_REALTIME_PROVIDER` | `gemini` | `none` \| `gemini` \| `openai` \| `qwen` |
 | `HAL_REALTIME_TURN_DETECTION` | `off` | `server_vad` \| `semantic_vad` \| `off` (Gemini: off = manual activity detection) |
 | `HAL_REALTIME_RECV_QUEUE_TIMEOUT_S` | `8.0` | Max seconds `receive()` waits for the next output event before ending a silent turn (fallback to main agent) |

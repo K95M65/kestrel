@@ -48,6 +48,7 @@ from hal.drivers.voice._internal.speaker_decorate import (
 )
 from hal.drivers.voice._internal.turn_dispatch import dispatch_turn
 from hal.drivers.voice._internal.vad_filters import SileroVADFilter, WebRTCVADFilter
+from hal.drivers.voice._internal.wakeword_focus import WakeWordFocus
 from hal.drivers.voice.backchannel import Backchannel
 from hal.drivers.voice.stt import STTProvider
 
@@ -197,6 +198,10 @@ class VoiceService:
             nudge_cooldown_s=voice_cfg.ENROLL_NUDGE_COOLDOWN_S,
             enable_people_perception=enable_people_perception,
         )
+        # Unlike per-session wake_word_confirmed, this small focus window is
+        # shared across mic sessions so a user can naturally continue a
+        # wake-word conversation without reopening the gate on every sentence.
+        self._wakeword_focus = WakeWordFocus(hal_config.WAKEWORD_FOLLOWUP_TIMEOUT_S)
 
         # OS server event sender (with echo similarity filter)
         self._sensing_sender = SensingSender(tts_service=tts_service)
@@ -911,6 +916,14 @@ class VoiceService:
             preconnected_session = None
 
         stt_session = preconnected_session or self._stt.create_session()
+        # Latch focus at session start. A user who began speaking before the
+        # deadline may finish their sentence after it, but a later session must
+        # use the wake phrase again.
+        wakeword_followup_active = (
+            hal_config.WAKEWORD_ENABLED and self._wakeword_focus.is_active()
+        )
+        if wakeword_followup_active:
+            logger.info("Wake-word follow-up focus accepted for this session")
 
         longest_partial = [""]
         final_segments = []
@@ -1050,7 +1063,7 @@ class VoiceService:
                 # one utterance across old/new sessions.
                 if (
                     not capture_complete.is_set()
-                    or not wake_word_confirmed.is_set()
+                    or not (wake_word_confirmed.is_set() or wakeword_followup_active)
                     or not hal_config.REALTIME_ENABLED
                 ):
                     return False
@@ -1065,7 +1078,7 @@ class VoiceService:
                         self._realtime.append_audio(audio_f32)
                     realtime_turn_started = True
                     logger.info(
-                        "[realtime] Wake-word confirmed; flushed %d buffered frame(s)",
+                        "[realtime] Wake-word/follow-up authorized; flushed %d buffered frame(s)",
                         len(rt_audio_buffer),
                     )
                     return True
@@ -1379,7 +1392,8 @@ class VoiceService:
                     )
 
             # --- Realtime voice agent (runs first, before speaker ID / OS server) ---
-            # Wake-word mode only commits a turn that STT explicitly armed.
+            # Wake-word mode only commits a turn authorized by a final wake
+            # phrase or the short follow-up focus window.
             if realtime_turn_started:
                 rt = run_realtime_turn(
                     self._realtime,
@@ -1394,9 +1408,10 @@ class VoiceService:
                 rt = RealtimeTurnResult()
 
             # --- Speaker recognition + OS server send + SER ---
+            wakeword_authorized = wake_word_confirmed.is_set() or wakeword_followup_active
             if should_dispatch_to_main(
                 hal_config.WAKEWORD_ENABLED,
-                wake_word_confirmed.is_set(),
+                wakeword_authorized,
             ):
                 # A realtime connection failure or silent timeout is not a
                 # handled turn. Preserve the STT fallback so a wake-word command
@@ -1408,7 +1423,18 @@ class VoiceService:
                     audio_buffer,
                     ser_audio_buffer,
                     rt,
+                    event_type_override=(
+                        "voice_followup"
+                        if wakeword_followup_active and not wake_word_confirmed.is_set()
+                        else None
+                    ),
                 )
+                if combined and hal_config.WAKEWORD_ENABLED and wakeword_authorized:
+                    if self._wakeword_focus.refresh():
+                        logger.info(
+                            "Wake-word follow-up focus refreshed for %.0fs",
+                            hal_config.WAKEWORD_FOLLOWUP_TIMEOUT_S,
+                        )
             else:
                 self._decorator.submit_speech_emotion_from_session(ser_audio_buffer)
                 # A rejected utterance deliberately has no downstream agent to

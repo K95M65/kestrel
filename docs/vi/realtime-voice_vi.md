@@ -40,11 +40,15 @@ HAL tự phát câu trả lời đã nhận nên kết thúc consumer turn ngay 
 còn chờ silent-watchdog vô ích sau khi đã trả lời; `turn_complete` đến muộn sẽ
 được bỏ trước lượt sau.
 
-Mọi lượt wake-word đã được STT final xác nhận đều đi qua dispatch. Nếu realtime
-đã nói, dispatch gửi event đồng bộ `voice_agent_handled` để agent chính ghi nhớ
-nhưng im lặng; realtime unavailable, lỗi, timeout hoặc delegate đi theo đường
-agent chính bình thường. Dispatch cũng tiêu thụ vision handoff một-lượt, nên
-Gemini lỗi tạm thời không thể làm rơi voice command hoặc làm frame rò sang lượt sau.
+Mọi lượt wake-word đã được STT final xác nhận đều đi qua dispatch. Nó mở một
+cửa sổ focus follow-up 20 giây (reset sau mỗi lượt được phép), nên câu nói kế
+tiếp có thể bỏ wake phrase và được gửi với type `voice_followup`. Follow-up có
+cùng độ ưu tiên người dùng như `voice_command` nhưng vẫn quan sát được riêng.
+Nếu realtime đã nói, dispatch gửi event đồng bộ `voice_agent_handled` để agent
+chính ghi nhớ nhưng im lặng; realtime unavailable, lỗi, timeout hoặc delegate
+đi theo đường agent chính bình thường. Dispatch cũng tiêu thụ vision handoff
+một-lượt, nên Gemini lỗi tạm thời không thể làm rơi voice command hoặc làm frame
+rò sang lượt sau.
 
 Nếu kết nối provider **ban đầu** lỗi ngay khi HAL khởi động, orchestrator tạo
 session mới bằng retry loop nền (thử lại một lần ngay, rồi backoff luỹ thừa từ 2s,
@@ -530,7 +534,8 @@ trong `config.json`:
 | Biến | Mặc định | Ghi chú |
 |------|----------|---------|
 | `HAL_REALTIME_ENABLED` | `true` | Cổng tổng cho pipeline realtime |
-| `wakeword` | `false` | Cổng wake word top-level trong config file. Khi bật, partial khớp chỉ là tín hiệu tạm: HAL chỉ commit audio buffer sang realtime hoặc forward command sau khi STT **final** xác nhận wake phrase ở đầu câu. Các prefix hỗ trợ là `hello`, `hey`, `hi`, `alo`, `okay`, `ok`, `wake up`, áp dụng cho alias chung cố định (`hey autonomous`), device type (`hey lamp`) và tên agent hiện tại (`hey Luna`). Runtime rename chỉ cập nhật alias theo tên agent. Bare name và các prefix khác không mở gate. Mọi lượt đã xác nhận đều dispatch sang os-server: câu realtime đã nói thành event đồng bộ im lặng `voice_agent_handled`; realtime unavailable, im lặng, lỗi hoặc delegate đi theo đường thường. Nếu realtime tắt, final transcript đã xác nhận đi theo đường os-server thường. Thiếu/`false` giữ nguyên luồng luôn lắng nghe trước gate. HAL restart sau khi lưu ở local Settings hoặc MQTT `wakeword.gate`. |
+| `wakeword` | `false` | Cổng wake word top-level trong config file. Khi bật, partial khớp chỉ là tín hiệu tạm: HAL chỉ commit audio buffer sang realtime hoặc forward command sau khi STT **final** xác nhận wake phrase ở đầu câu. Các prefix hỗ trợ là `hello`, `hey`, `hi`, `alo`, `okay`, `ok`, `wake up`, áp dụng cho alias chung cố định (`hey autonomous`), device type (`hey lamp`) và tên agent hiện tại (`hey Luna`). Runtime rename chỉ cập nhật alias theo tên agent. Bare name và các prefix khác không mở gate. Một lượt đã xác nhận mở cửa sổ focus follow-up; lượt trong cửa sổ đó được forward dưới type `voice_followup` mà không cần wake phrase khác. Mọi lượt được phép đều dispatch sang os-server: câu realtime đã nói thành event đồng bộ im lặng `voice_agent_handled`; realtime unavailable, im lặng, lỗi hoặc delegate đi theo đường thường. Nếu realtime tắt, final transcript đã xác nhận đi theo đường os-server thường. Thiếu/`false` giữ nguyên luồng luôn lắng nghe trước gate. HAL restart sau khi lưu ở local Settings hoặc MQTT `wakeword.gate`. |
+| `HAL_WAKEWORD_FOLLOWUP_TIMEOUT_S` | `20` | Số giây idle của cửa sổ focus sau lệnh. Mỗi `voice_command` hoặc `voice_followup` được nhận sẽ refresh cửa sổ. `0` tắt follow-up và buộc mỗi phiên mic phải có wake phrase. Bị bỏ qua khi `wakeword` là false. |
 | `HAL_REALTIME_PROVIDER` | `gemini` | `none` \| `gemini` \| `openai` \| `qwen` |
 | `HAL_REALTIME_TURN_DETECTION` | `off` | `server_vad` \| `semantic_vad` \| `off` (Gemini: off = activity detection thủ công) |
 | `HAL_REALTIME_RECV_QUEUE_TIMEOUT_S` | `8.0` | Số giây tối đa `receive()` chờ output event kế tiếp trước khi kết thúc lượt im lặng (fallback sang main agent) |

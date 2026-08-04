@@ -50,6 +50,7 @@ class FakeMini:
 
     def __init__(self):
         self.played = []
+        self.ramps = []
         self.gotos = []
         self.cancels = 0
         self.max_concurrent_plays = 0
@@ -57,9 +58,10 @@ class FakeMini:
         self._lock = threading.Lock()
         self._cancel = threading.Event()
 
-    def play_move(self, move):
+    def play_move(self, move, initial_goto_duration=0.0, **kwargs):
         with self._lock:
             self.played.append(move)
+            self.ramps.append(initial_goto_duration)
             self._playing += 1
             self.max_concurrent_plays = max(self.max_concurrent_plays, self._playing)
         try:
@@ -111,7 +113,8 @@ class FakeMoves:
     Unknown names raise like the real library does (it has `dance1`, not `dance`).
     """
 
-    _KNOWN = ("dance1", "dance2", "dance3", "curious1", "cheerful1", "thoughtful1", "amazed1")
+    _KNOWN = ("dance1", "dance2", "dance3", "curious1", "cheerful1", "thoughtful1",
+              "sad1", "welcoming1", "amazed1")
 
     def get(self, name):
         if name not in self._KNOWN:
@@ -238,6 +241,48 @@ class TestReachyPlaybackLoop(unittest.TestCase):
         self.assertEqual(self.mini.play_count(), settled, "groove survived stop()")
 
 
+class TestPlayRamp(unittest.TestCase):
+    """Every move must be entered through a ramp, never at initial_goto_duration=0."""
+
+    class _RampMoves(FakeMoves):
+        """Moves whose frame 0 sits far from the current pose (big yaw jump)."""
+
+        def get(self, name):
+            name = super().get(name)
+            import numpy as np
+            from scipy.spatial.transform import Rotation
+
+            pose = np.eye(4)
+            pose[:3, :3] = Rotation.from_euler("xyz", [0, 0, 90], degrees=True).as_matrix()
+            move = types.SimpleNamespace(name=name)
+            move.evaluate = lambda t: (pose, np.array([0.0, 0.0]), 0.0)
+            return move
+
+    def _svc(self, policy=None):
+        svc = ReachyMotionService(safety_policy=policy)
+        svc._mini = FakeMini()
+        svc._moves = FakeMoves()
+        return svc
+
+    def test_play_passes_a_nonzero_ramp(self):
+        svc = self._svc()
+        svc.dispatch(P.SERVO_CMD_PLAY, P.SERVO_CURIOUS)
+        svc._play_thread.join(timeout=2.0)
+        self.assertTrue(svc._mini.ramps, "no move played")
+        self.assertGreater(svc._mini.ramps[0], 0.0, "move entered with the SDK's 0.0 snap")
+
+    def test_far_frame_zero_is_stretched_by_the_speed_gate(self):
+        from hal.safety.policy import MotionBounds, SafetyPolicy
+
+        policy = SafetyPolicy(schema="autonomous.safety.v1", motion=MotionBounds(max_speed=60))
+        svc = self._svc(policy)
+        svc._moves = self._RampMoves()
+        svc.dispatch(P.SERVO_CMD_PLAY, P.SERVO_CURIOUS)
+        svc._play_thread.join(timeout=2.0)
+        # 90° of yaw at 60 deg/s cannot be done in the 0.5s default ramp.
+        self.assertGreaterEqual(svc._mini.ramps[0], 90.0 / 60.0 - 0.01)
+
+
 class SlowMoves(FakeMoves):
     """First get() is slow — reproduces a play thread stalled in the HF load."""
 
@@ -311,10 +356,113 @@ class TestServoOwnership(unittest.TestCase):
         )
         self.assertEqual(self.mini.play_count("cheerful1"), 1)
 
+    def test_pose_command_clears_the_reported_recording(self):
+        """GET /servo must not keep naming the animation the aim just cancelled."""
+        self.svc.dispatch(P.SERVO_CMD_PLAY, P.SERVO_CURIOUS)
+        self.assertTrue(_wait_until(lambda: self.svc._current_recording == P.SERVO_CURIOUS))
+
+        self.svc.aim(P.AIM_LEFT, 0.05, self.svc.get_positions(), None)
+        self.assertIsNone(self.svc._current_recording)
+
+    def test_superseded_play_never_publishes_its_name(self):
+        """GET /servo must name the winner, not a thread that lost the servo."""
+        self.svc._moves = SlowMoves(delay=0.1)
+        self.svc.dispatch(P.SERVO_CMD_PLAY, P.SERVO_SAD)
+        self.svc.dispatch(P.SERVO_CMD_PLAY, P.SERVO_GREETING)
+        winner = self.svc._play_thread
+        if winner:
+            winner.join(timeout=3.0)
+        time.sleep(0.3)   # let the superseded thread finish its slow get()
+        self.assertNotEqual(self.svc._current_recording, P.SERVO_SAD)
+
     def test_aim_without_music_does_not_start_an_animation(self):
         self.svc.aim(P.AIM_RIGHT, 0.05, self.svc.get_positions(), None)
         time.sleep(0.15)
         self.assertEqual(self.mini.play_count(), 0)
+
+
+class TestFreezeAndHold(unittest.TestCase):
+    """Camera freeze and /servo/hold must not shred animations or gag emotions."""
+
+    def setUp(self):
+        self.svc = ReachyMotionService()
+        self.mini = FakeMini()
+        self.svc._mini = self.mini
+        self.svc._moves = FakeMoves()
+
+    def tearDown(self):
+        self.svc._music_playing = False
+        self.svc._music_recording = None
+        self.svc._released = True
+        self.mini.cancel_move()
+        if self.svc._play_thread:
+            self.svc._play_thread.join(timeout=2.0)
+
+    def test_freeze_does_not_cancel_the_move_in_flight(self):
+        """A vision snapshot every few seconds must not chop the animation."""
+        self.svc.dispatch(P.SERVO_CMD_PLAY, P.SERVO_CURIOUS)
+        self.assertTrue(_wait_until(lambda: self.mini.play_count("curious1") >= 1))
+        before = self.mini.cancels
+
+        self.svc.freeze()
+        self.assertEqual(self.mini.cancels, before, "freeze cancelled a running move")
+        self.assertTrue(self.svc.is_frozen)
+
+    def test_freeze_stops_the_groove_at_the_next_pass(self):
+        self.svc.dispatch(P.SERVO_CMD_MUSIC_START, P.SERVO_MUSIC_GROOVE)
+        self.assertTrue(_wait_until(lambda: self.mini.play_count("dance1") >= 1))
+
+        self.svc.freeze()
+        if self.svc._play_thread:
+            self.svc._play_thread.join(timeout=2.0)
+        settled = self.mini.play_count()
+        time.sleep(_MOVE_DURATION_S * 5)
+        self.assertEqual(self.mini.play_count(), settled, "groove kept going while frozen")
+
+        self.svc.unfreeze()
+        self.assertTrue(
+            _wait_until(lambda: self.mini.play_count() > settled),
+            "groove did not resume after unfreeze",
+        )
+
+    def test_emotion_still_plays_during_a_hold(self):
+        """The emotion route decides what a hold blocks — the driver must not
+        drop what the route let through."""
+        self.svc.hold()
+        self.svc.dispatch(P.SERVO_CMD_PLAY, P.SERVO_GREETING)
+        self.assertTrue(
+            _wait_until(lambda: self.mini.play_count("welcoming1") >= 1),
+            "hold swallowed an emotion the route allowed",
+        )
+
+    def test_hold_exposes_the_flags_the_routes_read(self):
+        self.svc.hold(explicit=True)
+        self.assertTrue(self.svc._hold_mode)
+        self.assertTrue(self.svc._hold_explicit)
+        self.assertTrue(self.svc.is_suppressed)      # /servo/play refuses
+
+        self.svc.resume()
+        self.assertFalse(self.svc._hold_mode)
+        self.assertFalse(self.svc._hold_explicit)
+        self.assertFalse(self.svc.is_suppressed)
+
+    def test_hold_stops_ambient_motion(self):
+        self.svc.dispatch(P.SERVO_CMD_MUSIC_START, P.SERVO_MUSIC_GROOVE)
+        self.assertTrue(_wait_until(lambda: self.mini.play_count("dance1") >= 1))
+
+        self.svc.hold()
+        if self.svc._play_thread:
+            self.svc._play_thread.join(timeout=2.0)
+        settled = self.mini.play_count()
+        time.sleep(_MOVE_DURATION_S * 5)
+        self.assertEqual(self.mini.play_count(), settled, "groove survived hold()")
+
+    def test_released_robot_refuses_every_play(self):
+        self.svc.release()
+        self.svc.dispatch(P.SERVO_CMD_PLAY, P.SERVO_CURIOUS)
+        time.sleep(0.15)
+        self.assertEqual(self.mini.play_count(), 0)
+        self.assertTrue(self.svc.is_suppressed)
 
 
 class TestAvailableRecordings(unittest.TestCase):
