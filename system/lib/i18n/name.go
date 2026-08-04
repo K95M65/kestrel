@@ -37,6 +37,15 @@ func SetDeviceName(name string) {
 	SetChitchatWakeWords(BuildChitchatWakeWords(n))
 }
 
+// DeviceName returns the current lowercase device/agent name. It starts as the
+// device type and is replaced when the active runtime loads or renames its
+// identity, matching the name HAL uses for its personalized wake phrases.
+func DeviceName() string {
+	deviceNameMu.RLock()
+	defer deviceNameMu.RUnlock()
+	return deviceNameLower
+}
+
 // applyName fills {Name}/{name} placeholders with the current device name. Safe
 // (no-op) on strings without placeholders and before any name is set.
 func applyName(s string) string {

@@ -163,6 +163,26 @@ func BuildVoiceWakeWords(name string) []string {
 	}
 }
 
+// BuildSupportedVoiceWakeWords returns every phrase accepted by HAL's optional
+// wake-word gate. HAL always keeps the permanent "autonomous" and device-type
+// aliases, then adds the current agent-name aliases when its identity loads.
+// Keep this browser-facing list aligned with hal/drivers/voice/_internal/config.py
+// and VoiceService's merge_wake_words call.
+func BuildSupportedVoiceWakeWords(agentName, deviceType string) []string {
+	words := make([]string, 0, 21)
+	seen := make(map[string]struct{}, 21)
+	for _, name := range []string{"autonomous", deviceType, agentName} {
+		for _, word := range BuildVoiceWakeWords(name) {
+			if _, ok := seen[word]; ok {
+				continue
+			}
+			seen[word] = struct{}{}
+			words = append(words, word)
+		}
+	}
+	return words
+}
+
 // SetChitchatWakeWords replaces the wake-word strip list. Call once at startup
 // with the device type; safe to call again on agent rename.
 func SetChitchatWakeWords(words []string) {
