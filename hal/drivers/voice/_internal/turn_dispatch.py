@@ -66,6 +66,7 @@ def dispatch_turn(
     ser_audio_buffer,
     rt,
     event_type_override: str | None = None,
+    identity=None,
 ):
     """Identify the speaker, send the turn to the OS server, and submit SER.
 
@@ -77,6 +78,11 @@ def dispatch_turn(
 
     ``audio_buffer`` is the trimmed buffer (speaker recognition); ``ser_audio_buffer``
     is the untrimmed snapshot (SER keeps laughter / sighs).
+
+    ``identity`` — an optional pre-computed ``(final_msg, se_user, display)`` from
+    ``decorator.identify_and_decorate``, produced by the realtime turn's speaker-ID
+    prepass. When given we reuse it instead of running the (embedding-server)
+    recognition a SECOND time here. None → compute it now (non-realtime path).
     """
     # Consume the realtime `look` frame once per turn, regardless of branch below
     # (so a handled turn that already used it doesn't leak it to a later delegate).
@@ -88,7 +94,14 @@ def dispatch_turn(
     user = UNKNOWN_USER_LABEL
 
     if combined:
-        final_msg, se_user = decorator.identify_and_decorate(final_text, audio_buffer)
+        # Reuse the prepass result when the realtime path already identified the
+        # speaker this turn; otherwise identify now. Never runs recognition twice.
+        if identity is not None:
+            final_msg, se_user, _ = identity
+        else:
+            final_msg, se_user, _ = decorator.identify_and_decorate(
+                final_text, audio_buffer
+            )
         user = se_user if se_user else UNKNOWN_USER_LABEL
         logger.info("Final message → OS server (%s): %r", event_type, final_msg)
 

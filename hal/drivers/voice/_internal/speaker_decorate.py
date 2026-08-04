@@ -240,11 +240,16 @@ class SpeakerDecorator:
 
     def identify_and_decorate(
         self, transcript: str, audio_buffer: list[bytes],
-    ) -> tuple[str, Optional[str]]:
-        """Run speaker recognition; return (OS server message, SER user name or None).
+    ) -> tuple[str, Optional[str], Optional[str]]:
+        """Run speaker recognition; return (OS server message, SER user, display).
 
-        user_name is set only when speaker recognize completes without `error` —
-        known label or "unknown" for no match. None skips SER.
+        - OS server message — transcript decorated with the speaker prefix.
+        - SER user — known label or "unknown" (only when recognize completes
+          without `error`); None skips SER.
+        - display — the matched speaker's display name (e.g. "Darren") on a
+          confident match, else None. Used to name the voice speaker in the
+          realtime turn context WITHOUT re-running recognition; None on
+          unknown / gate-reject / server error so the caller falls back cleanly.
         """
         logger.info("Identify and decorate transcript: raw transcript is: '%s'", transcript)
         if self._speaker is None:
@@ -252,16 +257,16 @@ class SpeakerDecorator:
                 "Skip speaker ID: recognizer not initialized "
                 "(HAL_SPEAKER_RECOGNITION_ENABLED or init failure)",
             )
-            return transcript, None
+            return transcript, None, None
         if not audio_buffer:
             logger.warning("Skip speaker ID: audio buffer is empty (no frames captured this session)")
-            return transcript, None
+            return transcript, None, None
         try:
             from hal.drivers.voice.speech_emotion.constants import UNKNOWN_USER_LABEL
             from hal.drivers.voice.speaker_recognizer.speaker_recognizer import pcm16_bytes_to_wav
         except Exception as e:
             logger.warning("Skip speaker ID: helper import failed: %s", e)
-            return transcript, None
+            return transcript, None, None
 
         total_bytes = sum(len(b) for b in audio_buffer)
         duration_s = total_bytes / (STT_RATE * 2)  # int16 mono
@@ -270,7 +275,7 @@ class SpeakerDecorator:
                 "Skip speaker ID: only %.2fs of audio buffered (<%.2fs)",
                 duration_s, SPEAKER_MIN_AUDIO_S,
             )
-            return transcript, None
+            return transcript, None, None
 
         try:
             wav_bytes = pcm16_bytes_to_wav(b"".join(audio_buffer), STT_RATE)
@@ -279,7 +284,7 @@ class SpeakerDecorator:
             result = self._speaker.recognize(audio_b64, source_type="base64")
         except Exception as e:
             logger.warning("Speaker recognize failed: %s", e)
-            return transcript, None
+            return transcript, None, None
 
         logger.info("Speaker recognize result: %r", result)
         err = result.get("error")
@@ -290,8 +295,8 @@ class SpeakerDecorator:
             if audio_path:
                 return self._format_unknown_speaker_message(
                     transcript, audio_path, duration_s, vp_hash,
-                ), None
-            return transcript, None
+                ), None, None
+            return transcript, None, None
 
         name = result.get("name", "unknown")
         confidence = result.get("confidence", 0.0)
@@ -301,7 +306,7 @@ class SpeakerDecorator:
                 "Speaker ID: %s (confidence=%.2f, audio=%s)",
                 name, confidence, audio_path or "-",
             )
-            return f"Speaker - {display}: {transcript}", name
+            return f"Speaker - {display}: {transcript}", name, display
 
         logger.info(
             "Speaker ID: unknown (best=%.2f, audio=%s, hash=%s)",
@@ -309,7 +314,7 @@ class SpeakerDecorator:
         )
         return self._format_unknown_speaker_message(
             transcript, audio_path, duration_s, vp_hash,
-        ), UNKNOWN_USER_LABEL
+        ), UNKNOWN_USER_LABEL, None
 
     # ------------------------------------------------------------------
     # Speech-emotion submission
