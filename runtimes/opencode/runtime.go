@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"regexp"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -15,6 +16,10 @@ import (
 // after boot; a 5s cap killed the probe and left the version blank for the whole
 // process lifetime.
 const opencodeVersionProbeTimeout = 20 * time.Second
+
+// opencodeBinary is the installer-owned CLI path. Using it directly avoids a
+// systemd PATH difference leaving the Monitor version blank.
+const opencodeBinary = "/usr/local/bin/opencode"
 
 // opencodeVersionProbeRetries bounds retries so a killed/empty boot-time probe
 // self-heals instead of leaving the Overview card blank until the next restart.
@@ -58,12 +63,20 @@ func PopulateOpenCodeVersion() {
 func probeOpenCodeVersion() (version string, ok bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), opencodeVersionProbeTimeout)
 	defer cancel()
-	out, err := system.Run(ctx, "opencode", "--version")
+	out, err := system.Run(ctx, opencodeBinary, "--version")
 	if err != nil {
 		slog.Warn("read opencode version failed (expected if not on opencode backend)", "component", "opencode-probe", "error", err)
 		return "", false
 	}
-	loc := opencodeSemverRe.FindStringSubmatch(string(out))
+	return parseOpenCodeVersion(string(out))
+}
+
+func parseOpenCodeVersion(output string) (version string, ok bool) {
+	line := strings.TrimSpace(output)
+	if i := strings.IndexByte(line, '\n'); i >= 0 {
+		line = strings.TrimSpace(line[:i])
+	}
+	loc := opencodeSemverRe.FindStringSubmatch(line)
 	if len(loc) <= 1 {
 		return "", false
 	}

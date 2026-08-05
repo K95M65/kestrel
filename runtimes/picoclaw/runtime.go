@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"regexp"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -56,18 +57,23 @@ func PopulatePicoclawVersion() {
 func probePicoclawVersion() (version string, ok bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), picoclawVersionProbeTimeout)
 	defer cancel()
-	out, err := system.Run(ctx, "picoclaw", "version")
+	out, err := system.Run(ctx, picoclawBin, "version")
 	if err != nil {
 		slog.Warn("read picoclaw version failed (expected if not on picoclaw backend)", "component", "picoclaw-probe", "error", err)
 		return "", false
 	}
+	return parsePicoclawVersion(string(out))
+}
+
+// parsePicoclawVersion extracts the CLI release without mistaking the Go
+// toolchain version in PicoClaw's output for the application release.
+func parsePicoclawVersion(output string) (version string, ok bool) {
 	// Drop the Go toolchain version so "go1.25.11" is never matched as the release.
-	cleaned := picoclawGoVersionRe.ReplaceAllString(string(out), "")
-	loc := picoclawSemverRe.FindStringSubmatch(cleaned)
-	if len(loc) <= 1 {
-		return "", false
+	cleaned := picoclawGoVersionRe.ReplaceAllString(strings.TrimSpace(output), "")
+	if loc := picoclawSemverRe.FindStringSubmatch(cleaned); len(loc) > 1 {
+		return loc[1], true
 	}
-	return loc[1], true
+	return "", false
 }
 
 // Version satisfies domain.AgentGateway.Version(): the cached PicoClaw CLI
