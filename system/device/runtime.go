@@ -135,7 +135,24 @@ func CurrentAgentRuntimeFromConfig(cfg *config.Config) string {
 	return domain.AgentRuntimeOpenClaw
 }
 
-// UpdateAgentRuntime swaps the agentic backend (openclaw / hermes / picoclaw). It
+// ReserveAgentRuntimeSwitch exclusively reserves the runtime switcher and returns
+// the function that performs the switch. The caller must invoke the returned
+// function exactly once; it releases the reservation when it returns.
+//
+// A runtime switch changes systemd units and may install a backend, so allowing a
+// second request to enter while the first is in progress can leave config.json and
+// the running unit pointing at different runtimes.
+func (s *Service) ReserveAgentRuntimeSwitch(d domain.AgentRuntimeSetData) (run func() (bool, error), err error) {
+	if !s.runtimeSwitchMu.TryLock() {
+		return nil, ErrAgentRuntimeSwitchInProgress
+	}
+	return func() (bool, error) {
+		defer s.runtimeSwitchMu.Unlock()
+		return s.updateAgentRuntime(d)
+	}, nil
+}
+
+// updateAgentRuntime swaps the agentic backend (openclaw / hermes / picoclaw). It
 // runs switch-runtime and BLOCKS until the switch finishes, then persists
 // config.agent_runtime ONLY if it landed — so a failed install never leaves disk
 // pointing at a backend that isn't actually running. Shared by the MQTT
@@ -151,7 +168,7 @@ func CurrentAgentRuntimeFromConfig(cfg *config.Config) string {
 // has to happen AFTER the caller has put its success ack on the wire. switch-runtime
 // no longer restarts os-server either (it used to) — that move is what lets the
 // caller's goroutine survive long enough to ack the real result.
-func (s *Service) UpdateAgentRuntime(d domain.AgentRuntimeSetData) (bool, error) {
+func (s *Service) updateAgentRuntime(d domain.AgentRuntimeSetData) (bool, error) {
 	runtime := strings.ToLower(strings.TrimSpace(d.Runtime))
 	// Reject unknown values outright. factory.go falls back to openclaw on
 	// garbage, but an unknown runtime from the BFF/web is a contract error we

@@ -43,12 +43,20 @@ func (h *DeviceMQTTHandler) handleRuntimeSetup(env domain.MQTTDataCommand, runti
 
 	slog.Info("runtime setup: received", "component", "mqtt", "kind", kind, "runtime", runtime)
 
+	run, err := h.deviceService.ReserveAgentRuntimeSwitch(req)
+	if err != nil {
+		slog.Warn("runtime setup: switch already in progress", "component", "mqtt", "kind", kind, "runtime", runtime)
+		h.publishRuntimeSetupAck(kind, "failure", err.Error(), &req)
+		h.alertOps("🔴 Runtime setup "+kind+" — FAILED", err.Error())
+		return nil
+	}
+
 	// Ack immediately so the worker knows the device received the command.
 	h.publishRuntimeSetupAck(kind, "starting", "", nil)
 	h.alertOps("🚀 Runtime setup "+kind+" — starting", "")
 
 	go func() {
-		switched, err := h.deviceService.UpdateAgentRuntime(req)
+		switched, err := run()
 		if err != nil {
 			// switch-runtime already rolled back; report the real failure.
 			slog.Error("runtime setup: switch failed", "component", "mqtt", "kind", kind, "error", err)

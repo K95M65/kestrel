@@ -6,8 +6,10 @@
 package device
 
 import (
+	"errors"
 	"log/slog"
 	"os/exec"
+	"sync"
 	"time"
 
 	"go.autonomous.ai/os/system/beclient"
@@ -17,13 +19,18 @@ import (
 	"go.autonomous.ai/os/system/statusled"
 )
 
+// ErrAgentRuntimeSwitchInProgress prevents concurrent switch-runtime invocations.
+// The switcher owns systemd units and must run exclusively.
+var ErrAgentRuntimeSwitchInProgress = errors.New("agent runtime switch already in progress")
+
 type Service struct {
-	config         *config.Config
-	networkService *network.Service
-	agentGateway   domain.AgentGateway
-	beClient       *beclient.Client
-	statusLED      *statusled.Service
-	setupState     setupState
+	config          *config.Config
+	networkService  *network.Service
+	agentGateway    domain.AgentGateway
+	beClient        *beclient.Client
+	statusLED       *statusled.Service
+	setupState      setupState
+	runtimeSwitchMu sync.Mutex
 }
 
 func ProvideService(config *config.Config, ns *network.Service, gw domain.AgentGateway, be *beclient.Client, sled *statusled.Service) *Service {

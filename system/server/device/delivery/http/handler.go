@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -277,7 +278,7 @@ func (h *DeviceHandler) GetAgentRuntime(c *gin.Context) {
 }
 
 // SetAgentRuntime swaps the agentic backend (openclaw / hermes / picoclaw). The
-// switch now BLOCKS until it lands (UpdateAgentRuntime waits on switch-runtime,
+// switch now BLOCKS until it lands (the reserved switch waits on switch-runtime,
 // which may install the backend), so we validate the runtime synchronously for the
 // 400 and run the switch in the background, returning 200 "accepted" right away.
 // On a successful switch os-server restarts itself, so the HTTP connection drops
@@ -296,8 +297,17 @@ func (h *DeviceHandler) SetAgentRuntime(c *gin.Context) {
 			fmt.Sprintf("invalid runtime %q (want %s)", req.Runtime, strings.Join(domain.AgentRuntimes, "|"))))
 		return
 	}
+	run, err := h.service.ReserveAgentRuntimeSwitch(req)
+	if err != nil {
+		if errors.Is(err, device.ErrAgentRuntimeSwitchInProgress) {
+			c.JSON(http.StatusConflict, serializers.ResponseError("agent runtime switch already in progress"))
+			return
+		}
+		c.JSON(http.StatusInternalServerError, serializers.ResponseError(err.Error()))
+		return
+	}
 	go func() {
-		switched, err := h.service.UpdateAgentRuntime(req)
+		switched, err := run()
 		if err != nil {
 			slog.Error("agent-runtime switch failed", "component", "device-http", "error", err)
 			return

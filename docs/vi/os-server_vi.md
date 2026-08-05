@@ -175,6 +175,12 @@ SSID, IP, version các thành phần) cùng kết quả hành động bên dư�
 | Soft reset thiết bị | `device.soft_reset` |
 | Claude Code login / WhatsApp pair | kết quả pairing cuối (paired / failure / timeout) |
 | Đổi default model | model sync — chỉ khi primary/image model (đã gate theo version) thực sự đổi |
+
+Chuyển runtime là thao tác độc quyền. Trong khi một lượt cài đặt hoặc chuyển
+backend đang chạy, `POST /api/device/agent-runtime` tiếp theo nhận `409 Conflict`
+thay vì khởi động một transition systemd cạnh tranh. Selector trên web bị khoá
+cho đến khi lượt đầu được xác nhận hoặc timeout.
+
 Cảnh báo bật khi `llm_base_url` + `llm_api_key` được set; đặt
 `alerts_disabled: true` trong `config/config.json` để tắt cảnh báo cho một thiết bị.
 

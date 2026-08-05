@@ -177,6 +177,12 @@ action outcome below.
 | Device soft reset | `device.soft_reset` |
 | Claude Code login / WhatsApp pair | terminal pairing outcome (paired / failure / timeout) |
 | Default model swap | model sync — only when the version-gated primary/image model actually changes |
+
+Runtime switches are exclusive. While a backend install or switch is running,
+another `POST /api/device/agent-runtime` receives `409 Conflict` rather than
+starting a competing systemd transition. The web selector stays disabled until
+the first switch is confirmed or times out.
+
 Alerts are enabled whenever `llm_base_url` + `llm_api_key` are set; set
 `alerts_disabled: true` in `config/config.json` to mute a device.
 
