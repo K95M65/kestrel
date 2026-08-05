@@ -4,11 +4,17 @@ import (
 	"context"
 	"log/slog"
 	"regexp"
+	"strings"
 	"sync/atomic"
 	"time"
 
 	"go.autonomous.ai/os/system/lib/core/system"
 )
+
+// claudecodeBinary is the stable installer-owned symlink. Avoid relying on
+// PATH because os-server can start before the interactive shell profile is
+// loaded on the device.
+const claudecodeBinary = "/usr/local/bin/claude"
 
 // claudecodeVersionProbeTimeout caps a single `claude --version` probe. The
 // Claude Code CLI is a Node program whose cold-start can exceed a few seconds on
@@ -57,12 +63,20 @@ func PopulateClaudeCodeVersion() {
 func probeClaudeCodeVersion() (version string, ok bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), claudecodeVersionProbeTimeout)
 	defer cancel()
-	out, err := system.Run(ctx, "claude", "--version")
+	out, err := system.Run(ctx, claudecodeBinary, "--version")
 	if err != nil {
 		slog.Warn("read claude version failed (expected if not on claudecode backend)", "component", "claudecode-probe", "error", err)
 		return "", false
 	}
-	loc := claudecodeSemverRe.FindStringSubmatch(string(out))
+	return parseClaudeCodeVersion(string(out))
+}
+
+func parseClaudeCodeVersion(output string) (version string, ok bool) {
+	line := strings.TrimSpace(output)
+	if i := strings.IndexByte(line, '\n'); i >= 0 {
+		line = strings.TrimSpace(line[:i])
+	}
+	loc := claudecodeSemverRe.FindStringSubmatch(line)
 	if len(loc) <= 1 {
 		return "", false
 	}
