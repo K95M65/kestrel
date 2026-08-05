@@ -398,19 +398,35 @@ sớm ("hello") ngay sau khi restart sẽ rớt xuống main agent.
    turn mới ở local rồi gửi đúng một lần, đúng thứ tự khi session thay thế sẵn
    sàng. Nếu reconnect chậm/lỗi thì fallback về main agent với transcript STT;
    không làm rớt audio đầu câu hoặc commit nó vào activity cũ.
-3. **Prepass speaker-ID + bơm context.** Cuối session (sau khi capture xong), HAL
-   chạy prepass speaker-ID **một lần** (`identify_and_decorate`), rồi mới bơm
-   `[TURN CONTEXT]` (thời gian, nhắc ngôn ngữ trả lời, user hiện tại) dạng text
-   không tạo response. **User hiện tại chính là người nói (VOICE speaker)** được
-   nhận dạng trong lượt này — nó **ghi đè** `current_user` suy ra từ khuôn mặt, và
-   rơi về định danh khuôn mặt khi không có voice ID (unknown / gate-reject / không
-   có transcript). Context được gửi **sau khi** audio đã stream để có thể nêu đích
-   danh ai vừa nói (không thể biết người nói trước khi câu nói tồn tại). Gemini Live
-   chủ động bỏ qua injection này vì các message SDK
-   `clientContent(turn_complete=False)` lặp lại có thể va với lượt audio sau đó và
-   đóng WS 1011 — nên trên model đó cái tên không tới được câu trả lời; OpenAI thì
-   nhận. Kết quả prepass được xài lại ở hạ nguồn — speaker recognition không bao giờ
-   chạy hai lần.
+3. **Bơm turn context + prepass speaker-ID.** `[TURN CONTEXT]` (thời gian, nhắc
+   ngôn ngữ trả lời, user hiện tại) được gửi dạng text không tạo response. **User
+   hiện tại chính là người nói (VOICE speaker)** được nhận dạng trong lượt này — nó
+   **ghi đè** `current_user` suy ra từ khuôn mặt, và rơi về định danh khuôn mặt khi
+   không có voice ID (unknown / gate-reject / không có transcript).
+
+   **Thời điểm chạy khác nhau theo mode**, vì voiceprint cần trọn câu nói nên không
+   thể tồn tại lúc mới mở session:
+
+   | Mode | Gửi `[TURN CONTEXT]` | Biết người nói? |
+   |------|---------------------|-----------------|
+   | Always-listening (`wakeword=false`) | lúc **mở** session, trước khi có audio | Không → fallback khuôn mặt, rồi mới sửa |
+   | Wake-word / follow-up | sau khi capture xong, khi final xác nhận wake phrase | Có |
+   | Deferred (rebuild sau noise-drop) | sau khi capture xong, trên session thay thế | Có |
+
+   Ở mode always-listening, prepass speaker-ID (`identify_and_decorate`, chạy **một
+   lần** cuối session) chỉ giải được người nói *sau khi* context đã gửi đi kèm tên
+   từ khuôn mặt. HAL gửi tiếp một correction `[TURN CONTEXT UPDATE]` nêu đúng người
+   nói — vẫn **trước** `commit_audio()` nên thuộc cùng một lượt. Bỏ qua khi context
+   đã mang đúng tên, hoặc khi lượt đó là noise. Kết quả prepass được xài lại ở hạ
+   nguồn — speaker recognition không bao giờ chạy hai lần.
+
+   **Lưu ý Gemini native-audio:** `send_text()` bỏ **toàn bộ** text không tạo
+   response trên các model Gemini `*native-audio*` (`gemini_needs_idle_workaround()`),
+   vì các message SDK `clientContent(turn_complete=False)` lặp lại va với lượt audio
+   sau đó và đóng WS 1011. Trên các model đó cả context lẫn correction đều không tới
+   được câu trả lời, và model rơi về định danh còn lưu trong memory của session.
+   `gemini-3.1-flash-live` và OpenAI thì nhận cả hai. Mọi lần bỏ đều được log
+   (`[realtime->model] DROPPED …`).
 4. **Commit.** Cuối session, nếu enabled + `available` + có audio buffer, gọi
    `commit_audio()`. Cue emotion `thinking` fire cùng lúc commit (mặt + servo +
    LED pulse tím ÉP HIỆN — `thinking` vốn là background emotion có LED nhường

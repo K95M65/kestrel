@@ -128,6 +128,28 @@ def build_turn_context(speaker: Optional[str] = None) -> str:
     return "[TURN CONTEXT] " + " | ".join(turn_ctx)
 
 
+def build_speaker_correction(speaker: str) -> str:
+    """Late identity correction for a turn whose context was already sent.
+
+    In always-listening mode the turn context goes out when the mic session
+    opens — before any audio exists, so voice speaker-ID cannot have run yet and
+    ``build_turn_context()`` necessarily falls back to the face-derived
+    ``current_user``. The voiceprint is only resolvable once capture is complete,
+    which is AFTER that send. This line is sent just before the audio commit to
+    override the identity already in the turn, so the model addresses the person
+    who actually spoke rather than the last face it saw (or whoever its session
+    memory still thinks it is talking to).
+
+    Phrased as an explicit correction, not a second "Current user:" line: two
+    contradictory assignments in one turn let the model pick either one.
+    """
+    return (
+        f"[TURN CONTEXT UPDATE] Correction for THIS turn: the person speaking is "
+        f"{speaker} (identified by voice). Address {speaker} — ignore any other "
+        f"name for the current user in this turn's context or in your memory."
+    )
+
+
 class RealtimeTurnResult(NamedTuple):
     """Outcome of a realtime turn, consumed by the OS-server dispatch step."""
 
