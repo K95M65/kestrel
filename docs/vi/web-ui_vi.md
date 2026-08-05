@@ -140,7 +140,7 @@ Monitor poll API system/HW mỗi **3 giây**. Flow dùng hybrid theo file: REST 
 |----------|---------|
 | `GET /api/system/info` | CPU load, RAM (KB), nhiệt độ, uptime, goroutines, version, deviceId, capabilities (tên các capability đã khai báo — cả Monitor lẫn trang Edit/Settings đều ẩn/hiện tab phần cứng theo danh sách này; xem hook dùng chung `useCapabilities`) |
 | `GET /api/system/network` | SSID, IP, public IP, Tailscale IP, signal (dBm), internet (bool), pingMs (RTT của probe internet, 0 = chưa đo) |
-| `GET /api/openclaw/status` | name, connected (bool), sessionKey (bool), version, emotion, uptime (uptime kết nối WS phía OS server, giây), agentUptime (uptime tiến trình OpenClaw lấy từ `server.uptimeMs` trong hello-ok, giây — không reset khi OS server restart) |
+| `GET /api/agent/status` | tên runtime đang active, connected (bool), sessionKey (bool), version, emotion, uptime (uptime kết nối runtime phía OS server, giây), agentUptime (uptime tiến trình runtime khi runtime cung cấp, giây — không reset khi OS server restart). Hàng Agent trong card Versions probe phiên bản CLI bất đồng bộ và retry khi boot tạm thời lỗi. |
 | `GET /api/openclaw/recent` | Các flow event mới nhất từ JSONL của ngày hiện tại (`local/flow_events_<date>.jsonl`) |
 | `GET /api/openclaw/flow-events?date=YYYY-MM-DD&last=500` | API flow theo file dùng cho seed/history của Flow |
 | `GET /api/openclaw/flow-stream` | Stream live theo file (SSE) khi JSONL thay đổi |
