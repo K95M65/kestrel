@@ -16,6 +16,12 @@ func TestParsePicoclawVersion(t *testing.T) {
 			ok:   true,
 		},
 		{
+			name: "nightly build identity",
+			out:  "picoclaw nightly-44-g1959045c-dirty (git: 1959045c)\nBuild: 2026-07-08T10:52:58+0700\nGo: go1.25.11",
+			want: "nightly-44-g1959045c-dirty",
+			ok:   true,
+		},
+		{
 			name: "Go toolchain version alone is not a release",
 			out:  "PicoClaw go1.25.11\n",
 			want: "",

@@ -23,6 +23,11 @@ const picoclawVersionProbeRetries = 6
 // picoclawVersionProbeBackoff is the wait between failed probe attempts.
 const picoclawVersionProbeBackoff = 10 * time.Second
 
+// picoclawNightlyVersionRe extracts PicoClaw's development build identity
+// (e.g. "picoclaw nightly-44-g1959045c-dirty"). Current device builds use
+// this format instead of a semantic release tag.
+var picoclawNightlyVersionRe = regexp.MustCompile(`nightly-\d+-g[0-9A-Fa-f]+(?:-dirty)?`)
+
 var picoclawGoVersionRe = regexp.MustCompile(`(?i)\bgo\d+\.\d+\.\d+\b`)
 var picoclawSemverRe = regexp.MustCompile(`(\d+\.\d+\.\d+(?:[-+._][0-9A-Za-z.-]+)?)`)
 var picoclawVersion atomic.Pointer[string]
@@ -65,9 +70,13 @@ func probePicoclawVersion() (version string, ok bool) {
 	return parsePicoclawVersion(string(out))
 }
 
-// parsePicoclawVersion extracts the CLI release without mistaking the Go
-// toolchain version in PicoClaw's output for the application release.
+// parsePicoclawVersion extracts either a tagged release or PicoClaw's nightly
+// build identity without mistaking the Go toolchain version for the application
+// version.
 func parsePicoclawVersion(output string) (version string, ok bool) {
+	if nightly := picoclawNightlyVersionRe.FindString(output); nightly != "" {
+		return nightly, true
+	}
 	// Drop the Go toolchain version so "go1.25.11" is never matched as the release.
 	cleaned := picoclawGoVersionRe.ReplaceAllString(strings.TrimSpace(output), "")
 	if loc := picoclawSemverRe.FindStringSubmatch(cleaned); len(loc) > 1 {
