@@ -68,3 +68,25 @@ func materializePresync(runtime string) error {
 	}
 	return nil
 }
+
+// materializeReadiness writes the target runtime's optional readiness probe to
+// embeddedInstallerDir/<runtime>/ready. switch_runtime.sh invokes that probe
+// only when its caller requested a readiness-confirmed switch.
+func materializeReadiness(runtime string) error {
+	script, ok := runtimereg.GetReadiness(runtime)
+	if !ok {
+		return nil
+	}
+	dir := filepath.Join(embeddedInstallerDir, runtime)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("mkdir %s: %w", dir, err)
+	}
+	p := filepath.Join(dir, "ready")
+	if cur, err := os.ReadFile(p); err == nil && bytes.Equal(cur, script) {
+		return nil
+	}
+	if err := os.WriteFile(p, script, 0o755); err != nil {
+		return fmt.Errorf("write %s: %w", p, err)
+	}
+	return nil
+}

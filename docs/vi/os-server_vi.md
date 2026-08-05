@@ -181,6 +181,20 @@ backend đang chạy, `POST /api/device/agent-runtime` tiếp theo nhận `409 C
 thay vì khởi động một transition systemd cạnh tranh. Selector trên web bị khoá
 cho đến khi lượt đầu được xác nhận hoặc timeout.
 
+Switch được kích hoạt qua HTTP còn yêu cầu xác nhận runtime đã sẵn sàng trong
+tối đa 60 giây trước khi dừng runtime cũ và lưu `agent_runtime`; chỉ
+`systemctl is-active` không bao giờ được coi là bằng chứng gateway đã phục vụ
+request được. Mỗi runtime có probe riêng: OpenClaw chạy RPC status đã xác thực,
+Hermes poll `/health` đã xác thực, còn PicoClaw, Codex, Claude Code và OpenCode
+phải chấp nhận WebSocket upgrade đã xác thực. MQTT hiện vẫn giữ luồng ack theo
+trạng thái unit-active, đến khi bổ sung ready state ở tầng protocol riêng.
+
+Khi boot sau một runtime switch, startup sequence vẫn có thể reconcile config,
+channel và file onboarding của runtime; các bước này có thể restart gateway.
+Trước khi gửi wake greeting vật lý, os-server vì vậy yêu cầu gateway active giữ
+trạng thái ready liên tục trong 15 giây. Điều này tránh gửi greeting vào gateway
+đã pass một health probe cũ nhưng vẫn đang restart.
+
 Cảnh báo bật khi `llm_base_url` + `llm_api_key` được set; đặt
 `alerts_disabled: true` trong `config/config.json` để tắt cảnh báo cho một thiết bị.
 
