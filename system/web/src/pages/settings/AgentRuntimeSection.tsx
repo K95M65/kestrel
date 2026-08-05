@@ -64,7 +64,14 @@ export function AgentRuntimeSection({ active }: { active: boolean }) {
       // POST returns 200 = "accepted" immediately; the switch itself runs in the
       // background (may run install.sh on a first switch — minutes, not seconds).
       await setAgentRuntime(target);
-    } catch {
+    } catch (err) {
+      // A different tab/client may already be switching. This is a definitive
+      // rejection, unlike a dropped connection during the expected os-server restart.
+      if ((err as Error & { status?: number }).status === 409) {
+        toast.error("Another runtime switch is already in progress. Wait for it to finish before trying again.");
+        setSwitching(false);
+        return;
+      }
       // os-server may restart before the response lands; a dropped connection
       // here usually means the switch WAS accepted — the poll below finds out.
     }

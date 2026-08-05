@@ -177,6 +177,28 @@ action outcome below.
 | Device soft reset | `device.soft_reset` |
 | Claude Code login / WhatsApp pair | terminal pairing outcome (paired / failure / timeout) |
 | Default model swap | model sync — only when the version-gated primary/image model actually changes |
+
+Runtime switches are exclusive. While a backend install or switch is running,
+another `POST /api/device/agent-runtime` receives `409 Conflict` rather than
+starting a competing systemd transition. The web selector stays disabled until
+the first switch is confirmed or times out.
+
+HTTP-triggered switches additionally request runtime readiness confirmation for
+up to 60 seconds before they stop the old runtime and persist `agent_runtime`;
+`systemctl is-active` alone is never treated as proof that a gateway can serve
+requests. Each runtime supplies its own probe: OpenClaw runs its authenticated
+RPC status probe, Hermes polls authenticated `/health`, and PicoClaw, Codex,
+Claude Code, and OpenCode must accept an authenticated WebSocket upgrade.
+MQTT currently retains its unit-active acknowledgement flow while its
+protocol-level ready state is added separately.
+
+On boot after a runtime switch, the startup sequence may still reconcile
+runtime config, channels, and onboarding files; those steps can restart a
+gateway. Before it sends the physical wake greeting, os-server therefore
+requires the active gateway to remain ready continuously for 15 seconds. This
+prevents a greeting from being sent into a gateway that passed an earlier health
+probe but is still restarting.
+
 Alerts are enabled whenever `llm_base_url` + `llm_api_key` are set; set
 `alerts_disabled: true` in `config/config.json` to mute a device.
 

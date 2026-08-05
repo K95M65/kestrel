@@ -1,7 +1,8 @@
 # Claude Code Agent Backend
 
 How `os-server` drives **Claude Code** (Anthropic's CLI agent) as the device's
-swappable agentic runtime, alongside OpenClaw, Hermes, and PicoClaw. Generic
+swappable agentic runtime, alongside OpenClaw, Hermes, PicoClaw, Codex, and
+OpenCode. Generic
 mechanics (switch flow, install-vs-presync, migration, checklist) live in
 [`adding-agent-runtime.md`](adding-agent-runtime.md); this file is the
 claudecode-specific protocol, layout, and quirks.

@@ -6,8 +6,10 @@
 package device
 
 import (
+	"errors"
 	"log/slog"
 	"os/exec"
+	"sync"
 	"time"
 
 	"go.autonomous.ai/os/system/beclient"
@@ -17,13 +19,18 @@ import (
 	"go.autonomous.ai/os/system/statusled"
 )
 
+// ErrAgentRuntimeSwitchInProgress prevents concurrent switch-runtime invocations.
+// The switcher owns systemd units and must run exclusively.
+var ErrAgentRuntimeSwitchInProgress = errors.New("agent runtime switch already in progress")
+
 type Service struct {
-	config         *config.Config
-	networkService *network.Service
-	agentGateway   domain.AgentGateway
-	beClient       *beclient.Client
-	statusLED      *statusled.Service
-	setupState     setupState
+	config          *config.Config
+	networkService  *network.Service
+	agentGateway    domain.AgentGateway
+	beClient        *beclient.Client
+	statusLED       *statusled.Service
+	setupState      setupState
+	runtimeSwitchMu sync.Mutex
 }
 
 func ProvideService(config *config.Config, ns *network.Service, gw domain.AgentGateway, be *beclient.Client, sled *statusled.Service) *Service {
@@ -60,17 +67,42 @@ func (s *Service) restartHAL(reason string) {
 
 // WaitForAgentReady polls agentGateway.IsReady until it returns true or the timeout elapses.
 func (s *Service) WaitForAgentReady(timeout time.Duration) bool {
-	if s.agentGateway == nil {
+	return waitForAgentReady(s.agentGateway, timeout, 0, 500*time.Millisecond)
+}
+
+// WaitForAgentReadyStable requires IsReady to remain true for stableFor before
+// succeeding. Startup reconciliation can restart a runtime after an earlier
+// health probe has marked it ready; a single true observation would then allow
+// a startup greeting to race the restart and be dropped.
+func (s *Service) WaitForAgentReadyStable(timeout, stableFor time.Duration) bool {
+	return waitForAgentReady(s.agentGateway, timeout, stableFor, 500*time.Millisecond)
+}
+
+type agentReadiness interface {
+	IsReady() bool
+}
+
+func waitForAgentReady(gateway agentReadiness, timeout, stableFor, pollInterval time.Duration) bool {
+	if gateway == nil {
 		return false
 	}
 	deadline := time.Now().Add(timeout)
+	var readySince time.Time
 	for {
-		if s.agentGateway.IsReady() {
-			return true
+		now := time.Now()
+		if gateway.IsReady() {
+			if readySince.IsZero() {
+				readySince = now
+			}
+			if now.Sub(readySince) >= stableFor {
+				return true
+			}
+		} else {
+			readySince = time.Time{}
 		}
-		if time.Now().After(deadline) {
+		if !now.Before(deadline) {
 			return false
 		}
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(pollInterval)
 	}
 }

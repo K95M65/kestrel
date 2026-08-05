@@ -29,9 +29,15 @@ var InstallScript []byte
 //go:embed presync.sh
 var PresyncScript []byte
 
+// ReadyScript verifies the authenticated OpenCode bridge WebSocket upgrade.
+//
+//go:embed ready.sh
+var ReadyScript []byte
+
 // Register the embedded installer + presync so system/device can materialize
 // them without importing this package (which would cycle via statusled → device).
 func init() {
 	runtimereg.Register(domain.AgentRuntimeOpenCode, InstallScript)
 	runtimereg.RegisterPresync(domain.AgentRuntimeOpenCode, PresyncScript)
+	runtimereg.RegisterReadiness(domain.AgentRuntimeOpenCode, ReadyScript)
 }
