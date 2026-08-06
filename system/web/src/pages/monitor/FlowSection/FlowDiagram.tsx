@@ -76,7 +76,10 @@ export function FlowDiagram({
 
   const handleMouseUp = useCallback(() => setDragging(false), []);
 
-  const resetView = useCallback(() => { setZoom(1); setPan({ x: 0, y: 0 }); }, []);
+  // Setters from useState are stable, so listing them keeps the callback
+  // identity unchanged across renders (same as the previous empty dep array)
+  // while matching the deps the React Compiler infers.
+  const resetView = useCallback(() => { setZoom(1); setPan({ x: 0, y: 0 }); }, [setZoom, setPan]);
 
   const vbW = VW / zoom;
   const vbH = VH / zoom;
@@ -198,7 +201,7 @@ export function FlowDiagram({
   const gateR = compact ? 22 : 30;
 
   const ttsSuppressed = turnEvents.some((ev) =>
-    ev.type === "flow_event" && ["tts_suppressed", "tts_muted"].includes((ev.detail as Record<string, any>)?.node)
+    ev.type === "flow_event" && ["tts_suppressed", "tts_muted"].includes(ev.detail?.node ?? "")
   );
 
   function nodeColor(id: FlowStage) {
@@ -441,7 +444,7 @@ export function FlowDiagram({
           let chatSendTs = 0, lcStartTs = 0, lcEndTs = 0;
           for (const ev of turnEvents) {
             const tt = new Date(ev.time).getTime();
-            const fn = (ev.detail as Record<string, any> | undefined)?.node;
+            const fn = ev.detail?.node;
             if ((ev.type === "chat_send" || fn === "chat_send") && !chatSendTs) chatSendTs = tt;
             if (fn === "lifecycle_start" && !lcStartTs) lcStartTs = tt;
             if (fn === "lifecycle_end") lcEndTs = tt;

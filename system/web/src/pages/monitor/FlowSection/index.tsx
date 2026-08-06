@@ -18,6 +18,17 @@ import { PipelineModal } from "./PipelineModal";
 import { FiltersModal } from "./FiltersModal";
 import { UserAvatar } from "./UserAvatar";
 
+// Dev-only "Simulate Event" card, kept in the tree but disabled in the shipped
+// UI. Explicitly typed as `boolean` (not the literal `false`) so the JSX guard
+// below is not a constant expression.
+const SHOW_SIMULATE_CARD: boolean = false;
+
+// Flow/SSE event payloads arrive as free-form JSON from the device (os-server
+// flow log + agent stream), so their shape is not statically knowable here —
+// each read is a defensive optional-chain into an unmodelled wire object.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type FlowEventDetail = Record<string, any>;
+
 // Category → turn types mapping
 const CAT_TYPES: Record<string, string[]> = {
   mic: ["voice", "voice_command", "voice_agent_handled", "sound", "speech_emotion", "speech_emotion.detected"],
@@ -65,7 +76,10 @@ export function FlowSection({
     try {
       const saved = localStorage.getItem("os-excluded-types-v1");
       if (saved) return new Set(JSON.parse(saved));
-    } catch {}
+    } catch {
+      // Corrupt or unreadable saved filter: start with nothing excluded so the
+      // Flow view always renders, and the next save overwrites the bad value.
+    }
     return new Set();
   });
   const [searchText, setSearchText] = useState("");
@@ -197,7 +211,7 @@ export function FlowSection({
   }, [downloadServerJsonlTail, downloadUISnapshot]);
 
   const saveExcluded = (next: Set<string>) => {
-    try { localStorage.setItem("os-excluded-types-v1", JSON.stringify([...next])); } catch {}
+    try { localStorage.setItem("os-excluded-types-v1", JSON.stringify([...next])); } catch { /* Filter persistence only: the in-memory Set below still drives this session's view. */ }
   };
 
   const toggleType = (type: string) => {
@@ -358,8 +372,8 @@ export function FlowSection({
         if (!isDeviceRun(deviceTurn.id) || isDeviceRun(uuidTurn.id)) return false;
         const closedEmpty = deviceTurn.events.some((ev) =>
           ev.type === "flow_event" && (
-            (ev.detail as Record<string, any>)?.node === "chat_final_empty" ||
-            (ev.detail as Record<string, any>)?.node === "turn_steered"
+            (ev.detail as FlowEventDetail)?.node === "chat_final_empty" ||
+            (ev.detail as FlowEventDetail)?.node === "turn_steered"
           )
         );
         if (!closedEmpty) return false;
@@ -373,7 +387,10 @@ export function FlowSection({
         map.set(b.id, color);
         return true;
       };
-      tryPair(a, b) || tryPair(b, a);
+      // Try both orientations (a = device run, or b = device run); the second
+      // attempt only runs when the first found no pair — same as the previous
+      // `tryPair(a, b) || tryPair(b, a)` short-circuit.
+      if (!tryPair(a, b)) tryPair(b, a);
     }
     return map;
   }, [filteredTurns]);
@@ -410,7 +427,7 @@ export function FlowSection({
     }
     const isToolCall = ev.type === "tool_call" || (ev.type === "flow_event" && node === "tool_call");
     if (isToolCall) {
-      const d = ev.detail as Record<string, any> | undefined;
+      const d = ev.detail as FlowEventDetail | undefined;
       const args = d?.args ?? d?.data?.args ?? "";
       if (isCameraAPICommand(String(args))) visitedStages.add("hw_camera");
     }
@@ -422,7 +439,7 @@ export function FlowSection({
       (ev.type === "flow_event" && ev.detail?.node === "sensing_input");
     const fromSensingChatSend = (ev.type === "chat_send" || (ev.type === "flow_event" && ev.detail?.node === "chat_send")) &&
       hasSensingPrefix(ev.summary ?? "");
-    const d = ev.detail as Record<string, any> | undefined;
+    const d = ev.detail as FlowEventDetail | undefined;
     const sensingType = d?.data?.type ?? d?.type;
     const fromSensingAgentCall = (ev.type === "flow_event" && ev.detail?.node === "agent_call") &&
       (sensingType === "voice" || sensingType === "voice_command" || sensingType === "motion" || sensingType === "motion.activity" || sensingType === "emotion.detected" || sensingType === "speech_emotion.detected" || sensingType === "pose.ergo_risk" || sensingType === "sound");
@@ -445,7 +462,7 @@ export function FlowSection({
   if (visitedStages.has("local_match")) {
     const hasActions = turnEvents.some((ev) => {
       if (ev.type !== "intent_match" && !(ev.type === "flow_event" && ev.detail?.node === "intent_match")) return false;
-      const d = ev.detail as Record<string, any> | undefined;
+      const d = ev.detail as FlowEventDetail | undefined;
       const actions: string[] = d?.data?.actions ?? d?.actions ?? [];
       return actions.length > 0;
     });
@@ -454,7 +471,7 @@ export function FlowSection({
 
   // TTS suppressed/muted: mark TTS as visited so it shows red via nodeColor
   const hasTtsSuppressed = turnEvents.some((ev) =>
-    ev.type === "flow_event" && ["tts_suppressed", "tts_muted"].includes((ev.detail as Record<string, any>)?.node)
+    ev.type === "flow_event" && ["tts_suppressed", "tts_muted"].includes((ev.detail as FlowEventDetail)?.node)
   );
   if (hasTtsSuppressed) visitedStages.add("tts_speak");
 
@@ -683,7 +700,7 @@ export function FlowSection({
       </div>
 
       {/* Simulate card — hidden for now */}
-      {false && window.location.hostname === "localhost" && (
+      {SHOW_SIMULATE_CARD && window.location.hostname === "localhost" && (
         <div style={{ ...S.card, padding: "10px 14px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
             <span style={S.cardLabel}>Simulate Event</span>

@@ -64,6 +64,7 @@ function chipTone(token: string): { fg: string; bg: string } {
 
 // Strip ANSI escape codes only when prefixed by ESC. The earlier fallback that
 // matched any `[…m` ate parts of content like `[200ms]` from app logs.
+// eslint-disable-next-line no-control-regex -- matching the ESC control char is the point: that anchor is what tells a real SGR sequence apart from log text like "[200ms]".
 const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "");
 
 function LogPanel({ source, label, color, initialFilter, initialLevel, onFilterChange }: {
@@ -223,7 +224,7 @@ function LogPanel({ source, label, color, initialFilter, initialLevel, onFilterC
 
     const ts = pyMatch ? pyMatch[1] : goMatch![1];
     const lvl = pyMatch ? pyMatch[2] : goMatch![2];
-    let rest = pyMatch ? pyMatch[3] : goMatch![3];
+    const rest = pyMatch ? pyMatch[3] : goMatch![3];
 
     // Split message from %key=value metadata
     const metaIdx = rest.search(/\s%\w+=/);
@@ -450,7 +451,10 @@ function loadLogState(): { active: LogSource; filters: Record<string, { filter: 
         filters: parsed.filters ?? {},
       };
     }
-  } catch {}
+  } catch {
+    // Unreadable or corrupt saved state: fall through to the defaults below
+    // rather than leaving the Logs panel without a selected source.
+  }
   return { active: "openclaw", filters: {} };
 }
 
@@ -461,7 +465,10 @@ function saveLogState(active: LogSource, filters: Record<string, { filter: strin
   _saveTimer = window.setTimeout(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ active, filters }));
-    } catch {}
+    } catch {
+      // Persisting the filter is a convenience; a full or blocked
+      // localStorage just means the panel reopens with defaults.
+    }
   }, 250);
 }
 

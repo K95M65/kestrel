@@ -162,7 +162,11 @@ export function SettingsPanel({ activeSection }: { activeSection: SettingsSectio
     mqttEndpoint: string; mqttPort: string; mqttUsername: string;
     faChannel: string; fdChannel: string;
   };
-  const initialRef = useRef<InitialSnapshot | null>(null);
+  // Held as state, not a ref: the Save button's disabled/enabled rendering is
+  // derived from it, and React 19 requires render-relevant values to be state.
+  // Written exactly twice (after config load, after a successful save) — both
+  // outside render, so the render output is unchanged.
+  const [baseline, setBaseline] = useState<InitialSnapshot | null>(null);
 
   // Face owners — top-level state because both Voice and Face sections read
   // it. Section-local state (faceName, voiceLabel, etc.) lives in the section
@@ -173,9 +177,17 @@ export function SettingsPanel({ activeSection }: { activeSection: SettingsSectio
     try {
       const r = await fetch(hwUrl("/face/owners")).then((x) => x.json());
       if (Array.isArray(r?.persons)) setFaceOwners(r.persons);
-    } catch {}
+    } catch {
+      // Face owners are optional decoration in the settings form — a device
+      // without the face capability simply renders an empty list.
+    }
   }, []);
 
+  // Rule over-approximates here: loadFaceOwners is async and its only setState
+  // runs after `await fetch(...)`, so nothing is set synchronously in the effect
+  // body. Fetching the face-owner list on mount is exactly the "subscribe to an
+  // external system" case the rule is meant to allow.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadFaceOwners(); }, [loadFaceOwners]);
 
   useEffect(() => {
@@ -259,7 +271,7 @@ export function SettingsPanel({ activeSection }: { activeSection: SettingsSectio
         // form as dirty immediately on load.
         const llmUrlInit = cfg.llm_base_url ?? "";
         const sttProviderInit: SttProvider = cfg.has_deepgram_api_key ? "deepgram" : "autonomous";
-        initialRef.current = {
+        setBaseline({
           ssid: cfg.network_ssid ?? "",
           deviceId: cfg.device_id ?? "",
           llmUrl: llmUrlInit,
@@ -282,7 +294,7 @@ export function SettingsPanel({ activeSection }: { activeSection: SettingsSectio
           mqttUsername: cfg.mqtt_username ?? "",
           faChannel: cfg.fa_channel ?? "",
           fdChannel: cfg.fd_channel ?? "",
-        };
+        });
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoadingCfg(false));
@@ -307,24 +319,38 @@ export function SettingsPanel({ activeSection }: { activeSection: SettingsSectio
 
   // Auto-mirror AI Brain key/URL into TTS while TTS field is empty.
   // Once the user types into TTS the sync stops; clearing it re-enables mirroring.
+  //
+  // The four effects below trip react-hooks/set-state-in-effect. They are
+  // suppressed rather than rewritten because the mirroring is deliberately
+  // *sticky*: once a field has been filled from the AI Brain value it stops
+  // tracking it, so the value cannot be derived during render (a derived
+  // `ttsBaseUrl || llmUrl` would keep following later llmUrl edits, which is a
+  // different behavior). Folding the mirror into the setters passed to
+  // LLMSection/TTSSection/STTSection would change those components' prop
+  // contracts. Deferring the setState (queueMicrotask) would silence the rule
+  // but change commit timing. All three are behavior changes, so the pattern
+  // stays as-is and is left for a deliberate follow-up.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!ttsApiKey && llmApiKey) setTtsApiKey(llmApiKey);
   }, [llmApiKey, ttsApiKey]);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!ttsBaseUrl && llmUrl) setTtsBaseUrl(llmUrl);
   }, [llmUrl, ttsBaseUrl]);
   // Same auto-mirror for STT in autonomous mode (Deepgram has its own key).
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (sttProvider === "autonomous" && !sttApiKey && llmApiKey) setSttApiKey(llmApiKey);
   }, [llmApiKey, sttApiKey, sttProvider]);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (sttProvider === "autonomous" && !sttBaseUrl && llmUrl) setSttBaseUrl(llmUrl);
   }, [llmUrl, sttBaseUrl, sttProvider]);
 
   // Dirty = any non-secret field diverges from the loaded/last-saved baseline,
   // OR any secret field has user-typed content. Save button uses this to stay
   // disabled until something actually changed.
-  const baseline = initialRef.current;
   const dirty = !loadingCfg && baseline != null && (
     ssid !== baseline.ssid ||
     deviceId !== baseline.deviceId ||
@@ -423,7 +449,7 @@ export function SettingsPanel({ activeSection }: { activeSection: SettingsSectio
       toast.success("Config saved — restart your device for changes to take effect.");
       // Reset baseline so Save button goes back to disabled until next edit.
       // Non-secret fields adopt their current values as the new baseline.
-      initialRef.current = {
+      setBaseline({
         ssid, deviceId,
         llmUrl, llmModel, llmDisableThinking,
         sttBaseUrl, sttProvider, sttLanguage,
@@ -434,7 +460,7 @@ export function SettingsPanel({ activeSection }: { activeSection: SettingsSectio
         discordGuildId, discordUserId,
         mqttEndpoint, mqttPort, mqttUsername,
         faChannel, fdChannel,
-      };
+      });
       // Clear typed secrets so their non-empty state no longer marks the form
       // dirty. Their persisted values live server-side; has_* flags surface
       // "configured" in the UI.

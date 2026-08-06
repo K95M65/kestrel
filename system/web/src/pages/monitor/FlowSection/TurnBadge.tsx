@@ -12,6 +12,23 @@ import { turnIO, turnTokenStats, turnCurrentUser } from "./helpers";
 import { PoseBucketModal } from "./PoseBucketModal";
 import { UserAvatar } from "./UserAvatar";
 
+// Turn timestamp label: "Ns ago" / "N min ago" for anything within the last
+// 30 minutes, otherwise the HH:MM:SS part of the ISO string. Reads the wall
+// clock, so it lives at module scope (outside the component render body)
+// rather than being re-created on every render.
+function formatTurnTime(iso: string): string {
+  const date = new Date(iso);
+  const diffMs = Date.now() - date.getTime();
+  if (diffMs >= 0 && diffMs < 30 * 60 * 1000) {
+    const diffSec = Math.floor(diffMs / 1000);
+    if (diffSec < 60) return `${diffSec}s ago`;
+    const diffMin = Math.floor(diffSec / 60);
+    return `${diffMin} min ago`;
+  }
+  const m = iso.match(/T(\d{2}:\d{2}:\d{2})/);
+  return (m?.[1] ?? iso).trim();
+}
+
 export function TurnBadge({ turn, pairTint, userPhotos, onViewPipeline }: {
   turn: Turn;
   pairTint?: string;
@@ -21,18 +38,6 @@ export function TurnBadge({ turn, pairTint, userPhotos, onViewPipeline }: {
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [bucketOpen, setBucketOpen] = useState(false);
   const [, , themeClass] = useTheme();
-  const formatTurnTime = (iso: string): string => {
-    const date = new Date(iso);
-    const diffMs = Date.now() - date.getTime();
-    if (diffMs >= 0 && diffMs < 30 * 60 * 1000) {
-      const diffSec = Math.floor(diffMs / 1000);
-      if (diffSec < 60) return `${diffSec}s ago`;
-      const diffMin = Math.floor(diffSec / 60);
-      return `${diffMin} min ago`;
-    }
-    const m = iso.match(/T(\d{2}:\d{2}:\d{2})/);
-    return (m?.[1] ?? iso).trim();
-  };
 
   const pathColor = turn.path === "dropped" ? "var(--lm-red)"
     : turn.path === "queued" ? "var(--lm-amber)"
@@ -76,7 +81,7 @@ export function TurnBadge({ turn, pairTint, userPhotos, onViewPipeline }: {
   const tokenStats = turnTokenStats(turn);
   const currentUser = turnCurrentUser(turn);
   const hasBroadcast = turn.events.some((ev) =>
-    ev.type === "flow_event" && (ev.detail as Record<string, any>)?.node === "telegram_alert_broadcast"
+    ev.type === "flow_event" && ev.detail?.node === "telegram_alert_broadcast"
   );
   const fmtToken = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`);
   const statusLabel = turn.status === "done"
@@ -86,8 +91,8 @@ export function TurnBadge({ turn, pairTint, userPhotos, onViewPipeline }: {
       : "ACTIVE";
   const hasEmptyFinalNoLifecycle = turn.events.some((ev) =>
     ev.type === "flow_event" && (
-      (ev.detail as Record<string, any>)?.node === "chat_final_empty" ||
-      (ev.detail as Record<string, any>)?.node === "turn_steered"
+      ev.detail?.node === "chat_final_empty" ||
+      ev.detail?.node === "turn_steered"
     )
   );
   const pathLabel = turn.path === "agent" ? "Agent" : turn.path === "dropped" ? "dropped" : turn.path === "queued" ? "queued" : turn.path;

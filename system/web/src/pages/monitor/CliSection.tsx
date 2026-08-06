@@ -142,7 +142,7 @@ function TerminalSession({ visible }: { visible: boolean }) {
     const t = termRef.current;
     const ws = wsRef.current;
     if (!f || !t) return;
-    try { f.fit(); } catch {}
+    try { f.fit(); } catch { /* fit() throws while the host element is detached or zero-sized; the next resize re-fits. */ }
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: "resize", rows: t.rows, cols: t.cols }));
     }
@@ -174,7 +174,7 @@ function TerminalSession({ visible }: { visible: boolean }) {
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(hostRef.current);
-    try { fit.fit(); } catch {}
+    try { fit.fit(); } catch { /* First fit right after open(): the host may not be laid out yet, the ResizeObserver below fits again. */ }
     termRef.current = term;
     fitRef.current = fit;
 
@@ -214,7 +214,7 @@ function TerminalSession({ visible }: { visible: boolean }) {
       window.removeEventListener("resize", onWinResize);
       ro.disconnect();
       dataDisposable.dispose();
-      try { ws.close(); } catch {}
+      try { ws.close(); } catch { /* Unmount teardown: close() throws on an already-closing socket, which is the state we want anyway. */ }
       term.dispose();
       termRef.current = null;
       wsRef.current = null;

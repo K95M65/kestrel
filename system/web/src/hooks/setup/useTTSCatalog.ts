@@ -61,6 +61,13 @@ export function useTTSCatalog({
       urlVoiceValidated.current = true;
       providerChangedByUser.current = true;
     }).catch(() => {});
+    // Deliberately narrow deps: this effect must refetch ONLY when the
+    // provider or language changes. `ttsVoice`/`setTtsVoice` are what the
+    // effect writes, so adding them would refire the catalog fetch on every
+    // voice selection (and re-run the reset logic against a half-updated
+    // list); `urlVoice` is a one-shot URL prefill read behind the
+    // `urlVoiceValidated` latch, so it must not drive re-runs either.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ttsProvider, sttLanguage]);
 
   return { ttsProviders, ttsVoices };

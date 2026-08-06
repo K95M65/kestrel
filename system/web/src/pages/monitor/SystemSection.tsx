@@ -4,7 +4,8 @@ import type { TooltipItem } from "chart.js";
 import { Cpu, Activity, MemoryStick, HardDrive, Thermometer, Server, Network } from "lucide-react";
 import { S } from "./styles";
 import type { SystemInfo, NetworkInfo } from "./types";
-import { GaugeRing, StatPill, formatUptime, formatSize, CardLabel } from "./components";
+import { GaugeRing, StatPill, CardLabel } from "./components";
+import { formatUptime, formatSize } from "./utils";
 
 // Polling interval (ms) that populates cpuHistory/ramHistory. Used to label
 // the time axis on history charts since each datapoint is one poll tick.
@@ -125,6 +126,7 @@ export function SystemSection({
   ramHistory: number[];
 }) {
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- stamps the wall clock at the moment a NEW poll payload arrives. Reading the clock during render instead would make the "last update" label track every re-render rather than the actual poll.
   useEffect(() => { if (sys) setLastUpdate(new Date()); }, [sys]);
 
   if (!sys) return <div style={{ color: "var(--lm-text-muted)", padding: 20 }}>Loading system data…</div>;

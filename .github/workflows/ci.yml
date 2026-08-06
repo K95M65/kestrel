@@ -42,12 +42,13 @@ jobs:
       - name: typecheck + build
         working-directory: system/web
         run: npm run build
-      # Advisory: surfaces PRE-EXISTING eslint findings across the Monitor/web
-      # code (set-state-in-effect, react-refresh, etc.). Not introduced by the
-      # current change — so it reports without blocking the merge gate.
-      - name: lint (advisory)
+      # Blocking since 2026-08: the Monitor/web backlog this step used to only
+      # report is cleared (179 findings → 0 errors), so any error here is one
+      # the current change introduced. Two `exhaustive-deps` WARNINGS remain on
+      # purpose — both fixes would alter render/fetch behavior — and `eslint`
+      # exits 0 on warnings, so they report without blocking.
+      - name: lint
         working-directory: system/web
-        continue-on-error: true
         run: npm run lint
 
   python:
