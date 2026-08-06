@@ -117,6 +117,13 @@ func RestoreLED() {
 	postSilent("/led/restore", "{}")
 }
 
+// ResetLEDToResting clears HAL's saved user LED state and turns the strip off.
+// The next restore therefore uses the configured ambient resting look. This is
+// used when setup succeeds to discard the temporary white provisioning cue.
+func ResetLEDToResting() {
+	postSilent("/led/off", "{}")
+}
+
 // GetColor returns the current LED color as [R, G, B].
 func GetColor() ([3]int, error) {
 	resp, err := doGet("/led/color")

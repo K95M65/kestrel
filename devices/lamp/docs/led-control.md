@@ -141,7 +141,9 @@ owns the state machine (WHEN a state shows) and sends the state *name* to HAL
 ready_flash/ota_progress/ota_error/ota_success/setup); HAL resolves the color/effect/speed
 from `STATUS_LED_PRESETS`, overridable per device via `presets.json`'s `status_led` section
 (see [DEVICE-SPEC.md § Per-device presets](../../../devices/contract/DEVICE-SPEC.md#per-device-presets-presetsjson)).
-`setup` is a persistent solid (saved as the displayed state); the rest are transient overlays.
+`setup` is a persistent solid when sent through `POST /led/status`; the rest are transient
+overlays. It supplies the AP/pre-setup white cue described below, and successful setup clears
+that saved state rather than retaining it as a user LED preference.
 
 ### Mic-muted idle indicator
 
@@ -180,7 +182,7 @@ nothing is blocked:
 
 ### Setup-needed solid (lamp)
 
-When lamp starts and `config.SetUpCompleted == false` (device in AP/provisioning mode), `server/server.go` spawns a background goroutine that polls HAL `GET /health` once per second up to 30s, and once `health.led == true` fires `lelamp.SetSolid(255, 255, 255)` — paints the strip solid white as a "device ready, connect to my hotspot" cue. Polling (not a single call) handles the cold-boot race where os-server's :5000 is up before HAL's :5001. No status LED state is used. Booting blue-breathing still shows during init. See [setup-flow.md](../../../docs/setup-flow.md#ap-mode).
+When lamp starts and `config.SetUpCompleted == false` (device in AP/provisioning mode), `server/server.go` spawns a background goroutine that polls HAL `GET /health` once per second up to 30s, and once `health.led == true` sends `POST /led/status` with state `setup` — HAL paints the strip solid white as a "device ready, connect to my hotspot" cue. Polling (not a single call) handles the cold-boot race where os-server's :5000 is up before HAL's :5001. This does not use the `statusled` state machine. The white is temporary: a successful `POST /api/device/setup` clears this saved setup state instead of retaining it as a user LED preference, then restore settles on the ambient resting look (currently dark/off). Booting blue-breathing still shows during init. See [setup-flow.md](../../../docs/setup-flow.md#ap-mode).
 
 ## Ambient Idle Behaviors
 

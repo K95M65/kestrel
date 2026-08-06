@@ -140,7 +140,9 @@ và gửi *tên trạng thái* xuống HAL (`POST /led/status`: booting/error/ot
 hal_down/agent_down/hardware/ready_flash/ota_progress/ota_error/ota_success/setup); HAL tra
 màu/effect/speed từ `STATUS_LED_PRESETS`, override per-device qua section `status_led` trong
 `presets.json` (xem [DEVICE-SPEC.md § Per-device presets](../../../../devices/contract/DEVICE-SPEC.md#per-device-presets-presetsjson)).
-`setup` là solid bền (lưu thành trạng thái hiển thị); còn lại là overlay transient.
+`setup` là solid bền khi được gửi qua `POST /led/status`; các trạng thái còn lại là overlay
+transient. Nó tạo cue trắng AP/pre-setup mô tả bên dưới, và setup thành công sẽ xoá saved state
+này thay vì giữ thành user LED preference.
 
 ### Đèn báo mic đang mute (idle indicator)
 
@@ -176,7 +178,7 @@ không chặn gì cả:
 
 ### Setup-needed solid (lamp)
 
-Khi lamp start và `config.SetUpCompleted == false` (device đang ở AP/provisioning mode), `server/server.go` spawn goroutine background poll `GET /health` của HAL mỗi giây tối đa 30s, khi `health.led == true` thì fire `lelamp.SetSolid(255, 255, 255)` — paint strip trắng solid báo "device ready, vào hotspot đi". Phải poll (không phải call 1 lần) vì cold boot os-server bind :5000 trước HAL :5001. Không dùng status LED state. Blue-breathing booting vẫn show trong lúc init. Xem [setup-flow_vi.md](../../../../docs/vi/setup-flow_vi.md#ap-mode).
+Khi lamp start và `config.SetUpCompleted == false` (device đang ở AP/provisioning mode), `server/server.go` spawn goroutine background poll `GET /health` của HAL mỗi giây tối đa 30s, khi `health.led == true` thì gửi `POST /led/status` với state `setup` — HAL paint strip trắng solid báo "device ready, vào hotspot đi". Phải poll (không phải call 1 lần) vì cold boot os-server bind :5000 trước HAL :5001. Không dùng state machine `statusled`. Trắng chỉ là tạm thời: `POST /api/device/setup` thành công sẽ xoá saved setup state này thay vì giữ nó thành user LED preference, rồi restore settle về ambient resting look (hiện đang tối/tắt). Blue-breathing booting vẫn show trong lúc init. Xem [setup-flow_vi.md](../../../../docs/vi/setup-flow_vi.md#ap-mode).
 
 ## Ambient Idle Behaviors
 
