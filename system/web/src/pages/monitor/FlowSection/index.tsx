@@ -23,7 +23,9 @@ const CAT_TYPES: Record<string, string[]> = {
   mic: ["voice", "voice_command", "voice_agent_handled", "sound", "speech_emotion", "speech_emotion.detected"],
   cam: ["motion", "motion.activity", "emotion.detected", "pose.ergo_risk", "presence.enter", "presence.leave", "presence.away", "light.level", "environment"],
   channel: ["telegram", "discord", "slack", "wechat", "channel"],
-  web: ["web_chat"],
+  // Typed chat, either origin: monitor composer (web_chat) or MQTT chat.send
+  // from a phone app (mqtt_chat). Same category, separate sub-type chips.
+  web: ["web_chat", "mqtt_chat"],
   cron: ["cron", "cron:music"],
   system: ["system", "schedule", "music.mood", "heartbeat"],
   // Physical input from GPIO button / TTP223 touchpad / future remotes

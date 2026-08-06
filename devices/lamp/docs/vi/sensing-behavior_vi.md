@@ -23,7 +23,7 @@ HAL sở hữu logic tracker theo từng type (sound escalation, motion filterin
 Các gate per-type ở trên độc lập với nhau — không có gate xuyên-type thì một loạt event *khác type* (emotion + sound + motion trong vài giây, điển hình ngay sau presence change hoặc HAL restart) vẫn tốn nhiều agent turn. `SensingHandler` phía Go vì vậy áp MỘT floor chung cho mọi type **ambient**: tối đa 1 agent turn mỗi `sensing_turn_floor_s` giây (key trong `config/config.json`, mặc định **120**, `0` = tắt) cho `motion.activity`, `emotion.detected`, `speech_emotion.detected`, `sound`, `presence.away`, `light.level`.
 
 - Đồng hồ floor được cập nhật bởi **mọi** agent turn mà sensing handler tạo ra — kể cả voice, web chat, presence, fire — nên ambient event cũng im lặng đủ floor window sau bất kỳ tương tác nào.
-- **Không bao giờ bị floor:** type do user khởi phát (`voice`, `voice_command`, `voice_agent_handled`, `web_chat`, `touch.head_pat`), an toàn (`fire_hazard.detected`), và `presence.enter`/`presence.leave` (UX chào hỏi + bookkeeping session).
+- **Không bao giờ bị floor:** type do user khởi phát (`voice`, `voice_command`, `voice_agent_handled`, `web_chat`, `mqtt_chat`, `touch.head_pat`), an toàn (`fire_hazard.detected`), và `presence.enter`/`presence.leave` (UX chào hỏi + bookkeeping session).
 - Guard mode bypass hoàn toàn floor (giám sát cần mọi event).
 - Event bị floor là drop, không queue (`sensing_drop` với reason `ambient_floor` trong Flow Monitor). Mọi ambient emitter đều tự re-offer theo heartbeat riêng, nên drop chỉ làm chậm nhận biết — không bao giờ mất tương tác user-facing.
 

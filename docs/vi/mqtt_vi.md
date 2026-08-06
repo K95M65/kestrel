@@ -702,7 +702,8 @@ session.
 
 Cho phép backend (và qua đó là app mobile) giữ **đúng cuộc hội thoại mà chat trên
 web monitor đang giữ**. Chat web gồm 2 nửa — `POST /api/sensing/event` với
-`type:"web_chat"` để mở turn, và SSE `GET /api/agent/events` để render — cả hai
+`type:"web_chat"` để mở turn (đường này forward y như `type:"mqtt_chat"`), và
+SSE `GET /api/agent/events` để render — cả hai
 đều nằm local trên device sau admin auth, nên điện thoại chạy 4G không với tới
 cái nào. fa/fd sẵn là đường theo từng device và xuyên được NAT, nên cặp này đi
 qua đó.
@@ -790,6 +791,12 @@ Vài điểm triển khai mà người viết backend cần biết:
   thẳng AgentGateway, để gate describe-first cho ảnh, nhánh queue lúc agent bận,
   việc mark run web-chat và flow logging đều là đúng code mà chat web đang chạy.
   Cùng lý do với hook gateway của Hermes POST vào `/api/agent/channel-turn`.
+- **Forward bằng sensing type `mqtt_chat`, không phải `web_chat`.** Mọi gate xử lý
+  hai type như nhau (`sensingmsg.IsChat`: suppress TTS, không wake vật lý, không
+  opening filler, queue giống hệt khi agent bận, cùng prefix `[user] ` gửi model).
+  Tách type chỉ để badge turn trên Flow Monitor cho biết **tin nhắn gõ ở đâu** —
+  📱 `mqtt_chat` (app điện thoại) vs 🖥 `web_chat` (composer của monitor). Nếu
+  `speak: true` thì turn forward thành `voice` và hiện như turn voice.
 - **Một client broker riêng** (`device-<id>-chat`) được giữ mở cho stream. Helper
   `publish` dùng chung mở rồi đóng kết nối cho từng message — hợp lý với kết quả
   một-lần của command, nhưng thảm hoạ với hàng chục event mỗi turn. Client id

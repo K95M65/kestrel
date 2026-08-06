@@ -303,7 +303,7 @@ Turn Pipeline grouping behavior:
 - Turns are still started by input/trigger events (`sensing_input`, `chat_input`, `schedule_trigger`, etc.).
 - The UI now anchors each turn to the first detected `run_id` (from event root or detail payload).
 - For user mic actions: each `sensing_input` with `[voice]` / `[voice_command]` (and `voice_pipeline_start`) creates a separate turn even if events share the same `run_id`.
-- For web monitor chat: each `sensing_input` with `[web_chat]` creates its own boundary turn (icon 🖥, filter category **Web**) so it isn't merged with adjacent voice/sensing turns.
+- For typed chat: each `sensing_input` with `[web_chat]` (monitor composer, icon 🖥) or `[mqtt_chat]` (MQTT `chat.send` from a phone app, icon 📱) creates its own boundary turn so it isn't merged with adjacent voice/sensing turns. Both sit in filter category **Web**, with separate sub-type chips (`web` / `mqtt`), and the badge keeps the two apart — the turns are otherwise identical server-side.
 - For user chat actions: each `chat_input` (telegram input) creates its own boundary turn, so it won't be merged with adjacent voice turns even if OpenClaw reuses the same `run_id`.
 - If a later event has a different `run_id`, Monitor splits it into a new inferred agent turn.
 - **Turn type badge** (`motion`, `voice`, …): merged segments that share one `run_id` may include both camera motion and a voice line; the first segment used to win, so the badge could read `motion` while the utterance was voice. After grouping, if any `sensing_input` in the turn is `[voice]` or `[voice_command]`, the badge uses that (voice beats motion for the same run).

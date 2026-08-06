@@ -299,7 +299,7 @@ Hành vi gom nhóm Turn Pipeline:
 - Turn vẫn bắt đầu từ các event input/trigger (`sensing_input`, `chat_input`, `schedule_trigger`, ...).
 - UI giờ neo mỗi turn theo `run_id` đầu tiên phát hiện được (ở root event hoặc trong `detail`).
 - Với user mic actions: mỗi `sensing_input` dạng `[voice]` / `[voice_command]` (và `voice_pipeline_start`) tạo một turn riêng, ngay cả khi các event có thể đang chung `run_id`.
-- Với web monitor chat: mỗi `sensing_input` dạng `[web_chat]` tạo boundary turn riêng (icon 🖥, filter category **Web**) nên không bị merge chung với turn voice/sensing kề nhau.
+- Với chat gõ tay: mỗi `sensing_input` dạng `[web_chat]` (composer của monitor, icon 🖥) hoặc `[mqtt_chat]` (MQTT `chat.send` từ app điện thoại, icon 📱) tạo boundary turn riêng nên không bị merge chung với turn voice/sensing kề nhau. Cả hai nằm trong filter category **Web**, có chip sub-type riêng (`web` / `mqtt`), badge phân biệt được nguồn — còn lại phía server hai loại y hệt nhau.
 - Với user chat actions: mỗi `chat_input` (telegram input) tạo một boundary turn riêng, nên sẽ không bị merge chung với turn voice kề nhau dù OpenClaw có reuse `run_id`.
 - Nếu event phía sau có `run_id` khác, Monitor sẽ tách thành một turn agent suy diễn mới.
 - **Badge loại turn** (`motion`, `voice`, …): cùng một `run_id` có thể vừa motion (camera) vừa voice; trước đây segment đầu quyết định badge nên dễ hiện `motion` dù user vừa nói. Sau khi gom turn, nếu có bất kỳ `sensing_input` kiểu `[voice]` / `[voice_command]` thì badge ưu tiên voice hơn motion.

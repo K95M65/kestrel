@@ -86,11 +86,14 @@ type sensingReply struct {
 }
 
 func (h *DeviceMQTTHandler) forwardChatToSensing(data domain.MQTTChatSendData) (string, error) {
-	// "web_chat" is what suppresses TTS and skips the wake greeting / opening
-	// filler. `speak` opts back into a spoken reply by sending the turn down the
-	// voice path instead — the same distinction the one-way chat hook bridge
+	// "mqtt_chat" is a typed-chat type (sensingmsg.IsChat) — same behaviour as
+	// the monitor composer's "web_chat": TTS suppressed, no wake greeting /
+	// opening filler. It is a SEPARATE type only so the Monitor's turn flow can
+	// show which chat the turn came from; every gate treats the two alike.
+	// `speak` opts back into a spoken reply by sending the turn down the voice
+	// path instead — the same distinction the one-way chat hook bridge
 	// hardcodes to "voice".
-	evtType := "web_chat"
+	evtType := "mqtt_chat"
 	if data.Speak {
 		evtType = "voice"
 	}

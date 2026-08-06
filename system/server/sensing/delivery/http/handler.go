@@ -202,15 +202,16 @@ func (h *SensingHandler) PostEvent(c *gin.Context) {
 	// (light.level, motion, sound) so they don't wake the agent and override the
 	// sleepy emotion. Only presence.enter, fire_hazard.detected, and authorized
 	// voice commands/follow-ups can wake the device.
-	// web_chat is user-initiated text from the monitor UI — bypasses sleep-drop
-	// (forwarded to agent, TTS suppressed) but does NOT trigger physical wake.
-	// web_chat counts as passive for busy-gate so it queues on agent busy
-	// instead of racing the in-flight turn (agent merges same-session messages).
+	// Typed chat (web_chat from the monitor composer, mqtt_chat from chat.send)
+	// is user-initiated text — bypasses sleep-drop (forwarded to agent, TTS
+	// suppressed) but does NOT trigger physical wake. It counts as passive for
+	// the busy-gate so it queues on agent busy instead of racing the in-flight
+	// turn (agent merges same-session messages).
 	isVoice := req.Type == "voice" || req.Type == "voice_command" || req.Type == "voice_followup"
 	isVoiceCommand := req.Type == "voice_command" || req.Type == "voice_followup"
-	isWebChat := req.Type == "web_chat"
+	isChat := sensingmsg.IsChat(req.Type)
 	isPassive := !isVoiceCommand
-	if isPassive && !isVoice && !isWebChat && req.Type != "presence.enter" && req.Type != "fire_hazard.detected" && h.isSleeping != nil && h.isSleeping() {
+	if isPassive && !isVoice && !isChat && req.Type != "presence.enter" && req.Type != "fire_hazard.detected" && h.isSleeping != nil && h.isSleeping() {
 		slog.Info("INBOUND from HAL → SLEEP-DROPPED (lamp sleeping)",
 			"component", "sensing", "backend", h.agentGateway.Name(), "type", req.Type)
 		h.monitorBus.Push(domain.MonitorEvent{
@@ -266,11 +267,12 @@ func (h *SensingHandler) PostEvent(c *gin.Context) {
 		}()
 	}
 
-	// Web chat with image: save to temp file so agent can reference the path
-	// (e.g. for face enrollment — tools read the file directly, no LLM vision
-	// needed). Tag uses [image:] not [snapshot:] to avoid the strip below.
+	// Chat with image (web composer or MQTT chat.send): save to temp file so
+	// agent can reference the path (e.g. for face enrollment — tools read the
+	// file directly, no LLM vision needed). Tag uses [image:] not [snapshot:]
+	// to avoid the strip below.
 	// Done here, BEFORE the busy fork, so a queued turn carries the tag too.
-	if req.Type == "web_chat" && req.Image != "" {
+	if isChat && req.Image != "" {
 		if imgData, derr := base64.StdEncoding.DecodeString(req.Image); derr == nil {
 			tmpPath := fmt.Sprintf("/tmp/web-chat-%d.jpg", time.Now().UnixMilli())
 			if werr := os.WriteFile(tmpPath, imgData, 0644); werr == nil {
@@ -321,7 +323,7 @@ func (h *SensingHandler) PostEvent(c *gin.Context) {
 	// than a poisoned conversation. Slash commands keep the raw attachment;
 	// motion.activity images never reach the agent at all.
 	if req.Image != "" && req.Type != "motion.activity" &&
-		!(req.Type == "web_chat" && strings.HasPrefix(strings.TrimSpace(req.Message), "/")) &&
+		!(isChat && strings.HasPrefix(strings.TrimSpace(req.Message), "/")) &&
 		!vision.ModelSupportsVision(h.config) {
 		desc, derr := vision.DescribeWithRetry(h.config, req.Image, req.Message)
 		// Either way the snapshot file must go: it sits inside the agent's
@@ -365,11 +367,12 @@ func (h *SensingHandler) PostEvent(c *gin.Context) {
 		// dedup think "sent" while the agent never saw the event, blocking the
 		// next real transition for 5 min.
 		if shouldQueueEvent(req.Type, req.Message, inVoiceWindow) {
-			// Pre-allocate runID for web_chat so the web client can correlate
-			// SSE events when this turn replays. Other queued types don't need
-			// a runID (HAL doesn't track them).
+			// Pre-allocate runID for chat (web_chat / mqtt_chat) so the web
+			// client and the MQTT chat.send ack can correlate events when this
+			// turn replays. Other queued types don't need a runID (HAL doesn't
+			// track them).
 			var queuedRunID string
-			if isWebChat {
+			if isChat {
 				_, queuedRunID = h.agentGateway.NextChatRunID()
 				h.agentGateway.MarkWebChatRun(queuedRunID)
 			}
@@ -474,12 +477,12 @@ func (h *SensingHandler) PostEvent(c *gin.Context) {
 			}
 		}
 	}
-	// Web monitor chat: suppress TTS — response displayed in web UI only.
-	// Covers the MQTT chat.send path too: it forwards as type "web_chat" unless
+	// Typed chat: suppress TTS — response displayed in the chat UI only.
+	// Covers the MQTT chat.send path too: it forwards as type "mqtt_chat" unless
 	// the caller asked to be spoken to (`speak: true`, which forwards as
 	// "voice"), so a phone chatting from another room doesn't make the device
 	// talk — and doesn't spend TTS on a reply nobody is in the room to hear.
-	if isWebChat {
+	if isChat {
 		h.agentGateway.MarkWebChatRun(runID)
 	}
 	// Important: pass explicit runID to flow.Start to avoid global trace race (another goroutine may interleave
@@ -538,7 +541,7 @@ func (h *SensingHandler) PostEvent(c *gin.Context) {
 	// chat.send with deliver:false so OpenClaw routes the reply back to the
 	// web client only (matches gw web). Without this, slash replies can be
 	// swallowed by bound-channel routing and the SSE stream times out.
-	isSlashCommand := isWebChat && strings.HasPrefix(msg, "/")
+	isSlashCommand := isChat && strings.HasPrefix(msg, "/")
 	// motion.activity: snapshot saved for UI but NOT sent to agent (save tokens — action name is enough)
 	hasImage := req.Image != "" && req.Type != "motion.activity"
 
@@ -546,7 +549,7 @@ func (h *SensingHandler) PostEvent(c *gin.Context) {
 	// through one of the INBOUND lines so `grep INBOUND` shows a complete
 	// trail across all sources (HAL, channels, system).
 	sourceLabel := "HAL"
-	if isWebChat {
+	if isChat {
 		sourceLabel = "WebMonitor"
 	}
 	slog.Info("INBOUND from "+sourceLabel+" → agent",
@@ -558,7 +561,7 @@ func (h *SensingHandler) PostEvent(c *gin.Context) {
 		"hasImage", hasImage,
 		"imageBytes", len(req.Image),
 		"isSlash", isSlashCommand,
-		"isWebChat", isWebChat,
+		"isChat", isChat,
 		"isVoice", isVoice,
 		"msgLen", len(msg),
 		"message", msg)
@@ -1241,7 +1244,7 @@ func (h *SensingHandler) PostMusicSuggestionStatus(c *gin.Context) {
 // ambient/advisory — each emitter re-offers on its own heartbeat, so dropping
 // one occurrence only delays awareness. User-initiated types (voice, voice_command,
 // voice_followup,
-// voice_agent_handled, web_chat, touch.head_pat), safety (fire_hazard.detected),
+// voice_agent_handled, web_chat, mqtt_chat, touch.head_pat), safety (fire_hazard.detected),
 // and presence enter/leave (greeting UX + session bookkeeping) are deliberately
 // NOT floored.
 var ambientFloorTypes = map[string]bool{
@@ -1260,7 +1263,7 @@ func shouldQueueEvent(eventType, message string, inVoiceWindow bool) bool {
 	case "presence.enter", "presence.leave", "voice",
 		"motion.activity", "emotion.detected", "speech_emotion.detected",
 		"fire_hazard.detected",
-		"web_chat":
+		"web_chat", "mqtt_chat":
 		return true
 	case "sound":
 		return strings.Contains(message, "persistent")
