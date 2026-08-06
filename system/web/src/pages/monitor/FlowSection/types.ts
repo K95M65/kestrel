@@ -273,7 +273,7 @@ export const SOURCE_ICON: Record<string, string> = {
   motion: "👁", "motion.activity": "🏃", "presence.enter": "🙂", "presence.leave": "👋", "presence.away": "😴", "light.level": "🌡", "emotion.detected": "😊", "speech_emotion": "🗣", "speech_emotion.detected": "🗣", "pose.ergo_risk": "🪑", "touch.head_pat": "✋",
   "wellbeing.music": "🎵",
   environment: "🌡", system: "⚙", unknown: "❓",
-  web_chat: "🖥", telegram: "💬", discord: "💬", slack: "💬", wechat: "💬", channel: "💬", chat: "💬", schedule: "⏰",
+  web_chat: "🖥", mqtt_chat: "📱", telegram: "💬", discord: "💬", slack: "💬", wechat: "💬", channel: "💬", chat: "💬", schedule: "⏰",
   emotion: "😊", activity: "🏃", wellbeing: "💧", music: "🎵", sensing: "📡", posture: "🪑",
   cron: "⏰", "cron:music": "🎵",
   "ambient:breathing": "💨", "ambient:movement": "🤖", "ambient:mumble": "💭",
@@ -291,7 +291,7 @@ import {
   Mic, Mic2, Volume2, Eye, Activity, Smile, Hand, Armchair, Speech,
   Thermometer, Settings, Music, Monitor, Clock, CircleHelp,
   Wind, Bot, MessagesSquare, Moon, Droplet, Radio, Sun, UserPlus, UserMinus,
-  HeartPulse,
+  HeartPulse, Smartphone,
 } from "lucide-react";
 
 export const TYPE_LUCIDE: Record<string, LucideIcon> = {
@@ -304,6 +304,7 @@ export const TYPE_LUCIDE: Record<string, LucideIcon> = {
   "wellbeing.music": Music,
   environment: Thermometer, system: Settings, unknown: CircleHelp,
   web_chat: Monitor,
+  mqtt_chat: Smartphone,
   telegram: MessagesSquare, discord: MessagesSquare, slack: MessagesSquare,
   wechat: MessagesSquare, channel: MessagesSquare, chat: MessagesSquare,
   schedule: Clock,
@@ -326,10 +327,19 @@ export const TYPE_LABEL: Record<string, string> = {
   "pose.ergo_risk": "posture", "presence.enter": "enter", "presence.leave": "leave",
   "presence.away": "away", "touch.head_pat": "head pat",
   "light.level": "light", environment: "env", system: "sys",
-  "music.mood": "mood", web_chat: "web", telegram: "channel", discord: "channel",
+  "music.mood": "mood", web_chat: "web", mqtt_chat: "mqtt", telegram: "channel", discord: "channel",
   slack: "channel", wechat: "channel", channel: "channel", schedule: "sched",
   cron: "cron", "cron:music": "music", heartbeat: "heartbeat",
 };
+
+// Typed-chat turn types. Both are the same turn server-side (sensingmsg.IsChat:
+// TTS suppressed, no physical wake); they stay separate here so the turn badge
+// shows WHERE the message was typed — the monitor composer (web_chat) or an
+// MQTT chat.send from a phone app (mqtt_chat).
+export const CHAT_TYPES = ["web_chat", "mqtt_chat"] as const;
+export function isChatType(type: string): boolean {
+  return (CHAT_TYPES as readonly string[]).includes(type);
+}
 
 export const CHANNEL_FALLBACK_MESSAGE = "Message from channel";
 export const TURN_INPUT_FALLBACK = "Input not captured";

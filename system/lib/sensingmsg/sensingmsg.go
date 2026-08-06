@@ -12,9 +12,22 @@ import (
 	"go.autonomous.ai/os/system/skillcontext"
 )
 
+// IsChat reports whether the event type is a typed-chat turn: text the user
+// composed in a chat UI rather than something a sensor produced. Two origins
+// share every behaviour (TTS suppressed, no physical wake, sleep-drop bypassed)
+// and differ only in where the text came from, so callers gate on this helper
+// instead of comparing against one literal — the Monitor's turn badge is the
+// only place the two are told apart.
+//
+//   - web_chat  — the monitor UI's composer (POST /api/sensing/event)
+//   - mqtt_chat — MQTT kind:"chat.send", e.g. a phone app
+func IsChat(eventType string) bool {
+	return eventType == "web_chat" || eventType == "mqtt_chat"
+}
+
 // Build returns the message that should be forwarded to the agent for a
-// sensing event. Precedence: voice_command/voice_followup > voice > web_chat > guard >
-// passive sensing.
+// sensing event. Precedence: voice_command/voice_followup > voice >
+// web_chat/mqtt_chat > guard > passive sensing.
 //
 //   - currentUser: resolved attribution string. Pass the request payload's
 //     CurrentUser, falling back to mood.CurrentUser(); "" is treated as
@@ -37,8 +50,10 @@ func Build(eventType, message, currentUser, guardTag string) string {
 		// Ambient speech — no wake word. `[user]` for batched-turn priority,
 		// `[ambient]` for voice/SKILL.md's overheard-audio mute guard.
 		return domain.AppendEnrollNudge("[user] [ambient] " + message)
-	case "web_chat":
-		// Typed text from the monitor. Slash commands (`/status`, `/think`, …)
+	case "web_chat", "mqtt_chat":
+		// Typed text from a chat UI (monitor composer or MQTT chat.send). The
+		// agent sees identical text either way — only the Monitor badge differs.
+		// Slash commands (`/status`, `/think`, …)
 		// bypass `[user]` so the agent's command router still sees the literal
 		// leading slash.
 		if strings.HasPrefix(message, "/") {

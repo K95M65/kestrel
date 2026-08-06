@@ -1526,7 +1526,9 @@ export function ChatSection({ events, isActive }: Props) {
     }
   }, [activeId, sending, updateMessages, filePreview, fileBase64, fileIsImage, fileName, fileMime, fileSize]);
 
-  const send = () => { sendText(input.trim(), fileBase64); };
+  // sendText derives the outbound field from fileIsImage. Passing the raw
+  // base64 here would make every attachment look like an image.
+  const send = () => { sendText(input.trim()); };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }

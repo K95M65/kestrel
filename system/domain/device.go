@@ -426,7 +426,9 @@ const (
 	KindChannelRefreshConfig = "channel.refresh_config"
 
 	// KindChatSend starts an agent turn from the backend — the MQTT twin of the
-	// web monitor's POST /api/sensing/event with type "web_chat". Data:
+	// web monitor's POST /api/sensing/event, forwarded as type "mqtt_chat"
+	// (same gates as the monitor's "web_chat", distinct only so the Monitor's
+	// turn flow shows which chat the turn came from). Data:
 	// MQTTChatSendData. This is what lets a phone app hold the SAME conversation
 	// the web chat holds: the device is on a LAN behind NAT, so MQTT is the only
 	// standing path in, and fa/fd are already per-device.

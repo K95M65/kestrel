@@ -51,6 +51,7 @@ export function TurnBadge({ turn, pairTint, userPhotos, onViewPipeline }: {
     : /motion|presence|light|emotion|pose|environment/.test(turn.type) ? "var(--lm-blue)" // cam
     : /telegram|discord|slack|wechat|channel/.test(turn.type) ? "var(--lm-cyan)"          // channel
     : /web_chat/.test(turn.type) ? "var(--lm-teal)"                          // web
+    : /mqtt_chat/.test(turn.type) ? "var(--lm-cyan)"                        // mqtt chat (phone app)
     : /cron/.test(turn.type) ? "var(--lm-amber)"                            // cron
     : /system|schedule|music|heartbeat/.test(turn.type) ? "var(--lm-text-dim)"   // system
     : /touch|head_pat/.test(turn.type) ? "var(--lm-green)"                  // button

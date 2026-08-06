@@ -25,7 +25,9 @@ Khi OS server chưa được cấu hình (`SetUpCompleted = false`), thiết b�
       cứu cú redirect
    e. Setup agent gateway
    f. Chờ agent ready (poll 120s)
-   g. SetUpCompleted = true
+   g. SetUpCompleted = true; xoá LED trắng setup tạm thời để nó không bị giữ
+      thành user LED preference và strip quay về ambient resting look (hiện
+      đang tối/tắt)
    h. Ping backend (status "working", setup_completed=true)
 7. Nếu thất bại → quay lại AP mode
 8. Web UI tự chuyển hướng browser sang http://<lan_ip>/setup ngay khi
@@ -177,7 +179,7 @@ setup bằng dây) mới vào được nhánh dây theo cách đó.
   vào được từ LAN dây qua `http://<device_type>-<suffix>.local/` chứ không chỉ
   `192.168.100.1` của AP. Chính địa chỉ dây đó là thứ khiến luồng setup-bằng-dây bên
   dưới khả thi.
-- **Tín hiệu LED:** ngay khi HTTP server bắt đầu listen, nếu `SetUpCompleted == false` thì OS server spawn goroutine background (`waitAndPaintSetupReady` trong `server/server.go`) poll `GET /health` của HAL mỗi giây tối đa 30s. Khi `health.led == true` thì fire `POST /led/solid` với `{"color":[255,255,255]}` paint strip trắng solid. Poll vì os-server bind :5000 thường nhanh hơn HAL FastAPI bind :5001 trên cold boot (Python load `rpi_ws281x`, SPI, audio, camera) — fire-and-forget paint sẽ rớt im lặng với `connection refused`. Trắng giữ đến khi setup xong (agent flash + ambient paint đè lên). Blue-breathing booting vẫn show trong lúc init.
+- **Tín hiệu LED:** ngay khi HTTP server bắt đầu listen, nếu `SetUpCompleted == false` thì OS server spawn goroutine background (`waitAndPaintSetupReady` trong `server/server.go`) poll `GET /health` của HAL mỗi giây tối đa 30s. Khi `health.led == true` thì gửi `POST /led/status` với state `setup`; HAL resolve state này thành strip trắng solid. Poll vì os-server bind :5000 thường nhanh hơn HAL FastAPI bind :5001 trên cold boot (Python load `rpi_ws281x`, SPI, audio, camera) — fire-and-forget paint sẽ rớt im lặng với `connection refused`. Trắng này chỉ là **cue tạm thời cho AP/pre-setup**, không phải user preference: sau `POST /api/device/setup` thành công, saved LED state của nó bị xoá và strip settle về ambient resting look (hiện đang tối/tắt). Blue-breathing booting vẫn show trong lúc init.
 - **Khử nhiễu LED trong AP mode:** openclaw WS reconnect loop (`runtimes/openclaw/service_ws.go`) skip Set/Clear `StateAgentDown` khi `config.SetUpCompleted == false`, để overlay cyan disconnect không đè lên trắng setup-needed lúc provisioning. WS vẫn chạy (`device.Setup` cần nó ready để `WaitForAgentReady` pass trước khi flip `SetUpCompleted=true`), chỉ gate side-effect LED thôi.
 - **Tín hiệu LED khi join Wi-Fi (`StateWifiConnecting`):** ngay khi setup handler vào `device.Setup()`, kích hoạt `statusled.StateWifiConnecting` (HAL preset `wifi_connecting` = blink màu xanh dương `[0,135,255]` speed 0.5) để ring chuyển từ trắng setup sang blink xanh trong lúc `wlan0` associate. `defer` trong `Setup()` clear state ở mọi return path, nên fail rồi rớt xuống `SwitchToAPMode()` cũng không để strip kẹt blink. Priority nằm trên `Booting` và dưới `OTA`/`Error`/`Connectivity` — tín hiệu này thắng state boot còn sót lại nhưng không che khuất fault thật. Device không có capability `light` sẽ short-circuit trong statusled (no-op).
 

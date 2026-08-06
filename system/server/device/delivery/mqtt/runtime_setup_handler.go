@@ -13,9 +13,10 @@ import (
 // no runtime field to read off the wire.
 //
 // Flow: ack "starting" immediately, then in a goroutine run the switch and WAIT
-// for its real outcome. UpdateAgentRuntime blocks until switch-runtime finishes,
-// so the success/failure ack here reflects what actually happened — not an
-// optimistic guess. On a confirmed switch we ack "success" and THEN restart
+// for its real outcome. The reserved runner requires the target runtime's
+// readiness probe to pass after its systemd unit is active, so the
+// success/failure ack here reflects a usable gateway — not an optimistic
+// process-active guess. On a confirmed switch we ack "success" and THEN restart
 // os-server (the ack must reach the wire first, since the restart kills us); the
 // worker sees the swap land via the brief reconnect + new AGENT BACKEND ACTIVE
 // banner. On failure switch-runtime has already rolled back, so we ack "failure".
@@ -43,7 +44,10 @@ func (h *DeviceMQTTHandler) handleRuntimeSetup(env domain.MQTTDataCommand, runti
 
 	slog.Info("runtime setup: received", "component", "mqtt", "kind", kind, "runtime", runtime)
 
-	run, err := h.deviceService.ReserveAgentRuntimeSwitch(req)
+	// Keep MQTT on the same readiness-confirmed switch contract as HTTP. A
+	// systemd-active target that has not yet bound its gateway or accepted its
+	// protocol must fail and roll back rather than receive a success ack.
+	run, err := h.deviceService.ReserveAgentRuntimeSwitchReady(req)
 	if err != nil {
 		slog.Warn("runtime setup: switch already in progress", "component", "mqtt", "kind", kind, "runtime", runtime)
 		h.publishRuntimeSetupAck(kind, "failure", err.Error(), &req)
@@ -64,8 +68,8 @@ func (h *DeviceMQTTHandler) handleRuntimeSetup(env domain.MQTTDataCommand, runti
 			h.alertOps("🔴 Runtime setup "+kind+" — FAILED", err.Error())
 			return
 		}
-		// Switch confirmed landed (or was a no-op). Ack success — it must reach the
-		// wire BEFORE the os-server restart below, which kills us.
+		// Switch confirmed readiness (or was a no-op). Ack success — it must reach
+		// the wire BEFORE the os-server restart below, which kills us.
 		slog.Info("runtime setup: switch confirmed", "component", "mqtt", "kind", kind, "runtime", runtime, "switched", switched)
 		h.publishRuntimeSetupAck(kind, "success", "", &req)
 		h.alertOps("🟢 Runtime setup "+kind+" — SUCCESS", "")
