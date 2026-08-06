@@ -241,7 +241,12 @@ Cards included:
 > and Servo Pose cards split into two columns: the current-state summary (Emotion
 > emoji + name; Servo current pose + Release button) in a fixed-width left column
 > and the preset/recording cloud filling the rest on the right. Under ~360px the
-> two columns stack.
+> two columns stack. The Emotion name is always shown in the theme's
+> high-contrast text colour, inside a surfaced status pill; the preset's LED
+> colour remains a dot, border, and soft tint. This keeps dark presets such as
+> `sleepy` readable in dark mode. The summary reserves room for the emoji and
+> long names such as `acknowledge`; when a card is narrow, the pill cloud wraps
+> below it rather than overlapping the current state.
 
 **Display Eyes**
 - Currently displayed expression (mode)

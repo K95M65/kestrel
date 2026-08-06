@@ -237,7 +237,12 @@ Gồm các card:
 > tại đọc trước tiên, toàn bộ wrap tự do (không cuộn). Cả card Emotion và Servo Pose chia
 > hai cột: phần tóm tắt trạng thái hiện tại (Emotion: emoji + tên; Servo: pose
 > hiện tại + nút Release) ở cột trái rộng cố định, còn pill cloud preset/recording
-> lấp phần còn lại bên phải. Dưới ~360px hai cột xếp chồng.
+> lấp phần còn lại bên phải. Dưới ~360px hai cột xếp chồng. Tên Emotion luôn dùng
+> màu chữ tương phản cao của theme, nằm trong pill có nền rõ ràng; màu LED của
+> preset chỉ làm chấm, viền và tint nhẹ. Vì vậy preset tối như `sleepy` vẫn đọc
+> rõ ở dark mode. Phần tóm tắt chừa đủ chỗ cho emoji và tên dài như
+> `acknowledge`; khi card hẹp, pill cloud sẽ xuống hàng dưới thay vì đè lên
+> trạng thái hiện tại.
 
 **Display Eyes**
 - Expression đang hiển thị (mode)
