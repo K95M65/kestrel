@@ -329,7 +329,7 @@ Bootstrap dùng `lib/hal` để báo trạng thái update qua LED. Xem chi tiế
 | Giai đoạn | LED |
 |----------|-----|
 | Đang tải + cài | Cam breathing `(255, 140, 0)` |
-| Thành công | Flash xanh lá `(0, 255, 80)` |
+| Thành công | Flash xanh lá `(0, 255, 80)`, rồi khôi phục LED look user đã chọn hoặc ambient resting look nếu chưa có user state |
 | Thất bại | Đỏ pulse `(255, 30, 30)` |
 
 ### Phát hiện version hiện tại

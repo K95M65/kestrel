@@ -333,7 +333,7 @@ Bootstrap uses `lib/hal` to show update status on LEDs. See [status-led.md](../d
 | Phase | LED |
 |-------|-----|
 | Downloading + installing | Orange breathing `(255, 140, 0)` |
-| Success | Green flash `(0, 255, 80)` |
+| Success | Green flash `(0, 255, 80)`, then restore the user-selected LED look or the ambient resting look when none exists |
 | Failure | Red pulse `(255, 30, 30)` |
 
 ### Version Detection Per Component
