@@ -186,8 +186,10 @@ tối đa 60 giây trước khi dừng runtime cũ và lưu `agent_runtime`; ch�
 `systemctl is-active` không bao giờ được coi là bằng chứng gateway đã phục vụ
 request được. Mỗi runtime có probe riêng: OpenClaw chạy RPC status đã xác thực,
 Hermes poll `/health` đã xác thực, còn PicoClaw, Codex, Claude Code và OpenCode
-phải chấp nhận WebSocket upgrade đã xác thực. MQTT hiện vẫn giữ luồng ack theo
-trạng thái unit-active, đến khi bổ sung ready state ở tầng protocol riêng.
+phải chấp nhận WebSocket upgrade đã xác thực. MQTT runtime setup dùng chính các
+probe này: publish `starting` ngay, chỉ publish `success` sau khi target pass
+probe (hoặc `failure` sau rollback). Ack success được gửi trước os-server restart
+bắt buộc để chắc chắn đến được broker.
 
 Khi boot sau một runtime switch, startup sequence vẫn có thể reconcile config,
 channel và file onboarding của runtime; các bước này có thể restart gateway.

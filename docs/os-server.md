@@ -189,8 +189,10 @@ up to 60 seconds before they stop the old runtime and persist `agent_runtime`;
 requests. Each runtime supplies its own probe: OpenClaw runs its authenticated
 RPC status probe, Hermes polls authenticated `/health`, and PicoClaw, Codex,
 Claude Code, and OpenCode must accept an authenticated WebSocket upgrade.
-MQTT currently retains its unit-active acknowledgement flow while its
-protocol-level ready state is added separately.
+MQTT runtime setup uses the same probes: it publishes `starting` immediately,
+then publishes `success` only after the target probe passes (or `failure` after
+the switcher rolls back). The success acknowledgement is emitted before the
+required os-server restart so it can reach the broker.
 
 On boot after a runtime switch, the startup sequence may still reconcile
 runtime config, channels, and onboarding files; those steps can restart a
