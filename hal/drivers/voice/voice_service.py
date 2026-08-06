@@ -20,6 +20,7 @@ import subprocess
 import threading
 import time
 from collections import deque
+from difflib import SequenceMatcher
 from typing import Optional
 
 import requests
@@ -54,6 +55,10 @@ from hal.drivers.voice.backchannel import Backchannel
 from hal.drivers.voice.stt import STTProvider
 
 logger = logging.getLogger("hal.voice")
+
+# Below this difflib ratio, a SHORTER final is a new turn, not a correction.
+# (~0.05–0.10 unrelated vs ~0.74–0.88 self-correction; 0.5 splits them cleanly.)
+_TRANSCRIPT_MIN_SIMILARITY = 0.5
 
 
 def _is_normal_ws_close(error: Exception) -> bool:
@@ -926,7 +931,7 @@ class VoiceService:
         if wakeword_followup_active:
             logger.info("Wake-word follow-up focus accepted for this session")
 
-        longest_partial = [""]
+        last_partial = [""]
         final_segments = []
         final_sent = [False]
         # The listening cue fires on the FIRST STT PARTIAL — never at session
@@ -1016,8 +1021,7 @@ class VoiceService:
                 if hal_config.WAKEWORD_ENABLED:
                     logger.debug("Wake-word partial candidate: '%s'", candidate)
                     open_wake_word_gate(candidate, "partial")
-                if len(text) > len(longest_partial[0]):
-                    longest_partial[0] = text
+                last_partial[0] = text
                 self._backchannel.on_partial(text)
                 if not listening_emotion_sent[0]:
                     listening_emotion_sent[0] = True
@@ -1029,12 +1033,28 @@ class VoiceService:
             logger.info("STT final segment: '%s'", text)
             if hal_config.WAKEWORD_ENABLED:
                 confirm_wake_word_gate(wake_final_candidate(text))
-            # Store final text + any partial accumulated before this final.
-            # After final, STT resets partials to empty, so save longest_partial now.
-            best = longest_partial[0] if len(longest_partial[0]) > len(text) else text
-            if best:
-                final_segments.append(best)
-            longest_partial[0] = ""
+            # A turn's text is the LATEST sentence: default to this final, even
+            # if shorter than the partial. Only when the final is BOTH shorter AND
+            # too dissimilar (case-insensitive ratio < _TRANSCRIPT_MIN_SIMILARITY)
+            # is it a NEW turn → keep prev as its own segment. Appended text keeps
+            # original casing.
+            prev = last_partial[0]
+            if (
+                prev
+                and len(text) < len(prev)
+                and SequenceMatcher(None, prev.lower(), text.lower()).ratio()
+                < _TRANSCRIPT_MIN_SIMILARITY
+            ):
+                # New turn: keep the previous text and this final as separate segments.
+                segments = [prev, text]
+            else:
+                # Same turn: a correction (shorter but similar) or a longer/first
+                # final → this final IS the turn's latest text.
+                segments = [text]
+            for seg in segments:
+                if seg:
+                    final_segments.append(seg)
+            last_partial[0] = ""
             final_sent[0] = True
 
         rt_audio_buffer: list = []
@@ -1337,7 +1357,7 @@ class VoiceService:
             self._listening = False
             stt_session.close()
             combined, ser_audio_buffer, buf_duration = finalize_session(
-                audio_buffer, longest_partial, final_segments, last_speech_idx
+                audio_buffer, last_partial, final_segments, last_speech_idx
             )
             capture_complete.set()
             if (
