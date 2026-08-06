@@ -725,7 +725,8 @@ session.
 
 Lets the backend (and through it a phone app) hold the **same conversation the
 web monitor's chat holds**. The web chat is two halves — `POST
-/api/sensing/event` with `type:"web_chat"` to start a turn, and the SSE stream
+/api/sensing/event` with `type:"web_chat"` to start a turn (this path forwards
+the same way as `type:"mqtt_chat"`), and the SSE stream
 `GET /api/agent/events` to render it — and both are device-local behind admin
 auth, so a phone on mobile data can reach neither. fa/fd is already a
 per-device path that survives NAT, so the pair rides here.
@@ -818,6 +819,13 @@ Implementation notes that matter to a backend author:
   agent-busy queue fork, the web-chat run marking and the flow logging are the
   same code the web chat exercises. Same reasoning as the Hermes gateway hook
   POSTing to `/api/agent/channel-turn`.
+- **It forwards as sensing type `mqtt_chat`, not `web_chat`.** Every gate treats
+  the two identically (`sensingmsg.IsChat`: TTS suppressed, no physical wake, no
+  opening filler, queued the same way when the agent is busy, same `[user] `
+  prefix to the model). The separate type exists so the Flow Monitor's turn
+  badge shows **where the message was typed** — 📱 `mqtt_chat` for a phone app
+  vs 🖥 `web_chat` for the monitor composer. With `speak: true` the turn forwards
+  as `voice` instead and shows as a voice turn.
 - **A dedicated broker client** (`device-<id>-chat`) is held open for the stream.
   The shared `publish` helper opens and closes a connection per message, which is
   right for a one-shot command result and ruinous for dozens of events a turn.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# switch-runtime <new> [old] — generic agentic-backend switcher.
+# switch-runtime <new> [old] [--wait-ready] — generic agentic-backend switcher.
 #
 # Backend-agnostic: knows NOTHING about hermes/openclaw/picoclaw specifically.
 # Everything backend-specific lives outside this script:
@@ -40,11 +40,16 @@ set -euo pipefail
 
 NEW="${1:-}"
 OLD="${2:-}"
+WAIT_READY="${3:-}"
 RUNTIMES_BASE_URL="${RUNTIMES_BASE_URL:-https://cdn.autonomous.ai/os/runtimes}"
 
 log() { echo "[switch-runtime] $*"; }
 
-[ -n "$NEW" ] || { echo "Usage: switch-runtime <new> [old]" >&2; exit 1; }
+[ -n "$NEW" ] || { echo "Usage: switch-runtime <new> [old] [--wait-ready]" >&2; exit 1; }
+[ -z "$WAIT_READY" ] || [ "$WAIT_READY" = "--wait-ready" ] || {
+  echo "Usage: switch-runtime <new> [old] [--wait-ready]" >&2
+  exit 1
+}
 
 unit_exists() { systemctl cat "${1}.service" >/dev/null 2>&1; }
 
@@ -86,9 +91,14 @@ stop_unit_retry() {
 # revert here: os-server persists NEW only after we exit 0, so on any failure config
 # is still OLD on disk. Disarmed (switched=1) once NEW is up and OLD is stopped.
 switched=0
+new_started=0
 
 rollback() {
   [ "$switched" = 1 ] && return 0
+  if [ "$new_started" = 1 ]; then
+    log "stopping failed target $NEW before rollback"
+    stop_unit_retry "$NEW_UNIT"
+  fi
   [ -n "$OLD" ] && [ "$OLD" != "$NEW" ] || return 0
   log "ERROR: switch to $NEW failed — rolling back to $OLD"
   if systemctl enable --now "$(unit_for "$OLD").service" 2>/dev/null; then
@@ -144,9 +154,33 @@ run_presync() {
 # crashes immediately (e.g. missing binary) can still exit 0, so we assert
 # is-active separately.
 start_new() {
-  log "starting $NEW ($NEW_UNIT.service)"
-  systemctl enable --now "${NEW_UNIT}.service" || true
-  systemctl is-active --quiet "${NEW_UNIT}.service"
+	log "starting $NEW ($NEW_UNIT.service)"
+	systemctl enable --now "${NEW_UNIT}.service" || true
+	systemctl is-active --quiet "${NEW_UNIT}.service"
+}
+
+# wait_ready invokes a runtime-owned probe when the caller explicitly asks for
+# readiness confirmation. The hook is retried for up to 60 seconds because a
+# systemd unit can become active before its gateway binds a port or completes
+# initialization. Runtimes without a hook retain the existing unit-active
+# contract until they provide their own concrete probe.
+wait_ready() {
+  [ "$WAIT_READY" = "--wait-ready" ] || return 0
+  local ready="/usr/local/lib/os-runtimes/${NEW}/ready" attempt
+  if [ ! -x "$ready" ]; then
+    log "no readiness probe for $NEW; accepting systemd active state"
+    return 0
+  fi
+  for attempt in $(seq 1 12); do
+    if "$ready"; then
+      log "$NEW readiness probe passed (attempt ${attempt}/12)"
+      return 0
+    fi
+    log "waiting for $NEW readiness (attempt ${attempt}/12)"
+    sleep 5
+  done
+  log "ERROR: $NEW readiness probe did not pass within 60 seconds"
+  return 1
 }
 
 NEW_UNIT="$(unit_for "$NEW")"
@@ -190,8 +224,14 @@ if ! start_new; then
   else
     log "ERROR: ${NEW_UNIT}.service not active after fresh install — aborting"
     exit 1
-  fi
+	fi
 fi
+new_started=1
+
+# 3a. For callers that require end-to-end readiness, wait for the target
+# gateway before disrupting OLD. A failed probe leaves config untouched and
+# triggers the rollback trap, which restores OLD.
+wait_ready
 
 # 3b. NEW is confirmed active — now stop the old backend (os-server tells us which).
 if [ -n "$OLD" ] && [ "$OLD" != "$NEW" ]; then

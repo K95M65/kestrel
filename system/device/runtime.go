@@ -135,7 +135,36 @@ func CurrentAgentRuntimeFromConfig(cfg *config.Config) string {
 	return domain.AgentRuntimeOpenClaw
 }
 
-// UpdateAgentRuntime swaps the agentic backend (openclaw / hermes / picoclaw). It
+// ReserveAgentRuntimeSwitch exclusively reserves the runtime switcher and returns
+// the function that performs the switch. The caller must invoke the returned
+// function exactly once; it releases the reservation when it returns.
+//
+// A runtime switch changes systemd units and may install a backend, so allowing a
+// second request to enter while the first is in progress can leave config.json and
+// the running unit pointing at different runtimes.
+func (s *Service) ReserveAgentRuntimeSwitch(d domain.AgentRuntimeSetData) (run func() (bool, error), err error) {
+	return s.reserveAgentRuntimeSwitch(d, false)
+}
+
+// ReserveAgentRuntimeSwitchReady exclusively reserves a runtime switch and
+// requires the target's readiness probe to pass before it is persisted. It is
+// currently used by the HTTP API; MQTT retains its existing unit-active
+// acknowledgement flow until its protocol is upgraded separately.
+func (s *Service) ReserveAgentRuntimeSwitchReady(d domain.AgentRuntimeSetData) (run func() (bool, error), err error) {
+	return s.reserveAgentRuntimeSwitch(d, true)
+}
+
+func (s *Service) reserveAgentRuntimeSwitch(d domain.AgentRuntimeSetData, waitReady bool) (run func() (bool, error), err error) {
+	if !s.runtimeSwitchMu.TryLock() {
+		return nil, ErrAgentRuntimeSwitchInProgress
+	}
+	return func() (bool, error) {
+		defer s.runtimeSwitchMu.Unlock()
+		return s.updateAgentRuntime(d, waitReady)
+	}, nil
+}
+
+// updateAgentRuntime swaps the agentic backend (openclaw / hermes / picoclaw). It
 // runs switch-runtime and BLOCKS until the switch finishes, then persists
 // config.agent_runtime ONLY if it landed — so a failed install never leaves disk
 // pointing at a backend that isn't actually running. Shared by the MQTT
@@ -151,7 +180,7 @@ func CurrentAgentRuntimeFromConfig(cfg *config.Config) string {
 // has to happen AFTER the caller has put its success ack on the wire. switch-runtime
 // no longer restarts os-server either (it used to) — that move is what lets the
 // caller's goroutine survive long enough to ack the real result.
-func (s *Service) UpdateAgentRuntime(d domain.AgentRuntimeSetData) (bool, error) {
+func (s *Service) updateAgentRuntime(d domain.AgentRuntimeSetData, waitReady bool) (bool, error) {
 	runtime := strings.ToLower(strings.TrimSpace(d.Runtime))
 	// Reject unknown values outright. factory.go falls back to openclaw on
 	// garbage, but an unknown runtime from the BFF/web is a contract error we
@@ -191,6 +220,11 @@ func (s *Service) UpdateAgentRuntime(d domain.AgentRuntimeSetData) (bool, error)
 	if err := materializePresync(runtime); err != nil {
 		slog.Warn("materialize presync hook failed (non-fatal)", "component", "device", "runtime", runtime, "error", err)
 	}
+	if waitReady {
+		if err := materializeReadiness(runtime); err != nil {
+			return false, fmt.Errorf("materialize %s readiness probe: %w", runtime, err)
+		}
+	}
 
 	slog.Info("running switch-runtime", "component", "device", "from", old, "to", runtime)
 
@@ -200,7 +234,7 @@ func (s *Service) UpdateAgentRuntime(d domain.AgentRuntimeSetData) (bool, error)
 	// the still-installed old backend instead of a half-installed new one. On failure
 	// switch-runtime has already rolled the systemd units back to `old`, and since we
 	// never touched config (memory or disk) there is nothing to revert.
-	if err := s.runSwitchRuntime(runtime, old); err != nil {
+	if err := s.runSwitchRuntime(runtime, old, waitReady); err != nil {
 		return false, fmt.Errorf("switch to %s failed, rolled back to %s: %w", runtime, old, err)
 	}
 
@@ -223,9 +257,12 @@ func (s *Service) UpdateAgentRuntime(d domain.AgentRuntimeSetData) (bool, error)
 // landed-vs-rolled-back), --collect GCs the unit afterwards. Pass <new> <old> so
 // the switch stays fully generic (no hardcoded backend list anywhere). Safe to wait
 // on from this process because switch-runtime no longer restarts os-server.
-func (s *Service) runSwitchRuntime(newRuntime, oldRuntime string) error {
-	if err := exec.Command("systemd-run", "--quiet", "--collect", "--wait",
-		"--unit=os-runtime-switch", switchRuntimeBin, newRuntime, oldRuntime).Run(); err != nil {
+func (s *Service) runSwitchRuntime(newRuntime, oldRuntime string, waitReady bool) error {
+	args := []string{"--quiet", "--collect", "--wait", "--unit=os-runtime-switch", switchRuntimeBin, newRuntime, oldRuntime}
+	if waitReady {
+		args = append(args, "--wait-ready")
+	}
+	if err := exec.Command("systemd-run", args...).Run(); err != nil {
 		return fmt.Errorf("switch-runtime exited non-zero (see `journalctl -u os-runtime-switch`): %w", err)
 	}
 	return nil

@@ -377,7 +377,7 @@ export function OverviewSection({
               cloud filling the rest on the right — instead of stacking the cloud
               full-width under the summary. Wraps to stacked under ~360px. */}
           <div style={{ display: "flex", flexWrap: "wrap" as const, alignItems: "flex-start", gap: 16 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, flex: "0 0 140px", minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flex: "0 1 205px", minWidth: 180 }}>
               <div style={{
                 fontSize: 36, lineHeight: 1, flexShrink: 0,
                 filter: emotion ? `drop-shadow(0 0 8px ${emotionColor}88)` : "none",
@@ -386,11 +386,29 @@ export function OverviewSection({
                 {emotion ? emotionEmoji : "✦"}
               </div>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 10, color: "var(--lm-text-muted)", marginBottom: 2, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                <div style={{ fontSize: 10, color: "var(--lm-text-dim)", marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.08em" }}>
                   Your device is feeling
                 </div>
-                <div style={{ fontSize: 18, fontWeight: 700, color: emotion ? emotionColor : "var(--lm-text-muted)", textTransform: "capitalize", transition: "color 0.4s ease" }}>
-                  {emotion || "—"}
+                {/* Keep the state name on the theme's high-contrast text colour.
+                    Preset colours can be deliberately dark (e.g. sleepy), so
+                    they are an accent dot and border instead of the text itself. */}
+                <div
+                  role="status"
+                  aria-live="polite"
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: 7, maxWidth: "100%",
+                    padding: "4px 8px", borderRadius: 8,
+                    background: emotion
+                      ? `color-mix(in srgb, ${emotionColor} 14%, var(--lm-surface))`
+                      : "var(--lm-surface)",
+                    border: `1px solid ${emotion ? `color-mix(in srgb, ${emotionColor} 52%, var(--lm-border))` : "var(--lm-border)"}`,
+                    color: emotion ? "var(--lm-text)" : "var(--lm-text-dim)",
+                    fontSize: 18, fontWeight: 700, textTransform: "capitalize",
+                    transition: "all 0.4s ease",
+                  }}
+                >
+                  {emotion && <span aria-hidden style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, background: emotionColor, boxShadow: `0 0 8px ${emotionColor}` }} />}
+                  <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{emotion || "—"}</span>
                 </div>
               </div>
             </div>

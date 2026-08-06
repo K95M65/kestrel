@@ -1,6 +1,6 @@
 import type { DisplayEvent } from "../types";
 import type { ActiveFlowStage, Turn, NodeInfoMap } from "./types";
-import { FLOW_NODES, CHANNEL_FALLBACK_MESSAGE } from "./types";
+import { FLOW_NODES, CHANNEL_FALLBACK_MESSAGE, isChatType } from "./types";
 
 // Known external messaging channel types. Turn types matching these are channel-initiated turns.
 const CHANNEL_TYPES = new Set(["telegram", "discord", "slack", "wechat", "channel"]);
@@ -412,25 +412,29 @@ export function refineTurnTypeFromSensingInputs(turn: Turn): void {
     return;
   }
 
-  // web_chat / voice_command / voice are first-class types from the handler.
-  // web_chat wins (/chat UI is the most specific origin) → voice_command → voice.
-  let sawWebChat = false;
+  // web_chat / mqtt_chat / voice_command / voice are first-class types from the
+  // handler. Chat wins (a chat UI is the most specific origin) → voice_command
+  // → voice. web_chat and mqtt_chat are the SAME turn behaviour server-side
+  // (see sensingmsg.IsChat); the badge keeps them apart so it's obvious whether
+  // the message was typed in the monitor or pushed over MQTT (phone app).
+  let sawChat = "";
   let sawVoice = false;
   let sawVoiceCommand = false;
+  const noteChat = (t: string) => { if (isChatType(t) && !sawChat) sawChat = t; };
   for (const ev of turn.events) {
     const t = sensingInputBracketType(ev);
-    if (t === "web_chat") sawWebChat = true;
+    if (t && isChatType(t)) noteChat(t);
     else if (t === "voice_command") sawVoiceCommand = true;
     else if (t === "voice") sawVoice = true;
     if (ev.type === "sensing_input" || (ev.type === "flow_enter" && ev.detail?.node === "sensing_input")) {
       const d = ev.detail as Record<string, any> | undefined;
       const dtype = d?.data?.type ?? d?.type ?? "";
-      if (dtype === "web_chat") sawWebChat = true;
+      if (isChatType(dtype)) noteChat(dtype);
       else if (dtype === "voice_command") sawVoiceCommand = true;
       else if (dtype === "voice") sawVoice = true;
     }
   }
-  if (sawWebChat) turn.type = "web_chat";
+  if (sawChat) turn.type = sawChat;
   else if (sawVoiceCommand) turn.type = "voice_command";
   else if (sawVoice) turn.type = "voice";
 }
@@ -455,7 +459,7 @@ export function groupIntoTurns(events: DisplayEvent[]): Turn[] {
       return {
         type: t,
         path: "unknown",
-        forceNewTurn: t === "voice" || t === "voice_command" || t === "web_chat",
+        forceNewTurn: t === "voice" || t === "voice_command" || isChatType(t),
         boundary: t === "voice" || t === "voice_command" ? "mic" : undefined,
       };
     }
@@ -816,7 +820,9 @@ export function extractNodeInfo(events: DisplayEvent[]): NodeInfoMap {
       const sType = m?.[1] ?? "";
       const d = ev.detail as Record<string, any> | undefined;
       const dtype = d?.type ?? d?.data?.type ?? "";
-      const isWeb = sType === "web_chat" || dtype === "web_chat";
+      // Both chat origins land in the same webchat_input pipeline node — the
+      // node is "text typed by the user", not "the browser".
+      const isWeb = isChatType(sType) || isChatType(dtype);
       if (isWeb) {
         info.webchat_input.push(`"${m?.[2] ?? ev.summary}"`);
       } else {

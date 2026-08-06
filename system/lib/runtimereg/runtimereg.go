@@ -8,11 +8,12 @@
 // dependencies of its own, runtimereg can be imported from either side.
 package runtimereg
 
-// installers + presyncs + versions are populated at init() time, before any
+// installers + presyncs + readiness hooks + versions are populated at init() time, before any
 // runtime switch can fire, so no locking is needed for the read path.
 var (
 	installers = map[string][]byte{}
 	presyncs   = map[string][]byte{}
+	readiness  = map[string][]byte{}
 	versions   = map[string]func() string{}
 )
 
@@ -43,6 +44,19 @@ func RegisterPresync(name string, script []byte) {
 // the backend ships none (it then relies on whatever its installer wrote, if any).
 func GetPresync(name string) ([]byte, bool) {
 	s, ok := presyncs[name]
+	return s, ok
+}
+
+// RegisterReadiness records a backend readiness probe. switch-runtime invokes
+// it only for callers that explicitly request readiness confirmation after the
+// systemd unit becomes active.
+func RegisterReadiness(name string, script []byte) {
+	readiness[name] = script
+}
+
+// GetReadiness returns a backend's readiness probe, if it provides one.
+func GetReadiness(name string) ([]byte, bool) {
+	s, ok := readiness[name]
 	return s, ok
 }
 

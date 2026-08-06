@@ -19,9 +19,18 @@ func init() {
 	runtimereg.RegisterVersion(domain.AgentRuntimeHermes, GetHermesVersion)
 }
 
-// hermesVersionProbeTimeout caps the one-shot `hermes --version` probe so a
-// wedged CLI can't stall startup.
-const hermesVersionProbeTimeout = 5 * time.Second
+// hermesVersionProbeTimeout caps one `hermes --version` probe. Hermes can be
+// slow to start immediately after boot, so keep this aligned with OpenClaw's
+// generous cold-start allowance.
+const hermesVersionProbeTimeout = 20 * time.Second
+
+// hermesVersionProbeRetries lets a transient first-boot failure self-heal
+// instead of leaving the Monitor's Agent version blank until os-server is
+// restarted. A warm probe returns immediately, so retries affect only failures.
+const hermesVersionProbeRetries = 6
+
+// hermesVersionProbeBackoff is the wait between failed Hermes version probes.
+const hermesVersionProbeBackoff = 10 * time.Second
 
 // hermesSemverRe captures the first semver-like token in `hermes --version`
 // output (e.g. "Hermes Agent v0.17.0 (2026.6.19)" → "0.17.0").
@@ -43,26 +52,45 @@ func GetHermesVersion() string {
 	return ""
 }
 
-// PopulateHermesVersion shells out to `hermes --version` with a short timeout and
-// caches the normalized semver. Empty result when hermes is not on PATH or the
-// command fails — callers then report "" for that field.
+// PopulateHermesVersion shells out to `hermes --version`, normalizes the semver,
+// and caches it. It retries failed or unparseable probes so boot-time CLI startup
+// races do not leave the Monitor's Agent version blank for the process lifetime.
 func PopulateHermesVersion() {
+	for attempt := 0; ; attempt++ {
+		if v, ok := probeHermesVersion(); ok {
+			hermesVersion.Store(&v)
+			return
+		}
+		if attempt >= hermesVersionProbeRetries {
+			slog.Warn("read hermes version gave up after retries (expected if not on hermes backend)", "component", "hermes-probe", "attempts", attempt+1)
+			return
+		}
+		time.Sleep(hermesVersionProbeBackoff)
+	}
+}
+
+// probeHermesVersion runs one version probe. A failed command, timeout, or
+// unparseable output returns ok=false so PopulateHermesVersion can retry.
+func probeHermesVersion() (version string, ok bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), hermesVersionProbeTimeout)
 	defer cancel()
-	out, err := system.Run(ctx, "hermes", "--version")
+	out, err := system.Run(ctx, hermesBinary, "--version")
 	if err != nil {
 		slog.Warn("read hermes version failed (expected if not on hermes backend)", "component", "hermes-probe", "error", err)
-		return
+		return "", false
 	}
-	line := strings.TrimSpace(string(out))
+	return parseHermesVersion(string(out))
+}
+
+func parseHermesVersion(output string) (version string, ok bool) {
+	line := strings.TrimSpace(output)
 	if i := strings.IndexByte(line, '\n'); i >= 0 {
 		line = strings.TrimSpace(line[:i])
 	}
-	v := ""
 	if loc := hermesSemverRe.FindStringSubmatch(line); len(loc) > 1 {
-		v = loc[1]
+		return loc[1], true
 	}
-	hermesVersion.Store(&v)
+	return "", false
 }
 
 // Version satisfies domain.AgentGateway.Version(): the cached Hermes CLI version,

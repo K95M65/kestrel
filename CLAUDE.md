@@ -129,7 +129,7 @@ Uses **Google Wire** for compile-time DI. After changing provider signatures, ru
 
 ### Package Layout
 
-**Agentic runtimes — `runtimes/` (repo root):** the swappable backends, one folder per brain: `runtimes/{openclaw,hermes,picoclaw,codex,claudecode}`. Selected by `system/agent` (AgentGateway factory).
+**Agentic runtimes — `runtimes/` (repo root):** the swappable backends, one folder per brain: `runtimes/{openclaw,hermes,picoclaw,codex,claudecode,opencode}`. Selected by `system/agent` (AgentGateway factory).
 
 **Go backend — `system/` (single Go module rooted at the repo root: `go.mod`, `go.sum`, `vendor/`):**
 

@@ -1,8 +1,8 @@
 # Backend agent Claude Code
 
 Cách `os-server` điều khiển **Claude Code** (agent CLI của Anthropic) làm
-runtime agentic có thể hoán đổi của thiết bị, bên cạnh OpenClaw, Hermes và
-PicoClaw. Cơ chế generic (flow switch, install-vs-presync, migration, checklist)
+runtime agentic có thể hoán đổi của thiết bị, bên cạnh OpenClaw, Hermes,
+PicoClaw, Codex và OpenCode. Cơ chế generic (flow switch, install-vs-presync, migration, checklist)
 nằm ở [`adding-agent-runtime_vi.md`](adding-agent-runtime_vi.md); file này là
 protocol, layout và các quirk đặc thù claudecode.
 

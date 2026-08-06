@@ -32,9 +32,15 @@ var InstallScript []byte
 //go:embed presync.sh
 var PresyncScript []byte
 
+// ReadyScript verifies the authenticated PicoClaw WebSocket upgrade.
+//
+//go:embed ready.sh
+var ReadyScript []byte
+
 // Register the embedded installer + presync so system/device can materialize
 // them without importing this package (which would cycle via statusled → device).
 func init() {
 	runtimereg.Register(domain.AgentRuntimePicoclaw, InstallScript)
 	runtimereg.RegisterPresync(domain.AgentRuntimePicoclaw, PresyncScript)
+	runtimereg.RegisterReadiness(domain.AgentRuntimePicoclaw, ReadyScript)
 }

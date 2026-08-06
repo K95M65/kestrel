@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"regexp"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -21,6 +22,11 @@ const picoclawVersionProbeRetries = 6
 
 // picoclawVersionProbeBackoff is the wait between failed probe attempts.
 const picoclawVersionProbeBackoff = 10 * time.Second
+
+// picoclawNightlyVersionRe extracts PicoClaw's development build identity
+// (e.g. "picoclaw nightly-44-g1959045c-dirty"). Current device builds use
+// this format instead of a semantic release tag.
+var picoclawNightlyVersionRe = regexp.MustCompile(`nightly-\d+-g[0-9A-Fa-f]+(?:-dirty)?`)
 
 var picoclawGoVersionRe = regexp.MustCompile(`(?i)\bgo\d+\.\d+\.\d+\b`)
 var picoclawSemverRe = regexp.MustCompile(`(\d+\.\d+\.\d+(?:[-+._][0-9A-Za-z.-]+)?)`)
@@ -56,18 +62,27 @@ func PopulatePicoclawVersion() {
 func probePicoclawVersion() (version string, ok bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), picoclawVersionProbeTimeout)
 	defer cancel()
-	out, err := system.Run(ctx, "picoclaw", "version")
+	out, err := system.Run(ctx, picoclawBin, "version")
 	if err != nil {
 		slog.Warn("read picoclaw version failed (expected if not on picoclaw backend)", "component", "picoclaw-probe", "error", err)
 		return "", false
 	}
-	// Drop the Go toolchain version so "go1.25.11" is never matched as the release.
-	cleaned := picoclawGoVersionRe.ReplaceAllString(string(out), "")
-	loc := picoclawSemverRe.FindStringSubmatch(cleaned)
-	if len(loc) <= 1 {
-		return "", false
+	return parsePicoclawVersion(string(out))
+}
+
+// parsePicoclawVersion extracts either a tagged release or PicoClaw's nightly
+// build identity without mistaking the Go toolchain version for the application
+// version.
+func parsePicoclawVersion(output string) (version string, ok bool) {
+	if nightly := picoclawNightlyVersionRe.FindString(output); nightly != "" {
+		return nightly, true
 	}
-	return loc[1], true
+	// Drop the Go toolchain version so "go1.25.11" is never matched as the release.
+	cleaned := picoclawGoVersionRe.ReplaceAllString(strings.TrimSpace(output), "")
+	if loc := picoclawSemverRe.FindStringSubmatch(cleaned); len(loc) > 1 {
+		return loc[1], true
+	}
+	return "", false
 }
 
 // Version satisfies domain.AgentGateway.Version(): the cached PicoClaw CLI

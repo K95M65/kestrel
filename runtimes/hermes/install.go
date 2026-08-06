@@ -29,9 +29,16 @@ var InstallScript []byte
 //go:embed presync.sh
 var PresyncScript []byte
 
+// ReadinessScript verifies that the Hermes HTTP gateway accepts authenticated
+// requests after systemd has started its process.
+//
+//go:embed ready.sh
+var ReadinessScript []byte
+
 // Register the embedded installer + presync so system/device can materialize
 // them without importing this package (which would cycle via statusled → device).
 func init() {
 	runtimereg.Register(domain.AgentRuntimeHermes, InstallScript)
 	runtimereg.RegisterPresync(domain.AgentRuntimeHermes, PresyncScript)
+	runtimereg.RegisterReadiness(domain.AgentRuntimeHermes, ReadinessScript)
 }

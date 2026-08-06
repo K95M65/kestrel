@@ -10,6 +10,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"go.autonomous.ai/os/system/domain"
+	"go.autonomous.ai/os/system/lib/hal"
 	"go.autonomous.ai/os/system/lib/urlnorm"
 	"go.autonomous.ai/os/system/statusled"
 )
@@ -315,6 +316,12 @@ func (s *Service) Setup(data domain.SetupRequest) error {
 	if err := s.config.Save(); err != nil {
 		slog.Error("save config failed", "component", "device", "error", err)
 	}
+	// The pre-setup AP cue is a solid white LED, which HAL records as a user
+	// state so a failed setup can restore it after the Wi-Fi blink. A successful
+	// setup must discard that temporary state before the deferred status clear
+	// calls /led/restore; otherwise the lamp remains white instead of settling
+	// into its ambient resting look.
+	hal.ResetLEDToResting()
 
 	slog.Info("agent gateway is ready", "component", "device")
 	if s.beClient != nil && llmAPIKey != "" {

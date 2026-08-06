@@ -203,11 +203,16 @@ func (s *Server) handleSetUpCompleteChange(setupCompleted bool) {
 			safego.Go("model-sync", func() { s.agentGateway.StartModelSync(s.monitorCtx) })
 			safego.Go("primary-model-watch", func() { s.agentGateway.StartPrimaryModelWatch(s.monitorCtx) })
 
-			if ok := s.deviceService.WaitForAgentReady(120 * time.Second); ok {
-				slog.Info("agent gateway ready", "component", "server")
+			// Reconcile/EnsureOnboarding may restart the gateway after a previous
+			// health probe set IsReady=true. Require one full health-poll window of
+			// uninterrupted readiness so the wake greeting cannot race that restart.
+			const startupAgentReadyStability = 15 * time.Second
+			gatewayStable := s.deviceService.WaitForAgentReadyStable(120*time.Second, startupAgentReadyStability)
+			if gatewayStable {
+				slog.Info("agent gateway ready and stable", "component", "server", "stable_for", startupAgentReadyStability)
 				s.statusLED.FlashReady()
 			} else {
-				slog.Warn("agent gateway ready timeout", "component", "server")
+				slog.Warn("agent gateway stable readiness timeout", "component", "server", "stable_for", startupAgentReadyStability)
 			}
 			// Restart hal only when the config it reads changed since HAL last
 			// started — e.g. fresh setup, an OTA config swap, or an edit while
@@ -263,11 +268,15 @@ func (s *Server) handleSetUpCompleteChange(setupCompleted bool) {
 			// Prompt is localized by STTLanguage so the very first turn
 			// lands in the owner's language without relying on the agent
 			// to translate the priming message.
-			slog.Info("INBOUND from system → agent (startup greeting)",
-				"component", "server", "backend", s.agentGateway.Name(),
-				"source", "wake_greeting")
-			if _, err := s.agentGateway.SendSystemChatMessage(wakeGreetingPrompt()); err != nil {
-				slog.Warn("startup greeting failed", "component", "server", "backend", s.agentGateway.Name(), "error", err)
+			if gatewayStable {
+				slog.Info("INBOUND from system → agent (startup greeting)",
+					"component", "server", "backend", s.agentGateway.Name(),
+					"source", "wake_greeting")
+				if _, err := s.agentGateway.SendSystemChatMessage(wakeGreetingPrompt()); err != nil {
+					slog.Warn("startup greeting failed", "component", "server", "backend", s.agentGateway.Name(), "error", err)
+				}
+			} else {
+				slog.Warn("startup greeting skipped: agent gateway never reached stable readiness", "component", "server", "backend", s.agentGateway.Name())
 			}
 
 			// Prewarm dead-air filler WAV cache so the first filler fire is

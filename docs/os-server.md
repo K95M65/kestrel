@@ -113,7 +113,7 @@ Config field: `guard_mode` in `config/config.json` (bool, default `false`). The 
 **Request body:**
 ```json
 {
-  "type": "voice_command|voice_followup|voice|web_chat|motion|sound|presence.enter|presence.leave|presence.away|light.level|motion.activity",
+  "type": "voice_command|voice_followup|voice|web_chat|mqtt_chat|motion|sound|presence.enter|presence.leave|presence.away|light.level|motion.activity",
   "message": "...",
   "image": "<base64 JPEG, optional>"
 }
@@ -125,6 +125,7 @@ Config field: `guard_mode` in `config/config.json` (bool, default `false`). The 
 |------|--------|-----------|-------------|
 | `voice_command` / `voice_followup` / `voice` | Mic (Deepgram STT) | No | `voice_command` is wake-word confirmed; `voice_followup` is authorized by the short wake-word focus window; `voice` is ambient STT |
 | `web_chat` | Web Monitor `/chat` UI | Yes (file/clipboard attach) | Typed message from web monitor — TTS suppressed (reply rendered in UI), no physical wake, no opening filler |
+| `mqtt_chat` | MQTT `kind:"chat.send"` (phone app) | Yes (image + file) | Same handling as `web_chat` in every gate (`sensingmsg.IsChat`); separate type only so the Flow Monitor badge shows the origin. `speak:true` forwards as `voice` instead |
 | `motion` | Camera (frame diff) | Yes (large motion) | Motion detected |
 | `presence.enter` | Camera (InsightFace recognition) | Yes (bbox-annotated JPEG) | Face detected — friend or stranger classified |
 | `presence.leave` | Camera (3 consecutive ticks without face) | No | Person left |
@@ -134,11 +135,11 @@ Config field: `guard_mode` in `config/config.json` (bool, default `false`). The 
 | `motion.activity` | MotionPerception (while PRESENT) | No | Activity detected while user is present — emotional actions logged via Mood skill |
 
 **Processing flow:**
-1. `voice_command`, `voice_followup`, or `voice` + local intent enabled → match intent → execute directly (~50ms). `voice_followup` has the same user priority as `voice_command`; `web_chat` skips local intent (typed text ≠ wake-word voice).
+1. `voice_command`, `voice_followup`, or `voice` + local intent enabled → match intent → execute directly (~50ms). `voice_followup` has the same user priority as `voice_command`; `web_chat` / `mqtt_chat` skip local intent (typed text ≠ wake-word voice).
 2. Ambient turn floor: `motion.activity`, `emotion.detected`, `speech_emotion.detected`, `sound`, `presence.away`, `light.level` are dropped when the last agent turn created by this handler (any type) was less than `sensing_turn_floor_s` seconds ago (config key, default `120`, `0` disables; guard mode bypasses). One cross-type floor on top of HAL's independent per-type gates — a burst of different event types costs at most one agent turn per window. Dropped events surface as `sensing_drop` (reason `ambient_floor`) in the Flow Monitor.
 3. No match → forward to OpenClaw via WebSocket `chat.send`
-4. If event has `image` → call `SendChatMessageWithImage` → send image with text for AI vision analysis. For `web_chat`, attached image is saved to `/tmp/web-chat-*.jpg` and tagged `[image: <path>]` so the agent can reference it (e.g. for face enrollment).
-5. `web_chat` runs are tagged via `MarkWebChatRun(runID)` so the SSE handler suppresses TTS at lifecycle end — reply is rendered in the web UI only.
+4. If event has `image` → call `SendChatMessageWithImage` → send image with text for AI vision analysis. For chat types (`web_chat` / `mqtt_chat`), attached image is saved to `/tmp/web-chat-*.jpg` and tagged `[image: <path>]` so the agent can reference it (e.g. for face enrollment).
+5. Chat runs (`web_chat` / `mqtt_chat`) are tagged via `MarkWebChatRun(runID)` so the SSE handler suppresses TTS at lifecycle end — reply is rendered in the chat UI only (web SSE, or MQTT `chat.event` stream).
 
 ### OpenClaw
 
@@ -177,6 +178,30 @@ action outcome below.
 | Device soft reset | `device.soft_reset` |
 | Claude Code login / WhatsApp pair | terminal pairing outcome (paired / failure / timeout) |
 | Default model swap | model sync — only when the version-gated primary/image model actually changes |
+
+Runtime switches are exclusive. While a backend install or switch is running,
+another `POST /api/device/agent-runtime` receives `409 Conflict` rather than
+starting a competing systemd transition. The web selector stays disabled until
+the first switch is confirmed or times out.
+
+HTTP-triggered switches additionally request runtime readiness confirmation for
+up to 60 seconds before they stop the old runtime and persist `agent_runtime`;
+`systemctl is-active` alone is never treated as proof that a gateway can serve
+requests. Each runtime supplies its own probe: OpenClaw runs its authenticated
+RPC status probe, Hermes polls authenticated `/health`, and PicoClaw, Codex,
+Claude Code, and OpenCode must accept an authenticated WebSocket upgrade.
+MQTT runtime setup uses the same probes: it publishes `starting` immediately,
+then publishes `success` only after the target probe passes (or `failure` after
+the switcher rolls back). The success acknowledgement is emitted before the
+required os-server restart so it can reach the broker.
+
+On boot after a runtime switch, the startup sequence may still reconcile
+runtime config, channels, and onboarding files; those steps can restart a
+gateway. Before it sends the physical wake greeting, os-server therefore
+requires the active gateway to remain ready continuously for 15 seconds. This
+prevents a greeting from being sent into a gateway that passed an earlier health
+probe but is still restarting.
+
 Alerts are enabled whenever `llm_base_url` + `llm_api_key` are set; set
 `alerts_disabled: true` in `config/config.json` to mute a device.
 
