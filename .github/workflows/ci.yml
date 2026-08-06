@@ -15,12 +15,11 @@ jobs:
           go-version: '1.24'
       - name: build
         run: go build ./...
-      # Advisory: surfaces PRE-EXISTING copylocks findings in the lamp code
-      # (handlers with sync.Mutex/atomic copied by value in server.go + the
-      # Wire-generated wire_gen.go). Not introduced by the os/ restructure, and
-      # not the restructure's job to fix — so it reports without blocking.
-      - name: vet (advisory)
-        continue-on-error: true
+      # Blocking since 2026-08: the copylocks backlog this step used to only
+      # report is gone (config.Load now returns *Config; the domain MQTT-info
+      # table holds *config.Config), so `go vet ./...` is clean and any new
+      # finding is one this change introduced.
+      - name: vet
         run: go vet ./...
       - name: test
         run: go test ./...

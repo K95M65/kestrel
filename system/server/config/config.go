@@ -267,20 +267,27 @@ type Config struct {
 }
 
 // Load reads config from configPath. Returns error if file is missing or invalid.
-func Load() (Config, error) {
+// Load reads config.json. It returns a *Config — never a value — because Config
+// carries a sync.Mutex (see the struct doc): handing back a copy would both
+// duplicate the lock and detach the copy from the one the rest of the process
+// mutates. Same contract as ProvideConfig.
+func Load() (*Config, error) {
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		return Default(), fmt.Errorf("config file not found: %s", configPath)
+		d := Default()
+		return &d, fmt.Errorf("config file not found: %s", configPath)
 	}
 	data, err := os.ReadFile(configPath)
 	if err != nil {
-		return Default(), fmt.Errorf("read config %s: %w", configPath, err)
+		d := Default()
+		return &d, fmt.Errorf("read config %s: %w", configPath, err)
 	}
 	var cfg Config
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		return Default(), fmt.Errorf("parse config %s: %w", configPath, err)
+		d := Default()
+		return &d, fmt.Errorf("parse config %s: %w", configPath, err)
 	}
 	cfg.notify = make(chan bool, 1)
-	return cfg, nil
+	return &cfg, nil
 }
 
 func Default() Config {
