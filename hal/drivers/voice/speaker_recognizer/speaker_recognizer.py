@@ -149,7 +149,7 @@ class AudioGateRejectedError(SpeakerRecognizerError):
 # Only audio that passes the VAD + STOI intelligibility gate is uploaded; the
 # embedding server is then told to skip its own preprocessing (preprocess=false)
 # and just compute the embedding. The composite processor is a lazily-built
-# singleton because the silero VAD + STOI models load once and are reused across
+# singleton because the TEN-VAD + STOI models load once and are reused across
 # every enroll/recognize call.
 # ---------------------------------------------------------------------------
 _audio_processor: Optional[Any] = None
@@ -157,14 +157,15 @@ _audio_processor_lock = threading.Lock()
 
 
 def _get_audio_processor() -> Any:
-    """Lazily build + start the composite preprocessor (silero VAD loads once)."""
+    """Lazily build + start the composite preprocessor (TEN-VAD loads once)."""
     global _audio_processor
     if _audio_processor is not None:
         return _audio_processor
     with _audio_processor_lock:
         if _audio_processor is None:
-            # Heavy imports (torch / silero-vad) are deferred to first use so
-            # module import stays light and lint doesn't require the VAD deps.
+            # Heavy imports (onnxruntime for TEN-VAD + STOI, noisereduce) are
+            # deferred to first use so module import stays light and lint
+            # doesn't require the VAD deps.
             from hal.drivers.voice.speaker_recognizer.audio_processors.factory import (
                 AudioProcessorFactory,
             )
@@ -181,6 +182,8 @@ def _get_audio_processor() -> Any:
                 vad_min_duration_sec=config.SPEAKER_PROC_VAD_MIN_DURATION_SEC,
                 vad_min_voice_ratio=config.SPEAKER_PROC_VAD_MIN_VOICE_RATIO,
                 vad_speech_prob_threshold=config.SPEAKER_PROC_VAD_SPEECH_PROB_THRESHOLD,
+                vad_speaker_band=config.SPEAKER_PROC_VAD_SPEAKER_BAND,
+                vad_max_level_drop_db=config.SPEAKER_PROC_VAD_MAX_LEVEL_DROP_DB,
                 enable_rms_normalize=config.SPEAKER_PROC_ENABLE_RMS_NORMALIZE,
                 rms_target=config.SPEAKER_PROC_RMS_TARGET,
                 enable_stoi=config.SPEAKER_PROC_ENABLE_STOI,
@@ -190,7 +193,7 @@ def _get_audio_processor() -> Any:
             )
             try:
                 proc = factory.create()
-                proc.start()  # loads the silero VAD model
+                proc.start()  # loads the TEN-VAD ONNX model
             except Exception as e:
                 # Missing dep / model-load failure is systemic, not audio-level.
                 # Raise EmbeddingAPIUnavailableError so enroll aborts cleanly
@@ -455,7 +458,7 @@ def _debug_stranger_label(vp_hash: Optional[str]) -> str:
 #
 # Stages form a TREE: a stage opened inside another becomes its child, so the
 # containment is structural instead of a naming convention the reader has to
-# parse. `preprocess` owns `silero_vad` / `stoi_gate`; summing the top level
+# parse. `preprocess` owns `ten_vad` / `stoi_gate`; summing the top level
 # gives the call total without double-counting:
 #
 #   decode_input                 base64/file read + WAV normalize to 16k mono
@@ -463,7 +466,7 @@ def _debug_stranger_label(vp_hash: Optional[str]) -> str:
 #     +- decode_wav                WAV bytes -> float32 waveform
 #     +- processor_init            lazy build/start of the composite (models load)
 #     +- mono / resample / high_pass / noise_reduce
-#     +- silero_vad              << the silero-vad stage, profiled explicitly
+#     +- ten_vad                 << the TEN-VAD stage, profiled explicitly
 #     +- stoi_gate               << the STOI gate, profiled explicitly
 #     +- rms_normalize
 #     +- encode_wav                cleaned waveform -> WAV bytes -> base64
@@ -583,13 +586,15 @@ def _debug_mb(n: Optional[float]) -> Optional[float]:
 
 
 # SPEAKER-DEBUG: processor class -> stage name. The two gates the profile is
-# really about are named after the model (silero_vad / stoi_gate), not the class.
+# really about are named after the model (ten_vad / stoi_gate), not the class —
+# so this key changes when the model behind a stage does. `ten_vad` was
+# `silero_vad` before the TEN-VAD swap; traces predating it use the old name.
 _DEBUG_STAGE_NAMES: dict[str, str] = {
     "MonoConverter": "mono",
     "Resampler": "resample",
     "HighPassFilter": "high_pass",
     "NoiseReducer": "noise_reduce",
-    "VoiceActivityFilter": "silero_vad",
+    "VoiceActivityFilter": "ten_vad",
     "SpeechIntelligibilityFilter": "stoi_gate",
     "RMSNormalizer": "rms_normalize",
 }
@@ -1260,7 +1265,7 @@ class SpeakerRecognizer:
         clip is a bad recording, not a server outage.
         """
         # Light submodule imports (Audio / PreprocessRejected) avoid pulling in
-        # torch/silero at module import time — those load in _get_audio_processor.
+        # onnxruntime at module import time — that loads in _get_audio_processor.
         from hal.drivers.voice.speaker_recognizer.audio_processors.base import Audio
         from hal.drivers.voice.speaker_recognizer.audio_processors.exceptions import (
             PreprocessRejected,
@@ -1275,7 +1280,7 @@ class SpeakerRecognizer:
             if waveform.shape[0] == 0:
                 raise SpeakerRecognizerError("empty audio for embedding")
 
-            # First call also loads silero-vad + the ONNX STOI session, which is
+            # First call also loads the TEN-VAD + ONNX STOI sessions, which is
             # the single largest memory step in the pipeline — worth its own
             # stage so a cold call isn't mistaken for a per-clip cost.
             with self._debug_stage("processor_init"):
@@ -1383,7 +1388,7 @@ class SpeakerRecognizer:
 
         Mirrors ``CompositeAudioProcessor._process_impl`` exactly — same order,
         same ``processor.process(...)`` per stage, same exceptions — and only
-        adds a timer around each one, so silero-vad and the STOI gate each get
+        adds a timer around each one, so TEN-VAD and the STOI gate each get
         their own latency + memory numbers instead of one opaque "preprocess"
         total. Kept HERE rather than inside ``audio_processors/`` so the whole
         SPEAKER-DEBUG block stays removable without touching that package.
@@ -2190,7 +2195,7 @@ class SpeakerRecognizer:
                     wavs={"input.wav": wav_bytes},
                     result=fail_result,
                     # Latency/memory up to the failure — a gate reject still paid
-                    # for silero-vad (and STOI, if it got that far).
+                    # for TEN-VAD (and STOI, if it got that far).
                     profile=self._debug_profile_dict(),
                 )
             return {
@@ -2424,7 +2429,7 @@ class SpeakerRecognizer:
                     "chunk_scores.npy": confs,
                 },
                 result=dbg_result,
-                # Per-stage latency + RSS delta -> profile.json (silero-vad and
+                # Per-stage latency + RSS delta -> profile.json (TEN-VAD and
                 # the STOI gate each get their own entry under `stages`).
                 profile=self._debug_profile_dict(),
             )

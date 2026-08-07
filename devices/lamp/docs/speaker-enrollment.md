@@ -95,11 +95,13 @@ Four layers prevent the agent from repeatedly asking "who are you?":
 
 ### Audio preprocessing (on-device)
 
-The filter/VAD/normalize pipeline that used to run inside perception-service now runs on HAL, next to the mic — the same processors, in the same order, with the same defaults, ported to `hal/drivers/voice/speaker_recognizer/audio_processors/` (mirrors `AudioProcessorFactory` in perception-service). This keeps rejected audio off the network and puts the gate decision on the device.
+The filter/VAD/normalize pipeline that used to run inside perception-service now runs on HAL, next to the mic — the same processors in the same order, ported to `hal/drivers/voice/speaker_recognizer/audio_processors/` (mirrors `AudioProcessorFactory` in perception-service). This keeps rejected audio off the network and puts the gate decision on the device.
 
-- **Default chain**: `MonoConverter → Resampler(16k) → VoiceActivityFilter(silero) → SpeechIntelligibilityFilter(0.75) → RMSNormalizer(0.1)`. `HighPassFilter` and `NoiseReducer` exist but are **off by default** (same as perception).
-- **VAD gate** (silero-vad): trims leading/trailing non-voice and rejects a clip when it removes all speech, the remaining audio is `< 0.5s`, or the voice ratio is `< 0.4`. A rejected clip raises `PreprocessRejected` → HAL returns "unknown" for recognize and skips the sample for enroll — exactly the behavior it had when perception returned HTTP 400.
-- **STOI gate** (`SpeechIntelligibilityFilter`, reference-free SQUIM-OBJECTIVE STOI): runs **after VAD, before RMS**. Scores the trimmed clip in 5 s chunks and **mean**-aggregates, then rejects when the mean STOI is `< 0.75` (a NaN chunk from silence also rejects), raising `PreprocessRejected(reason="low_intelligibility")` → the same audio-level reject path as VAD (recognize → "unknown", enroll → skip the sample, keeping existing on-disk samples). The ONNX estimator (~20 MB, downloaded on first use from the CDN into `/root/local/models/squimm_stoi.onnx` — see `audio_processors/model_store.py`, same convention as the pose/faceid weights — onnxruntime CPU with the mem-arena off) loads once as a lazy singleton alongside silero VAD and only runs after VAD passes — at most once per utterance. If the weight can't be resolved (unreachable CDN / unknown filename) the gate is skipped with a warning (no crash).
+- **Default chain**: `MonoConverter → Resampler(16k) → VoiceActivityFilter(TEN-VAD) → SpeechIntelligibilityFilter(0.75) → RMSNormalizer(0.1)`. `HighPassFilter` and `NoiseReducer` exist but are **off by default** (same as perception).
+- **VAD gate** (TEN-VAD via the vendored `hal/drivers/voice/ten_vad_lite/`): trims leading/trailing non-voice and rejects a clip when it removes all speech, the remaining audio is `< 0.5s`, or the voice ratio is `< 0.25`. A rejected clip raises `PreprocessRejected` → HAL returns "unknown" for recognize and skips the sample for enroll — exactly the behavior it had when perception returned HTTP 400.
+- **Why TEN-VAD, not silero**: this stage ran the torch `silero-vad` package until it was swapped for TEN-VAD's ~300 KB FP32 ONNX model, run on numpy + onnxruntime (both already HAL deps — the original model only; no quantized build ships). Same class, same constructor, same reject reasons, so the rest of the pipeline is untouched. It takes **torch off this path**: +43 MB for import + model load instead of +170 MB, ~27x faster cold start, and onnxruntime has aarch64 wheels where upstream TEN-VAD's prebuilt `libten_vad` has no Linux-arm64 build at all. TEN-VAD is 16 kHz-only, which the `Resampler` upstream already guarantees.
+- **False-positive gates** (no silero equivalent): a **speaker-band** gate keeps only VAD frames inside the clip's own pitch band, and a **level** gate drops frames more than 20 dB below the clip's own speech level. They matter because the filter keeps *first speech sample to last*, so one late false positive on a door or a tap drags all the silence before it into the clip. Together they raise the share of the kept span that is really speech from ~0.67 to ~0.79, at a real recall cost (0.98 → 0.76) — the right trade for a recogniser, where a clean 2 s beats a dirty 6 s. They assume **one dominant speaker per clip**: a background talker is removed (usually desirable, it would pollute the embedding), but so would a genuine quieter second speaker. Because they also cut non-speech from *inside* the span, the voice ratio drops mechanically — which is why the min voice ratio moved from `0.4` to `0.25`. Set `HAL_SPEAKER_PROC_VAD_SPEAKER_BAND=false` and `HAL_SPEAKER_PROC_VAD_MAX_LEVEL_DROP_DB=` (empty) for plain TEN-VAD.
+- **STOI gate** (`SpeechIntelligibilityFilter`, reference-free SQUIM-OBJECTIVE STOI): runs **after VAD, before RMS**. Scores the trimmed clip in 5 s chunks and **mean**-aggregates, then rejects when the mean STOI is `< 0.75` (a NaN chunk from silence also rejects), raising `PreprocessRejected(reason="low_intelligibility")` → the same audio-level reject path as VAD (recognize → "unknown", enroll → skip the sample, keeping existing on-disk samples). The ONNX estimator (~20 MB, downloaded on first use from the CDN into `/root/local/models/squimm_stoi.onnx` — see `audio_processors/model_store.py`, same convention as the pose/faceid weights — onnxruntime CPU with the mem-arena off) loads once as a lazy singleton alongside TEN-VAD and only runs after VAD passes — at most once per utterance. If the weight can't be resolved (unreachable CDN / unknown filename) the gate is skipped with a warning (no crash).
 - **Server flag**: HAL sends `preprocess=false`; perception's `/embed` is embed-only and now defaults to `preprocess=false` too (HAL is the only caller). A caller that uploads raw audio can pass `preprocess=true` to have the server clean it.
 - **Consistency**: enroll and recognize share this one pipeline, so enrollments made after the move stay self-consistent. Voices enrolled under the **old server-side** pipeline should be re-enrolled if match quality drops.
 
@@ -154,10 +156,12 @@ Mirror perception's `AudioProcessorSetting` defaults; override via env (all pref
 | Resample | on | `HAL_SPEAKER_PROC_ENABLE_RESAMPLE` | Resample to target SR |
 | High-pass | off | `HAL_SPEAKER_PROC_ENABLE_HIGH_PASS` / `..._HIGH_PASS_CUTOFF_HZ` (80.0) | Butterworth HPF |
 | Noise reduce | off | `HAL_SPEAKER_PROC_ENABLE_NOISE_REDUCE` / `..._NOISE_STATIONARY` | `noisereduce` (lazy import) |
-| VAD | on | `HAL_SPEAKER_PROC_ENABLE_VAD` | silero-vad gate |
+| VAD | on | `HAL_SPEAKER_PROC_ENABLE_VAD` | TEN-VAD gate |
 | VAD min duration | 0.5s | `HAL_SPEAKER_PROC_VAD_MIN_DURATION_SEC` | Reject if stripped audio shorter |
-| VAD min voice ratio | 0.4 | `HAL_SPEAKER_PROC_VAD_MIN_VOICE_RATIO` | Reject if voice fraction lower |
-| VAD speech-prob threshold | 0.6 | `HAL_SPEAKER_PROC_VAD_SPEECH_PROB_THRESHOLD` | Silero onset threshold (offset = −0.15); higher trims trailing/leading silence more (silero default 0.5) |
+| VAD min voice ratio | 0.25 | `HAL_SPEAKER_PROC_VAD_MIN_VOICE_RATIO` | Reject if voice fraction lower. Was 0.4 under silero — the false-positive gates split segments, which lowers the ratio |
+| VAD speech-prob threshold | 0.5 | `HAL_SPEAKER_PROC_VAD_SPEECH_PROB_THRESHOLD` | TEN-VAD onset threshold (offset = −0.15); higher trims trailing/leading silence more. Was 0.6 under silero; TEN-VAD's measured operating point is 0.45–0.5, and the gates below now do that trimming |
+| VAD speaker band | on | `HAL_SPEAKER_PROC_VAD_SPEAKER_BAND` | Keep only VAD frames in the clip's own pitch band |
+| VAD max level drop | 20.0 dB | `HAL_SPEAKER_PROC_VAD_MAX_LEVEL_DROP_DB` | Drop VAD frames this far below the clip's own speech level; **empty string disables** |
 | STOI gate | on | `HAL_SPEAKER_PROC_ENABLE_STOI` | SQUIM-OBJECTIVE intelligibility gate (after VAD, before RMS) |
 | STOI model path | `/root/local/models/squimm_stoi.onnx` | `HAL_SPEAKER_PROC_STOI_MODEL_PATH` | ONNX estimator (~20 MB), downloaded from CDN on first use; gate skipped if unresolvable |
 | STOI threshold | 0.75 | `HAL_SPEAKER_PROC_STOI_THRESHOLD` | Reject if mean STOI below this |
@@ -189,9 +193,9 @@ Stages form a **tree**: a stage opened inside another becomes its child, so cont
 decode_input                base64/file read + WAV normalize to 16 kHz mono
 preprocess                  the whole on-device chain
 ├─ decode_wav / encode_wav    WAV bytes ↔ float32 waveform, plus the base64 wrap
-├─ processor_init             lazy build/start — first call loads silero-vad + ONNX STOI
+├─ processor_init             lazy build/start — first call loads TEN-VAD + ONNX STOI
 ├─ mono / resample / high_pass / noise_reduce / rms_normalize
-├─ silero_vad               ← the silero-vad stage
+├─ ten_vad                  ← the TEN-VAD stage (named `silero_vad` in traces predating the swap)
 └─ stoi_gate                ← the STOI intelligibility gate
 embed_api                   the embedding call
 ├─ request                  ← the HTTP round-trip itself
@@ -215,7 +219,7 @@ Other notes worth knowing:
 - **Enroll aggregates.** It runs preprocess + embed once per sample, so shared stages sum their `ms`, with `calls` and `ms_max` alongside (both omitted when a stage ran exactly once).
 - **RSS and CPU are process-wide.** A concurrent HAL thread allocating or burning CPU during a stage lands in that stage's numbers — no RSS-based method escapes this. Read a single stage's memory as an upper bound and prefer the shape across several calls.
 - **`rss_source` changes what the numbers mean.** `psutil` / `statm` (on-device Linux) are current RSS — the accurate case. `rusage` — the macOS-without-psutil fallback — is a high-water mark that cannot fall, so `rss_end_delta_mb` overstates there.
-- Memory is process RSS, not a Python-heap measure: the torch silero-vad graph and the ONNX STOI session allocate outside the heap, where `tracemalloc` would see nothing.
+- Memory is process RSS, not a Python-heap measure: the ONNX TEN-VAD and STOI sessions allocate outside the heap, where `tracemalloc` would see nothing.
 
 | Parameter | Default | Env var | Description |
 |-----------|---------|---------|-------------|

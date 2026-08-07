@@ -96,11 +96,13 @@ Bốn lớp ngăn agent hỏi "bạn là ai?" liên tục:
 
 ### Tiền xử lý audio (tại thiết bị)
 
-Pipeline lọc/VAD/chuẩn hoá trước đây chạy trong perception-service nay chạy trên HAL, ngay cạnh mic — cùng bộ processor, cùng thứ tự, cùng giá trị mặc định, được port sang `hal/drivers/voice/speaker_recognizer/audio_processors/` (khớp `AudioProcessorFactory` bên perception-service). Nhờ vậy audio bị loại không tốn băng thông và quyết định cổng nằm ngay tại thiết bị.
+Pipeline lọc/VAD/chuẩn hoá trước đây chạy trong perception-service nay chạy trên HAL, ngay cạnh mic — cùng bộ processor, cùng thứ tự, được port sang `hal/drivers/voice/speaker_recognizer/audio_processors/` (khớp `AudioProcessorFactory` bên perception-service). Nhờ vậy audio bị loại không tốn băng thông và quyết định cổng nằm ngay tại thiết bị.
 
-- **Chuỗi mặc định**: `MonoConverter → Resampler(16k) → VoiceActivityFilter(silero) → SpeechIntelligibilityFilter(0.75) → RMSNormalizer(0.1)`. `HighPassFilter` và `NoiseReducer` có sẵn nhưng **tắt mặc định** (giống perception).
-- **Cổng VAD** (silero-vad): cắt phần không có tiếng ở đầu/cuối và loại clip khi VAD xoá hết speech, phần còn lại `< 0.5s`, hoặc tỉ lệ tiếng nói `< 0.4`. Clip bị loại sẽ raise `PreprocessRejected` → HAL trả "không xác định" khi recognize và bỏ qua mẫu khi enroll — đúng như hành vi khi perception trả HTTP 400 trước đây.
-- **Cổng STOI** (`SpeechIntelligibilityFilter`, STOI SQUIM-OBJECTIVE không cần tham chiếu): chạy **sau VAD, trước RMS**. Chấm điểm clip đã cắt theo từng chunk 5 giây rồi lấy **trung bình**, sau đó loại khi STOI trung bình `< 0.75` (chunk NaN do im lặng cũng bị loại), raise `PreprocessRejected(reason="low_intelligibility")` → cùng đường audio-level reject như VAD (recognize → "không xác định", enroll → bỏ qua mẫu, giữ nguyên các mẫu đã có trên đĩa). Bộ ước lượng ONNX (~20 MB, tải về khi dùng lần đầu từ CDN vào `/root/local/models/squimm_stoi.onnx` — xem `audio_processors/model_store.py`, cùng quy ước với model pose/faceid — onnxruntime CPU với mem-arena tắt) nạp một lần dạng lazy singleton cùng silero VAD và chỉ chạy sau khi VAD đạt — tối đa một lần mỗi phát ngôn. Nếu không phân giải được weight (CDN không truy cập được / tên file lạ) thì bỏ qua cổng kèm cảnh báo (không crash).
+- **Chuỗi mặc định**: `MonoConverter → Resampler(16k) → VoiceActivityFilter(TEN-VAD) → SpeechIntelligibilityFilter(0.75) → RMSNormalizer(0.1)`. `HighPassFilter` và `NoiseReducer` có sẵn nhưng **tắt mặc định** (giống perception).
+- **Cổng VAD** (TEN-VAD qua package vendored `hal/drivers/voice/ten_vad_lite/`): cắt phần không có tiếng ở đầu/cuối và loại clip khi VAD xoá hết speech, phần còn lại `< 0.5s`, hoặc tỉ lệ tiếng nói `< 0.25`. Clip bị loại sẽ raise `PreprocessRejected` → HAL trả "không xác định" khi recognize và bỏ qua mẫu khi enroll — đúng như hành vi khi perception trả HTTP 400 trước đây.
+- **Vì sao TEN-VAD chứ không phải silero**: stage này chạy package torch `silero-vad` cho tới khi được thay bằng model ONNX FP32 ~300 KB của TEN-VAD, chạy trên numpy + onnxruntime (cả hai đều đã là dependency của HAL — chỉ dùng model gốc, không ship bản lượng tử hoá). Cùng tên class, cùng chữ ký constructor, cùng các lý do reject, nên phần còn lại của pipeline không đổi. Điểm được là **bỏ torch khỏi nhánh này**: import + nạp model tốn +43 MB thay vì +170 MB, khởi động nguội nhanh hơn ~27 lần, và onnxruntime có wheel aarch64 trong khi `libten_vad` dựng sẵn của TEN-VAD upstream không có bản Linux-arm64 nào. TEN-VAD chỉ hỗ trợ 16 kHz — điều mà `Resampler` phía trước đã bảo đảm.
+- **Cổng chống dương tính giả** (silero không có): cổng **speaker-band** chỉ giữ các frame VAD nằm trong dải cao độ của chính clip, còn cổng **mức** loại các frame thấp hơn 20 dB so với mức tiếng nói của chính clip. Chúng quan trọng vì bộ lọc giữ *từ mẫu speech đầu tiên tới mẫu cuối cùng*, nên một dương tính giả muộn (tiếng cửa, tiếng gõ) sẽ kéo toàn bộ khoảng lặng phía trước vào clip. Cùng nhau, chúng nâng tỉ lệ phần được giữ thực sự là tiếng nói từ ~0.67 lên ~0.79, đổi lại recall giảm thật (0.98 → 0.76) — đánh đổi đúng cho bài toán nhận diện, nơi 2 giây sạch hơn 6 giây bẩn. Chúng giả định **mỗi clip chỉ có một người nói chính**: người nói nền bị loại (thường là điều mong muốn, vì sẽ làm nhiễu embedding), nhưng một người nói thứ hai thật sự mà nói nhỏ hơn cũng bị loại theo. Vì chúng cũng cắt phần không phải tiếng nói ở *bên trong* đoạn giữ lại, tỉ lệ tiếng nói giảm một cách máy móc — nên ngưỡng tỉ lệ tối thiểu đổi từ `0.4` xuống `0.25`. Đặt `HAL_SPEAKER_PROC_VAD_SPEAKER_BAND=false` và `HAL_SPEAKER_PROC_VAD_MAX_LEVEL_DROP_DB=` (rỗng) để chạy TEN-VAD thuần.
+- **Cổng STOI** (`SpeechIntelligibilityFilter`, STOI SQUIM-OBJECTIVE không cần tham chiếu): chạy **sau VAD, trước RMS**. Chấm điểm clip đã cắt theo từng chunk 5 giây rồi lấy **trung bình**, sau đó loại khi STOI trung bình `< 0.75` (chunk NaN do im lặng cũng bị loại), raise `PreprocessRejected(reason="low_intelligibility")` → cùng đường audio-level reject như VAD (recognize → "không xác định", enroll → bỏ qua mẫu, giữ nguyên các mẫu đã có trên đĩa). Bộ ước lượng ONNX (~20 MB, tải về khi dùng lần đầu từ CDN vào `/root/local/models/squimm_stoi.onnx` — xem `audio_processors/model_store.py`, cùng quy ước với model pose/faceid — onnxruntime CPU với mem-arena tắt) nạp một lần dạng lazy singleton cùng TEN-VAD và chỉ chạy sau khi VAD đạt — tối đa một lần mỗi phát ngôn. Nếu không phân giải được weight (CDN không truy cập được / tên file lạ) thì bỏ qua cổng kèm cảnh báo (không crash).
 - **Cờ server**: HAL gửi `preprocess=false`; `/embed` của perception chỉ để embed và nay cũng mặc định `preprocess=false` (HAL là caller duy nhất). Caller nào upload audio thô có thể truyền `preprocess=true` để server tự làm sạch.
 - **Nhất quán**: enroll và recognize dùng chung một pipeline này, nên các đăng ký sau khi chuyển vẫn tự nhất quán. Giọng đã đăng ký dưới pipeline **server cũ** nên đăng ký lại nếu chất lượng khớp giảm.
 
@@ -155,10 +157,12 @@ Khớp giá trị mặc định của `AudioProcessorSetting` bên perception; o
 | Resample | bật | `HAL_SPEAKER_PROC_ENABLE_RESAMPLE` | Resample về SR đích |
 | High-pass | tắt | `HAL_SPEAKER_PROC_ENABLE_HIGH_PASS` / `..._HIGH_PASS_CUTOFF_HZ` (80.0) | Lọc cao tần Butterworth |
 | Noise reduce | tắt | `HAL_SPEAKER_PROC_ENABLE_NOISE_REDUCE` / `..._NOISE_STATIONARY` | `noisereduce` (import lazy) |
-| VAD | bật | `HAL_SPEAKER_PROC_ENABLE_VAD` | Cổng silero-vad |
+| VAD | bật | `HAL_SPEAKER_PROC_ENABLE_VAD` | Cổng TEN-VAD |
 | VAD min duration | 0.5s | `HAL_SPEAKER_PROC_VAD_MIN_DURATION_SEC` | Loại nếu audio sau strip ngắn hơn |
-| VAD min voice ratio | 0.4 | `HAL_SPEAKER_PROC_VAD_MIN_VOICE_RATIO` | Loại nếu tỉ lệ tiếng nói thấp hơn |
-| VAD ngưỡng xác suất tiếng nói | 0.6 | `HAL_SPEAKER_PROC_VAD_SPEECH_PROB_THRESHOLD` | Ngưỡng onset Silero (offset = −0.15); cao hơn thì cắt khoảng lặng đầu/cuối mạnh hơn (mặc định silero 0.5) |
+| VAD min voice ratio | 0.25 | `HAL_SPEAKER_PROC_VAD_MIN_VOICE_RATIO` | Loại nếu tỉ lệ tiếng nói thấp hơn. Trước đây là 0.4 với silero — các cổng chống dương tính giả chia nhỏ segment nên làm tỉ lệ này giảm |
+| VAD ngưỡng xác suất tiếng nói | 0.5 | `HAL_SPEAKER_PROC_VAD_SPEECH_PROB_THRESHOLD` | Ngưỡng onset TEN-VAD (offset = −0.15); cao hơn thì cắt khoảng lặng đầu/cuối mạnh hơn. Trước đây là 0.6 với silero; điểm vận hành đo được của TEN-VAD là 0.45–0.5, và các cổng bên dưới nay đã đảm nhận việc cắt đó |
+| VAD speaker band | bật | `HAL_SPEAKER_PROC_VAD_SPEAKER_BAND` | Chỉ giữ frame VAD nằm trong dải cao độ của chính clip |
+| VAD mức giảm tối đa | 20.0 dB | `HAL_SPEAKER_PROC_VAD_MAX_LEVEL_DROP_DB` | Loại frame VAD thấp hơn mức tiếng nói của chính clip quá ngần này; **chuỗi rỗng để tắt** |
 | Cổng STOI | bật | `HAL_SPEAKER_PROC_ENABLE_STOI` | Cổng chất lượng SQUIM-OBJECTIVE (sau VAD, trước RMS) |
 | Đường dẫn model STOI | `/root/local/models/squimm_stoi.onnx` | `HAL_SPEAKER_PROC_STOI_MODEL_PATH` | Bộ ước lượng ONNX (~20 MB), tải từ CDN khi dùng lần đầu; bỏ qua cổng nếu không phân giải được |
 | Ngưỡng STOI | 0.75 | `HAL_SPEAKER_PROC_STOI_THRESHOLD` | Loại nếu STOI trung bình dưới ngưỡng này |
@@ -190,9 +194,9 @@ Các stage tạo thành **cây**: stage mở bên trong một stage khác trở 
 decode_input                đọc base64/file + chuẩn hoá WAV về 16 kHz mono
 preprocess                  toàn bộ chuỗi xử lý on-device
 ├─ decode_wav / encode_wav    WAV bytes ↔ waveform float32, kèm bước bọc base64
-├─ processor_init             dựng/khởi động lazy — lần đầu nạp silero-vad + ONNX STOI
+├─ processor_init             dựng/khởi động lazy — lần đầu nạp TEN-VAD + ONNX STOI
 ├─ mono / resample / high_pass / noise_reduce / rms_normalize
-├─ silero_vad               ← stage silero-vad
+├─ ten_vad                  ← stage TEN-VAD (các trace trước lần thay đổi này ghi là `silero_vad`)
 └─ stoi_gate                ← cổng chất lượng STOI
 embed_api                   lời gọi embedding
 ├─ request                  ← bản thân vòng gọi HTTP
@@ -216,7 +220,7 @@ Vài điểm khác cần biết:
 - **Enroll cộng dồn.** Nó chạy preprocess + embed một lần cho mỗi mẫu, nên `ms` của các stage dùng chung được cộng lại, kèm `calls` và `ms_max` (cả hai được bỏ qua khi stage chỉ chạy đúng một lần).
 - **RSS và CPU đều tính theo tiến trình.** Một thread HAL khác cấp phát hoặc ngốn CPU trong lúc stage đang chạy sẽ rơi vào số liệu của stage đó — không cách đo dựa trên RSS nào tránh được điều này. Hãy đọc bộ nhớ của một stage như một cận trên, và ưu tiên nhìn xu hướng qua nhiều lượt gọi.
 - **`rss_source` quyết định ý nghĩa các con số.** `psutil` / `statm` (Linux trên thiết bị) là RSS hiện tại — trường hợp chính xác. `rusage` — phương án dự phòng trên macOS không có psutil — là mức đỉnh không thể giảm, nên `rss_end_delta_mb` ở đó sẽ bị thổi phồng.
-- Bộ nhớ đo là RSS của tiến trình, không phải Python heap: đồ thị torch silero-vad và phiên ONNX STOI cấp phát ngoài heap, nơi `tracemalloc` không thấy gì.
+- Bộ nhớ đo là RSS của tiến trình, không phải Python heap: các phiên ONNX của TEN-VAD và STOI cấp phát ngoài heap, nơi `tracemalloc` không thấy gì.
 
 | Tham số | Mặc định | Env var | Mô tả |
 |---------|----------|---------|-------|

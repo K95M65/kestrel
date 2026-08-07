@@ -391,23 +391,53 @@ SPEAKER_PROC_ENABLE_NOISE_REDUCE: bool = (
 SPEAKER_PROC_NOISE_STATIONARY: bool = (
     os.environ.get("HAL_SPEAKER_PROC_NOISE_STATIONARY", "false").lower() == "true"
 )
+# VAD stage. Backed by TEN-VAD (`hal/drivers/voice/ten_vad_lite`, numpy +
+# onnxruntime, original FP32 model) — it replaced torch silero-vad here.
 SPEAKER_PROC_ENABLE_VAD: bool = (
     os.environ.get("HAL_SPEAKER_PROC_ENABLE_VAD", "true").lower() == "true"
 )
 SPEAKER_PROC_VAD_MIN_DURATION_SEC: float = float(
     os.environ.get("HAL_SPEAKER_PROC_VAD_MIN_DURATION_SEC", "0.5")
 )
+# 0.25, down from the silero-era 0.4. The speaker-band / level gates below remove
+# non-speech from INSIDE the kept span, which splits segments and mechanically
+# lowers this ratio — at 0.4 the TEN-VAD stage rejected clips holding plenty of
+# speech. Raise it only together with disabling those gates.
 SPEAKER_PROC_VAD_MIN_VOICE_RATIO: float = float(
-    os.environ.get("HAL_SPEAKER_PROC_VAD_MIN_VOICE_RATIO", "0.4")
+    os.environ.get("HAL_SPEAKER_PROC_VAD_MIN_VOICE_RATIO", "0.25")
 )
-# Silero speech-probability threshold used to detect (and trim to) speech. Onset
-# triggers at this value, offset at (threshold - 0.15). Higher = segments close
-# sooner = more aggressive trailing/leading silence trimming. Silero's own
-# default is 0.5; we default to 0.6 to cut soft trailing tails (breath, room
-# tone) that a 0.5/0.35-offset would otherwise keep. Raise toward 0.7 for very
-# noisy rooms; lower to 0.5 if quiet talkers get clipped.
+# TEN-VAD speech-probability threshold used to detect (and trim to) speech. Onset
+# triggers at this value, offset at (threshold - 0.15) — the same hysteresis
+# silero used, so this knob keeps its meaning across the swap. Higher = segments
+# close sooner = more aggressive trailing/leading silence trimming. 0.5 is
+# TEN-VAD's measured operating point (a sweep put best F1 at 0.45-0.5), and the
+# false-positive gates below now do the tail-trimming that the silero-era 0.6
+# was raised for. Raise toward 0.6-0.7 for very noisy rooms; lower to 0.45 if
+# quiet talkers get clipped.
 SPEAKER_PROC_VAD_SPEECH_PROB_THRESHOLD: float = float(
-    os.environ.get("HAL_SPEAKER_PROC_VAD_SPEECH_PROB_THRESHOLD", "0.6")
+    os.environ.get("HAL_SPEAKER_PROC_VAD_SPEECH_PROB_THRESHOLD", "0.5")
+)
+# TEN-VAD false-positive suppression (no silero equivalent). Both gates zero out
+# VAD frames that are not the clip's dominant speaker before segmentation: the
+# band gate keeps only frames inside the clip's own pitch band, the level gate
+# drops frames far below the clip's own speech level. They are a pair — the band
+# gate cannot reject uniformly loud noise, the level gate cannot reject a loud
+# transient. Together they raise the share of the kept span that is really speech
+# from ~0.67 to ~0.79 at the cost of recall (0.98 -> 0.76), which is the right
+# trade for a recogniser: a clean 2 s beats a dirty 6 s.
+#
+# They assume ONE dominant speaker per clip — true for recognition, wrong for
+# long-form multi-speaker audio. Set SPEAKER_BAND=false and MAX_LEVEL_DROP_DB
+# empty for plain TEN-VAD (and then raise MIN_VOICE_RATIO back toward 0.4).
+SPEAKER_PROC_VAD_SPEAKER_BAND: bool = (
+    os.environ.get("HAL_SPEAKER_PROC_VAD_SPEAKER_BAND", "true").lower() == "true"
+)
+# Empty string disables the level gate (the library's `None`).
+_vad_max_level_drop_db_raw: str = os.environ.get(
+    "HAL_SPEAKER_PROC_VAD_MAX_LEVEL_DROP_DB", "20.0"
+).strip()
+SPEAKER_PROC_VAD_MAX_LEVEL_DROP_DB: Optional[float] = (
+    float(_vad_max_level_drop_db_raw) if _vad_max_level_drop_db_raw else None
 )
 SPEAKER_PROC_ENABLE_RMS_NORMALIZE: bool = (
     os.environ.get("HAL_SPEAKER_PROC_ENABLE_RMS_NORMALIZE", "true").lower() == "true"
