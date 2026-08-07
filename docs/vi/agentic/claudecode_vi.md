@@ -131,6 +131,20 @@ còn phụ thuộc python3/websockets), gatewayd này:
 - queue các frame `message.send` đến trong lúc child đang down và flush khi
   respawn.
 
+### Ranh giới bảo mật: Claude chạy root, không sandbox
+
+Cả child gatewayd thường trú lẫn hand-off coding qua Telegram đều gọi Claude với
+`--dangerously-skip-permissions` dưới uid 0. `IS_SANDBOX=1` chỉ đáp ứng kiểm tra
+root-mode của Claude CLI; nó **không** sandbox tiến trình. Vì vậy, một yêu cầu coding
+được chấp nhận có thể chạy tool với quyền tương đương root trên thiết bị: đọc credential
+của device/agent, thay đổi root filesystem hoặc service, gọi hardware API nội bộ và gửi
+network request.
+
+Allowlist `telegram_user_id`, bearer token WebSocket của gateway và ranh giới service
+chỉ-loopback là các lớp authorization cho quyền năng này. Hãy coi việc thêm một ID vào
+allowlist, expose bridge hoặc đưa nội dung không tin cậy vào coding flow là cấp quyền
+điều khiển thiết bị mức root. Không dùng runtime này khi mức authority đó không chấp nhận được.
+
 Path, port và token override được qua các biến môi trường `CLAUDECODE_*`
 (`CLAUDECODE_WS_TOKEN`, `CLAUDECODE_PORT`, `CLAUDECODE_HOME`,
 `CLAUDECODE_WORKSPACE`, `CLAUDECODE_ENV_FILE`, `CLAUDECODE_SESSION_FILE`,

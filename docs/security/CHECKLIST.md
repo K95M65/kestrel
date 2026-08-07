@@ -103,6 +103,17 @@ _All cleared 2026-05-19 (F6 + F7b skipped + F8)._
 
 `scripts/maintenance/patch-security.sh` now hashes `lamp.conf` + `hal.service` before patching and only `nginx -s reload` / `systemctl restart` when those hashes change. Earlier behavior was an unconditional restart at the end → re-running an already-patched device caused a ~5s 502 window. Safe to re-run repeatedly now.
 
+### Claude Code execution boundary
+
+The Claude Code runtime deliberately runs `claude --dangerously-skip-permissions`
+as root for both its persistent gateway and allowlisted Telegram coding sessions.
+`IS_SANDBOX=1` is a CLI compatibility acknowledgement, not a process sandbox. A
+caller admitted by the Telegram allowlist or through the authenticated local bridge
+can cause root-equivalent tool execution: read credentials, alter files/services,
+operate local hardware APIs, and reach the network. The allowlist, bridge bearer
+token, and loopback boundary are therefore root-authority boundaries, not merely
+feature access controls. See `docs/agentic/claudecode.md` for the runtime flow.
+
 ---
 
 ## Coverage summary

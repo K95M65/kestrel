@@ -75,7 +75,8 @@ pass-through.
 |-------|-------|------|----------------|--------|
 | 1 | `light.max_brightness` ceiling | `clamp_brightness` / `clamp_color` | LED gate (`rgb_service` `_handle_solid`/`_handle_paint`) | **enforced (v1)** |
 | 2 | `quiet_hours` (light + audio) | `active_max_brightness` (time-aware) + `audio_quiet_now` | LED gate + music route | **enforced (v1)** |
-| 3 | `motion.max_speed` + `stop_always` (presence-driven) | `min_move_duration` | servo route | **enforced (v1)** (`max_accel` reserved) |
+| 3 | `motion.max_speed` (presence-driven) | `min_move_duration` | servo route | **enforced (v1)** (`max_accel` reserved) |
+| 3b | `motion.stop_always` | — | — | **declared / structurally guaranteed** — no route-level gate consumes this field (see below) |
 | 4 | fail-safe states (network/gateway loss → stop tracking; board fault → 503 isolation; `thermal.max_temp_c` → SoC over-temp health event + stop tracking; setup + servo over-current reserved) | WS-disconnect hook + per-capability `503` + thermal monitor (`thermal_over`/`read_soc_temp_c`) | `services` on WS disconnect + HAL routes/`/health` + `server.py` `_thermal_monitor` | **partially enforced (v1)** (setup + over-current reserved) |
 
 Each slice adds fields to the `SafetyPolicy` and gate functions and wires one or more
@@ -159,6 +160,9 @@ moves unrestricted — that is the off state, not a refusal). `max_speed` is enf
 by *stretching a move's duration* (the move still reaches its target; only speed is
 capped) — never by truncating the destination. Recovery actions
 (`release`/`zero`/`hold`/`stop`) are never gated so you can always safe the body.
+`stop_always` is parsed and reported as part of the declared policy, but no HAL
+route currently consumes that field: this recovery property is structural (the
+routes are ungated), not an independently enforced policy gate.
 
 - [x] **Unit:** `min_move_duration` stretches a too-fast move (120° at 120 deg/s →
       1.0s), passes a slow one, bounds an instant (duration 0) request, passes
