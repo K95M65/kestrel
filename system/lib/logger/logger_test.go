@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -13,7 +14,10 @@ func TestGELFHandlerDropsWhenBoundedQueueIsFull(t *testing.T) {
 	started := make(chan struct{}, 1)
 	release := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		started <- struct{}{}
+		select {
+		case started <- struct{}{}:
+		default:
+		}
 		select {
 		case <-release:
 		case <-r.Context().Done():
@@ -54,4 +58,29 @@ func TestGELFHandlerDropsWhenBoundedQueueIsFull(t *testing.T) {
 		t.Fatalf("overflow Handle() blocked for %s", elapsed)
 	}
 	close(release)
+}
+
+func TestGELFSenderFlushesQueuedRecordsOnClose(t *testing.T) {
+	var received atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		received.Add(1)
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer server.Close()
+
+	oldURL, oldUsername, oldPassword := gelfURL, gelfUsername, gelfPassword
+	gelfURL, gelfUsername, gelfPassword = server.URL, "", ""
+	defer func() { gelfURL, gelfUsername, gelfPassword = oldURL, oldUsername, oldPassword }()
+
+	h := newGELFHandler(slog.LevelInfo, "test")
+	for i := 0; i < 3; i++ {
+		if err := h.Handle(context.Background(), slog.NewRecord(time.Now(), slog.LevelInfo, "flush", 0)); err != nil {
+			t.Fatalf("Handle() error = %v", err)
+		}
+	}
+	h.sender.close()
+
+	if got := received.Load(); got != 3 {
+		t.Fatalf("GELF records sent before close = %d, want 3", got)
+	}
 }

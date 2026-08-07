@@ -365,7 +365,9 @@ When `GELF_URL` is configured, OS Server ships INFO-and-higher records to that
 central collector through one worker with a bounded queue of 256 records. Logging
 never blocks the request path or creates a goroutine per record: when the collector
 is slow or unavailable and the queue is full, newly produced GELF records are
-dropped while console and local rotating-file logging continue.
+dropped (with rate-limited stderr notices) while console and local rotating-file
+logging continue. On shutdown, the worker flushes queued records for up to five
+seconds before cancelling any remaining delivery.
 
 ## Local Intent Matching
 

@@ -360,7 +360,9 @@ HAL (Python): FastAPI standard JSON responses.
 Khi có cấu hình `GELF_URL`, OS Server gửi log từ mức INFO trở lên tới collector tập
 trung bằng một worker với queue giới hạn 256 record. Logging không block request path
 và không tạo goroutine theo từng record: khi collector chậm/không hoạt động và queue
-đầy, GELF record mới bị drop; log console và rotating file cục bộ vẫn tiếp tục.
+đầy, GELF record mới bị drop (có stderr notice rate-limit); log console và rotating
+file cục bộ vẫn tiếp tục. Khi shutdown, worker flush record trong queue tối đa năm
+giây trước khi hủy delivery còn lại.
 
 ## Local Intent Matching
 

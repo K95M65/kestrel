@@ -154,11 +154,16 @@ func (m *multiHandler) WithGroup(name string) slog.Handler {
 	return &multiHandler{handlers: handlers}
 }
 
-const gelfQueueSize = 256
+const (
+	gelfQueueSize            = 256
+	gelfShutdownFlushTimeout = 5 * time.Second
+)
 
 // gelfSender owns the bounded GELF delivery queue. Logging must never create an
 // unbounded number of network goroutines when the remote collector is slow or
-// unavailable, so overload drops the newest GELF record instead.
+// unavailable, so overload drops the newest GELF record instead. Drops are
+// reported to stderr with exponentially spaced notices to preserve observability
+// without turning a collector outage into a second log storm.
 type gelfSender struct {
 	client   *http.Client
 	url      string
@@ -199,7 +204,10 @@ func (s *gelfSender) enqueue(body []byte) {
 	select {
 	case s.queue <- body:
 	default:
-		s.dropped.Add(1)
+		dropped := s.dropped.Add(1)
+		if dropped == 1 || dropped&(dropped-1) == 0 {
+			fmt.Fprintf(os.Stderr, "[gelf] queue full; dropped %d record(s)\n", dropped)
+		}
 	}
 }
 
@@ -209,7 +217,10 @@ func (s *gelfSender) run() {
 		select {
 		case <-s.ctx.Done():
 			return
-		case body := <-s.queue:
+		case body, ok := <-s.queue:
+			if !ok {
+				return
+			}
 			s.send(body)
 		}
 	}
@@ -242,9 +253,20 @@ func (s *gelfSender) close() {
 		return
 	}
 	s.closed = true
-	s.cancel()
+	close(s.queue)
 	s.mu.Unlock()
-	<-s.done
+
+	timer := time.NewTimer(gelfShutdownFlushTimeout)
+	defer timer.Stop()
+	select {
+	case <-s.done:
+		return
+	case <-timer.C:
+		remaining := len(s.queue)
+		s.cancel()
+		<-s.done
+		fmt.Fprintf(os.Stderr, "[gelf] shutdown flush timed out; dropped %d queued record(s)\n", remaining)
+	}
 }
 
 // gelfHandler serializes records and enqueues them for the shared GELF sender.
