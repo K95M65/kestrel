@@ -364,8 +364,14 @@ def _wav_bytes_to_float32_16k_mono(raw: bytes) -> np.ndarray:
     return arr
 
 
-def _float32_waveform_to_wav_bytes(waveform: np.ndarray) -> bytes:
-    """Encode a float32 mono waveform into 16kHz PCM_16 WAV bytes."""
+def _float32_waveform_to_wav_bytes(
+    waveform: np.ndarray, sample_rate: int = _TARGET_SR
+) -> bytes:
+    """Encode a float32 mono waveform into PCM_16 WAV bytes (16kHz by default).
+
+    ``sample_rate`` is only ever passed by the SPEAKER-DEBUG partial-chain dump,
+    which can capture a waveform from *before* the Resampler stage ran.
+    """
     try:
         import soundfile as sf  # type: ignore
     except ImportError as e:
@@ -373,7 +379,7 @@ def _float32_waveform_to_wav_bytes(waveform: np.ndarray) -> bytes:
             "soundfile is required for WAV processing"
         ) from e
     buf = io.BytesIO()
-    sf.write(buf, np.asarray(waveform, dtype=np.float32), _TARGET_SR, format="WAV", subtype="PCM_16")
+    sf.write(buf, np.asarray(waveform, dtype=np.float32), int(sample_rate), format="WAV", subtype="PCM_16")
     return buf.getvalue()
 
 
@@ -1029,6 +1035,12 @@ class SpeakerRecognizer:
         # VAD/STOI metrics), stashed by _prepare_wav_for_embedding so the
         # recognize() trace can log what the gate produced. Reset per recognize.
         self._debug_preproc: Optional[dict[str, Any]] = None
+        # SPEAKER-DEBUG: the PARTIAL chain output when a stage rejects — the
+        # audio the last successful stage produced. Without this a STOI reject
+        # traced only input.wav, so there was no way to hear what TEN-VAD
+        # actually handed the gate, which is the audio the reject is about.
+        # Reset at the top of every _prepare_wav_for_embedding.
+        self._debug_partial: Optional[dict[str, Any]] = None
         # SPEAKER-DEBUG: per-call stage profiler (latency + RSS per stage).
         # THREAD-LOCAL, unlike the two snapshots above: recognize()/enroll() are
         # not serialized against each other, and a profile is an accumulating
@@ -1274,6 +1286,7 @@ class SpeakerRecognizer:
         # SPEAKER-DEBUG: `prof` is None unless tracing is on; every stage below
         # is wrapped so the whole chain (and each gate inside it) is profiled.
         prof: Optional[_StageProfiler] = getattr(self._debug_prof, "cur", None)
+        self._debug_partial = None  # SPEAKER-DEBUG: never report a stale partial
         with self._debug_stage("preprocess"):
             with self._debug_stage("decode_wav"):
                 waveform = _wav_bytes_to_float32_16k_mono(wav_bytes)
@@ -1393,19 +1406,75 @@ class SpeakerRecognizer:
         total. Kept HERE rather than inside ``audio_processors/`` so the whole
         SPEAKER-DEBUG block stays removable without touching that package.
         Falls back to the plain composite call if the chain isn't introspectable.
+
+        Also records the PARTIAL result when a stage rejects: the audio the last
+        successful stage produced is stashed on ``self._debug_partial`` before
+        the exception propagates, so a STOI reject can still dump the TEN-VAD
+        output the gate said no to.
         """
         stages = getattr(processor, "_processors", None)
         if not stages:
             with prof.stage("chain"):
                 return processor.process(audio)
         result = audio
+        last_ok: Optional[str] = None  # SPEAKER-DEBUG: last stage that returned
         for p in stages:
             cls_name = type(p).__name__
-            # Leaf name only — the profiler nests it under whatever stage is
-            # open (``preprocess``), so the tree carries the path.
-            with prof.stage(_DEBUG_STAGE_NAMES.get(cls_name, cls_name.lower())):
-                result = p.process(result)
+            stage_name = _DEBUG_STAGE_NAMES.get(cls_name, cls_name.lower())
+            try:
+                # Leaf name only — the profiler nests it under whatever stage is
+                # open (``preprocess``), so the tree carries the path.
+                with prof.stage(stage_name):
+                    result = p.process(result)
+            except Exception:
+                # SPEAKER-DEBUG: `result` still holds the last successful
+                # stage's output. Capture it, then re-raise untouched — this
+                # must not change which exception the caller sees.
+                self._debug_capture_partial(result, last_ok, stage_name)
+                raise
+            last_ok = stage_name
         return result
+
+    def _debug_capture_partial(  # SPEAKER-DEBUG (remove before deploy)
+        self, partial: Any, after_stage: Optional[str], rejected_by: str
+    ) -> None:
+        """Stash the chain output as it stood when ``rejected_by`` refused it.
+
+        ``after_stage`` is the last stage that actually ran (None if the very
+        first one rejected, in which case there is nothing to dump that
+        ``input.wav`` doesn't already show). Never raises — a debug aid must not
+        turn a gate rejection into a crash.
+        """
+        try:
+            if after_stage is None:
+                return
+            wf = np.asarray(getattr(partial, "waveform", None), dtype=np.float32)
+            if wf.ndim != 1 or wf.shape[0] == 0:
+                return
+            sr = int(getattr(partial, "sample_rate", _TARGET_SR))
+            self._debug_partial = {
+                # Named for the stage that produced it, so the file says what it
+                # is: `after_ten_vad.wav` next to a FAIL-low-stoi result.json.
+                "wav_name": f"after_{after_stage}.wav",
+                "wav": _float32_waveform_to_wav_bytes(wf, sr),
+                "after_stage": after_stage,
+                "rejected_by": rejected_by,
+                "duration_s": round(float(wf.shape[0]) / float(max(1, sr)), 3),
+                "rms": round(float(np.sqrt(np.mean(wf.astype(np.float64) ** 2))), 6),
+                "sample_rate": sr,
+            }
+        except Exception as e:
+            logger.debug("SPEAKER-DEBUG partial-chain capture failed: %s", e)
+
+    def _debug_partial_parts(self) -> tuple[dict[str, bytes], Optional[dict[str, Any]]]:
+        """SPEAKER-DEBUG: split the partial-chain snapshot into
+        (wav-attachments, json-safe metrics) for a FAIL trace."""
+        pp = self._debug_partial or {}
+        wavs: dict[str, bytes] = {}
+        if pp.get("wav") and pp.get("wav_name"):
+            wavs[str(pp["wav_name"])] = pp["wav"]
+        metrics = {k: v for k, v in pp.items() if k != "wav"} or None
+        return wavs, metrics
 
     # ------------------------------------------------------------- metadata
 
@@ -1574,6 +1643,11 @@ class SpeakerRecognizer:
         # whole enroll aborts cleanly and nothing on disk is touched).
         new_embeddings: list[tuple[bytes, np.ndarray]] = []
         per_sample_errors: list[tuple[int, str]] = []
+        # SPEAKER-DEBUG: per-rejected-sample gate detail + partial chain output,
+        # captured inside the loop because _debug_partial is overwritten by the
+        # next sample. Without this the enroll FAIL trace held no audio at all.
+        # (index, json detail, the sample's own wav, partial-chain wavs)
+        per_sample_debug: list[tuple[int, dict[str, Any], bytes, dict[str, bytes]]] = []
         for idx, wb in enumerate(new_wavs):
             try:
                 payload = self._prepare_wav_for_embedding(wb)
@@ -1583,6 +1657,18 @@ class SpeakerRecognizer:
                 raise
             except SpeakerRecognizerError as e:
                 per_sample_errors.append((idx, str(e)))
+                if self._debug.enabled:  # SPEAKER-DEBUG
+                    detail: dict[str, Any] = {"index": idx, "error": str(e)}
+                    gate_detail = getattr(e, "gate_detail", None)
+                    if gate_detail is not None:
+                        detail["preprocessing_reject"] = gate_detail
+                    p_wavs, p_metrics = self._debug_partial_parts()
+                    if p_metrics is not None:
+                        detail["preprocessing_partial"] = p_metrics
+                    per_sample_debug.append((
+                        idx, detail, wb,
+                        {f"sample_{idx:02d}_{n}": b for n, b in p_wavs.items()},
+                    ))
                 logger.warning(
                     "Enroll: rejected new sample #%d — %s (not saved to disk)",
                     idx, e,
@@ -1592,13 +1678,18 @@ class SpeakerRecognizer:
             # Surface the actual reason from perception-service (VAD reject text, etc.)
             # or from local gates (too short / silent) — no hardcoded summary.
             if self._debug.enabled:  # SPEAKER-DEBUG
+                fail_wavs: dict[str, bytes] = {}
+                for idx, _detail, wb, partial_wavs in per_sample_debug:
+                    fail_wavs[f"sample_{idx:02d}_input.wav"] = wb
+                    fail_wavs.update(partial_wavs)
                 self._debug.record(
                     "enroll", reason="no-valid-samples",
+                    wavs=fail_wavs,
                     result={
                         "name": norm, "origin": origin, "num_new": len(new_wavs),
-                        "per_sample_errors": [
-                            {"index": i, "error": m} for i, m in per_sample_errors
-                        ],
+                        # Now carries the structured gate reason + the partial
+                        # chain output per sample, not just the message string.
+                        "per_sample_errors": [d for _i, d, _w, _p in per_sample_debug],
                     },
                     profile=self._debug_profile_dict(),
                 )
@@ -2190,9 +2281,16 @@ class SpeakerRecognizer:
                 gate_detail = getattr(e, "gate_detail", None)
                 if gate_detail is not None:
                     fail_result["preprocessing_reject"] = gate_detail
+                # Plus the audio the chain had produced when the gate said no —
+                # for a STOI reject that is the TEN-VAD output, i.e. the very
+                # clip the rejection is about. Without it the trace held only
+                # the raw input and there was nothing to listen to.
+                partial_wavs, partial_metrics = self._debug_partial_parts()
+                if partial_metrics is not None:
+                    fail_result["preprocessing_partial"] = partial_metrics
                 self._debug.record(
                     "recognize", reason=self._debug.classify_reason(e),
-                    wavs={"input.wav": wav_bytes},
+                    wavs={"input.wav": wav_bytes, **partial_wavs},
                     result=fail_result,
                     # Latency/memory up to the failure — a gate reject still paid
                     # for TEN-VAD (and STOI, if it got that far).
