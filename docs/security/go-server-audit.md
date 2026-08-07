@@ -20,7 +20,7 @@ Most important risks:
 - **Wildcard CORS** (`Access-Control-Allow-Origin: *`) allows arbitrary browser origins to call/read API responses.
 - **Remote command execution endpoint**: `/api/system/exec` runs `sh -c` on user input.
 - **Interactive shell endpoint**: `/api/system/shell` is exposed under `/api/`.
-- **Raw OpenClaw config leak**: `/api/openclaw/config-json` returns `openclaw.json`, likely including gateway tokens and channel credentials.
+- **Raw OpenClaw config leak**: `/api/agent/config-json` returns `openclaw.json`, likely including gateway tokens and channel credentials.
 - **Device config read/write endpoints expose/update secrets**: `/api/device/config` returns API keys, bot tokens, WiFi password, MQTT password, etc.; `PUT /api/device/config` can overwrite them and trigger service restarts / WiFi reconnects.
 - **Setup and channel endpoints can re-provision or hijack messaging channels** without auth.
 - **Logs endpoints can leak secrets** and internal events.
@@ -185,7 +185,7 @@ From another LAN machine:
 
 ```sh
 curl -i http://<device-ip>/api/device/config
-curl -i http://<device-ip>/api/openclaw/config-json
+curl -i http://<device-ip>/api/agent/config-json
 curl -i -X POST http://<device-ip>/api/system/exec \
   -H 'Content-Type: application/json' \
   -d '{"cmd":"id"}'
@@ -476,7 +476,7 @@ Expected: `403`, `404`, or WebSocket rejection before shell starts.
 
 ---
 
-## Finding 5 — `/api/openclaw/config-json` returns raw `openclaw.json`
+## Finding 5 — `/api/agent/config-json` returns raw `openclaw.json`
 
 ### Severity
 
@@ -584,7 +584,7 @@ Change them to call sanitized endpoint or require local-only dev mode.
 From LAN:
 
 ```sh
-curl -i http://<device-ip>/api/openclaw/config-json
+curl -i http://<device-ip>/api/agent/config-json
 ```
 
 Expected:
@@ -1428,9 +1428,9 @@ Do not put this token in frontend JavaScript.
 | `POST /api/wellbeing/log` | External | Internal/admin | Internal token/admin auth |
 | `POST /api/posture/log` | External | Internal/admin | Internal token/admin auth |
 | `POST /api/monitor/event` | External | Internal | Internal token/local-only |
-| `GET /api/openclaw/status` | External | Admin or public summary | Redact sensitive values |
-| `GET /api/openclaw/events` | External | Admin | Admin auth; may leak event content |
-| `GET /api/openclaw/config-json` | External | Local-only dev | Remove/raw local-only; provide redacted summary |
+| `GET /api/agent/status` | External | Admin or public summary | Redact sensitive values |
+| `GET /api/agent/events` | External | Admin | Admin auth; may leak event content |
+| `GET /api/agent/config-json` | External | Local-only dev | Remove/raw local-only; provide redacted summary |
 | `GET /api/logs/tail` | External | Admin | Admin auth + redaction |
 | `GET /api/logs/stream` | External | Admin | Admin auth + redaction |
 
@@ -1443,7 +1443,7 @@ Do not put this token in frontend JavaScript.
 1. Remove or local-only guard:
    - `/api/system/exec`
    - `/api/system/shell`
-   - `/api/openclaw/config-json`
+   - `/api/agent/config-json`
 2. Change `/api/device/config` to auth + redacted response.
 3. Remove wildcard CORS.
 4. Add admin auth middleware for config/channel/update/log/monitor routes.
@@ -1501,7 +1501,7 @@ Expected: `403`/`404` or WebSocket rejection.
 ### 4. No raw OpenClaw config remotely
 
 ```sh
-curl -i http://<device-ip>/api/openclaw/config-json
+curl -i http://<device-ip>/api/agent/config-json
 ```
 
 Expected: `403`/`404` or redacted response.

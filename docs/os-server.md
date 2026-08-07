@@ -149,9 +149,9 @@ Config field: `guard_mode` in `config/config.json` (bool, default `false`). The 
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/openclaw/status` | WS connection status; includes `uptime` (OS server WS uptime) and `agentUptime` (OpenClaw process uptime, survives OS server restarts) |
-| GET | `/api/openclaw/events` | SSE stream real-time events |
-| GET | `/api/openclaw/recent` | 100 most recent events (ring buffer) |
+| GET | `/api/agent/status` | WS connection status; includes `uptime` (OS server WS uptime) and `agentUptime` (OpenClaw process uptime, survives OS server restarts) |
+| GET | `/api/agent/events` | SSE stream real-time events |
+| GET | `/api/agent/recent` | 100 most recent events (ring buffer) |
 
 ---
 
@@ -306,7 +306,7 @@ Requires sensing with camera (InsightFace). Enrolled person JPEGs persist under 
 |--------|----------|-------------|
 | GET | `/user/info?name=X` | User metadata: `name`, `is_friend`, `telegram_id`, `telegram_username`. Defaults to `"unknown"` if name omitted. Auto-creates folder. |
 
-> Wellbeing activity history lives on the OS server HTTP API (port 5000). See `POST /api/wellbeing/log` and `GET /api/openclaw/wellbeing-history` — entries are JSONL under `/root/local/users/{user}/wellbeing/YYYY-MM-DD.jsonl` with schema `{ts, seq, hour, action, notes}` (action ∈ `drink`/`break`/`sedentary`/`emotional`). HAL no longer hosts wellbeing endpoints.
+> Wellbeing activity history lives on the OS server HTTP API (port 5000). See `POST /api/wellbeing/log` and `GET /api/agent/wellbeing-history` — entries are JSONL under `/root/local/users/{user}/wellbeing/YYYY-MM-DD.jsonl` with schema `{ts, seq, hour, action, notes}` (action ∈ `drink`/`break`/`sedentary`/`emotional`). HAL no longer hosts wellbeing endpoints.
 
 ### Display (GC9A01 1.28" round LCD)
 

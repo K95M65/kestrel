@@ -15,7 +15,7 @@ INFO  draining pending sensing events component=sensing count=N
 
 ## Root cause
 
-OpenClaw heartbeat / memory-flush turns run with **`target=none`** and never emit `lifecycle.end` SSE to Lamp. But the `before_agent_reply` turn-gate hook still fires unconditionally and POSTs `/api/openclaw/busy` → `SetBusy(true)`. With no SSE clear and no early hook signal, Lamp waits the full TTL.
+OpenClaw heartbeat / memory-flush turns run with **`target=none`** and never emit `lifecycle.end` SSE to Lamp. But the `before_agent_reply` turn-gate hook still fires unconditionally and POSTs `/api/agent/busy` → `SetBusy(true)`. With no SSE clear and no early hook signal, Lamp waits the full TTL.
 
 ```
 hook (turn-gate) ─POST /busy─▶ Lamp.SetBusy(true)            ┐
@@ -38,8 +38,8 @@ SSH="sshpass -p $PASS ssh -o StrictHostKeyChecking=no $PI"
 # 1. Last lifecycle event Lamp saw (should be old):
 $SSH "sudo journalctl -u os-server.service --since '20 min ago' --no-pager | grep 'lifecycle event' | tail -3"
 
-# 2. Last /api/openclaw/busy POST (should be after #1):
-$SSH "sudo journalctl -u os-server.service --since '20 min ago' --no-pager | grep '/api/openclaw/busy' | tail -3"
+# 2. Last /api/agent/busy POST (should be after #1):
+$SSH "sudo journalctl -u os-server.service --since '20 min ago' --no-pager | grep '/api/agent/busy' | tail -3"
 
 # 3. OpenClaw heartbeat / memoryFlush near #2's timestamp:
 $SSH "sudo grep -E 'isHeartbeat=true|before_agent_reply' /var/log/openclaw/lamp.log | tail -10"
@@ -53,11 +53,11 @@ Wedged when:
 ## Workarounds
 
 - **Wait ≤5 min** — auto-clear fires (`stuck_for_s` in the WARN line tells you how long).
-- **Restart Lamp** if urgent: `sudo systemctl restart os-server`. There is no idle endpoint — POSTing `/api/openclaw/busy` only sets `busy=true` again.
+- **Restart Lamp** if urgent: `sudo systemctl restart os-server`. There is no idle endpoint — POSTing `/api/agent/busy` only sets `busy=true` again.
 
 ## Real fix paths
 
-1. **Hook side (preferred)** — turn-gate skips `/api/openclaw/busy` when OpenClaw turn metadata says `target=none` or `isHeartbeat=true`. Edit `runtimes/openclaw/hooks/turn-gate/handler.ts`. This is cheapest and removes the trigger entirely.
+1. **Hook side (preferred)** — turn-gate skips `/api/agent/busy` when OpenClaw turn metadata says `target=none` or `isHeartbeat=true`. Edit `runtimes/openclaw/hooks/turn-gate/handler.ts`. This is cheapest and removes the trigger entirely.
 2. **Lamp side** — propagate heartbeat marker into `lifecycle.start` payload and have the SSE handler skip `SetBusy(true)` for those. Or shorten `busyTTL` to 60-90s (heartbeat turns finish in ~20s, no point waiting 5 min).
 
 ## Risk profile

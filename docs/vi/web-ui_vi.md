@@ -141,10 +141,10 @@ Monitor poll API system/HW mỗi **3 giây**. Flow dùng hybrid theo file: REST 
 | `GET /api/system/info` | CPU load, RAM (KB), nhiệt độ, uptime, goroutines, version, deviceId, capabilities (tên các capability đã khai báo — cả Monitor lẫn trang Edit/Settings đều ẩn/hiện tab phần cứng theo danh sách này; xem hook dùng chung `useCapabilities`) |
 | `GET /api/system/network` | SSID, IP, public IP, Tailscale IP, signal (dBm), internet (bool), pingMs (RTT của probe internet, 0 = chưa đo) |
 | `GET /api/agent/status` | tên runtime đang active, connected (bool), sessionKey (bool), version, emotion, uptime (uptime kết nối runtime phía OS server, giây), agentUptime (uptime tiến trình runtime khi runtime cung cấp, giây — không reset khi OS server restart). Hàng Agent trong card Versions probe phiên bản CLI bất đồng bộ và retry khi boot tạm thời lỗi. |
-| `GET /api/openclaw/recent` | Các flow event mới nhất từ JSONL của ngày hiện tại (`local/flow_events_<date>.jsonl`) |
-| `GET /api/openclaw/flow-events?date=YYYY-MM-DD&last=500` | API flow theo file dùng cho seed/history của Flow |
-| `GET /api/openclaw/flow-stream` | Stream live theo file (SSE) khi JSONL thay đổi |
-| `GET /api/openclaw/events` | SSE từ monitor bus, giữ để tương thích |
+| `GET /api/agent/recent` | Các flow event mới nhất từ JSONL của ngày hiện tại (`local/flow_events_<date>.jsonl`) |
+| `GET /api/agent/flow-events?date=YYYY-MM-DD&last=500` | API flow theo file dùng cho seed/history của Flow |
+| `GET /api/agent/flow-stream` | Stream live theo file (SSE) khi JSONL thay đổi |
+| `GET /api/agent/events` | SSE từ monitor bus, giữ để tương thích |
 | `POST /api/system/force-update` | Kích hoạt kiểm tra OTA qua bootstrap worker (proxy tới `localhost:8080/force-check`) |
 
 > **Lưu ý format**: OS server API trả `{ status: 1, data: <payload>, message: null }` khi thành công.
@@ -293,8 +293,8 @@ Flow feed hybrid theo file:
 
 Mỗi event hiển thị: type badge, phase (nếu có), runId (8 ký tự đầu), timestamp, summary text, error (nếu có).
 
-- Load ban đầu/history qua `GET /api/openclaw/flow-events`.
-- Update live qua `GET /api/openclaw/flow-stream` (SSE bắn khi file đổi).
+- Load ban đầu/history qua `GET /api/agent/flow-events`.
+- Update live qua `GET /api/agent/flow-stream` (SSE bắn khi file đổi).
 - Chỉ fallback poll 2 giây khi stream bị ngắt.
 - Turn/event hiển thị được suy ra hoàn toàn từ JSONL flow log.
 
@@ -320,7 +320,7 @@ Hành vi gom nhóm Turn Pipeline:
 - Header Flow Panel: `↓ Bundle`, `full day`, `🗑 Log`.
 - `↓ Bundle` = **một lần bấm tải hai file**: JSONL server (fetch + blob, `flow-logs?last=500`) và JSON snapshot trong browser (`events` + `groupIntoTurns` → `lamp_flow_ui_snapshot_*.json`).
 - `full day` = cả file JSONL trong ngày.
-- Nút `🗑 Log` sẽ hỏi xác nhận trước, gọi `DELETE /api/openclaw/flow-logs` để truncate flow log, rồi xóa events đang hiển thị trong Flow UI.
+- Nút `🗑 Log` sẽ hỏi xác nhận trước, gọi `DELETE /api/agent/flow-logs` để truncate flow log, rồi xóa events đang hiển thị trong Flow UI.
 - **Modal Filters** (`FlowSection/FiltersModal.tsx`) — header của danh sách turn chỉ giữ ô tìm kiếm text và nút **Filters** (gắn badge `Filters · N` với số nhóm filter đang bật). Bấm nút mở một modal căn giữa chứa toàn bộ bộ lọc: **Sources** (quick-toggle Mic / Cam / Btn / CH / Web / Cron / Sys, kèm Dropped khi có), **Sort** (Newest / Oldest / Slowest / Fastest / ↑↓ Tokens), **Sub-types** (toggle theo từng type kèm shortcut All-on / Enable-all), và **Time range** (preset nhanh Last 15m / 1h / 6h / Today, cùng hai pill From/To có nhãn và icon đồng hồ nối bằng mũi tên; native `<input type="time">` được bỏ chrome qua `.lm-time-input` và bound đang bật sẽ tô màu amber). Footer có **Reset all** và **Done**. Modal được render bên trong cây FlowSection (dưới `.lm-root`) nên token `--lm-*` hoạt động ở cả dark và light mode; đóng bằng click overlay, nút ✕, **Done**, hoặc `Esc`. Mọi state filter nằm ở `FlowSection/index.tsx` và truyền vào qua props, nên việc mở/đóng không bao giờ reset filter.
 - **Icon Lucide cho sub-types** — các chip source và sub-type dùng icon Lucide (`TYPE_LUCIDE` trong `FlowSection/types.ts`, ví dụ `voice→Mic`, `cmd→Mic2`, `motion→Eye`, `activity→Activity`, `voice_emo→Speech`, `emotion→Smile`, `web→Monitor`, `sys→Settings`) thay cho emoji, kế thừa `currentColor` và độ mờ on/off của chip.
 - Danh sách Turn history: hiển thị **tất cả turn** trong ngày (mới nhất ở trên), suy ra từ **10 000 event** cuối — đủ cho cả ngày hoạt động bình thường.
@@ -473,7 +473,7 @@ Cả hai đường đều KHÔNG restart runtime: backend nào có thư mục sk
 Chat UI → POST /api/sensing/event → SensingHandler
   → openclaw.SendChatMessage() → WebSocket chat.send → OpenClaw
   → Response stream qua WebSocket (thinking → assistant deltas → lifecycle end)
-  → SSE /api/openclaw/flow-stream → Chat UI cập nhật tin nhắn real-time
+  → SSE /api/agent/flow-stream → Chat UI cập nhật tin nhắn real-time
 ```
 
 ---

@@ -333,7 +333,7 @@ Wellbeing is **event-driven**. There are NO wellbeing cron jobs. On every `motio
 
 By the time the agent sees the event, HAL has already logged the activity rows for it (see "Written by" in the table above). The agent's job is just: read the history, decide whether to nudge, and log the nudge if it fired.
 
-1. **Read recent history** via `GET /api/openclaw/wellbeing-history?user={current_user}&last=50`.
+1. **Read recent history** via `GET /api/agent/wellbeing-history?user={current_user}&last=50`.
 2. **Compute deltas** from the log, using the most recent reset point for each:
 
    ```
@@ -440,7 +440,7 @@ Music suggestions are **fully AI-driven** — no cron jobs, no backend triggers.
 - **Sedentary trigger:** When `motion.activity` carries a sedentary raw label (`using computer`, `writing`, `texting`, `reading`, `drawing`, `playing controller`), the agent suggests background music (lo-fi, ambient, instrumental).
 - **Data-driven decisions:** Before suggesting, the agent queries:
   - `GET /audio/status` — is music already playing?
-  - `GET /api/openclaw/music-suggestion-history` — the last entry is the reset point; fire only when `minutes_since_last_suggestion >= SUGGESTION_INTERVAL_MIN` (7 min test / 30 min prod)
+  - `GET /api/agent/music-suggestion-history` — the last entry is the reset point; fire only when `minutes_since_last_suggestion >= SUGGESTION_INTERVAL_MIN` (7 min test / 30 min prod)
   - `GET /audio/history?person={name}` — per-user listening history (genre preference, duration, satisfaction)
 - **Learning loop:** Accepted suggestions reinforce genre/timing; rejected suggestions trigger approach adjustments. All logged via `/api/music-suggestion/log`.
 
@@ -500,10 +500,10 @@ POST /api/mood/log  {"kind":"signal","mood":"happy","source":"camera","trigger":
 POST /api/mood/log  {"kind":"decision","mood":"happy","based_on":"3 signals last 20min","reasoning":"laughing reinforces previous happy decision"}
 
 # Read — all kinds for a day (agent uses this to re-analyze)
-GET /api/openclaw/mood-history?user=gray&date=2026-04-09&last=100
+GET /api/agent/mood-history?user=gray&date=2026-04-09&last=100
 
 # Read — latest decision only (downstream skills use this for "current mood")
-GET /api/openclaw/mood-history?user=gray&kind=decision&last=1
+GET /api/agent/mood-history?user=gray&kind=decision&last=1
 ```
 
 Each row: `{"ts":...,"seq":1,"hour":10,"kind":"signal","mood":"happy","source":"camera","trigger":"laughing"}` for signals,
@@ -541,7 +541,7 @@ Activity detected: writing, reading.
 The agent reads the `Activity detected:` line, splits on comma, and POSTs each label verbatim as the `action` field — HAL already categorised, so there is no bucket mapping in the agent.
 
 1. **Log** each label via `POST /api/wellbeing/log` with `{action, notes:"", user}` — one entry per label. Backend-side no-op; HAL already deduped on the outbound label set.
-2. **Read history** via `GET /api/openclaw/wellbeing-history?user={name}&last=50`.
+2. **Read history** via `GET /api/agent/wellbeing-history?user={name}&last=50`.
 3. **Compute deltas** against the latest reset point for each kind (see Wellbeing SKILL Step 3).
 4. **Decide nudge** per Wellbeing SKILL Step 4 — at most one hydration or break nudge per turn.
 5. **Respond**: a single short caring sentence if there's a nudge / suggestion, otherwise `NO_REPLY`.

@@ -12,6 +12,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))  # devices/contra
 sys.path.insert(0, ROOT)  # the hal package lives at the repo root
 
 from hal.board.device import load_device  # noqa: E402  (path set above)
+from hal.safety.policy import parse_safety  # noqa: E402  (path set above)
 
 DEVICES_DIR = os.path.join(ROOT, "devices")
 
@@ -60,9 +61,14 @@ class TestCompatibility(unittest.TestCase):
                 self.assertFalse(unknown, f"{dev}: declares unknown capabilities {unknown}")
                 # MUST 6 — safety-class capability requires a SAFETY.md
                 if SAFETY_CLASS & groups:
-                    self.assertTrue(
-                        os.path.isfile(os.path.join(DEVICES_DIR, dev, "SAFETY.md")),
-                        f"{dev}: declares {SAFETY_CLASS & groups} but ships no SAFETY.md")
+                    safety_path = os.path.join(DEVICES_DIR, dev, "SAFETY.md")
+                    self.assertTrue(os.path.isfile(safety_path),
+                                    f"{dev}: declares {SAFETY_CLASS & groups} but ships no SAFETY.md")
+                    with open(safety_path) as fh:
+                        try:
+                            parse_safety(fh.read())
+                        except ValueError as exc:
+                            self.fail(f"{dev}: SAFETY.md is not a valid safety policy: {exc}")
 
 
 if __name__ == "__main__":

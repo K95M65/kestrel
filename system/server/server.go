@@ -400,7 +400,7 @@ func (s *Server) Serve(closeFn func()) error {
 	buddy.POST("exec/:action", localOnlyMiddleware(), s.buddyHandler.Exec)
 
 	agent := api.Group("agent")
-	// Everything under /api/openclaw/ is admin-gated: status carries device
+	// Everything under /api/agent/ is admin-gated: status carries device
 	// state, events / flow-stream / recent / flow-events / flow-logs /
 	// analytics / compaction-latest contain conversation history + sensing
 	// data, and mood/wellbeing/posture/music-suggestion histories are

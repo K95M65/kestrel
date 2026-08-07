@@ -333,7 +333,7 @@ Wellbeing hoạt động **event-driven**. **KHÔNG còn cron wellbeing** nào. 
 
 Tới thời điểm agent thấy event, HAL đã tự log mọi label activity rồi (xem bảng "Do ai ghi" phía trên). Agent chỉ còn đọc history, quyết định nhắc, và nếu nhắc thì log `nudge_*`.
 
-1. **Đọc history gần đây** qua `GET /api/openclaw/wellbeing-history?user={current_user}&last=50`.
+1. **Đọc history gần đây** qua `GET /api/agent/wellbeing-history?user={current_user}&last=50`.
 2. **Tính delta** từ log, dùng **điểm reset gần nhất** cho mỗi loại:
 
    ```
@@ -432,7 +432,7 @@ Gợi ý nhạc **không còn** được kích hoạt bởi timer cứng. Thay v
 - **Tự schedule:** Khi phát hiện **hoạt động tĩnh đầu tiên** trong `motion.activity` (không phải `presence.enter`), AI tạo cron job (mặc định: mỗi 20 phút / 1200000ms, `sessionTarget: "current"`, `payload.kind: "systemEvent"`). AI tự điều chỉnh interval dựa trên phản hồi của user.
 - **Quyết định dựa trên dữ liệu:** Trước khi gợi ý, AI query:
   - `GET /audio/status` — nhạc đang phát chưa?
-  - `GET /api/openclaw/mood-history` — mood mới nhất để chọn genre
+  - `GET /api/agent/mood-history` — mood mới nhất để chọn genre
   - `GET /audio/history?person={name}` — lịch sử nghe nhạc per-user (genre ưa thích, thời lượng, mức độ hài lòng)
 - **Vòng lặp học:** AI so sánh thời điểm gợi ý với `music.play` events trong mood history. Gợi ý được chấp nhận → củng cố timing/genre; bị từ chối → điều chỉnh schedule.
 - **Cá nhân hóa:** Theo thời gian, AI học được khi nào user thích nghe nhạc, thể loại nào, nghe bao lâu — và điều chỉnh gợi ý cho phù hợp.
@@ -503,10 +503,10 @@ POST /api/mood/log  {"kind":"signal","mood":"happy","source":"camera","trigger":
 POST /api/mood/log  {"kind":"decision","mood":"happy","based_on":"3 signals last 20min","reasoning":"laughing reinforces previous happy decision"}
 
 # Đọc tất cả kind cho 1 ngày (agent dùng để re-analyze)
-GET /api/openclaw/mood-history?user=gray&date=2026-04-09&last=100
+GET /api/agent/mood-history?user=gray&date=2026-04-09&last=100
 
 # Đọc decision mới nhất (Music/Wellbeing dùng để biết "current mood")
-GET /api/openclaw/mood-history?user=gray&kind=decision&last=1
+GET /api/agent/mood-history?user=gray&kind=decision&last=1
 ```
 
 Signal row: `{"ts":...,"seq":1,"hour":10,"kind":"signal","mood":"happy","source":"camera","trigger":"laughing"}`
@@ -544,7 +544,7 @@ Activity detected: writing, reading.
 Agent đọc dòng `Activity detected:`, split theo dấu phẩy, rồi POST từng label nguyên văn vào field `action` — HAL đã categorize sẵn nên agent không map gì.
 
 1. **Log** từng label qua `POST /api/wellbeing/log` với `{action, notes:"", user}` — một entry/label. HAL đã dedup trên outbound label set nên agent không phải check.
-2. **Đọc history** qua `GET /api/openclaw/wellbeing-history?user={name}&last=50`.
+2. **Đọc history** qua `GET /api/agent/wellbeing-history?user={name}&last=50`.
 3. **Tính delta** so với reset point gần nhất cho mỗi loại (xem Wellbeing SKILL Step 3).
 4. **Quyết định nudge** theo Wellbeing SKILL Step 4 — tối đa 1 hydration hoặc break nudge mỗi turn.
 5. **Phản hồi**: 1 câu chăm sóc ngắn nếu có nudge/suggestion, không thì `NO_REPLY`.

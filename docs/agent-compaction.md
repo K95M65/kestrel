@@ -109,7 +109,7 @@ When Flow Monitor shows the agent citing rules that `grep` cannot find in any `s
 
 **UI.** Flow Monitor header → **📋 Summary** button → modal shows `timestamp`, `summary chars`, `session file`, and the full summary text.
 
-**API.** `GET /api/openclaw/compaction-latest?session=<key>` (default session key: `agent:main:main`). Response schema:
+**API.** `GET /api/agent/compaction-latest?session=<key>` (default session key: `agent:main:main`). Response schema:
 
 ```json
 {

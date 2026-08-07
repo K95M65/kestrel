@@ -109,7 +109,7 @@ Khi Flow Monitor cho thấy agent viện rule mà `grep` không tìm thấy tron
 
 **UI.** Flow Monitor header → nút **📋 Summary** → modal show `timestamp`, `summary chars`, `session file`, và toàn văn summary.
 
-**API.** `GET /api/openclaw/compaction-latest?session=<key>` (default: `agent:main:main`). Response schema xem bản [tiếng Anh](../agent-compaction.md#inspecting-the-active-summary).
+**API.** `GET /api/agent/compaction-latest?session=<key>` (default: `agent:main:main`). Response schema xem bản [tiếng Anh](../agent-compaction.md#inspecting-the-active-summary).
 
 **Trực tiếp (Pi SSH).** Tất cả compaction record nằm trong session `.jsonl`. Pull kèm timestamp + metadata:
 

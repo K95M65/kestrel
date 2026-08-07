@@ -147,9 +147,9 @@ Config field: `guard_mode` trong `config/config.json` (bool, mặc định `fals
 
 | Method | Endpoint | Mô tả |
 |--------|----------|-------|
-| GET | `/api/openclaw/status` | Trạng thái kết nối WS; gồm `uptime` (uptime WS phía OS server) và `agentUptime` (uptime tiến trình OpenClaw, không reset khi OS server restart) |
-| GET | `/api/openclaw/events` | SSE stream events real-time |
-| GET | `/api/openclaw/recent` | 100 events gần nhất (ring buffer) |
+| GET | `/api/agent/status` | Trạng thái kết nối WS; gồm `uptime` (uptime WS phía OS server) và `agentUptime` (uptime tiến trình OpenClaw, không reset khi OS server restart) |
+| GET | `/api/agent/events` | SSE stream events real-time |
+| GET | `/api/agent/recent` | 100 events gần nhất (ring buffer) |
 
 ---
 
@@ -302,7 +302,7 @@ Cần sensing có camera (InsightFace). Mặc định ảnh người đã đăng
 |--------|----------|-------|
 | GET | `/user/info?name=X` | Metadata user: `name`, `is_friend`, `telegram_id`, `telegram_username`. Mặc định `"unknown"` nếu thiếu name. Tự tạo folder. |
 
-> Wellbeing activity history giờ nằm trên OS server HTTP API (port 5000). Xem `POST /api/wellbeing/log` và `GET /api/openclaw/wellbeing-history` — entries ghi JSONL tại `/root/local/users/{user}/wellbeing/YYYY-MM-DD.jsonl` với schema `{ts, seq, hour, action, notes}` (action ∈ `drink`/`break`/`sedentary`/`emotional`). HAL không còn host endpoint wellbeing.
+> Wellbeing activity history giờ nằm trên OS server HTTP API (port 5000). Xem `POST /api/wellbeing/log` và `GET /api/agent/wellbeing-history` — entries ghi JSONL tại `/root/local/users/{user}/wellbeing/YYYY-MM-DD.jsonl` với schema `{ts, seq, hour, action, notes}` (action ∈ `drink`/`break`/`sedentary`/`emotional`). HAL không còn host endpoint wellbeing.
 
 ### Display (GC9A01 1.28" LCD tròn)
 

@@ -203,7 +203,7 @@ curl -s -X POST 'http://<lamp-ip>/api/sensing/event' \
 
 | Stage | Observed |
 |---|---|
-| Step 1 query | `GET /api/openclaw/wellbeing-history?user=gray&last=50` (no slice) |
+| Step 1 query | `GET /api/agent/wellbeing-history?user=gray&last=50` (no slice) |
 | Step 2 delta | hydration ~159 min vs 5-min threshold — exceeds |
 | Step 3 decision | nudge hydration (priority over break) |
 | Step 3b invoke | `habit/SKILL.md` Flow A called |

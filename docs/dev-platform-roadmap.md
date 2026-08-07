@@ -16,7 +16,7 @@ Plan for opening up the device platform to third-party developers who already ha
 
 | Service | Port | Stack | Surface | Auth today |
 |---------|------|-------|---------|------------|
-| OS Server | 5000 | Go / Gin | `/api/sensing/*`, `/api/openclaw/*` (incl. SSE), `/api/guard/*`, `/api/mood/*`, `/api/monitor/*` | None, 127.0.0.1 only |
+| OS Server | 5000 | Go / Gin | `/api/sensing/*`, `/api/agent/*` (incl. SSE), `/api/guard/*`, `/api/mood/*`, `/api/monitor/*` | None, 127.0.0.1 only |
 | HAL | 5001 | Python / FastAPI | ~80 endpoints: `/servo/*`, `/led/*`, `/camera/*`, `/audio/*`, `/voice/*`, `/face/*`, `/emotion/*`, `/scene/*`, `/display/*`, `/sensing/*`, `/speaker/*` | None, 127.0.0.1 only |
 | Buddy | 5002 | Go | `/status`, `/approve`, `/deny`, BLE peripheral | None, 127.0.0.1 only |
 | DLBackend | varies | Python / FastAPI | `/api/dl/yoloworld`, `/api/dl/grounding-dino` | None |

@@ -20,19 +20,20 @@ build a third.
 | <img src="devices/lamp/images/lamp_icon_2.webp" width="210"> | [**Autonomous Lamp**](devices/lamp) | 5-DOF expressive desk robot | the maximal set — audio, vision, motion, light, display, sensing |
 | <img src="devices/intern-v2/images/intern.webp" width="210"> | [**Autonomous Intern**](devices/intern-v2) | always-on desk agent | audio, sensing, light — **no** camera, motion, or display |
 | <img src="devices/reachy-mini/images/reachy-icon.svg" width="210"> | [**Reachy Mini**](devices/reachy-mini) | Pollen Robotics' desk robot, running Autonomous | audio, vision, motion (6-DOF head + 360° body), expression, sensing — **no** light or display |
-| <img src="devices/unitree-go2w/images/go2-w.webp" width="210"> | [**Unitree Go2-W**](devices/unitree-go2w) | a *different manufacturer's* mobile robot, running Autonomous | audio, vision (+ depth), motion (locomotion), sensing |
+| <img src="devices/unitree-go2w/images/go2-w.webp" width="210"> | [**Unitree Go2-W**](devices/unitree-go2w) | declaration-only reference for a third-party mobile robot — not a supported runtime target | intended: audio, vision (+ depth), motion (locomotion), sensing |
 
-Lamp and Intern are **Autonomous's own** devices; **Reachy Mini and the Unitree Go2-W belong to
-other manufacturers** and run the identical OS — the Android playbook (Android on Samsung,
-Pixel, …). They all run the **same OS image**; only their `DEVICE.md` differs.
+Lamp and Intern are **Autonomous's own** devices; **Reachy Mini** is third-party hardware that
+runs the identical OS. **Unitree Go2-W is declaration-only**: it demonstrates the intended
+contract for a future port, but this repository does not ship its board profile, SDK driver, or
+HAL routes. A supported body has its own `DEVICE.md` and implementation.
 
 **Reachy Mini is where that stops being a claim.** It is someone else's hardware, shipped with
 its own vendor OS and daemon, and Autonomous installs *alongside* it —
 [one command on the robot](devices/reachy-mini). Onboarding it was writing a `DEVICE.md`, a
 motion driver wrapping Pollen's Python SDK, and a `SAFETY.md`. No fork. Its `motion` is a
 **Stewart platform** — 6-DOF parallel kinematics, nothing like Lamp's serial bus servos or the
-Go2-W's legs — yet a skill calling `motion.aim` runs on all of them, because skills address
-capabilities, never hardware.
+Go2-W's intended legs — yet a skill calling `motion.aim` can be mapped across bodies because
+skills address capabilities, never hardware.
 
 ## Architecture
 

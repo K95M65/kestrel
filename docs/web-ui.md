@@ -141,10 +141,10 @@ Monitor polls system/HW APIs every **3 seconds**. Flow uses file-backed hybrid m
 | `GET /api/system/info` | CPU load, RAM (KB), temperature, uptime, goroutines, version, deviceId, capabilities (declared capability names — both the Monitor and the Edit/Settings page gate hardware tabs on these; see the shared `useCapabilities` hook) |
 | `GET /api/system/network` | SSID, IP, public IP, Tailscale IP, signal (dBm), internet (bool), pingMs (internet probe RTT, 0 = unmeasured) |
 | `GET /api/agent/status` | active runtime name, connected (bool), sessionKey (bool), version, emotion, uptime (OS server connection uptime, secs), agentUptime (runtime process uptime when supplied, secs — survives OS server restarts). The Agent row in the Versions card probes its CLI version asynchronously and retries transient boot-time failures. |
-| `GET /api/openclaw/recent` | Latest flow events from today's JSONL file (`local/flow_events_<date>.jsonl`) |
-| `GET /api/openclaw/flow-events?date=YYYY-MM-DD&last=500` | File-backed flow events API used for Flow seed/history |
-| `GET /api/openclaw/flow-stream` | File-backed live stream (SSE) for Flow updates when JSONL changes |
-| `GET /api/openclaw/events` | Monitor bus SSE endpoint (kept for compatibility) |
+| `GET /api/agent/recent` | Latest flow events from today's JSONL file (`local/flow_events_<date>.jsonl`) |
+| `GET /api/agent/flow-events?date=YYYY-MM-DD&last=500` | File-backed flow events API used for Flow seed/history |
+| `GET /api/agent/flow-stream` | File-backed live stream (SSE) for Flow updates when JSONL changes |
+| `GET /api/agent/events` | Monitor bus SSE endpoint (kept for compatibility) |
 | `POST /api/system/force-update` | Triggers OTA check via bootstrap worker (proxies to `localhost:8080/force-check`) |
 
 > **Note on format**: The OS server API returns `{ status: 1, data: <payload>, message: null }` on success.
@@ -297,8 +297,8 @@ File-backed hybrid feed:
 
 Each event displays: type badge, phase (if any), runId (first 8 chars), timestamp, summary text, error (if any).
 
-- Initial/history load via `GET /api/openclaw/flow-events`.
-- Live updates via `GET /api/openclaw/flow-stream` (SSE emitted on file change).
+- Initial/history load via `GET /api/agent/flow-events`.
+- Live updates via `GET /api/agent/flow-stream` (SSE emitted on file change).
 - Fallback polling (2s) is used only if live stream disconnects.
 - Displayed turns/events are fully derived from JSONL flow logs.
 
@@ -322,9 +322,9 @@ Turn Pipeline grouping behavior:
 - Flow Panel header uses Lucide icons throughout (brand `Hexagon`, `Summary→ClipboardList`, `Canvas→LayoutDashboard`, `Bundle→PackageOpen`, `Full day→CalendarDays`, `Clear→Trash2`) for a consistent icon set — no emoji glyphs.
 - **Current-user chip** — when the device recognizes an enrolled person, the header chip shows that person's **name + face avatar** (first enrolled photo via `GET /face/photo/<label>/<file>`, with `/face/owners` polled every 30s to map name→filename); on `unknown` or a missing/broken photo it falls back to a generic Lucide `UserRound` glyph.
 - Flow Panel header actions include **`↓ Bundle`**, **`full day`**, **`🗑 Log`**.
-- **`↓ Bundle`** — one click saves **two files**: (1) server JSONL tail via `fetch` + blob (`GET /api/openclaw/flow-logs?last=500`), (2) UI snapshot JSON (`events` + `groupIntoTurns` → `lamp_flow_ui_snapshot_*.json`).
-- **`full day`** — `GET /api/openclaw/flow-logs` without `last` (whole day JSONL).
-- `🗑 Log` asks for confirmation and calls `DELETE /api/openclaw/flow-logs` to truncate the server flow log, then clears current Flow UI events.
+- **`↓ Bundle`** — one click saves **two files**: (1) server JSONL tail via `fetch` + blob (`GET /api/agent/flow-logs?last=500`), (2) UI snapshot JSON (`events` + `groupIntoTurns` → `lamp_flow_ui_snapshot_*.json`).
+- **`full day`** — `GET /api/agent/flow-logs` without `last` (whole day JSONL).
+- `🗑 Log` asks for confirmation and calls `DELETE /api/agent/flow-logs` to truncate the server flow log, then clears current Flow UI events.
 - **Filters modal** (`FlowSection/FiltersModal.tsx`) — the turn-list header keeps only a free-text search box and a **Filters** button (badged `Filters · N` with the count of active filter groups). Clicking it opens a centered modal hosting the full filter set: **Sources** (Mic / Cam / Btn / CH / Web / Cron / Sys quick-toggles, plus Dropped when present), **Sort** (Newest / Oldest / Slowest / Fastest / ↑↓ Tokens), **Sub-types** (per-type toggles with an All-on / Enable-all shortcut), and **Time range** (quick presets Last 15m / 1h / 6h / Today, plus two labeled clock-prefixed From/To pills joined by an arrow; the native `<input type="time">` is de-chromed via `.lm-time-input` and the active bound tints amber). A footer offers **Reset all** and **Done**. The modal renders inside the FlowSection tree (under `.lm-root`) so `--lm-*` tokens resolve in dark and light mode; it closes on overlay click, the ✕, **Done**, or `Esc`. All filter state lives in `FlowSection/index.tsx` and is threaded in as props, so opening/closing never resets a filter.
 - **Lucide icons for sub-types** — the source and sub-type chips use Lucide icons (`TYPE_LUCIDE` in `FlowSection/types.ts`, e.g. `voice→Mic`, `cmd→Mic2`, `motion→Eye`, `activity→Activity`, `voice_emo→Speech`, `emotion→Smile`, `web→Monitor`, `sys→Settings`) instead of emoji glyphs, inheriting the chip's `currentColor` and on/off opacity treatment.
 - Turn history list shows **all turns** for the day (newest first), derived from the **last 10 000** flow events — covers a full day of typical activity.
@@ -478,7 +478,7 @@ Neither path restarts the runtime: backends with a skills dir pick new files up 
 Chat UI → POST /api/sensing/event → SensingHandler
   → openclaw.SendChatMessage() → WebSocket chat.send → OpenClaw
   → Response streams via WebSocket (thinking → assistant deltas → lifecycle end)
-  → SSE /api/openclaw/flow-stream → Chat UI updates message in real-time
+  → SSE /api/agent/flow-stream → Chat UI updates message in real-time
 ```
 
 ---
