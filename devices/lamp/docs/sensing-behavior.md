@@ -267,7 +267,7 @@ After trying 6 different approaches (see below), this hybrid proved the most rel
 > **Note:** `BroadcastAlert` (WS RPC approach) has been removed. All broadcasting now uses `Broadcast()` which sends directly via Telegram Bot API.
 
 ### Manual alerts
-Manual alerts can be sent via `POST /api/guard/alert` with a message and optional image. This now uses `Broadcast()` (direct Bot API) instead of the old WS-based `BroadcastAlert`.
+Manual alerts can be sent via `POST /api/guard/alert` with a message and optional image. Network callers require administrator authentication; device-local loopback callers are allowed for internal operation. This now uses `Broadcast()` (direct Bot API) instead of the old WS-based `BroadcastAlert`.
 
 Use case: Lamp acts as a home security assistant. When the owner leaves and enables guard mode, any detected presence or motion is reported to all chat channels with emotional, context-aware messages.
 

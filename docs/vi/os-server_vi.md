@@ -86,6 +86,10 @@ rớt thật thì *không* còn default route nào cả và `PrimaryInterface()`
 | GET | `/api/guard` | Kiểm tra trạng thái guard mode (trả về `{"guard_mode": true/false}`) |
 | POST | `/api/guard/alert` | Gửi cảnh báo thủ công đến tất cả chat session OpenClaw |
 
+Mọi guard endpoint yêu cầu xác thực quản trị với caller từ mạng. Caller nội bộ
+qua strict loopback, gồm HAL và agent runtime, vẫn được phép để guard mode nội
+bộ tiếp tục hoạt động.
+
 **Request body cảnh báo:**
 ```json
 {

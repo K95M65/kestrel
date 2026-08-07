@@ -88,6 +88,10 @@ outage the escalation exists for still passes the guard.
 | GET | `/api/guard` | Check guard mode status (returns `{"guard_mode": true/false}`) |
 | POST | `/api/guard/alert` | Manually broadcast alert to all OpenClaw chat sessions |
 
+All guard endpoints require administrator authentication for network callers.
+Device-local callers on strict loopback, including HAL and the agent runtime, are
+allowed so internal guard-mode operation remains available.
+
 **Alert request body:**
 ```json
 {

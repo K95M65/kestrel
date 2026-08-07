@@ -353,11 +353,14 @@ func (s *Server) Serve(closeFn func()) error {
 	// the hardware proxy (audit web F13).
 	voice.POST("preview", adminAuthMiddleware(s.config), s.voicePreview)
 
-	guard := api.Group("guard")
+	// Guard endpoints change persistent security state and can broadcast to every
+	// chat session. Device-local HAL and agent-runtime callers are allowed; all
+	// other callers must be authenticated as an administrator.
+	guard := api.Group("guard", adminOrLoopbackAuth(s.config))
 	guard.POST("enable", s.sensingHandler.EnableGuard)
 	guard.POST("disable", s.sensingHandler.DisableGuard)
 	guard.GET("", s.sensingHandler.GetGuardStatus)
-	guard.POST("alert", sameOriginOrLAN(), s.sensingHandler.PostGuardAlert)
+	guard.POST("alert", s.sensingHandler.PostGuardAlert)
 
 	moodGroup := api.Group("mood")
 	moodGroup.POST("log", sameOriginOrLAN(), s.sensingHandler.PostMoodLog)

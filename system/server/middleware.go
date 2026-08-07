@@ -139,10 +139,9 @@ func hostOnly(addr string) string {
 
 // adminOrLoopbackAuth gates an endpoint with a hybrid policy: a strict-loopback
 // origin (no nginx proxy headers) bypasses auth entirely; everything else must
-// pass adminAuthMiddleware. Used by /api/system/factory-reset so the on-device
-// factory-reset trigger can reach the endpoint with no Bearer (the device
-// might not even be set up yet — physical button = authority) while web calls
-// from the LAN still need admin credentials.
+// pass adminAuthMiddleware. It permits physical-device/internal operations such
+// as /api/system/factory-reset and /api/guard while web calls from the LAN
+// still need admin credentials.
 func adminOrLoopbackAuth(cfg *config.Config) gin.HandlerFunc {
 	admin := adminAuthMiddleware(cfg)
 	return func(c *gin.Context) {
