@@ -359,6 +359,14 @@ HAL (Python): FastAPI standard JSON responses.
    - Set speaker volume to the device's `startup_volume` (DEVICE.md front matter, default 100)
 4. If not yet set up: wait for `POST /api/device/setup`
 
+## Logging
+
+When `GELF_URL` is configured, OS Server ships INFO-and-higher records to that
+central collector through one worker with a bounded queue of 256 records. Logging
+never blocks the request path or creates a goroutine per record: when the collector
+is slow or unavailable and the queue is full, newly produced GELF records are
+dropped while console and local rotating-file logging continue.
+
 ## Local Intent Matching
 
 When receiving a `voice_command`, `voice_followup`, or `voice` event, the OS server checks local intent first (~50ms):

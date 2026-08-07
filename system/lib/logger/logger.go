@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"gopkg.in/natefinch/lumberjack.v2"
@@ -153,21 +154,117 @@ func (m *multiHandler) WithGroup(name string) slog.Handler {
 	return &multiHandler{handlers: handlers}
 }
 
-// gelfHandler sends log records to a centralized GELF endpoint over HTTP.
+const gelfQueueSize = 256
+
+// gelfSender owns the bounded GELF delivery queue. Logging must never create an
+// unbounded number of network goroutines when the remote collector is slow or
+// unavailable, so overload drops the newest GELF record instead.
+type gelfSender struct {
+	client   *http.Client
+	url      string
+	username string
+	password string
+
+	queue   chan []byte
+	ctx     context.Context
+	cancel  context.CancelFunc
+	done    chan struct{}
+	mu      sync.RWMutex
+	closed  bool
+	dropped atomic.Uint64
+}
+
+func newGELFSender(client *http.Client, url, username, password string) *gelfSender {
+	ctx, cancel := context.WithCancel(context.Background())
+	s := &gelfSender{
+		client:   client,
+		url:      url,
+		username: username,
+		password: password,
+		queue:    make(chan []byte, gelfQueueSize),
+		ctx:      ctx,
+		cancel:   cancel,
+		done:     make(chan struct{}),
+	}
+	go s.run()
+	return s
+}
+
+func (s *gelfSender) enqueue(body []byte) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.closed {
+		return
+	}
+	select {
+	case s.queue <- body:
+	default:
+		s.dropped.Add(1)
+	}
+}
+
+func (s *gelfSender) run() {
+	defer close(s.done)
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		case body := <-s.queue:
+			s.send(body)
+		}
+	}
+}
+
+func (s *gelfSender) send(body []byte) {
+	req, err := http.NewRequestWithContext(s.ctx, http.MethodPost, s.url, bytes.NewReader(body))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[gelf] request error: %v\n", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if s.username != "" {
+		req.SetBasicAuth(s.username, s.password)
+	}
+	resp, err := s.client.Do(req)
+	if err != nil {
+		if s.ctx.Err() == nil {
+			fmt.Fprintf(os.Stderr, "[gelf] send error: %v\n", err)
+		}
+		return
+	}
+	resp.Body.Close()
+}
+
+func (s *gelfSender) close() {
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return
+	}
+	s.closed = true
+	s.cancel()
+	s.mu.Unlock()
+	<-s.done
+}
+
+// gelfHandler serializes records and enqueues them for the shared GELF sender.
 type gelfHandler struct {
 	level      slog.Level
 	host       string
 	deviceType string
 	client     *http.Client
+	sender     *gelfSender
 	attrs      []slog.Attr
 	group      string
 }
 
 func newGELFHandler(level slog.Level, host string) *gelfHandler {
+	client := &http.Client{Timeout: 3 * time.Second}
 	return &gelfHandler{
 		level:  level,
 		host:   host,
-		client: &http.Client{Timeout: 3 * time.Second},
+		client: client,
+		sender: newGELFSender(client, gelfURL, gelfUsername, gelfPassword),
 	}
 }
 
@@ -225,23 +322,7 @@ func (h *gelfHandler) Handle(_ context.Context, r slog.Record) error {
 		return nil // don't block on marshal errors
 	}
 
-	go func() {
-		req, err := http.NewRequest("POST", gelfURL, bytes.NewReader(body))
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "[gelf] request error: %v\n", err)
-			return
-		}
-		req.Header.Set("Content-Type", "application/json")
-		if gelfUsername != "" {
-			req.SetBasicAuth(gelfUsername, gelfPassword)
-		}
-		resp, err := h.client.Do(req)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "[gelf] send error: %v\n", err)
-			return
-		}
-		resp.Body.Close()
-	}()
+	h.sender.enqueue(body)
 
 	return nil
 }
@@ -250,7 +331,7 @@ func (h *gelfHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	newAttrs := make([]slog.Attr, len(h.attrs), len(h.attrs)+len(attrs))
 	copy(newAttrs, h.attrs)
 	newAttrs = append(newAttrs, attrs...)
-	return &gelfHandler{level: h.level, host: h.host, client: h.client, attrs: newAttrs, group: h.group}
+	return &gelfHandler{level: h.level, host: h.host, client: h.client, sender: h.sender, attrs: newAttrs, group: h.group}
 }
 
 func (h *gelfHandler) WithGroup(name string) slog.Handler {
@@ -260,7 +341,7 @@ func (h *gelfHandler) WithGroup(name string) slog.Handler {
 	}
 	newAttrs := make([]slog.Attr, len(h.attrs))
 	copy(newAttrs, h.attrs)
-	return &gelfHandler{level: h.level, host: h.host, client: h.client, attrs: newAttrs, group: g}
+	return &gelfHandler{level: h.level, host: h.host, client: h.client, sender: h.sender, attrs: newAttrs, group: g}
 }
 
 // activeGELF holds the GELF handler so SetGELFHost can update host after config loads.
@@ -315,13 +396,22 @@ func Init(level slog.Level, logFilePath string) func() {
 	gelfPassword = os.Getenv("GELF_PASSWORD")
 
 	handlers := []slog.Handler{consoleHandler, fileHandler}
+	var gelf *gelfHandler
 	if gelfURL != "" {
-		gelf := newGELFHandler(slog.LevelInfo, "os-server") // pre-config host; SetGELFHost(DeviceID) overrides once config loads
+		gelf = newGELFHandler(slog.LevelInfo, "os-server") // pre-config host; SetGELFHost(DeviceID) overrides once config loads
 		activeGELF = gelf
 		handlers = append(handlers, gelf)
 	}
 
 	slog.SetDefault(slog.New(&multiHandler{handlers: handlers}))
 
-	return func() { rotatingWriter.Close() }
+	return func() {
+		if activeGELF == gelf {
+			activeGELF = nil
+		}
+		if gelf != nil {
+			gelf.sender.close()
+		}
+		rotatingWriter.Close()
+	}
 }

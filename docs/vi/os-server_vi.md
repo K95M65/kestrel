@@ -355,6 +355,13 @@ HAL (Python): FastAPI standard JSON responses.
    - Đặt volume loa theo `startup_volume` của thiết bị (front matter DEVICE.md, mặc định 100)
 4. Nếu chưa setup: chờ `POST /api/device/setup`
 
+## Logging
+
+Khi có cấu hình `GELF_URL`, OS Server gửi log từ mức INFO trở lên tới collector tập
+trung bằng một worker với queue giới hạn 256 record. Logging không block request path
+và không tạo goroutine theo từng record: khi collector chậm/không hoạt động và queue
+đầy, GELF record mới bị drop; log console và rotating file cục bộ vẫn tiếp tục.
+
 ## Local Intent Matching
 
 Khi nhận event `voice_command`, `voice_followup` hoặc `voice`, OS server check local intent trước (~50ms):
