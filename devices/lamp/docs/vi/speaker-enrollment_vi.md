@@ -178,11 +178,38 @@ Mỗi lần gọi `recognize()` / `enroll()` sẽ ghi ra một thư mục:
 <root>/enroll/<ts>_FAIL-<reason>/
 ```
 
-chứa `input.wav` (audio thô) cùng `preprocessed.wav` (sau VAD/STOI/RMS — chính là audio đã upload) / `sample_new_NN.wav`, các embedding dạng `.npy`, và `result.json`. Mỗi lần recognize ghi thêm khối `preprocessing` (thời lượng/RMS sau khi làm sạch, điểm STOI mà clip đã đạt, và ngưỡng nó vượt qua) để phân biệt "audio kém" với "nhận nhầm người"; clip bị cổng loại sẽ tạo thư mục `FAIL-<reason>` với `preprocessing_reject` chứa lý do có cấu trúc kèm số đo. Với recognize, file JSON mang **toàn bộ** diễn giải quyết định — không chỉ top-3 `candidates` mà API trả về, mà còn `speaker_summary` (số vote + sim trung bình/lớn nhất cho *mọi* người đã đăng ký, kể cả người 0 vote) và `per_chunk_scores` (từng chunk so với mọi người, kèm người mà chunk đó vote). Cùng ma trận đó được lưu ở `chunk_scores.npy` (`[chunks × speakers]`, cột theo thứ tự `enrolled_speakers`). Giọng lạ còn ghi thêm điểm khớp cụm stranger và cụm nào gần nhất.
+chứa `input.wav` (audio thô) cùng `preprocessed.wav` (sau VAD/STOI/RMS — chính là audio đã upload) / `sample_new_NN.wav`, các embedding dạng `.npy`, `result.json`, và `profile.json` (chỉ gồm độ trễ + bộ nhớ — xem bên dưới). Mỗi lần recognize ghi thêm khối `preprocessing` (thời lượng/RMS sau khi làm sạch, điểm STOI mà clip đã đạt, và ngưỡng nó vượt qua) để phân biệt "audio kém" với "nhận nhầm người"; clip bị cổng loại sẽ tạo thư mục `FAIL-<reason>` với `preprocessing_reject` chứa lý do có cấu trúc kèm số đo. Với recognize, file JSON mang **toàn bộ** diễn giải quyết định — không chỉ top-3 `candidates` mà API trả về, mà còn `speaker_summary` (số vote + sim trung bình/lớn nhất cho *mọi* người đã đăng ký, kể cả người 0 vote) và `per_chunk_scores` (từng chunk so với mọi người, kèm người mà chunk đó vote). Cùng ma trận đó được lưu ở `chunk_scores.npy` (`[chunks × speakers]`, cột theo thứ tự `enrolled_speakers`). Giọng lạ còn ghi thêm điểm khớp cụm stranger và cụm nào gần nhất.
+
+#### Hồ sơ độ trễ + bộ nhớ
+
+Mỗi thư mục trace còn chứa **`profile.json`** — thời gian thực thi và mức tăng RSS của tiến trình theo từng stage, để quy trách nhiệm một lượt chậm hoặc ngốn bộ nhớ về đúng một stage thay vì cả pipeline. Nó nằm ở file riêng thay vì trộn vào `result.json` — file đó vốn đã dày đặc thông tin quyết định nhận diện: hai loại dữ liệu này được đọc vì mục đích khác nhau, gộp chung thì cái nọ lấp cái kia. Ngoài ra nó vẫn đi kèm tracer sẵn có: cùng thư mục, cùng công tắc, không thêm env var, chỉ bật khi `HAL_SPEAKER_DEBUG=true`. Một dòng tóm tắt cũng được ghi ra log (`SPEAKER-DEBUG profile [recognize]: total=… preprocess.silero_vad=…ms/+…MB …`).
+
+Tên stage dùng dấu chấm để đọc theo tầng từ trên xuống, và hai cổng tiền xử lý được đo **tường minh**:
+
+| Stage | Bao gồm |
+|-------|---------|
+| `decode_input` | đọc base64/file + chuẩn hoá WAV về 16 kHz mono |
+| `preprocess` | toàn bộ chuỗi xử lý on-device (tổng) |
+| `preprocess.processor_init` | dựng/khởi động composite theo kiểu lazy — lần gọi đầu nạp silero-vad + phiên ONNX STOI |
+| `preprocess.decode_wav` / `.encode_wav` | WAV bytes ↔ waveform float32, kèm bước bọc base64 |
+| `preprocess.mono` / `.resample` / `.high_pass` / `.noise_reduce` / `.rms_normalize` | các stage nhẹ trong chuỗi |
+| **`preprocess.silero_vad`** | stage silero-vad |
+| **`preprocess.stoi_gate`** | cổng chất lượng STOI |
+| `embed_api` | lời gọi embedding (tổng) |
+| `embed_api.request` | bản thân vòng gọi HTTP |
+| `embed_api.decode` | parse phản hồi + chuẩn hoá L2 |
+| `load_enrolled` / `match_vote` / `stranger_cluster` / `save_input_wav` | phần quyết định sau khi có embedding |
+
+Mỗi mục trong `stages` chứa `ms`, `ms_max`, `calls`, `rss_delta_mb` và `rss_after_mb`; cấp ngoài cùng chứa `total_ms`, `rss_start_mb` / `rss_end_mb` / `rss_delta_mb`, `peak_rss_mb` (`VmHWM` trên Linux) và `rss_source`. Vài điểm cần biết khi đọc số:
+
+- **Stage bị loại vẫn được đo.** Clip bị VAD hay STOI loại sẽ tạo thư mục `FAIL-…` mà `profile.json` cho thấy hai cổng đó tốn bao nhiêu trước khi từ chối — một lần loại vẫn phải trả đúng chi phí suy luận như một lần cho qua.
+- **Enroll cộng dồn.** Nó chạy preprocess + embed một lần cho mỗi mẫu, nên các stage dùng chung được cộng lại, kèm `calls` và `ms_max`.
+- **`rss_source` quyết định ý nghĩa của delta.** `psutil` / `statm` (Linux trên thiết bị) là RSS hiện tại, nên delta có thể âm khi allocator trả trang về hệ điều hành. `rusage` — phương án dự phòng trên macOS không có psutil — là mức đỉnh, nên delta chỉ phản ánh phần tăng: khác 0 chỉ khi stage đó đẩy tiến trình vượt đỉnh cũ.
+- Bộ nhớ đo là RSS của tiến trình, không phải Python heap: đồ thị torch silero-vad và phiên ONNX STOI cấp phát ngoài heap, nơi `tracemalloc` không thấy gì.
 
 | Tham số | Mặc định | Env var | Mô tả |
 |---------|----------|---------|-------|
-| Debug tracing | **tắt** | `HAL_SPEAKER_DEBUG` | Đặt `true` để bật. Chỉ đọc một lần lúc khởi tạo — đổi xong phải restart HAL |
+| Debug tracing | **tắt** | `HAL_SPEAKER_DEBUG` | Đặt `true` để bật (áp dụng cho **cả** trace lẫn profile). Chỉ đọc một lần lúc khởi tạo — đổi xong phải restart HAL |
 | Thư mục output | `speaker_logs/` cạnh `speaker_recognizer.py` | `HAL_SPEAKER_DEBUG_DIR` | Tự chuyển sang thư mục temp nếu source tree chỉ đọc (khi deploy lên thiết bị) |
 | Số entry tối đa | 1000 | `HAL_SPEAKER_DEBUG_MAX_ENTRIES` | Giới hạn thư mục theo từng loại, xoá cũ nhất; `0` = không giới hạn |
 

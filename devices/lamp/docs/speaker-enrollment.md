@@ -177,11 +177,38 @@ Each `recognize()` / `enroll()` call writes one directory:
 <root>/enroll/<ts>_FAIL-<reason>/
 ```
 
-holding `input.wav` (raw) plus `preprocessed.wav` (post VAD/STOI/RMS — the audio actually uploaded) / `sample_new_NN.wav`, the embeddings as `.npy`, and `result.json`. A recognize records a `preprocessing` block (cleaned duration/RMS, the STOI score the clip passed with, and the threshold it cleared) so you can tell a "bad audio" miss from a "wrong speaker" miss; a clip killed by the gate instead files a `FAIL-<reason>` dir whose `preprocessing_reject` holds the structured reason and its measurements. For a recognize the JSON carries the **full** decision breakdown — not just the top-3 `candidates` the API returns, but `speaker_summary` (votes + mean/max similarity for *every* enrolled speaker, including 0-vote losers) and `per_chunk_scores` (each chunk vs every speaker, plus which speaker that chunk voted for). The same matrix is saved as `chunk_scores.npy` (`[chunks × speakers]`, columns in `enrolled_speakers` order). Unknown speakers also record the stranger-cluster match score and which cluster was closest.
+holding `input.wav` (raw) plus `preprocessed.wav` (post VAD/STOI/RMS — the audio actually uploaded) / `sample_new_NN.wav`, the embeddings as `.npy`, `result.json`, and `profile.json` (latency + memory only — see below). A recognize records a `preprocessing` block (cleaned duration/RMS, the STOI score the clip passed with, and the threshold it cleared) so you can tell a "bad audio" miss from a "wrong speaker" miss; a clip killed by the gate instead files a `FAIL-<reason>` dir whose `preprocessing_reject` holds the structured reason and its measurements. For a recognize the JSON carries the **full** decision breakdown — not just the top-3 `candidates` the API returns, but `speaker_summary` (votes + mean/max similarity for *every* enrolled speaker, including 0-vote losers) and `per_chunk_scores` (each chunk vs every speaker, plus which speaker that chunk voted for). The same matrix is saved as `chunk_scores.npy` (`[chunks × speakers]`, columns in `enrolled_speakers` order). Unknown speakers also record the stranger-cluster match score and which cluster was closest.
+
+#### Latency + memory profile
+
+Each trace dir also holds a **`profile.json`** — per-stage wall-clock and process-RSS delta for the call, so a slow or memory-hungry turn can be attributed to a specific stage instead of the pipeline as a whole. It is kept in its own file rather than mixed into `result.json`, which is already dense with the recognition decision: timings and the decision breakdown are read for different reasons and each would bury the other. It rides on the existing tracer otherwise — same dir, same switch, no extra env var, on only when `HAL_SPEAKER_DEBUG=true`. A one-line summary is also logged (`SPEAKER-DEBUG profile [recognize]: total=… preprocess.silero_vad=…ms/+…MB …`).
+
+Stages are dotted so nesting reads top-down, and the two preprocessing gates are profiled **explicitly**:
+
+| Stage | Covers |
+|-------|--------|
+| `decode_input` | base64/file read + WAV normalize to 16 kHz mono |
+| `preprocess` | the whole on-device chain (total) |
+| `preprocess.processor_init` | lazy build/start of the composite — first call loads silero-vad + the ONNX STOI session |
+| `preprocess.decode_wav` / `.encode_wav` | WAV bytes ↔ float32 waveform, plus the base64 wrap |
+| `preprocess.mono` / `.resample` / `.high_pass` / `.noise_reduce` / `.rms_normalize` | the cheap chain stages |
+| **`preprocess.silero_vad`** | the silero-vad stage |
+| **`preprocess.stoi_gate`** | the STOI intelligibility gate |
+| `embed_api` | the embedding call (total) |
+| `embed_api.request` | the HTTP round-trip itself |
+| `embed_api.decode` | response parse + L2 normalize |
+| `load_enrolled` / `match_vote` / `stranger_cluster` / `save_input_wav` | the post-embedding decision work |
+
+Each entry under `stages` holds `ms`, `ms_max`, `calls`, `rss_delta_mb` and `rss_after_mb`; the top level holds `total_ms`, `rss_start_mb` / `rss_end_mb` / `rss_delta_mb`, `peak_rss_mb` (Linux `VmHWM`) and `rss_source`. Notes worth knowing when reading the numbers:
+
+- **A stage that rejects is still measured.** A clip killed by VAD or STOI files a `FAIL-…` dir whose `profile.json` shows what those gates cost before they said no — a reject pays for the same inference as a pass.
+- **Enroll aggregates.** It runs preprocess + embed once per sample, so shared stages sum, with `calls` and `ms_max` alongside.
+- **`rss_source` changes what a delta means.** `psutil` / `statm` (on-device Linux) are current RSS, so a delta can go negative when the allocator returns pages. `rusage` — the macOS-without-psutil fallback — is a high-water mark, so deltas are growth-only: non-zero only when a stage pushed the process past its previous peak.
+- Memory is process RSS, not a Python-heap measure: the torch silero-vad graph and the ONNX STOI session allocate outside the heap, where `tracemalloc` would see nothing.
 
 | Parameter | Default | Env var | Description |
 |-----------|---------|---------|-------------|
-| Debug tracing | **off** | `HAL_SPEAKER_DEBUG` | Set `true` to enable. Read once at construction — restart HAL after changing |
+| Debug tracing | **off** | `HAL_SPEAKER_DEBUG` | Set `true` to enable (covers the trace **and** the profile). Read once at construction — restart HAL after changing |
 | Output root | `speaker_logs/` next to `speaker_recognizer.py` | `HAL_SPEAKER_DEBUG_DIR` | Falls back to a temp dir if the source tree is read-only (device deploy) |
 | Max entries | 1000 | `HAL_SPEAKER_DEBUG_MAX_ENTRIES` | Per-kind directory cap, oldest pruned; `0` = unbounded |
 

@@ -416,8 +416,11 @@ def pcm16_bytes_to_wav(pcm_bytes: bytes, sample_rate: int = _TARGET_SR) -> bytes
 #   <root>/enroll/<ts>_<norm>_<cohesion>/             (cohesion = mean sim of kept samples to centroid)
 #   <root>/enroll/<ts>_FAIL-<reason>/
 # each dir holds: input.wav (raw) + preprocessed.wav (post VAD/STOI/RMS, what was
-# uploaded) / sample_NN.wav, *.npy embeddings, result.json (result.json carries the
-# preprocessing metrics — incl. STOI score — and, on a gate reject, the reason).
+# uploaded) / sample_NN.wav, *.npy embeddings, result.json + profile.json.
+# result.json carries the recognition decision plus the preprocessing metrics
+# (incl. STOI score) and, on a gate reject, the reason; profile.json carries ONLY
+# the per-stage latency + memory numbers, kept separate so neither file buries
+# the other.
 # NOTE: speaker_logs/ lands inside the source tree — don't commit it (the whole
 # SPEAKER-DEBUG block is meant to be removed before deploy anyway).
 def _debug_audio_stats(wav_bytes: bytes) -> tuple[Optional[float], Optional[float]]:
@@ -440,6 +443,231 @@ def _debug_stranger_label(vp_hash: Optional[str]) -> str:
     if not vp_hash:
         return "unknown"
     return vp_hash.replace(_VOICE_STRANGER_PREFIX, "stranger-", 1)
+
+
+# ---------------------------------------------------------------------------
+# SPEAKER-DEBUG: per-stage latency + memory profiler.
+#
+# Rides on the SAME trace the tracer already writes — same per-call dir, same
+# HAL_SPEAKER_DEBUG switch, no extra env knob — but lands in its own
+# `profile.json` rather than in result.json, which is already dense with the
+# recognition decision. Stages are named with dotted paths so the pipeline
+# nests readably:
+#
+#   decode_input                 base64/file read + WAV normalize to 16k mono
+#   preprocess                   the whole on-device chain (total)
+#   preprocess.processor_init      lazy build/start of the composite (models load)
+#   preprocess.decode_wav          WAV bytes -> float32 waveform
+#   preprocess.mono / .resample / .high_pass / .noise_reduce
+#   preprocess.silero_vad          << the silero-vad stage, profiled explicitly
+#   preprocess.stoi_gate           << the STOI gate, profiled explicitly
+#   preprocess.rms_normalize
+#   preprocess.encode_wav          cleaned waveform -> WAV bytes -> base64
+#   embed_api                    the embedding call (total)
+#   embed_api.request              << the HTTP request itself
+#   embed_api.decode               response parse + L2 normalize
+#   load_enrolled / match_vote / stranger_cluster / save_input_wav
+#
+# Memory is process RSS, NOT a Python-heap measure: the two stages that actually
+# move the needle here (the torch silero-vad graph and the ONNX STOI session)
+# allocate outside the Python heap, where tracemalloc sees nothing. A stage's
+# `rss_delta_mb` is "how much the process grew across this stage". The source is
+# recorded as `rss_source` in the profile, because it changes what a delta means:
+#
+#   "psutil" / "statm"  CURRENT RSS — the accurate case (on-device Linux, and
+#                       any box with psutil). A delta can be NEGATIVE when the
+#                       allocator hands pages back.
+#   "rusage"            HIGH-WATER RSS (ru_maxrss) — the macOS-without-psutil
+#                       fallback. Monotonic, so deltas are growth-only: a stage
+#                       reports > 0 only when it pushed the process past its
+#                       previous peak. Good enough to spot which stage owns the
+#                       footprint, useless for measuring memory being released.
+#
+# Repeated stages (enroll embeds many samples) are summed, with `calls` and
+# `ms_max` alongside.
+from contextlib import contextmanager, nullcontext  # SPEAKER-DEBUG
+
+# Resolved once on first sample: "psutil" | "statm" | "rusage" | "none".
+_debug_rss_mode: Optional[str] = None
+_debug_rss_proc: Any = None
+
+
+def _debug_rss_bytes() -> Optional[int]:
+    """SPEAKER-DEBUG: process RSS in bytes; None if unmeasurable.
+
+    See the block comment above for what each backend actually measures —
+    ``rusage`` is a high-water mark, not current RSS.
+    """
+    global _debug_rss_mode, _debug_rss_proc
+    if _debug_rss_mode is None:
+        try:
+            import psutil  # optional; present on-device via the HAL deps
+
+            _debug_rss_proc = psutil.Process()
+            _debug_rss_mode = "psutil"
+        except Exception:
+            if os.path.exists("/proc/self/statm"):
+                _debug_rss_mode = "statm"
+            else:
+                _debug_rss_mode = "rusage"
+    try:
+        if _debug_rss_mode == "psutil":
+            return int(_debug_rss_proc.memory_info().rss)
+        if _debug_rss_mode == "statm":
+            # field 1 = resident pages
+            with open("/proc/self/statm", "r") as fh:
+                return int(fh.read().split()[1]) * os.sysconf("SC_PAGE_SIZE")
+        if _debug_rss_mode == "rusage":
+            import resource
+            import sys
+
+            maxrss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+            # ru_maxrss is bytes on Darwin/BSD, kilobytes on Linux.
+            return int(maxrss) if sys.platform == "darwin" else int(maxrss) * 1024
+    except Exception:
+        return None
+    return None
+
+
+def _debug_peak_rss_bytes() -> Optional[int]:
+    """SPEAKER-DEBUG: process high-water RSS (VmHWM). Linux only, else None."""
+    try:
+        with open("/proc/self/status", "r") as fh:
+            for line in fh:
+                if line.startswith("VmHWM:"):
+                    return int(line.split()[1]) * 1024
+    except Exception:
+        pass
+    return None
+
+
+def _debug_mb(n: Optional[float]) -> Optional[float]:
+    """SPEAKER-DEBUG: bytes -> MB, rounded. Passes None through."""
+    return None if n is None else round(float(n) / (1024.0 * 1024.0), 2)
+
+
+# SPEAKER-DEBUG: processor class -> stage name. The two gates the profile is
+# really about are named after the model (silero_vad / stoi_gate), not the class.
+_DEBUG_STAGE_NAMES: dict[str, str] = {
+    "MonoConverter": "mono",
+    "Resampler": "resample",
+    "HighPassFilter": "high_pass",
+    "NoiseReducer": "noise_reduce",
+    "VoiceActivityFilter": "silero_vad",
+    "SpeechIntelligibilityFilter": "stoi_gate",
+    "RMSNormalizer": "rms_normalize",
+}
+
+
+class _StageProfiler:
+    """SPEAKER-DEBUG: accumulates per-stage latency + RSS delta. Never raises."""
+
+    def __init__(self, label: str) -> None:
+        self.label = label
+        self._t0 = time.perf_counter()
+        self._rss0 = _debug_rss_bytes()
+        self._order: list[str] = []
+        self._stages: dict[str, dict[str, Any]] = {}
+
+    @contextmanager
+    def stage(self, name: str):
+        """Time + measure one stage. Records even when the body raises."""
+        # Claim the slot on ENTRY so `stages` reads in pipeline order: a parent
+        # ("preprocess") finishes AFTER its children, and registering on exit
+        # would list it below the stages it contains.
+        self._touch(name)
+        t0 = time.perf_counter()
+        rss_before = _debug_rss_bytes()
+        try:
+            yield
+        finally:
+            # `finally`, so a stage that REJECTS (VAD trims to nothing, STOI
+            # below threshold) still reports its latency and memory — a reject
+            # costs the same inference as a pass, and is exactly what we tune.
+            self.add(
+                name,
+                (time.perf_counter() - t0) * 1000.0,
+                rss_before,
+                _debug_rss_bytes(),
+            )
+
+    def _touch(self, name: str) -> dict[str, Any]:
+        """Get-or-create a stage slot, preserving first-seen order."""
+        st = self._stages.get(name)
+        if st is None:
+            st = {
+                "calls": 0,
+                "ms": 0.0,
+                "ms_max": 0.0,
+                "rss_delta_b": None,
+                "rss_after_b": None,
+            }
+            self._stages[name] = st
+            self._order.append(name)
+        return st
+
+    def add(
+        self,
+        name: str,
+        ms: float,
+        rss_before: Optional[int],
+        rss_after: Optional[int],
+    ) -> None:
+        try:
+            st = self._touch(name)
+            st["calls"] += 1
+            st["ms"] += ms
+            st["ms_max"] = max(st["ms_max"], ms)
+            if rss_before is not None and rss_after is not None:
+                st["rss_delta_b"] = (st["rss_delta_b"] or 0) + (rss_after - rss_before)
+            if rss_after is not None:
+                st["rss_after_b"] = rss_after
+        except Exception:  # a profiler must never break the service
+            pass
+
+    def to_dict(self) -> Optional[dict[str, Any]]:
+        """JSON-safe profile for the trace's result.json."""
+        try:
+            rss_end = _debug_rss_bytes()
+            total_delta = (
+                None if (rss_end is None or self._rss0 is None) else rss_end - self._rss0
+            )
+            return {
+                "total_ms": round((time.perf_counter() - self._t0) * 1000.0, 2),
+                "rss_source": _debug_rss_mode,
+                "rss_start_mb": _debug_mb(self._rss0),
+                "rss_end_mb": _debug_mb(rss_end),
+                "rss_delta_mb": _debug_mb(total_delta),
+                "peak_rss_mb": _debug_mb(_debug_peak_rss_bytes()),
+                "stages": [
+                    {
+                        "stage": name,
+                        "calls": st["calls"],
+                        "ms": round(st["ms"], 2),
+                        "ms_max": round(st["ms_max"], 2),
+                        "rss_delta_mb": _debug_mb(st["rss_delta_b"]),
+                        "rss_after_mb": _debug_mb(st["rss_after_b"]),
+                    }
+                    for name, st in ((n, self._stages[n]) for n in self._order)
+                ],
+            }
+        except Exception as e:
+            logger.debug("SPEAKER-DEBUG profile serialize failed: %s", e)
+            return None
+
+    def summary_line(self) -> str:
+        """One-line `stage=<ms>ms/<+MB>` summary for the log."""
+        try:
+            parts = [f"total={(time.perf_counter() - self._t0) * 1000.0:.1f}ms"]
+            for name in self._order:
+                st = self._stages[name]
+                delta = _debug_mb(st["rss_delta_b"])
+                mem = "" if delta is None else f"/{delta:+.2f}MB"
+                xn = "" if st["calls"] == 1 else f"x{st['calls']}"
+                parts.append(f"{name}{xn}={st['ms']:.1f}ms{mem}")
+            return " ".join(parts)
+        except Exception:
+            return "<unavailable>"
 
 
 class _SpeakerDebugTracer:
@@ -506,6 +734,7 @@ class _SpeakerDebugTracer:
         result: Optional[dict[str, Any]] = None,
         wavs: Optional[dict[str, bytes]] = None,
         arrays: Optional[dict[str, Any]] = None,
+        profile: Optional[dict[str, Any]] = None,
     ) -> None:
         if not self.enabled:
             return
@@ -530,6 +759,14 @@ class _SpeakerDebugTracer:
             if result:
                 payload.update(result)
             (out / "result.json").write_text(json.dumps(payload, indent=2, default=str))
+
+            # Latency/memory goes in its OWN file — result.json is already dense
+            # with the recognition decision, and mixing timings into it makes
+            # both harder to read. Same dir, so a trace stays one unit.
+            if profile:
+                (out / "profile.json").write_text(
+                    json.dumps(profile, indent=2, default=str)
+                )
 
             for fn, wb in (wavs or {}).items():
                 if wb:
@@ -614,6 +851,12 @@ class SpeakerRecognizer:
         # VAD/STOI metrics), stashed by _prepare_wav_for_embedding so the
         # recognize() trace can log what the gate produced. Reset per recognize.
         self._debug_preproc: Optional[dict[str, Any]] = None
+        # SPEAKER-DEBUG: per-call stage profiler (latency + RSS per stage).
+        # THREAD-LOCAL, unlike the two snapshots above: recognize()/enroll() are
+        # not serialized against each other, and a profile is an accumulating
+        # list — two concurrent calls sharing one would interleave their stages
+        # and report nonsense timings.
+        self._debug_prof = threading.local()
 
         self._crypto: CryptoSession | None = None
         if config.DL_ENCRYPTION_ENABLED:
@@ -735,84 +978,91 @@ class SpeakerRecognizer:
         if return_chunks:
             body["return_chunks"] = True
 
-        try:
-            if self._crypto is not None:
-                resp = requests.post(
-                    self._api_url,
-                    data=self._crypto.wrap_http_request(json.dumps(body).encode()),
-                    headers=headers,
-                    timeout=_API_TIMEOUT_S,
-                )
-            else:
-                resp = requests.post(
-                    self._api_url,
-                    json=body,
-                    headers=headers,
-                    timeout=_API_TIMEOUT_S,
-                )
-        except requests.RequestException as e:
-            logger.warning("Embedding server unreachable at %s: %s", self._api_url, e)
-            raise EmbeddingAPIUnavailableError(
-                f"embedding API unreachable: {e}"
-            ) from e
-
-        if resp.status_code != 200:
-            logger.warning(
-                "Embedding server returned HTTP %d: %s",
-                resp.status_code, resp.text[:120],
-            )
-            # 5xx = server broken → transient, caller should retry.
-            # 4xx = server rejected THIS audio (VAD, decode, etc.) → audio-level,
-            # caller should skip this sample / re-record.
-            if resp.status_code >= 500:
+        # SPEAKER-DEBUG: `embed_api` = the whole call, `embed_api.request` = the
+        # network round-trip alone, `embed_api.decode` = parse + L2 normalize.
+        # Both record on failure too (the `finally` in _StageProfiler.stage), so
+        # a timeout shows up as its full _API_TIMEOUT_S wait rather than vanishing.
+        with self._debug_stage("embed_api"):
+            try:
+                with self._debug_stage("embed_api.request"):
+                    if self._crypto is not None:
+                        resp = requests.post(
+                            self._api_url,
+                            data=self._crypto.wrap_http_request(json.dumps(body).encode()),
+                            headers=headers,
+                            timeout=_API_TIMEOUT_S,
+                        )
+                    else:
+                        resp = requests.post(
+                            self._api_url,
+                            json=body,
+                            headers=headers,
+                            timeout=_API_TIMEOUT_S,
+                        )
+            except requests.RequestException as e:
+                logger.warning("Embedding server unreachable at %s: %s", self._api_url, e)
                 raise EmbeddingAPIUnavailableError(
-                    f"embedding API {resp.status_code}: {resp.text[:200]}"
+                    f"embedding API unreachable: {e}"
+                ) from e
+
+            if resp.status_code != 200:
+                logger.warning(
+                    "Embedding server returned HTTP %d: %s",
+                    resp.status_code, resp.text[:120],
                 )
-            raise SpeakerRecognizerError(
-                f"embedding API error {resp.status_code}: {resp.text[:200]}"
-            )
-
-        try:
-            if self._crypto is not None:
-                payload = json.loads(self._crypto.unwrap_http_response(resp.content))
-            else:
-                payload = resp.json()
-        except ValueError as e:
-            raise EmbeddingAPIUnavailableError(
-                f"embedding API returned non-JSON: {e}"
-            ) from e
-
-        if return_chunks:
-            chunks = payload.get("chunk_embeddings")
-            if not chunks:
-                raise EmbeddingAPIUnavailableError(
-                    "embedding API response missing 'chunk_embeddings'"
+                # 5xx = server broken → transient, caller should retry.
+                # 4xx = server rejected THIS audio (VAD, decode, etc.) → audio-level,
+                # caller should skip this sample / re-record.
+                if resp.status_code >= 500:
+                    raise EmbeddingAPIUnavailableError(
+                        f"embedding API {resp.status_code}: {resp.text[:200]}"
+                    )
+                raise SpeakerRecognizerError(
+                    f"embedding API error {resp.status_code}: {resp.text[:200]}"
                 )
-            mat = np.asarray(chunks, dtype=np.float32)
-            if mat.ndim != 2 or mat.size == 0:
-                raise EmbeddingAPIUnavailableError(
-                    f"chunk_embeddings must be a non-empty 2-D array, got shape {mat.shape}"
-                )
-            norms = np.linalg.norm(mat, axis=1, keepdims=True)
-            norms[norms < 1e-12] = 1.0
-            return (mat / norms).astype(np.float32)
 
-        emb = payload.get("embedding")
-        if emb is None:
-            raise EmbeddingAPIUnavailableError(
-                "embedding API response missing 'embedding'"
-            )
+            with self._debug_stage("embed_api.decode"):
+                try:
+                    if self._crypto is not None:
+                        payload = json.loads(self._crypto.unwrap_http_response(resp.content))
+                    else:
+                        payload = resp.json()
+                except ValueError as e:
+                    raise EmbeddingAPIUnavailableError(
+                        f"embedding API returned non-JSON: {e}"
+                    ) from e
 
-        vec = np.asarray(emb, dtype=np.float32)
-        if vec.ndim != 1 or vec.size == 0:
-            raise EmbeddingAPIUnavailableError(
-                f"embedding must be a non-empty 1-D array, got shape {vec.shape}"
-            )
+                if return_chunks:
+                    chunks = payload.get("chunk_embeddings")
+                    if not chunks:
+                        raise EmbeddingAPIUnavailableError(
+                            "embedding API response missing 'chunk_embeddings'"
+                        )
+                    mat = np.asarray(chunks, dtype=np.float32)
+                    if mat.ndim != 2 or mat.size == 0:
+                        raise EmbeddingAPIUnavailableError(
+                            f"chunk_embeddings must be a non-empty 2-D array, got shape {mat.shape}"
+                        )
+                    norms = np.linalg.norm(mat, axis=1, keepdims=True)
+                    norms[norms < 1e-12] = 1.0
+                    return (mat / norms).astype(np.float32)
 
-        norm = float(np.linalg.norm(vec))
-        if norm == 0.0:
-            raise EmbeddingAPIUnavailableError("embedding has zero norm")
-        return vec / norm
+                emb = payload.get("embedding")
+                if emb is None:
+                    raise EmbeddingAPIUnavailableError(
+                        "embedding API response missing 'embedding'"
+                    )
+
+                vec = np.asarray(emb, dtype=np.float32)
+                if vec.ndim != 1 or vec.size == 0:
+                    raise EmbeddingAPIUnavailableError(
+                        f"embedding must be a non-empty 1-D array, got shape {vec.shape}"
+                    )
+
+                norm = float(np.linalg.norm(vec))
+                if norm == 0.0:
+                    raise EmbeddingAPIUnavailableError("embedding has zero norm")
+                return vec / norm
 
     def _prepare_wav_for_embedding(self, wav_bytes: bytes) -> list[str]:
         """Run the on-device preprocessing pipeline and wrap the cleaned WAV.
@@ -843,32 +1093,48 @@ class SpeakerRecognizer:
             PreprocessRejected,
         )
 
-        waveform = _wav_bytes_to_float32_16k_mono(wav_bytes)
-        if waveform.shape[0] == 0:
-            raise SpeakerRecognizerError("empty audio for embedding")
+        # SPEAKER-DEBUG: `prof` is None unless tracing is on; every stage below
+        # is wrapped so the whole chain (and each gate inside it) is profiled.
+        prof: Optional[_StageProfiler] = getattr(self._debug_prof, "cur", None)
+        with self._debug_stage("preprocess"):
+            with self._debug_stage("preprocess.decode_wav"):
+                waveform = _wav_bytes_to_float32_16k_mono(wav_bytes)
+            if waveform.shape[0] == 0:
+                raise SpeakerRecognizerError("empty audio for embedding")
 
-        processor = _get_audio_processor()
-        try:
-            cleaned = processor.process(
-                Audio(waveform=waveform, sample_rate=_TARGET_SR))
-        except PreprocessRejected as e:
-            # AudioGateRejectedError (not a plain SpeakerRecognizerError) so the
-            # enroll path keeps previously-accepted on-disk samples instead of
-            # deleting them when the gate gets stricter.
-            err = AudioGateRejectedError(
-                f"audio rejected by preprocessing gate [{e.reason}]: {e}"
-            )
-            err.gate_detail = e.to_dict()  # SPEAKER-DEBUG: reason + VAD/STOI metrics
-            raise err from e
+            # First call also loads silero-vad + the ONNX STOI session, which is
+            # the single largest memory step in the pipeline — worth its own
+            # stage so a cold call isn't mistaken for a per-clip cost.
+            with self._debug_stage("preprocess.processor_init"):
+                processor = _get_audio_processor()
+            try:
+                audio_in = Audio(waveform=waveform, sample_rate=_TARGET_SR)
+                if prof is not None:  # SPEAKER-DEBUG: per-stage walk of the chain
+                    cleaned = self._debug_profiled_process(processor, audio_in, prof)
+                else:
+                    cleaned = processor.process(audio_in)
+            except PreprocessRejected as e:
+                # AudioGateRejectedError (not a plain SpeakerRecognizerError) so the
+                # enroll path keeps previously-accepted on-disk samples instead of
+                # deleting them when the gate gets stricter.
+                err = AudioGateRejectedError(
+                    f"audio rejected by preprocessing gate [{e.reason}]: {e}"
+                )
+                err.gate_detail = e.to_dict()  # SPEAKER-DEBUG: reason + VAD/STOI metrics
+                raise err from e
 
-        out = np.asarray(cleaned.waveform, dtype=np.float32)
-        if out.shape[0] == 0:
-            raise SpeakerRecognizerError("preprocessing produced empty audio")
+            out = np.asarray(cleaned.waveform, dtype=np.float32)
+            if out.shape[0] == 0:
+                raise SpeakerRecognizerError("preprocessing produced empty audio")
 
-        cleaned_wav = _float32_waveform_to_wav_bytes(out)
-        if self._debug.enabled:  # SPEAKER-DEBUG
-            self._debug_preproc = self._debug_preproc_snapshot(out, cleaned_wav, processor)
-        return [base64.b64encode(cleaned_wav).decode("ascii")]
+            with self._debug_stage("preprocess.encode_wav"):
+                cleaned_wav = _float32_waveform_to_wav_bytes(out)
+                payload = [base64.b64encode(cleaned_wav).decode("ascii")]
+            if self._debug.enabled:  # SPEAKER-DEBUG
+                self._debug_preproc = self._debug_preproc_snapshot(
+                    out, cleaned_wav, processor
+                )
+        return payload
 
     def _debug_preproc_snapshot(  # SPEAKER-DEBUG (remove before deploy)
         self, cleaned: np.ndarray, cleaned_wav: bytes, processor: Any
@@ -907,6 +1173,60 @@ class SpeakerRecognizer:
             wavs["preprocessed.wav"] = pp["cleaned_wav"]
         metrics = {k: v for k, v in pp.items() if k != "cleaned_wav"} or None
         return wavs, metrics
+
+    # ------------------------------------ SPEAKER-DEBUG: stage profiling
+
+    def _debug_profile_start(self, label: str) -> None:
+        """SPEAKER-DEBUG: begin a per-call profile. No-op when tracing is off."""
+        self._debug_prof.cur = _StageProfiler(label) if self._debug.enabled else None
+
+    def _debug_stage(self, name: str) -> Any:
+        """SPEAKER-DEBUG: context manager timing one stage; no-op when off.
+
+        Used at every call site so the production path costs one attribute
+        lookup and a ``nullcontext``.
+        """
+        prof = getattr(self._debug_prof, "cur", None)
+        return prof.stage(name) if prof is not None else nullcontext()
+
+    def _debug_profile_dict(self) -> Optional[dict[str, Any]]:
+        """SPEAKER-DEBUG: finish the profile — log the summary, return the JSON.
+
+        Passed as ``record(profile=...)`` at each trace point, which writes it
+        to ``profile.json`` beside result.json in the same per-call dir.
+        """
+        prof = getattr(self._debug_prof, "cur", None)
+        if prof is None:
+            return None
+        logger.info(
+            "SPEAKER-DEBUG profile [%s]: %s", prof.label, prof.summary_line()
+        )
+        return prof.to_dict()
+
+    def _debug_profiled_process(
+        self, processor: Any, audio: Any, prof: _StageProfiler
+    ) -> Any:
+        """SPEAKER-DEBUG: run the preprocessing chain stage-by-stage.
+
+        Mirrors ``CompositeAudioProcessor._process_impl`` exactly — same order,
+        same ``processor.process(...)`` per stage, same exceptions — and only
+        adds a timer around each one, so silero-vad and the STOI gate each get
+        their own latency + memory numbers instead of one opaque "preprocess"
+        total. Kept HERE rather than inside ``audio_processors/`` so the whole
+        SPEAKER-DEBUG block stays removable without touching that package.
+        Falls back to the plain composite call if the chain isn't introspectable.
+        """
+        stages = getattr(processor, "_processors", None)
+        if not stages:
+            with prof.stage("preprocess.chain"):
+                return processor.process(audio)
+        result = audio
+        for p in stages:
+            cls_name = type(p).__name__
+            name = _DEBUG_STAGE_NAMES.get(cls_name, cls_name.lower())
+            with prof.stage(f"preprocess.{name}"):
+                result = p.process(result)
+        return result
 
     # ------------------------------------------------------------- metadata
 
@@ -1020,6 +1340,11 @@ class SpeakerRecognizer:
             )
         origin = origin if origin in ("mic", "telegram", "other") else "other"
 
+        # SPEAKER-DEBUG: per-call latency/memory profile. Enroll runs the
+        # preprocessing chain + embedding call once per sample, so the shared
+        # stages below aggregate (see `calls` / `ms_max` in the profile).
+        self._debug_profile_start("enroll")
+
         norm = _normalize_label(name)
         logger.info(
             "Enrolling speaker: name=%r (norm=%r) new_samples=%d origin=%s tg_identity=%s",
@@ -1049,17 +1374,18 @@ class SpeakerRecognizer:
 
         # Step 1 — Decode + normalize incoming audios (in-memory only).
         new_wavs: list[bytes] = []
-        for src in sources:
-            if source_type == "filepath":
-                raw = _read_bytes(src)
-            else:
-                try:
-                    raw = base64.b64decode(src)
-                except Exception as e:
-                    raise SpeakerRecognizerError(f"invalid base64: {e}") from e
-            if not raw:
-                raise SpeakerRecognizerError("empty audio")
-            new_wavs.append(_ensure_wav_16k_mono(raw))
+        with self._debug_stage("decode_input"):  # SPEAKER-DEBUG
+            for src in sources:
+                if source_type == "filepath":
+                    raw = _read_bytes(src)
+                else:
+                    try:
+                        raw = base64.b64decode(src)
+                    except Exception as e:
+                        raise SpeakerRecognizerError(f"invalid base64: {e}") from e
+                if not raw:
+                    raise SpeakerRecognizerError("empty audio")
+                new_wavs.append(_ensure_wav_16k_mono(raw))
 
         # Step 2 — Compute embedding per NEW wav BEFORE writing to disk.
         # _prepare_wav_for_embedding raises on too-short/silent audio;
@@ -1095,6 +1421,7 @@ class SpeakerRecognizer:
                             {"index": i, "error": m} for i, m in per_sample_errors
                         ],
                     },
+                    profile=self._debug_profile_dict(),
                 )
             if len(per_sample_errors) == 1:
                 raise SpeakerRecognizerError(per_sample_errors[0][1])
@@ -1402,6 +1729,8 @@ class SpeakerRecognizer:
                         {"index": i, "error": m} for i, m in per_sample_errors
                     ],
                 },
+                # Stages aggregate across every sample this enroll embedded.
+                profile=self._debug_profile_dict(),
             )
         return meta
 
@@ -1610,24 +1939,30 @@ class SpeakerRecognizer:
             wav_source if source_type == "filepath" else f"<base64 {len(wav_source)}B>",
         )
 
-        if source_type == "filepath":
-            raw = _read_bytes(wav_source)
-        else:
-            try:
-                raw = base64.b64decode(wav_source)
-            except Exception as e:
-                raise SpeakerRecognizerError(f"invalid base64: {e}") from e
-        if not raw:
-            raise SpeakerRecognizerError("empty audio")
+        # SPEAKER-DEBUG: start the per-call latency/memory profile FIRST, so the
+        # decode below is inside it. Reset per call, like the snapshots after it.
+        self._debug_profile_start("recognize")
 
-        wav_bytes = _ensure_wav_16k_mono(raw)
+        with self._debug_stage("decode_input"):
+            if source_type == "filepath":
+                raw = _read_bytes(wav_source)
+            else:
+                try:
+                    raw = base64.b64decode(wav_source)
+                except Exception as e:
+                    raise SpeakerRecognizerError(f"invalid base64: {e}") from e
+            if not raw:
+                raise SpeakerRecognizerError("empty audio")
+
+            wav_bytes = _ensure_wav_16k_mono(raw)
         # SPEAKER-DEBUG: clear the per-call stranger snapshot so a trace can
         # never report the PREVIOUS call's cluster score when this call's
         # clustering is skipped (empty/zero-norm chunks) or fails.
         self._debug_stranger = None
         self._debug_preproc = None  # SPEAKER-DEBUG: reset per-call preprocessing snapshot
 
-        saved_path = self._save_incoming_audio(wav_bytes)
+        with self._debug_stage("save_input_wav"):
+            saved_path = self._save_incoming_audio(wav_bytes)
 
         if not self.available:
             logger.warning("Embedding server not configured — set SPEAKER_EMBEDDING_API_URL or DL_BACKEND_URL")
@@ -1635,7 +1970,11 @@ class SpeakerRecognizer:
                 self._debug.record(
                     "recognize", reason="api-not-configured",
                     wavs={"input.wav": wav_bytes},
-                    result={"source_type": source_type, "error": "embedding API not configured"},
+                    result={
+                        "source_type": source_type,
+                        "error": "embedding API not configured",
+                    },
+                    profile=self._debug_profile_dict(),
                 )
             return {
                 "name": "unknown",
@@ -1676,6 +2015,9 @@ class SpeakerRecognizer:
                     "recognize", reason=self._debug.classify_reason(e),
                     wavs={"input.wav": wav_bytes},
                     result=fail_result,
+                    # Latency/memory up to the failure — a gate reject still paid
+                    # for silero-vad (and STOI, if it got that far).
+                    profile=self._debug_profile_dict(),
                 )
             return {
                 "name": "unknown",
@@ -1692,16 +2034,18 @@ class SpeakerRecognizer:
             int(query_chunks.shape[0]), int(query_chunks.shape[1]), saved_path,
         )
 
-        known = self._load_all_embeddings()
+        with self._debug_stage("load_enrolled"):
+            known = self._load_all_embeddings()
         if not known:
             # No enrolled users — every voice is unknown. Still assign a
             # stable cluster hash so repeat speakers can be tracked before
             # anyone is enrolled.
             logger.info("Recognize: no enrolled users — unknown + cluster-only path")
-            vp_hash = self._debug_safe_assign_hash(  # SPEAKER-DEBUG (was: _assign_voiceprint_hash)
-                query_chunks, wav_bytes, resolved_name="unknown", is_match=False,
-                num_enrolled=0, source_type=source_type, saved_path=saved_path,
-            )
+            with self._debug_stage("stranger_cluster"):
+                vp_hash = self._debug_safe_assign_hash(  # SPEAKER-DEBUG (was: _assign_voiceprint_hash)
+                    query_chunks, wav_bytes, resolved_name="unknown", is_match=False,
+                    num_enrolled=0, source_type=source_type, saved_path=saved_path,
+                )
             saved_path = self._move_to_cluster(saved_path, vp_hash)
             logger.info(
                 "Recognize result: name=unknown confidence=0.00 cluster=%s path=%s",
@@ -1739,6 +2083,7 @@ class SpeakerRecognizer:
                         "preprocessing": pp_metrics,
                         "unknown_audio_path": saved_path,
                     },
+                    profile=self._debug_profile_dict(),
                 )
             return {
                 "name": "unknown",
@@ -1753,32 +2098,33 @@ class SpeakerRecognizer:
         # for each query chunk, pick the highest-confidence speaker, record
         # one vote and one confidence sample. Winner = most votes, tiebreak
         # by avg confidence. Returned confidence = avg of winner's votes.
-        names = list(known.keys())
-        ref_matrix = np.stack([known[n] for n in names], axis=0)  # [K, D]
-        sims = query_chunks @ ref_matrix.T                         # [M, K] raw cos
-        confs = (sims + 1.0) / 2.0                                  # mapped [0, 1]
-        best_idx = confs.argmax(axis=1)                             # [M]
-        best_conf_per_chunk = confs[np.arange(confs.shape[0]), best_idx]
+        with self._debug_stage("match_vote"):
+            names = list(known.keys())
+            ref_matrix = np.stack([known[n] for n in names], axis=0)  # [K, D]
+            sims = query_chunks @ ref_matrix.T                         # [M, K] raw cos
+            confs = (sims + 1.0) / 2.0                                  # mapped [0, 1]
+            best_idx = confs.argmax(axis=1)                             # [M]
+            best_conf_per_chunk = confs[np.arange(confs.shape[0]), best_idx]
 
-        vote_count: dict[str, int] = {}
-        conf_sum: dict[str, float] = {}
-        for k_idx, c in zip(best_idx.tolist(), best_conf_per_chunk.tolist()):
-            n = names[k_idx]
-            vote_count[n] = vote_count.get(n, 0) + 1
-            conf_sum[n] = conf_sum.get(n, 0.0) + float(c)
+            vote_count: dict[str, int] = {}
+            conf_sum: dict[str, float] = {}
+            for k_idx, c in zip(best_idx.tolist(), best_conf_per_chunk.tolist()):
+                n = names[k_idx]
+                vote_count[n] = vote_count.get(n, 0) + 1
+                conf_sum[n] = conf_sum.get(n, 0.0) + float(c)
 
-        # Tiebreak by avg confidence so a 1-vote winner with high conf
-        # never beats a 5-vote one — votes dominate.
-        ranked = sorted(
-            vote_count.keys(),
-            key=lambda n: (vote_count[n], conf_sum[n] / vote_count[n]),
-            reverse=True,
-        )
-        best_name = ranked[0]
-        best_conf = conf_sum[best_name] / vote_count[best_name]
-        scores = [
-            (n, conf_sum[n] / vote_count[n], vote_count[n]) for n in ranked
-        ]
+            # Tiebreak by avg confidence so a 1-vote winner with high conf
+            # never beats a 5-vote one — votes dominate.
+            ranked = sorted(
+                vote_count.keys(),
+                key=lambda n: (vote_count[n], conf_sum[n] / vote_count[n]),
+                reverse=True,
+            )
+            best_name = ranked[0]
+            best_conf = conf_sum[best_name] / vote_count[best_name]
+            scores = [
+                (n, conf_sum[n] / vote_count[n], vote_count[n]) for n in ranked
+            ]
 
         is_match = best_conf >= self._match_threshold
         resolved_name = best_name if is_match else "unknown"
@@ -1796,10 +2142,11 @@ class SpeakerRecognizer:
 
         # Only assign a stranger cluster hash for unknowns — known speakers
         # already have a stable identity (their name).
-        vp_hash = None if is_match else self._debug_safe_assign_hash(  # SPEAKER-DEBUG (was: _assign_voiceprint_hash)
-            query_chunks, wav_bytes, resolved_name=resolved_name, is_match=is_match,
-            num_enrolled=len(known), source_type=source_type, saved_path=saved_path,
-        )
+        with self._debug_stage("stranger_cluster"):
+            vp_hash = None if is_match else self._debug_safe_assign_hash(  # SPEAKER-DEBUG (was: _assign_voiceprint_hash)
+                query_chunks, wav_bytes, resolved_name=resolved_name, is_match=is_match,
+                num_enrolled=len(known), source_type=source_type, saved_path=saved_path,
+            )
         # Move WAV into per-cluster sub-dir so later inspection can group
         # samples by cluster. Known-speaker WAVs stay in the flat dir.
         if vp_hash:
@@ -1903,6 +2250,9 @@ class SpeakerRecognizer:
                     "chunk_scores.npy": confs,
                 },
                 result=dbg_result,
+                # Per-stage latency + RSS delta -> profile.json (silero-vad and
+                # the STOI gate each get their own entry under `stages`).
+                profile=self._debug_profile_dict(),
             )
         return result
 
