@@ -179,31 +179,42 @@ Each `recognize()` / `enroll()` call writes one directory:
 
 holding `input.wav` (raw) plus `preprocessed.wav` (post VAD/STOI/RMS — the audio actually uploaded) / `sample_new_NN.wav`, the embeddings as `.npy`, `result.json`, and `profile.json` (latency + memory only — see below). A recognize records a `preprocessing` block (cleaned duration/RMS, the STOI score the clip passed with, and the threshold it cleared) so you can tell a "bad audio" miss from a "wrong speaker" miss; a clip killed by the gate instead files a `FAIL-<reason>` dir whose `preprocessing_reject` holds the structured reason and its measurements. For a recognize the JSON carries the **full** decision breakdown — not just the top-3 `candidates` the API returns, but `speaker_summary` (votes + mean/max similarity for *every* enrolled speaker, including 0-vote losers) and `per_chunk_scores` (each chunk vs every speaker, plus which speaker that chunk voted for). The same matrix is saved as `chunk_scores.npy` (`[chunks × speakers]`, columns in `enrolled_speakers` order). Unknown speakers also record the stranger-cluster match score and which cluster was closest.
 
-#### Latency + memory profile
+#### Latency, CPU + memory profile
 
-Each trace dir also holds a **`profile.json`** — per-stage wall-clock and process-RSS delta for the call, so a slow or memory-hungry turn can be attributed to a specific stage instead of the pipeline as a whole. It is kept in its own file rather than mixed into `result.json`, which is already dense with the recognition decision: timings and the decision breakdown are read for different reasons and each would bury the other. It rides on the existing tracer otherwise — same dir, same switch, no extra env var, on only when `HAL_SPEAKER_DEBUG=true`. A one-line summary is also logged (`SPEAKER-DEBUG profile [recognize]: total=… preprocess.silero_vad=…ms/+…MB …`).
+Each trace dir also holds a **`profile.json`** — per-stage wall-clock, CPU and memory for the call, so a slow or memory-hungry turn can be attributed to a specific stage instead of the pipeline as a whole. It is kept in its own file rather than mixed into `result.json`, which is already dense with the recognition decision: timings and the decision breakdown are read for different reasons and each would bury the other. It rides on the existing tracer otherwise — same dir, same switch, no extra env var, on only when `HAL_SPEAKER_DEBUG=true`. A one-line summary is also logged (`SPEAKER-DEBUG profile [recognize]: total=… preprocess.stoi_gate=…ms/…%cpu/+…MB …`).
 
-Stages are dotted so nesting reads top-down, and the two preprocessing gates are profiled **explicitly**:
+Stages form a **tree**: a stage opened inside another becomes its child, so containment is structural rather than a naming convention. Summing the top level gives the call total without double-counting, and each node's `self_ms` is its own time minus its children's — the parent's glue, not its children's work.
 
-| Stage | Covers |
-|-------|--------|
-| `decode_input` | base64/file read + WAV normalize to 16 kHz mono |
-| `preprocess` | the whole on-device chain (total) |
-| `preprocess.processor_init` | lazy build/start of the composite — first call loads silero-vad + the ONNX STOI session |
-| `preprocess.decode_wav` / `.encode_wav` | WAV bytes ↔ float32 waveform, plus the base64 wrap |
-| `preprocess.mono` / `.resample` / `.high_pass` / `.noise_reduce` / `.rms_normalize` | the cheap chain stages |
-| **`preprocess.silero_vad`** | the silero-vad stage |
-| **`preprocess.stoi_gate`** | the STOI intelligibility gate |
-| `embed_api` | the embedding call (total) |
-| `embed_api.request` | the HTTP round-trip itself |
-| `embed_api.decode` | response parse + L2 normalize |
-| `load_enrolled` / `match_vote` / `stranger_cluster` / `save_input_wav` | the post-embedding decision work |
+```
+decode_input                base64/file read + WAV normalize to 16 kHz mono
+preprocess                  the whole on-device chain
+├─ decode_wav / encode_wav    WAV bytes ↔ float32 waveform, plus the base64 wrap
+├─ processor_init             lazy build/start — first call loads silero-vad + ONNX STOI
+├─ mono / resample / high_pass / noise_reduce / rms_normalize
+├─ silero_vad               ← the silero-vad stage
+└─ stoi_gate                ← the STOI intelligibility gate
+embed_api                   the embedding call
+├─ request                  ← the HTTP round-trip itself
+└─ decode                     response parse + L2 normalize
+load_enrolled / match_vote / stranger_cluster / save_input_wav
+```
 
-Each entry under `stages` holds `ms`, `ms_max`, `calls`, `rss_delta_mb` and `rss_after_mb`; the top level holds `total_ms`, `rss_start_mb` / `rss_end_mb` / `rss_delta_mb`, `peak_rss_mb` (Linux `VmHWM`) and `rss_source`. Notes worth knowing when reading the numbers:
+**Memory.** RSS is sampled on a background thread (~20 ms) for the life of the call, and each stage reports the **peak inside its own window**. Endpoint-only sampling — read RSS at entry, read again at exit — is wrong for this pipeline: RSS moves only when the allocator asks the OS for pages or returns them, so a stage that allocates and frees inside its own window reports `0.00`, and a stage that runs while an earlier allocation is released reports a *negative* cost. Three numbers are therefore kept per stage:
+
+| Field | Means |
+|-------|-------|
+| **`rss_peak_delta_mb`** | peak-during-stage minus RSS at entry — **the memory number to read**. Survives allocate-then-free. For a repeated stage it is the worst single occurrence, not a sum |
+| `rss_end_delta_mb` | exit minus entry — what the stage *kept*. Legitimately negative when pages go back to the OS |
+| `rss_peak_mb` / `rss_after_mb` | absolute high-water / final RSS during the stage |
+
+**CPU.** `cpu_ms` is process CPU time, which is what catches the ONNX/torch intra-op thread pools — the work that makes `stoi_gate` expensive. `cpu_pct` is `cpu_ms/ms×100`, so **>100% means it used more than one core** and **~0% means it was blocked, not working** (`embed_api.request` should sit near zero — it is waiting on the network). `thread_cpu_ms` is the calling thread alone, so the gap between it and `cpu_ms` is roughly what the pools did. The top level adds `cpu_count` so >100% is interpretable.
+
+Other notes worth knowing:
 
 - **A stage that rejects is still measured.** A clip killed by VAD or STOI files a `FAIL-…` dir whose `profile.json` shows what those gates cost before they said no — a reject pays for the same inference as a pass.
-- **Enroll aggregates.** It runs preprocess + embed once per sample, so shared stages sum, with `calls` and `ms_max` alongside.
-- **`rss_source` changes what a delta means.** `psutil` / `statm` (on-device Linux) are current RSS, so a delta can go negative when the allocator returns pages. `rusage` — the macOS-without-psutil fallback — is a high-water mark, so deltas are growth-only: non-zero only when a stage pushed the process past its previous peak.
+- **Enroll aggregates.** It runs preprocess + embed once per sample, so shared stages sum their `ms`, with `calls` and `ms_max` alongside (both omitted when a stage ran exactly once).
+- **RSS and CPU are process-wide.** A concurrent HAL thread allocating or burning CPU during a stage lands in that stage's numbers — no RSS-based method escapes this. Read a single stage's memory as an upper bound and prefer the shape across several calls.
+- **`rss_source` changes what the numbers mean.** `psutil` / `statm` (on-device Linux) are current RSS — the accurate case. `rusage` — the macOS-without-psutil fallback — is a high-water mark that cannot fall, so `rss_end_delta_mb` overstates there.
 - Memory is process RSS, not a Python-heap measure: the torch silero-vad graph and the ONNX STOI session allocate outside the heap, where `tracemalloc` would see nothing.
 
 | Parameter | Default | Env var | Description |

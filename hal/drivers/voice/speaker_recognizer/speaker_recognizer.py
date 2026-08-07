@@ -446,33 +446,69 @@ def _debug_stranger_label(vp_hash: Optional[str]) -> str:
 
 
 # ---------------------------------------------------------------------------
-# SPEAKER-DEBUG: per-stage latency + memory profiler.
+# SPEAKER-DEBUG: per-stage latency / CPU / memory profiler.
 #
 # Rides on the SAME trace the tracer already writes — same per-call dir, same
 # HAL_SPEAKER_DEBUG switch, no extra env knob — but lands in its own
 # `profile.json` rather than in result.json, which is already dense with the
-# recognition decision. Stages are named with dotted paths so the pipeline
-# nests readably:
+# recognition decision.
+#
+# Stages form a TREE: a stage opened inside another becomes its child, so the
+# containment is structural instead of a naming convention the reader has to
+# parse. `preprocess` owns `silero_vad` / `stoi_gate`; summing the top level
+# gives the call total without double-counting:
 #
 #   decode_input                 base64/file read + WAV normalize to 16k mono
-#   preprocess                   the whole on-device chain (total)
-#   preprocess.processor_init      lazy build/start of the composite (models load)
-#   preprocess.decode_wav          WAV bytes -> float32 waveform
-#   preprocess.mono / .resample / .high_pass / .noise_reduce
-#   preprocess.silero_vad          << the silero-vad stage, profiled explicitly
-#   preprocess.stoi_gate           << the STOI gate, profiled explicitly
-#   preprocess.rms_normalize
-#   preprocess.encode_wav          cleaned waveform -> WAV bytes -> base64
-#   embed_api                    the embedding call (total)
-#   embed_api.request              << the HTTP request itself
-#   embed_api.decode               response parse + L2 normalize
+#   preprocess                   the whole on-device chain
+#     +- decode_wav                WAV bytes -> float32 waveform
+#     +- processor_init            lazy build/start of the composite (models load)
+#     +- mono / resample / high_pass / noise_reduce
+#     +- silero_vad              << the silero-vad stage, profiled explicitly
+#     +- stoi_gate               << the STOI gate, profiled explicitly
+#     +- rms_normalize
+#     +- encode_wav                cleaned waveform -> WAV bytes -> base64
+#   embed_api                    the embedding call
+#     +- request                 << the HTTP request itself
+#     +- decode                    response parse + L2 normalize
 #   load_enrolled / match_vote / stranger_cluster / save_input_wav
 #
-# Memory is process RSS, NOT a Python-heap measure: the two stages that actually
-# move the needle here (the torch silero-vad graph and the ONNX STOI session)
-# allocate outside the Python heap, where tracemalloc sees nothing. A stage's
-# `rss_delta_mb` is "how much the process grew across this stage". The source is
-# recorded as `rss_source` in the profile, because it changes what a delta means:
+# Each node also carries `self_ms` (its own time minus its children's), so the
+# cost of a parent's own glue is visible rather than hidden in the total.
+#
+# MEMORY. RSS is SAMPLED on a background thread (~20 ms) for the life of the
+# call, and each stage reports the PEAK seen inside its own window. Endpoint-only
+# sampling — read RSS at entry, read it again at exit — was the original approach
+# and it is wrong for this pipeline: RSS moves only when the allocator asks the
+# OS for pages or returns them, so a stage that allocates and frees within its
+# own window reports 0.0, and a stage that happens to run when an earlier
+# allocation is released reports a NEGATIVE cost. Real traces showed exactly
+# that — `stoi_gate` at 1.7 s of ONNX inference reporting 0.00 MB on one call
+# and -28.62 MB on the next. So three numbers are kept, each answering a
+# different question:
+#
+#   rss_peak_delta_mb   peak-during-stage minus RSS at entry — "what did this
+#                       stage cost at its worst". THIS is the memory number to
+#                       read; it survives allocate-then-free.
+#   rss_end_delta_mb    exit minus entry — "what did it keep". Legitimately
+#                       negative when the allocator hands pages back.
+#   rss_peak_mb         absolute high-water RSS during the stage.
+#
+# Caveat that no RSS-based method escapes: RSS is PROCESS-wide, so a concurrent
+# HAL thread allocating during a stage lands in that stage's numbers. Sampling
+# widens that exposure (it sees every spike in the window, not just the
+# endpoints) in exchange for catching transient peaks at all. Read a single
+# stage's memory as an upper bound, and prefer the shape across several calls.
+#
+# CPU. `cpu_ms` is process CPU time (`time.process_time()`) across the whole
+# process, which is what catches the ONNX/torch intra-op thread pools — the
+# work that makes `stoi_gate` expensive. `cpu_pct` is cpu_ms/wall_ms*100, so
+# >100% means it used more than one core and ~0% means it was blocked, not
+# working (`embed_api.request` should sit near zero — it is waiting on the
+# network). `thread_cpu_ms` is the calling thread alone, so the gap between it
+# and `cpu_ms` is roughly what the pools did. Both are process-wide in the same
+# way RSS is: another busy HAL thread inflates `cpu_ms`.
+#
+# The RSS source is recorded as `rss_source`, because it changes what a delta means:
 #
 #   "psutil" / "statm"  CURRENT RSS — the accurate case (on-device Linux, and
 #                       any box with psutil). A delta can be NEGATIVE when the
@@ -559,112 +595,249 @@ _DEBUG_STAGE_NAMES: dict[str, str] = {
 }
 
 
+class _StageNode:
+    """SPEAKER-DEBUG: one node in the stage tree. Children nest under parents."""
+
+    __slots__ = (
+        "name", "calls", "ms", "ms_max", "cpu_ms", "thread_cpu_ms",
+        "rss_peak_b", "rss_peak_delta_b", "rss_end_delta_b", "rss_after_b",
+        "children", "_order",
+    )
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.calls = 0
+        self.ms = 0.0
+        self.ms_max = 0.0
+        self.cpu_ms = 0.0
+        self.thread_cpu_ms = 0.0
+        self.rss_peak_b: Optional[int] = None
+        self.rss_peak_delta_b: Optional[int] = None
+        self.rss_end_delta_b: Optional[int] = None
+        self.rss_after_b: Optional[int] = None
+        self.children: dict[str, "_StageNode"] = {}
+        self._order: list[str] = []
+
+    def child(self, name: str) -> "_StageNode":
+        """Get-or-create a child, preserving first-seen (pipeline) order."""
+        node = self.children.get(name)
+        if node is None:
+            node = _StageNode(name)
+            self.children[name] = node
+            self._order.append(name)
+        return node
+
+    def kids(self) -> list["_StageNode"]:
+        return [self.children[n] for n in self._order]
+
+    def accumulate(
+        self,
+        ms: float,
+        cpu_ms: float,
+        thread_cpu_ms: float,
+        rss_before: Optional[int],
+        rss_after: Optional[int],
+        rss_peak: Optional[int],
+    ) -> None:
+        self.calls += 1
+        self.ms += ms
+        self.ms_max = max(self.ms_max, ms)
+        self.cpu_ms += cpu_ms
+        self.thread_cpu_ms += thread_cpu_ms
+        if rss_after is not None:
+            self.rss_after_b = rss_after
+            if rss_before is not None:
+                self.rss_end_delta_b = (
+                    (self.rss_end_delta_b or 0) + (rss_after - rss_before)
+                )
+        if rss_peak is not None:
+            self.rss_peak_b = (
+                rss_peak if self.rss_peak_b is None else max(self.rss_peak_b, rss_peak)
+            )
+            if rss_before is not None:
+                # MAX, not sum: for a repeated stage the useful number is the
+                # worst single occurrence ("how big did one call of this get"),
+                # not a total that grows with the sample count.
+                growth = max(0, rss_peak - rss_before)
+                self.rss_peak_delta_b = (
+                    growth if self.rss_peak_delta_b is None
+                    else max(self.rss_peak_delta_b, growth)
+                )
+
+    def to_dict(self) -> dict[str, Any]:
+        kids = self.kids()
+        d: dict[str, Any] = {
+            "stage": self.name,
+            "ms": round(self.ms, 2),
+            # This node's OWN time — the parent's glue, not its children's work.
+            "self_ms": round(max(0.0, self.ms - sum(k.ms for k in kids)), 2),
+            "cpu_ms": round(self.cpu_ms, 2),
+            # >100% = used more than one core; ~0% = blocked, not working.
+            "cpu_pct": (round(self.cpu_ms / self.ms * 100.0, 1) if self.ms > 0 else None),
+            "thread_cpu_ms": round(self.thread_cpu_ms, 2),
+            # THE memory number: peak inside this stage minus RSS at entry.
+            "rss_peak_delta_mb": _debug_mb(self.rss_peak_delta_b),
+            "rss_peak_mb": _debug_mb(self.rss_peak_b),
+            # What it KEPT — legitimately negative when pages go back to the OS.
+            "rss_end_delta_mb": _debug_mb(self.rss_end_delta_b),
+            "rss_after_mb": _debug_mb(self.rss_after_b),
+        }
+        if self.calls != 1:
+            d["calls"] = self.calls
+            d["ms_max"] = round(self.ms_max, 2)
+        if kids:
+            d["children"] = [k.to_dict() for k in kids]
+        return d
+
+
 class _StageProfiler:
-    """SPEAKER-DEBUG: accumulates per-stage latency + RSS delta. Never raises."""
+    """SPEAKER-DEBUG: nested per-stage latency / CPU / memory. Never raises."""
+
+    # RSS is sampled on a background thread because endpoint-only sampling
+    # misses any allocation freed before the stage exits — see the block
+    # comment above for the traces that exposed it.
+    _SAMPLE_INTERVAL_S = 0.02
+    _MAX_SAMPLES = 20000        # ~400 s of sampling; backstop, not a real limit
+    _MAX_LIFETIME_S = 300.0     # sampler self-terminates if a call never ends
 
     def __init__(self, label: str) -> None:
         self.label = label
         self._t0 = time.perf_counter()
+        self._cpu0 = time.process_time()
         self._rss0 = _debug_rss_bytes()
-        self._order: list[str] = []
-        self._stages: dict[str, dict[str, Any]] = {}
+        self._root = _StageNode(label)
+        # Open-stage stack: a stage entered while another is open becomes its
+        # child. This is what makes the output a tree instead of a flat list.
+        self._stack: list[_StageNode] = [self._root]
+        self._samples: list[tuple[float, int]] = []
+        self._stop = threading.Event()
+        if self._rss0 is not None:
+            self._samples.append((self._t0, self._rss0))
+            # Daemon: must never hold up interpreter shutdown. Self-terminates
+            # on _MAX_LIFETIME_S so a call that dies before to_dict() can't
+            # leak a sampler for the life of the process.
+            threading.Thread(
+                target=self._sample_loop,
+                name="speaker-debug-rss",
+                daemon=True,
+            ).start()
+
+    def _sample_loop(self) -> None:
+        deadline = self._t0 + self._MAX_LIFETIME_S
+        try:
+            while not self._stop.wait(self._SAMPLE_INTERVAL_S):
+                if (
+                    len(self._samples) >= self._MAX_SAMPLES
+                    or time.perf_counter() > deadline
+                ):
+                    return
+                rss = _debug_rss_bytes()
+                if rss is not None:
+                    self._samples.append((time.perf_counter(), rss))
+        except Exception:
+            pass
+
+    def close(self) -> None:
+        """Stop the sampler. Idempotent."""
+        self._stop.set()
+
+    def _peak_between(
+        self, t0: float, t1: float, *points: Optional[int]
+    ) -> Optional[int]:
+        """Highest RSS observed in [t0, t1], including the endpoint reads."""
+        best: Optional[int] = None
+        for p in points:
+            if p is not None and (best is None or p > best):
+                best = p
+        for t, rss in list(self._samples):  # snapshot; sampler only appends
+            if t0 <= t <= t1 and (best is None or rss > best):
+                best = rss
+        return best
 
     @contextmanager
     def stage(self, name: str):
         """Time + measure one stage. Records even when the body raises."""
-        # Claim the slot on ENTRY so `stages` reads in pipeline order: a parent
-        # ("preprocess") finishes AFTER its children, and registering on exit
-        # would list it below the stages it contains.
-        self._touch(name)
+        node = self._stack[-1].child(name)
+        self._stack.append(node)
         t0 = time.perf_counter()
+        cpu0 = time.process_time()
+        thread0 = time.thread_time()
         rss_before = _debug_rss_bytes()
         try:
             yield
         finally:
             # `finally`, so a stage that REJECTS (VAD trims to nothing, STOI
-            # below threshold) still reports its latency and memory — a reject
-            # costs the same inference as a pass, and is exactly what we tune.
-            self.add(
-                name,
-                (time.perf_counter() - t0) * 1000.0,
-                rss_before,
-                _debug_rss_bytes(),
-            )
-
-    def _touch(self, name: str) -> dict[str, Any]:
-        """Get-or-create a stage slot, preserving first-seen order."""
-        st = self._stages.get(name)
-        if st is None:
-            st = {
-                "calls": 0,
-                "ms": 0.0,
-                "ms_max": 0.0,
-                "rss_delta_b": None,
-                "rss_after_b": None,
-            }
-            self._stages[name] = st
-            self._order.append(name)
-        return st
-
-    def add(
-        self,
-        name: str,
-        ms: float,
-        rss_before: Optional[int],
-        rss_after: Optional[int],
-    ) -> None:
-        try:
-            st = self._touch(name)
-            st["calls"] += 1
-            st["ms"] += ms
-            st["ms_max"] = max(st["ms_max"], ms)
-            if rss_before is not None and rss_after is not None:
-                st["rss_delta_b"] = (st["rss_delta_b"] or 0) + (rss_after - rss_before)
-            if rss_after is not None:
-                st["rss_after_b"] = rss_after
-        except Exception:  # a profiler must never break the service
-            pass
+            # below threshold) still reports its cost — a reject pays for the
+            # same inference as a pass, and is exactly what we tune.
+            t1 = time.perf_counter()
+            cpu_ms = (time.process_time() - cpu0) * 1000.0
+            thread_ms = (time.thread_time() - thread0) * 1000.0
+            rss_after = _debug_rss_bytes()
+            try:
+                if self._stack and self._stack[-1] is node:
+                    self._stack.pop()
+                node.accumulate(
+                    (t1 - t0) * 1000.0, cpu_ms, thread_ms,
+                    rss_before, rss_after,
+                    self._peak_between(t0, t1, rss_before, rss_after),
+                )
+            except Exception:  # a profiler must never break the service
+                pass
 
     def to_dict(self) -> Optional[dict[str, Any]]:
-        """JSON-safe profile for the trace's result.json."""
+        """JSON-safe profile for the trace's profile.json."""
         try:
+            self.close()
+            t1 = time.perf_counter()
             rss_end = _debug_rss_bytes()
-            total_delta = (
-                None if (rss_end is None or self._rss0 is None) else rss_end - self._rss0
-            )
+            peak = self._peak_between(self._t0, t1, self._rss0, rss_end)
+            total_ms = (t1 - self._t0) * 1000.0
+            cpu_ms = (time.process_time() - self._cpu0) * 1000.0
             return {
-                "total_ms": round((time.perf_counter() - self._t0) * 1000.0, 2),
+                "total_ms": round(total_ms, 2),
+                "cpu_ms": round(cpu_ms, 2),
+                "cpu_pct": (round(cpu_ms / total_ms * 100.0, 1) if total_ms > 0 else None),
+                "cpu_count": os.cpu_count(),
                 "rss_source": _debug_rss_mode,
+                "rss_sample_interval_ms": round(self._SAMPLE_INTERVAL_S * 1000.0, 1),
+                "rss_samples": len(self._samples),
                 "rss_start_mb": _debug_mb(self._rss0),
                 "rss_end_mb": _debug_mb(rss_end),
-                "rss_delta_mb": _debug_mb(total_delta),
-                "peak_rss_mb": _debug_mb(_debug_peak_rss_bytes()),
-                "stages": [
-                    {
-                        "stage": name,
-                        "calls": st["calls"],
-                        "ms": round(st["ms"], 2),
-                        "ms_max": round(st["ms_max"], 2),
-                        "rss_delta_mb": _debug_mb(st["rss_delta_b"]),
-                        "rss_after_mb": _debug_mb(st["rss_after_b"]),
-                    }
-                    for name, st in ((n, self._stages[n]) for n in self._order)
-                ],
+                "rss_peak_mb": _debug_mb(peak),
+                "rss_peak_delta_mb": _debug_mb(
+                    None if (peak is None or self._rss0 is None) else peak - self._rss0
+                ),
+                "rss_end_delta_mb": _debug_mb(
+                    None if (rss_end is None or self._rss0 is None)
+                    else rss_end - self._rss0
+                ),
+                # Process high-water mark since start-up (Linux VmHWM) — a
+                # whole-process number, unrelated to this call's own peak.
+                "process_peak_rss_mb": _debug_mb(_debug_peak_rss_bytes()),
+                "stages": [k.to_dict() for k in self._root.kids()],
             }
         except Exception as e:
             logger.debug("SPEAKER-DEBUG profile serialize failed: %s", e)
             return None
 
     def summary_line(self) -> str:
-        """One-line `stage=<ms>ms/<+MB>` summary for the log."""
+        """One-line `path=<ms>/<cpu%>/<+peak MB>` summary for the log."""
         try:
             parts = [f"total={(time.perf_counter() - self._t0) * 1000.0:.1f}ms"]
-            for name in self._order:
-                st = self._stages[name]
-                delta = _debug_mb(st["rss_delta_b"])
-                mem = "" if delta is None else f"/{delta:+.2f}MB"
-                xn = "" if st["calls"] == 1 else f"x{st['calls']}"
-                parts.append(f"{name}{xn}={st['ms']:.1f}ms{mem}")
+
+            def walk(node: _StageNode, prefix: str) -> None:
+                for k in node.kids():
+                    path = f"{prefix}{k.name}"
+                    seg = f"{path}{'' if k.calls == 1 else f'x{k.calls}'}={k.ms:.1f}ms"
+                    if k.ms > 0:
+                        seg += f"/{k.cpu_ms / k.ms * 100.0:.0f}%cpu"
+                    peak = _debug_mb(k.rss_peak_delta_b)
+                    if peak is not None:
+                        seg += f"/+{peak:.1f}MB"
+                    parts.append(seg)
+                    walk(k, path + ".")
+
+            walk(self._root, "")
             return " ".join(parts)
         except Exception:
             return "<unavailable>"
@@ -984,7 +1157,7 @@ class SpeakerRecognizer:
         # a timeout shows up as its full _API_TIMEOUT_S wait rather than vanishing.
         with self._debug_stage("embed_api"):
             try:
-                with self._debug_stage("embed_api.request"):
+                with self._debug_stage("request"):
                     if self._crypto is not None:
                         resp = requests.post(
                             self._api_url,
@@ -1021,7 +1194,7 @@ class SpeakerRecognizer:
                     f"embedding API error {resp.status_code}: {resp.text[:200]}"
                 )
 
-            with self._debug_stage("embed_api.decode"):
+            with self._debug_stage("decode"):
                 try:
                     if self._crypto is not None:
                         payload = json.loads(self._crypto.unwrap_http_response(resp.content))
@@ -1097,7 +1270,7 @@ class SpeakerRecognizer:
         # is wrapped so the whole chain (and each gate inside it) is profiled.
         prof: Optional[_StageProfiler] = getattr(self._debug_prof, "cur", None)
         with self._debug_stage("preprocess"):
-            with self._debug_stage("preprocess.decode_wav"):
+            with self._debug_stage("decode_wav"):
                 waveform = _wav_bytes_to_float32_16k_mono(wav_bytes)
             if waveform.shape[0] == 0:
                 raise SpeakerRecognizerError("empty audio for embedding")
@@ -1105,7 +1278,7 @@ class SpeakerRecognizer:
             # First call also loads silero-vad + the ONNX STOI session, which is
             # the single largest memory step in the pipeline — worth its own
             # stage so a cold call isn't mistaken for a per-clip cost.
-            with self._debug_stage("preprocess.processor_init"):
+            with self._debug_stage("processor_init"):
                 processor = _get_audio_processor()
             try:
                 audio_in = Audio(waveform=waveform, sample_rate=_TARGET_SR)
@@ -1127,7 +1300,7 @@ class SpeakerRecognizer:
             if out.shape[0] == 0:
                 raise SpeakerRecognizerError("preprocessing produced empty audio")
 
-            with self._debug_stage("preprocess.encode_wav"):
+            with self._debug_stage("encode_wav"):
                 cleaned_wav = _float32_waveform_to_wav_bytes(out)
                 payload = [base64.b64encode(cleaned_wav).decode("ascii")]
             if self._debug.enabled:  # SPEAKER-DEBUG
@@ -1218,13 +1391,14 @@ class SpeakerRecognizer:
         """
         stages = getattr(processor, "_processors", None)
         if not stages:
-            with prof.stage("preprocess.chain"):
+            with prof.stage("chain"):
                 return processor.process(audio)
         result = audio
         for p in stages:
             cls_name = type(p).__name__
-            name = _DEBUG_STAGE_NAMES.get(cls_name, cls_name.lower())
-            with prof.stage(f"preprocess.{name}"):
+            # Leaf name only — the profiler nests it under whatever stage is
+            # open (``preprocess``), so the tree carries the path.
+            with prof.stage(_DEBUG_STAGE_NAMES.get(cls_name, cls_name.lower())):
                 result = p.process(result)
         return result
 
