@@ -33,7 +33,10 @@ export function ServoSection() {
       ]);
       if (sr) setServo(sr);
       if (st?.servos) setServos(st.servos);
-    } catch {}
+    } catch {
+      // Best-effort refresh: keep the last known servo readout rather than
+      // clearing the panel when HAL is mid-restart.
+    }
   }, []);
 
   useEffect(() => {

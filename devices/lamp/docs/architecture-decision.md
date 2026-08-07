@@ -209,9 +209,9 @@ The web UI at `/monitor` provides real-time observability into the lamp's operat
 | `/api/system/info` | GET | CPU load, RAM usage, temp, uptime, version | `/proc/loadavg`, `/proc/meminfo`, `/sys/class/thermal/`, `/proc/uptime` |
 | `/api/system/network` | GET | WiFi SSID, IP, signal, internet status | `iwgetid`, `ip addr`, `ping 8.8.8.8` |
 | `/api/system/dashboard` | GET | Combined status snapshot | OpenClaw + config |
-| `/api/openclaw/status` | GET | OpenClaw WS connection + session state | `openclaw.Service.IsReady()` |
-| `/api/openclaw/events` | GET | SSE stream of real-time workflow events | Event bus (ring buffer + SSE broadcast) |
-| `/api/openclaw/recent` | GET | Last 100 monitor events | Event bus ring buffer |
+| `/api/agent/status` | GET | OpenClaw WS connection + session state | `openclaw.Service.IsReady()` |
+| `/api/agent/events` | GET | SSE stream of real-time workflow events | Event bus (ring buffer + SSE broadcast) |
+| `/api/agent/recent` | GET | Last 100 monitor events | Event bus ring buffer |
 
 ### OpenClaw Event Bus
 

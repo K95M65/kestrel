@@ -359,6 +359,14 @@ func (b *Bootstrap) progressLED(state string) {
 	}
 }
 
+// restoreLED returns a completed transient OTA cue to the user's LED state,
+// or to the ambient resting look when no user state exists.
+func (b *Bootstrap) restoreLED() {
+	if device.Has(resolveDeviceType(), device.CapLight) {
+		hal.RestoreLED()
+	}
+}
+
 // resolveDeviceType returns this device's class for picking devices.<type> in
 // OTA metadata: DEVICE_TYPE env → config.json device_type. Returns "" when
 // unresolved — NO "lamp" fallback (callers skip the device-profile OTA rather
@@ -495,8 +503,12 @@ func (b *Bootstrap) reconcile(ctx context.Context, key string, target domain.OTA
 		return false, err
 	}
 
-	// Brief green flash to confirm success, then stop
+	// Brief green flash to confirm success, then restore the user's chosen
+	// look (or the ambient resting look if none exists). The flash lasts about
+	// 750ms at its preset speed, so wait a full second before restoring.
 	b.progressLED("ota_success")
+	time.Sleep(time.Second)
+	b.restoreLED()
 	slog.Info("updated", "component", "bootstrap", "key", key, "version", targetVersion)
 	b.state.Components[key] = targetVersion
 	return true, nil

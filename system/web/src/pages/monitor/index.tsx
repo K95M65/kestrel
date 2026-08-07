@@ -239,7 +239,10 @@ function NavGroupItem({ entry, section, setSection, closeSidebar, leafHref }: {
   // when it lands elsewhere (e.g. picking "My Voice" from search closes a Device
   // group that was left open). Keyed on `section` only, so manual header toggles
   // — which don't change the section — are preserved.
-  useEffect(() => { setOpen(hasActiveChild); }, [section]); // eslint-disable-line react-hooks/exhaustive-deps
+  // set-state-in-effect is disabled here for the same reason the dep list is
+  // pinned to `section`: `open` must stay MANUALLY toggleable between
+  // navigations, so it cannot be derived from `hasActiveChild` during render.
+  useEffect(() => { setOpen(hasActiveChild); }, [section]); // eslint-disable-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
   return (
     <div>
       <button
@@ -415,7 +418,7 @@ export default function Monitor() {
       return;
     }
     setSectionRaw(resolveSection(area, location.hash, isDebug));
-  }, [location.pathname, location.hash, location.search, area, isDebug, navigate]);
+  }, [location.pathname, location.hash, search, area, isDebug, navigate]);
 
   const sectionLeaf = allNavLeaves().find((n) => n.id === section);
   const sectionLabel = sectionLeaf?.label ?? "Monitor";
@@ -592,7 +595,10 @@ export default function Monitor() {
             .map((ev, i) => ({ ...ev, _seq: i }));
           setEvents(next);
           evtIdRef.current = next.length;
-        } catch {}
+        } catch {
+          // A malformed SSE frame drops that frame only: the stream stays open
+          // and the next full snapshot replaces the event list anyway.
+        }
       },
     },
   );

@@ -669,7 +669,7 @@ Body: {"x": 3, "y": 2, "r": 255, "g": 0, "b": 0}
 **Triển khai**:
 - **Event-driven, không dùng timer cố định.** `wellbeing/SKILL.md` trigger mỗi event `motion.activity` (từ action recognition).
 - Action recognition qua perception-service phân loại hoạt động: `using computer`, `writing`, `reading`, `texting`, `drawing`, `playing controller` (sedentary) vs `drink`, `break`, `celebrate` (reset activities).
-- Mỗi activity logged vào per-user JSONL timeline qua `POST /api/openclaw/wellbeing/log`.
+- Mỗi activity logged vào per-user JSONL timeline qua `POST /api/agent/wellbeing/log`.
 - Mỗi event, skill đọc history gần nhất, tính thời gian từ lần hydration/break reset cuối, nhắc nếu vượt threshold.
 - Per-user tracking: `current_user` từ sensing context tag, stranger dùng chung timeline `"unknown"`.
 - `lamp/resources/openclaw-skills/wellbeing/SKILL.md` — full workflow với threshold logic, dedup rules, và cooldowns.

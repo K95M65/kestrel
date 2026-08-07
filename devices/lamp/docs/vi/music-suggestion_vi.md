@@ -24,7 +24,7 @@ Agent detect mood signal (camera/voice/telegram)
     ↓
 POST /api/mood/log {kind:"signal", ...} → ghi raw signal
     ↓
-GET /api/openclaw/mood-history?last=15 → đọc signal + decision gần đây
+GET /api/agent/mood-history?last=15 → đọc signal + decision gần đây
     ↓
 Agent tổng hợp mood (fuse signal mới + history + decision cũ)
     ↓
@@ -34,7 +34,7 @@ Mood SKILL.md: decision mood thuộc [sad, stressed, tired, excited, happy, bore
     ↓ (yes)
 Follow Music skill "AI-Driven Music Suggestion"
     ↓
-Music skill: GET /api/openclaw/mood-history?kind=decision&last=1 → đọc lại decision mới nhất
+Music skill: GET /api/agent/mood-history?kind=decision&last=1 → đọc lại decision mới nhất
     ↓
 Agent check:
   ├── Audio đang play? (GET /audio/status) → skip nếu playing
@@ -71,7 +71,7 @@ Unknown users (strangers) vẫn được suggest nhạc. Data lưu trong `/root/
 ### Cooldown
 
 - **30 phút** giữa các lần suggestion
-- Agent tự check bằng `GET /api/openclaw/music-suggestion-history?user={name}&last=1`
+- Agent tự check bằng `GET /api/agent/music-suggestion-history?user={name}&last=1`
 - Áp dụng cho cả mood trigger và activity trigger
 
 ---
@@ -101,7 +101,7 @@ Mỗi record:
 |----------|--------|----------|
 | `/api/music-suggestion/log` | POST | Agent ghi music suggestion event |
 | `/api/music-suggestion/status` | POST | Agent update status (accepted/rejected) |
-| `/api/openclaw/music-suggestion-history` | GET | Query history (params: `user`, `date`, `last`) |
+| `/api/agent/music-suggestion-history` | GET | Query history (params: `user`, `date`, `last`) |
 
 ### Retention
 
@@ -145,7 +145,7 @@ Agent: POST /api/music-suggestion/status → status="rejected"
 | `system/skillcontext/mood/mood.go` | Logger mood events |
 | `system/server/sensing/delivery/http/handler.go` | PostSuggestionLog/PostSuggestionStatus: API handlers. Motion.activity sedentary nudge agent follow Music skill |
 | `system/server/openclaw/delivery/sse/handler.go` | SuggestionHistory: GET endpoint |
-| `system/server/server.go` | Routes: /api/music-suggestion/*, /api/openclaw/music-suggestion-history |
+| `system/server/server.go` | Routes: /api/music-suggestion/*, /api/agent/music-suggestion-history |
 
 ### OpenClaw Skills
 
@@ -173,7 +173,7 @@ Agent: POST /api/music-suggestion/status → status="rejected"
 
 ## Dữ liệu AI sử dụng
 
-### Music suggestion history (`GET /api/openclaw/music-suggestion-history`)
+### Music suggestion history (`GET /api/agent/music-suggestion-history`)
 
 | Field | Dùng để |
 |-------|---------|
@@ -217,10 +217,10 @@ Lamp chỉ có 1 speaker chia sẻ giữa TTS và music:
 
 ```bash
 # Suggestion history hôm nay
-curl -s "http://<LAMP_IP>:5000/api/openclaw/music-suggestion-history?user=gray&date=$(date +%Y-%m-%d)&last=50"
+curl -s "http://<LAMP_IP>:5000/api/agent/music-suggestion-history?user=gray&date=$(date +%Y-%m-%d)&last=50"
 
 # Mood history
-curl -s "http://<LAMP_IP>:5000/api/openclaw/mood-history?user=gray&date=$(date +%Y-%m-%d)&last=50"
+curl -s "http://<LAMP_IP>:5000/api/agent/mood-history?user=gray&date=$(date +%Y-%m-%d)&last=50"
 
 # Audio status
 curl -s "http://<LAMP_IP>:5001/audio/status"

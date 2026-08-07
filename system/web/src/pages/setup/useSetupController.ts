@@ -408,6 +408,12 @@ export function useSetupController(mode: SetupMode) {
     const next = order.find((id) => !sectionDone[id]) ?? "tts";
     setActiveSection(next);
     autoScrolledRef.current = true;
+    // `forceHash` and `isLocalDev` are read straight off window.location at
+    // render time, not React state — they are escape hatches that only
+    // suppress the auto-bounce. Listing them would make a hash change re-enter
+    // this navigation effect (it calls navigate()/setActiveSection()), so they
+    // stay out on purpose; the effect always sees the current render's values.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isContinue, llmApiKey, wifiChecking, canEnrollVoice, canEnrollFace, sectionDone, navigate, finishWizard]);
 
   // Wi-Fi scan with retry — kept inline since it's specific to this page.

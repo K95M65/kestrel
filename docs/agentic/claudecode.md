@@ -133,6 +133,21 @@ no python3/websockets dependency) that:
 - queues `message.send` frames that arrive while the child is down and flushes
   them on respawn.
 
+### Security boundary: root, unsandboxed Claude execution
+
+Both the persistent gatewayd child and the Telegram coding hand-off invoke Claude
+with `--dangerously-skip-permissions` as uid 0. `IS_SANDBOX=1` only satisfies the
+Claude CLI's root-mode check; it does **not** sandbox the process. An accepted
+coding request can therefore run tools with root-equivalent access to the device:
+it may read device and agent credentials, change the root filesystem or services,
+call local hardware APIs, and make network requests.
+
+The Telegram `telegram_user_id` allowlist, the gateway WebSocket bearer token, and
+the loopback-only service boundary are the authorization controls for this power.
+Treat adding an allowlisted ID, exposing the bridge, or passing untrusted content
+into the coding flow as granting root-level device control. Do not use this runtime
+where that authority is unacceptable.
+
 Paths, port and token are overridable via `CLAUDECODE_*` env vars
 (`CLAUDECODE_WS_TOKEN`, `CLAUDECODE_PORT`, `CLAUDECODE_HOME`,
 `CLAUDECODE_WORKSPACE`, `CLAUDECODE_ENV_FILE`, `CLAUDECODE_SESSION_FILE`,

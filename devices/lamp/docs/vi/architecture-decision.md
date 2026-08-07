@@ -265,9 +265,9 @@ Web UI tại `/monitor` cung cấp khả năng quan sát real-time hoạt độn
 | `/api/system/info` | GET | CPU load, RAM, nhiệt độ, uptime, version | `/proc/` |
 | `/api/system/network` | GET | WiFi SSID, IP, signal, internet | `iwgetid`, `ping` |
 | `/api/system/dashboard` | GET | Snapshot trạng thái tổng hợp | OpenClaw + config |
-| `/api/openclaw/status` | GET | Trạng thái kết nối OpenClaw WS | `openclaw.Service.IsReady()` |
-| `/api/openclaw/events` | GET | SSE stream events real-time | Event bus |
-| `/api/openclaw/recent` | GET | 100 events gần nhất | Ring buffer |
+| `/api/agent/status` | GET | Trạng thái kết nối OpenClaw WS | `openclaw.Service.IsReady()` |
+| `/api/agent/events` | GET | SSE stream events real-time | Event bus |
+| `/api/agent/recent` | GET | 100 events gần nhất | Ring buffer |
 
 ### OpenClaw Event Bus
 

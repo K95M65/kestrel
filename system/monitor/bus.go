@@ -71,9 +71,10 @@ func (b *Bus) Subscribe() (<-chan domain.MonitorEvent, func()) {
 		b.mu.Lock()
 		delete(b.subs, id)
 		b.mu.Unlock()
-		// drain
-		for range ch {
-		}
+		// Do not close or drain ch here. Push snapshots subscribers under the
+		// mutex and sends after releasing it, so closing can race with a send.
+		// Once removed from subs, this channel has no producers and is collected
+		// after the subscriber releases it.
 	}
 	return ch, unsub
 }

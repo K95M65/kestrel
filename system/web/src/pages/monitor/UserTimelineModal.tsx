@@ -298,6 +298,7 @@ export function UserTimelineModal({ user, onClose }: Props) {
   }, [fetchFile, date]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-open: `load` flips the loading flag before awaiting the timeline files. That is an effect by definition (network I/O on mount and on date change), not derivable state.
     load();
   }, [load]);
 

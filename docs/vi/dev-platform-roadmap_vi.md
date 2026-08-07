@@ -16,7 +16,7 @@ Kế hoạch mở nền tảng thiết bị cho dev bên thứ ba đã sở hữ
 
 | Service | Port | Stack | Bề mặt | Auth hiện tại |
 |---------|------|-------|--------|---------------|
-| OS Server | 5000 | Go / Gin | `/api/sensing/*`, `/api/openclaw/*` (kèm SSE), `/api/guard/*`, `/api/mood/*`, `/api/monitor/*` | Không có, chỉ 127.0.0.1 |
+| OS Server | 5000 | Go / Gin | `/api/sensing/*`, `/api/agent/*` (kèm SSE), `/api/guard/*`, `/api/mood/*`, `/api/monitor/*` | Không có, chỉ 127.0.0.1 |
 | HAL | 5001 | Python / FastAPI | ~80 endpoints: `/servo/*`, `/led/*`, `/camera/*`, `/audio/*`, `/voice/*`, `/face/*`, `/emotion/*`, `/scene/*`, `/display/*`, `/sensing/*`, `/speaker/*` | Không có, chỉ 127.0.0.1 |
 | Buddy | 5002 | Go | `/status`, `/approve`, `/deny`, BLE peripheral | Không có, chỉ 127.0.0.1 |
 | DLBackend | tuỳ deploy | Python / FastAPI | `/api/dl/yoloworld`, `/api/dl/grounding-dino` | Không có |

@@ -2,6 +2,14 @@ import type { DisplayEvent } from "../types";
 import type { ActiveFlowStage, Turn, NodeInfoMap } from "./types";
 import { FLOW_NODES, CHANNEL_FALLBACK_MESSAGE, isChatType } from "./types";
 
+// Flow events arrive as dynamic JSON over SSE: the key set differs per event
+// type and the device nests forwarded payloads under `data` (docs/flow-monitor.md).
+// Typing this `unknown` would force a narrowing dance at ~45 read sites in turn
+// stitching for no safety gain — every read below is already an optional chain
+// with a `??` fallback. One named alias, one documented escape hatch.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type FlowEventDetail = Record<string, any>;
+
 // Known external messaging channel types. Turn types matching these are channel-initiated turns.
 const CHANNEL_TYPES = new Set(["telegram", "discord", "slack", "wechat", "channel"]);
 function isChannelType(type: string): boolean {
@@ -62,7 +70,7 @@ function agentSnapshotURL(path: string): string | null {
 export function cameraSnapshotURLs(events: DisplayEvent[]): string[] {
   const urls = new Set<string>();
   for (const ev of events) {
-    const d = ev.detail as Record<string, any> | undefined;
+    const d = ev.detail as FlowEventDetail | undefined;
     const url = d?.snapshot_url ?? d?.data?.snapshot_url;
     if (typeof url === "string" && url.startsWith("/api/sensing/agent-snapshot/")) {
       urls.add(url);
@@ -115,13 +123,13 @@ export function aggregateEvents(events: DisplayEvent[]): PipelineRow[] {
 
   const flowEventNode = (ev: DisplayEvent): string | undefined => {
     if (ev.type !== "flow_event") return undefined;
-    const d = ev.detail as Record<string, any> | undefined;
+    const d = ev.detail as FlowEventDetail | undefined;
     return d?.node;
   };
 
   const ts = (ev: DisplayEvent) => new Date(ev.time).getTime();
   const deltaText = (ev: DisplayEvent): string => {
-    const d = ev.detail as Record<string, any> | undefined;
+    const d = ev.detail as FlowEventDetail | undefined;
     return (d?.delta ?? d?.text ?? d?.data?.delta ?? d?.data?.text ?? ev.summary ?? "");
   };
 
@@ -163,7 +171,7 @@ export function aggregateEvents(events: DisplayEvent[]): PipelineRow[] {
     // tool name+phase within 1 second.
     const isTool = ev.type === "tool_call" || fnode === "tool_call";
     if (isTool) {
-      const d = ev.detail as Record<string, any> | undefined;
+      const d = ev.detail as FlowEventDetail | undefined;
       const phase = d?.data?.phase ?? d?.phase ?? "";
       const toolName =
         d?.data?.name ?? d?.data?.tool
@@ -248,8 +256,8 @@ export function aggregateEvents(events: DisplayEvent[]): PipelineRow[] {
       continue;
     }
     if (fnode === "error" || fnode === "agent_error") {
-      const errMsg = ((ev.detail as Record<string, any> | undefined)?.error
-        ?? (ev.detail as Record<string, any> | undefined)?.data?.error ?? "") as string;
+      const errMsg = ((ev.detail as FlowEventDetail | undefined)?.error
+        ?? (ev.detail as FlowEventDetail | undefined)?.data?.error ?? "") as string;
       rows.push({ kind: "error", label: "error", detail: errMsg ? String(errMsg).slice(0, 120) : undefined, startMs: ts(ev), endMs: ts(ev), durationMs: 0, chunks: 1, chars: 0 });
       continue;
     }
@@ -278,7 +286,7 @@ export function deriveActiveStage(events: DisplayEvent[]): ActiveFlowStage {
 
 export function extractEventRunId(ev: DisplayEvent): string | undefined {
   if (ev.runId) return ev.runId;
-  const detail = ev.detail as Record<string, any> | undefined;
+  const detail = ev.detail as FlowEventDetail | undefined;
   return detail?.run_id ?? detail?.runId ?? detail?.data?.run_id ?? detail?.data?.runId;
 }
 
@@ -368,7 +376,7 @@ export function refineTurnTypeFromSensingInputs(turn: Turn): void {
     let hasSystemMsg = false;
     for (const ev of turn.events) {
       if (ev.type === "chat_input" || (ev.type === "flow_event" && ev.detail?.node === "chat_input")) {
-        const d = ev.detail as Record<string, any> | undefined;
+        const d = ev.detail as FlowEventDetail | undefined;
         const msg = d?.message ?? d?.data?.message ?? ev.summary ?? "";
         const sender = d?.sender ?? d?.data?.sender ?? "";
         if (sender && sender !== "node-host") hasRealUser = true;
@@ -393,7 +401,7 @@ export function refineTurnTypeFromSensingInputs(turn: Turn): void {
     }
     for (const ev of turn.events) {
       if (ev.type === "chat_input" || (ev.type === "flow_event" && ev.detail?.node === "chat_input")) {
-        const d = ev.detail as Record<string, any> | undefined;
+        const d = ev.detail as FlowEventDetail | undefined;
         const msg = d?.message ?? d?.data?.message ?? ev.summary ?? "";
         const sender = d?.sender ?? d?.data?.sender ?? "";
         // Fallback signal + sub-label parsed from text.
@@ -427,7 +435,7 @@ export function refineTurnTypeFromSensingInputs(turn: Turn): void {
     else if (t === "voice_command") sawVoiceCommand = true;
     else if (t === "voice") sawVoice = true;
     if (ev.type === "sensing_input" || (ev.type === "flow_enter" && ev.detail?.node === "sensing_input")) {
-      const d = ev.detail as Record<string, any> | undefined;
+      const d = ev.detail as FlowEventDetail | undefined;
       const dtype = d?.data?.type ?? d?.type ?? "";
       if (isChatType(dtype)) noteChat(dtype);
       else if (dtype === "voice_command") sawVoiceCommand = true;
@@ -467,14 +475,14 @@ export function groupIntoTurns(events: DisplayEvent[]): Turn[] {
       return { type: "voice", path: "unknown", forceNewTurn: true, boundary: "mic" };
     }
     if (ev.type === "chat_send" || (ev.type === "flow_event" && ev.detail?.node === "chat_send")) {
-      const d = ev.detail as Record<string, any> | undefined;
+      const d = ev.detail as FlowEventDetail | undefined;
       const msg = d?.message ?? d?.data?.message ?? ev.summary ?? "";
       if (/you just woke up/i.test(msg)) {
         return { type: "system", path: "agent", boundary: "chat" as const };
       }
     }
     if (ev.type === "chat_input" || (ev.type === "flow_event" && ev.detail?.node === "chat_input")) {
-      const d = ev.detail as Record<string, any> | undefined;
+      const d = ev.detail as FlowEventDetail | undefined;
       const msg = d?.message ?? d?.data?.message ?? ev.summary ?? "";
       const sender = d?.sender ?? d?.data?.sender ?? "";
       // Skip node-host echo — the device's own chat.send echoed back via session.message.
@@ -536,7 +544,7 @@ export function groupIntoTurns(events: DisplayEvent[]): Turn[] {
       const isTerminalQueued = start.path === "queued";
       const isTerminalDropped = start.path === "dropped";
       const queuedForMs = (() => {
-        const d = ev.detail as Record<string, any> | undefined;
+        const d = ev.detail as FlowEventDetail | undefined;
         const v = d?.data?.queued_for_ms ?? d?.queued_for_ms;
         return typeof v === "number" ? v : undefined;
       })();
@@ -602,13 +610,13 @@ export function groupIntoTurns(events: DisplayEvent[]): Turn[] {
     // Capture queued_for_ms when a sensing_input replay event lands inside the turn
     if (current.queuedForMs === undefined &&
         (ev.type === "sensing_input" || (ev.type === "flow_enter" && ev.detail?.node === "sensing_input"))) {
-      const d = ev.detail as Record<string, any> | undefined;
+      const d = ev.detail as FlowEventDetail | undefined;
       const v = d?.data?.queued_for_ms ?? d?.queued_for_ms;
       if (typeof v === "number") current.queuedForMs = v;
     }
     // Classify unknown turns from chat_input events
     if (current.type === "unknown" && (ev.type === "chat_input" || (ev.type === "flow_event" && ev.detail?.node === "chat_input"))) {
-      const d = ev.detail as Record<string, any> | undefined;
+      const d = ev.detail as FlowEventDetail | undefined;
       const msg = d?.message ?? d?.data?.message ?? ev.summary ?? "";
       const sensType = extractSensingType(msg);
       if (sensType) {
@@ -818,7 +826,7 @@ export function extractNodeInfo(events: DisplayEvent[]): NodeInfoMap {
     if (ev.type === "sensing_input") {
       const m = ev.summary.match(/^\[([^\]]+)\]\s*(.*)/);
       const sType = m?.[1] ?? "";
-      const d = ev.detail as Record<string, any> | undefined;
+      const d = ev.detail as FlowEventDetail | undefined;
       const dtype = d?.type ?? d?.data?.type ?? "";
       // Both chat origins land in the same webchat_input pipeline node — the
       // node is "text typed by the user", not "the browser".
@@ -856,7 +864,7 @@ export function extractNodeInfo(events: DisplayEvent[]): NodeInfoMap {
       info.channel_input.push(`"${msg || CHANNEL_FALLBACK_MESSAGE}"`);
     }
     if (ev.type === "intent_match" || (ev.type === "flow_event" && ev.detail?.node === "intent_match")) {
-      const d = ev.detail as Record<string, any> | undefined;
+      const d = ev.detail as FlowEventDetail | undefined;
       const msg = d?.data?.message ?? d?.message ?? "";
       const tts = d?.data?.tts ?? d?.tts ?? "";
       const rule = d?.data?.rule ?? d?.rule ?? "";
@@ -880,7 +888,7 @@ export function extractNodeInfo(events: DisplayEvent[]): NodeInfoMap {
     }
     if (ev.type === "chat_send" || (ev.type === "flow_event" && ev.detail?.node === "chat_send")) {
       info.intent_check.push("→ agent route");
-      const d = ev.detail as Record<string, any> | undefined;
+      const d = ev.detail as FlowEventDetail | undefined;
       const hasImage = d?.data?.has_image || d?.has_image;
       const imgBytes = Number(d?.data?.image_bytes ?? d?.image_bytes ?? 0);
       const chatMsg = d?.data?.message ?? d?.message ?? "";
@@ -904,7 +912,7 @@ export function extractNodeInfo(events: DisplayEvent[]): NodeInfoMap {
     // Backend strips [snapshot:...] from chat_send text; sensing_input retains the full
     // text so snapshots (🖼 lines) come from here.
     if (ev.type === "sensing_input" || (ev.type === "flow_enter" && ev.detail?.node === "sensing_input")) {
-      const d = ev.detail as Record<string, any> | undefined;
+      const d = ev.detail as FlowEventDetail | undefined;
       const msg = d?.data?.message ?? d?.message ?? ev.summary ?? "";
       if (msg) {
         const snapAllRe = /\[snapshot:\s*([^\]]+)\]/g;
@@ -919,7 +927,7 @@ export function extractNodeInfo(events: DisplayEvent[]): NodeInfoMap {
       }
     }
     if (ev.type === "chat_input" || (ev.type === "flow_event" && ev.detail?.node === "chat_input")) {
-      const d = ev.detail as Record<string, any> | undefined;
+      const d = ev.detail as FlowEventDetail | undefined;
       const msg = d?.message ?? d?.data?.message ?? "";
       const sender = d?.sender ?? d?.data?.sender ?? "";
       if (msg && !info.agent_call.some((l) => l.startsWith("📩"))) {
@@ -927,7 +935,7 @@ export function extractNodeInfo(events: DisplayEvent[]): NodeInfoMap {
       }
     }
     if (ev.type === "tool_call" || (ev.type === "flow_event" && ev.detail?.node === "tool_call")) {
-      const d = ev.detail as Record<string, any> | undefined;
+      const d = ev.detail as FlowEventDetail | undefined;
       const phase = d?.phase ?? d?.data?.phase ?? "";
       // Only show tool start (has args), skip update/result phases
       if (phase !== "start" && phase !== "") continue;
@@ -964,7 +972,7 @@ export function extractNodeInfo(events: DisplayEvent[]): NodeInfoMap {
     }
     // Thinking from chat.history (fallback when streaming too fast)
     if (ev.type === "flow_event" && ev.detail?.node === "agent_thinking") {
-      const d = ev.detail as Record<string, any> | undefined;
+      const d = ev.detail as FlowEventDetail | undefined;
       const text = d?.data?.text ?? d?.text ?? "";
       if (text && !info.agent_thinking.some((l) => l.startsWith("🧠"))) {
         info.agent_thinking.push(`🧠 ${text}`);
@@ -974,7 +982,7 @@ export function extractNodeInfo(events: DisplayEvent[]): NodeInfoMap {
       pushAgentResponse("🚫 [no reply] — agent decided to do nothing");
     }
     if (ev.type === "chat_response" || (ev.type === "flow_event" && ev.detail?.node === "lifecycle_end")) {
-      const d = ev.detail as Record<string, any> | undefined;
+      const d = ev.detail as FlowEventDetail | undefined;
       if (d?.message && !info.agent_response.some((l) => l.startsWith('"'))) {
         info.agent_response.push(`"${d.message}"`);
       }
@@ -984,7 +992,7 @@ export function extractNodeInfo(events: DisplayEvent[]): NodeInfoMap {
       }
     }
     if (ev.type === "tts" || (ev.type === "flow_event" && (ev.detail?.node === "tts_send" || ev.detail?.node === "tts_suppressed"))) {
-      const d = ev.detail as Record<string, any> | undefined;
+      const d = ev.detail as FlowEventDetail | undefined;
       const text = d?.data?.text ?? d?.text ?? "";
       const isSuppressed = ev.type === "flow_event" && d?.node === "tts_suppressed";
       const label = isSuppressed ? "💬" : "🔊";
@@ -1000,7 +1008,7 @@ export function extractNodeInfo(events: DisplayEvent[]): NodeInfoMap {
       if (info.tts_speak.length < 3) info.tts_speak.push("🔇 speaker muted — reply not spoken");
     }
     if (ev.type === "flow_event" && ev.detail?.node === "telegram_alert_broadcast") {
-      const d = ev.detail as Record<string, any> | undefined;
+      const d = ev.detail as FlowEventDetail | undefined;
       const sessions = Number(d?.data?.sessions ?? 0);
       const msg = d?.data?.message ?? "";
       if (sessions) info.tg_alert.push(`📢 broadcast → ${sessions} session${sessions > 1 ? "s" : ""}`);
@@ -1025,7 +1033,7 @@ export function extractNodeInfo(events: DisplayEvent[]): NodeInfoMap {
       }
     }
     if (ev.type === "flow_event" && ev.detail?.node === "token_usage") {
-      const d = ev.detail as Record<string, any> | undefined;
+      const d = ev.detail as FlowEventDetail | undefined;
       const u = d?.data;
       const inTok = Number(u?.input_tokens ?? 0);
       const outTok = Number(u?.output_tokens ?? 0);
@@ -1041,12 +1049,12 @@ export function extractNodeInfo(events: DisplayEvent[]): NodeInfoMap {
       if (billed) pushLLMTokens(`billed: ${fmtToken(billed)}`);
     }
     if (ev.type === "flow_event" && ev.detail?.node === "lifecycle_end") {
-      const d = ev.detail as Record<string, any> | undefined;
+      const d = ev.detail as FlowEventDetail | undefined;
       const err = d?.data?.error;
       if (err) info.agent_response.push(`❌ ${err}`);
     }
     if (ev.type === "hw_call" || (ev.type === "flow_event" && ev.detail?.node === "hw_call")) {
-      const d = ev.detail as Record<string, any> | undefined;
+      const d = ev.detail as FlowEventDetail | undefined;
       const path = d?.data?.path ?? d?.path ?? "";
       const args = d?.data?.args ?? d?.args ?? "";
       if (path) pushUnique(info.tool_exec, `⚙ HW ${path} ${args}`);
@@ -1055,13 +1063,13 @@ export function extractNodeInfo(events: DisplayEvent[]): NodeInfoMap {
       pushAgentResponse("⚙ HW-only reply (no spoken text)");
     }
     if (ev.type === "intent_match" || (ev.type === "flow_event" && ev.detail?.node === "intent_match")) {
-      const d = ev.detail as Record<string, any> | undefined;
+      const d = ev.detail as FlowEventDetail | undefined;
       const tts = d?.data?.tts ?? d?.tts ?? "";
       if (tts && info.tts_speak.length < 3) info.tts_speak.push(`💡 ${tts}`);
     }
     // HW marker events: extract path+body from either flow_event (detail.data) or direct event (summary = "/path body")
     const parseHWEvent = (ev: DisplayEvent, fallbackPath: string): { path: string; body: string } => {
-      const d = ev.detail as Record<string, any> | undefined;
+      const d = ev.detail as FlowEventDetail | undefined;
       if (d?.data?.path && d?.data?.args) return { path: d.data.path, body: d.data.args };
       const s = ev.summary ?? "";
       const i = s.indexOf(" ");
@@ -1136,7 +1144,7 @@ export function extractNodeInfo(events: DisplayEvent[]): NodeInfoMap {
       pushUnique(info.os_gate, "🔊 → TTS");
     }
     if (ev.type === "flow_event" && ev.detail?.node === "tts_suppressed") {
-      const d = ev.detail as Record<string, any> | undefined;
+      const d = ev.detail as FlowEventDetail | undefined;
       const reason = d?.data?.reason ?? "suppressed";
       pushUnique(info.os_gate, `🔇 → TTS suppressed (${reason})`);
     }
@@ -1217,7 +1225,7 @@ export function extractNodeInfo(events: DisplayEvent[]): NodeInfoMap {
     }
     const isToolCall = ev.type === "tool_call" || (ev.type === "flow_event" && ev.detail?.node === "tool_call");
     if (isToolCall) {
-      const d = ev.detail as Record<string, any> | undefined;
+      const d = ev.detail as FlowEventDetail | undefined;
       const phase = d?.data?.phase ?? d?.phase ?? "";
       if (phase === "start") {
         if (!nFirstToolTs) nFirstToolTs = ts;
@@ -1318,7 +1326,7 @@ export function turnDurationMs(turn: Turn): number {
 export function turnBilledTokens(turn: Turn): number {
   for (const ev of turn.events) {
     if (ev.type === "flow_event" && ev.detail?.node === "token_usage") {
-      const u = (ev.detail as Record<string, any>)?.data;
+      const u = (ev.detail as FlowEventDetail)?.data;
       const inTok = Number(u?.input_tokens ?? 0);
       const outTok = Number(u?.output_tokens ?? 0);
       const cacheRead = Number(u?.cache_read_tokens ?? 0);
@@ -1351,7 +1359,7 @@ export function turnIO(turn: Turn): {
     const sameRun = !turnRunId || !evRunId || evRunId === turnRunId;
     if (ev.type === "sensing_input" || (ev.type === "flow_enter" && ev.detail?.node === "sensing_input")
         || (ev.type === "flow_event" && ev.detail?.node === "sensing_input")) {
-      const d = ev.detail as Record<string, any> | undefined;
+      const d = ev.detail as FlowEventDetail | undefined;
       const dataMsg = d?.data?.message ?? d?.message;
       if (!input) {
         const m = ev.summary.match(/^\[([^\]]+)\]\s*(.*)/);
@@ -1391,7 +1399,7 @@ export function turnIO(turn: Turn): {
       }
     }
     if (ev.type === "chat_input" || (ev.type === "flow_event" && ev.detail?.node === "chat_input")) {
-      const d = ev.detail as Record<string, any> | undefined;
+      const d = ev.detail as FlowEventDetail | undefined;
       const fullMsg = d?.message ?? d?.data?.message;
       const sender = d?.sender ?? d?.data?.sender;
       const msg = fullMsg || parseChannelSummary(ev.summary);
@@ -1405,11 +1413,11 @@ export function turnIO(turn: Turn): {
       input = turn.type.replace("ambient:", "") + " behavior";
     }
     if (!input && (ev.type === "schedule_trigger" || ev.type === "cron_fire")) {
-      const d = ev.detail as Record<string, any> | undefined;
+      const d = ev.detail as FlowEventDetail | undefined;
       input = d?.name ?? d?.data?.name ?? ev.summary ?? "scheduled task";
     }
     if (ev.type === "chat_send" || (ev.type === "flow_event" && ev.detail?.node === "chat_send")) {
-      const d = ev.detail as Record<string, any> | undefined;
+      const d = ev.detail as FlowEventDetail | undefined;
       const raw = (d?.data?.message ?? d?.message ?? ev.summary ?? "").trim();
       // Extract all snapshot paths → convert to API URLs.
       // Accepts sensing_*.jpg (presence), emotion_*.jpg (FER), motion_*.jpg (activity) across all 4 dirs.
@@ -1427,7 +1435,7 @@ export function turnIO(turn: Turn): {
       }
     }
     if (sameRun && (ev.type === "intent_match" || (ev.type === "flow_event" && ev.detail?.node === "intent_match"))) {
-      const d = ev.detail as Record<string, any> | undefined;
+      const d = ev.detail as FlowEventDetail | undefined;
       output = d?.data?.tts ?? d?.tts ?? ev.summary ?? output;
       outputFromIntent = true;
       const actions: string[] = d?.data?.actions ?? d?.actions ?? [];
@@ -1439,7 +1447,7 @@ export function turnIO(turn: Turn): {
       }
     }
     if (!outputFromIntent && sameRun && (ev.type === "tts" || (ev.type === "flow_event" && (ev.detail?.node === "tts_send" || ev.detail?.node === "tts_suppressed")))) {
-      const d = ev.detail as Record<string, any> | undefined;
+      const d = ev.detail as FlowEventDetail | undefined;
       // Prefer full_text: tts_send.text is only the remainder when sentence 1
       // was streamed mid-turn (logged separately as tts_stream_send, which the
       // web never reads). full_text carries the complete reply. Fall back to
@@ -1447,7 +1455,7 @@ export function turnIO(turn: Turn): {
       output = d?.data?.full_text ?? d?.full_text ?? d?.data?.text ?? d?.text ?? ev.summary ?? output;
     }
     if (!output && sameRun && ev.type === "chat_response" && ev.state === "final") {
-      const d = ev.detail as Record<string, any> | undefined;
+      const d = ev.detail as FlowEventDetail | undefined;
       output = d?.message ?? ev.summary ?? "";
     }
     // Slash command success: state:"final" with payload but no lifecycle.
@@ -1457,7 +1465,7 @@ export function turnIO(turn: Turn): {
     // fields are kind/node/ts/seq/trace_id), so read d.data.message first
     // and fall back to d.message for any flat shape variant.
     if (!output && sameRun && ev.type === "flow_event" && ev.detail?.node === "chat_final_ok") {
-      const d = ev.detail as Record<string, any> | undefined;
+      const d = ev.detail as FlowEventDetail | undefined;
       output = d?.data?.message ?? d?.message ?? "";
     }
     // Detect no_reply from flow event (persisted in JSONL, unlike SSE chat_response)
@@ -1468,7 +1476,7 @@ export function turnIO(turn: Turn): {
       output = ev.summary || "done";
     }
     if (ev.type === "tool_call" || (ev.type === "flow_event" && ev.detail?.node === "tool_call")) {
-      const d = ev.detail as Record<string, any> | undefined;
+      const d = ev.detail as FlowEventDetail | undefined;
       const args = d?.args ?? d?.data?.args ?? "";
       if (args) {
         const argsStr = typeof args === "string" ? args : JSON.stringify(args);
@@ -1494,7 +1502,7 @@ export function turnIO(turn: Turn): {
 export function turnCurrentUser(turn: Turn): string | null {
   const re = /\[context:\s*current_user=([^\]]+)\]/i;
   for (const ev of turn.events) {
-    const d = ev.detail as Record<string, any> | undefined;
+    const d = ev.detail as FlowEventDetail | undefined;
     const candidates: unknown[] = [
       d?.message,
       d?.data?.message,
@@ -1520,7 +1528,7 @@ export function turnTokenStats(turn: Turn): { inTok: number; outTok: number; cac
 
   for (const ev of turn.events) {
     if (ev.type === "flow_event" && ev.detail?.node === "token_usage") {
-      const d = ev.detail as Record<string, any> | undefined;
+      const d = ev.detail as FlowEventDetail | undefined;
       const u = d?.data ?? {};
       inTok = Math.max(inTok, Number(u.input_tokens ?? 0));
       outTok = Math.max(outTok, Number(u.output_tokens ?? 0));
@@ -1531,7 +1539,7 @@ export function turnTokenStats(turn: Turn): { inTok: number; outTok: number; cac
     }
 
     if (ev.type === "lifecycle" && ev.phase === "end" && ev.detail) {
-      const d = ev.detail as Record<string, any>;
+      const d = ev.detail as FlowEventDetail;
       inTok = Math.max(inTok, Number(d.inputTokens ?? 0));
       outTok = Math.max(outTok, Number(d.outputTokens ?? 0));
       cacheRead = Math.max(cacheRead, Number(d.cacheRead ?? 0));

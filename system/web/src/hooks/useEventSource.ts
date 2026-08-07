@@ -16,7 +16,14 @@ export function useEventSource(
 ) {
   const { enabled = true } = opts;
   const handlersRef = useRef(handlers);
-  handlersRef.current = handlers;
+  // Keep the latest handlers in a ref so the stream effect below never
+  // re-opens the EventSource when a caller passes fresh inline callbacks.
+  // Written in an effect (not during render) — refs must not be mutated while
+  // rendering. This effect is declared FIRST, so it commits before the stream
+  // effect runs and `open()` always reads the current handlers.
+  useEffect(() => {
+    handlersRef.current = handlers;
+  });
 
   useEffect(() => {
     if (!enabled || !url) return;

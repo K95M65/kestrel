@@ -620,7 +620,7 @@ cmd := exec.CommandContext(ctx, "sh", "-c", body.Cmd)
 
 - `/api/system/exec` is remote command execution if reachable without strong auth.
 - `/api/system/shell` is interactive shell over WebSocket if reachable.
-- `/api/openclaw/config-json` may expose OpenClaw gateway token and config secrets.
+- `/api/agent/config-json` may expose OpenClaw gateway token and config secrets.
 
 Even if intended for local monitor/dev UI, these should not be reachable from arbitrary LAN clients.
 
@@ -691,7 +691,7 @@ For this product, Strategy A or B is safer. If the requirement is “only Go and
 From LAN:
 
 ```sh
-curl -i http://<device-ip>/api/openclaw/config-json
+curl -i http://<device-ip>/api/agent/config-json
 curl -i -X POST http://<device-ip>/api/system/exec -H 'Content-Type: application/json' -d '{"cmd":"id"}'
 ```
 
@@ -704,7 +704,7 @@ HTTP/1.1 403 Forbidden
 From local device:
 
 ```sh
-curl -i http://127.0.0.1:5000/api/openclaw/config-json
+curl -i http://127.0.0.1:5000/api/agent/config-json
 ```
 
 Expected: works only if still needed locally.
@@ -1116,7 +1116,7 @@ From a separate LAN machine:
 curl -i http://<device-ip>:5001/health
 curl -i http://<device-ip>/hw/health
 curl -i http://<device-ip>/gw/
-curl -i http://<device-ip>/api/openclaw/config-json
+curl -i http://<device-ip>/api/agent/config-json
 curl -i -X POST http://<device-ip>/api/system/exec \
   -H 'Content-Type: application/json' \
   -d '{"cmd":"id"}'
@@ -1142,7 +1142,7 @@ Document baseline status codes.
 2. Restrict dangerous Lamp endpoints:
    - `/api/system/exec`
    - `/api/system/shell`
-   - `/api/openclaw/config-json`
+   - `/api/agent/config-json`
 3. Remove wildcard CORS.
 
 ### Phase 3 — Harden DL backend
@@ -1197,7 +1197,7 @@ if [ "$DEVICE_HOST" != "127.0.0.1" ] && [ "$DEVICE_HOST" != "localhost" ]; then
   check_forbidden "HAL direct external" "http://$DEVICE_HOST:5001/health"
   check_forbidden "HAL nginx /hw external" "http://$DEVICE_HOST/hw/health"
   check_forbidden "OpenClaw /gw external" "http://$DEVICE_HOST/gw/"
-  check_forbidden "OpenClaw config-json external" "http://$DEVICE_HOST/api/openclaw/config-json"
+  check_forbidden "OpenClaw config-json external" "http://$DEVICE_HOST/api/agent/config-json"
 fi
 ```
 
@@ -1221,7 +1221,7 @@ After remediation, this should be true:
 | `/gw/*` via nginx | Allowed only if needed | Denied 403 | Avoid exposing agent control |
 | `/api/system/exec` | Local-only or disabled | Denied 403 | Prefer disabled in production |
 | `/api/system/shell` | Local-only or disabled | Denied 403 | Prefer disabled in production |
-| `/api/openclaw/config-json` | Local-only | Denied 403 | Can leak tokens/config |
+| `/api/agent/config-json` | Local-only | Denied 403 | Can leak tokens/config |
 | DL backend `:8001` | Allowed | Requires `DL_API_KEY` or not reachable | Default bind loopback |
 | Lamp regular UI `/api/*` | Allowed | Allowed only for intended UI/setup APIs | No wildcard CORS |
 

@@ -29,9 +29,10 @@ directly; skills are the device's own abilities through the HAL, tools are exter
 **HAL — Capabilities** — the frozen, versioned interface, 12 capabilities: `audio`, `vision`,
 `sensing`, `presence`, `motion`, `light`, `display`, `expression`, `media`, `connectivity`,
 `companion`, `system`. Skills call capabilities (`motion.move`), never hardware models, so one
-skill runs on any body that declares the capability — Lamp's servo arm and the Unitree Go2-W's
-wheels both serve `motion`. A device's `DEVICE.md` declares which it has; the runtime mounts
-only those. The HAL also hosts the **safety gate** (`hal/safety`): `SAFETY.md` bounds —
+skill runs on any supported body that implements the capability — for example, Lamp's servo
+arm serves `motion`; Unitree Go2-W remains a declaration-only reference until its port exists.
+A device's `DEVICE.md` declares which it has; the runtime mounts only those. The HAL also hosts
+the **safety gate** (`hal/safety`): `SAFETY.md` bounds —
 e-stop, motion limits, brightness, quiet hours — enforced deterministically below the brain,
 never by the LLM.
 *(`devices/contract/` + `hal` — see [hal.md](hal.md))*

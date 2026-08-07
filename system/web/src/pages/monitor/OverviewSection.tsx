@@ -35,7 +35,8 @@ function useEmotionPresets() {
   return { emotions, colors };
 }
 import type { SystemInfo, NetworkInfo, HWHealth, OCStatus, PresenceInfo, VoiceStatus, ServoState, DisplayState, AudioVolume, LEDColor, SceneInfo } from "./types";
-import { StatusDot, HWBadge, SignalBars, formatUptime, formatAgo, useCountUp, Skeleton, SkeletonRows, SoftwareUpdateButton, StatRow, StatusBadge, STATUS_TONE, CardLabel } from "./components";
+import { StatusDot, HWBadge, SignalBars, Skeleton, SkeletonRows, SoftwareUpdateButton, StatRow, StatusBadge, STATUS_TONE, CardLabel } from "./components";
+import { formatUptime, formatAgo, useCountUp } from "./utils";
 import { BuddyCard } from "./BuddyCard";
 
 export function OverviewSection({
@@ -117,6 +118,7 @@ export function OverviewSection({
   // Sync from server when not dragging
   useEffect(() => {
     if (!draggingVolume.current && audio?.volume != null) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- the slider is an uncontrolled-while-dragging input: server volume may only overwrite it BETWEEN drags. Deriving it during render would yank the handle out from under the operator's finger mid-drag.
       setLocalVolume(audio.volume);
     }
   }, [audio?.volume]);
@@ -714,7 +716,10 @@ function MicLevelBar({ muted, onPlayback }: { muted: boolean; onPlayback?: (tts:
   // CHANGE (ref-compared) so 10Hz frames never re-render the Audio card. Ref
   // for the callback keeps the once-mounted SSE effect free of stale closures.
   const onPlaybackRef = useRef(onPlayback);
-  onPlaybackRef.current = onPlayback;
+  // Keep the ref current from an effect rather than during render: the ref is
+  // only ever read from the async SSE handler, so a post-commit write is
+  // equivalent and keeps render side-effect free.
+  useEffect(() => { onPlaybackRef.current = onPlayback; }, [onPlayback]);
   const lastPlaybackRef = useRef<string>("");
 
   useEffect(() => {

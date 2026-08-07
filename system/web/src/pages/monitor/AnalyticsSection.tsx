@@ -76,14 +76,16 @@ function vColor(i: number) {
 
 export function AnalyticsSection() {
   const [preset, setPreset] = useState<Preset>("7d");
-  const [customFrom, setCustomFrom] = useState(fmtDate(new Date(Date.now() - 7 * 86400000)));
-  const [customTo, setCustomTo] = useState(fmtDate(new Date()));
+  // Lazy initializers: the clock is read once on mount, not on every render.
+  const [customFrom, setCustomFrom] = useState(() => fmtDate(new Date(Date.now() - 7 * 86400000)));
+  const [customTo, setCustomTo] = useState(() => fmtDate(new Date()));
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(false);
 
   const dateRange = useMemo(() => {
     if (preset === "custom") return { from: customFrom, to: customTo };
     const days = preset === "7d" ? 7 : preset === "14d" ? 14 : 30;
+    // eslint-disable-next-line react-hooks/purity -- a relative preset ("last 7d") must resolve against the clock at the moment the preset changes. Freezing "now" into state would pin the window to whenever the tab was opened, so a dashboard left open overnight would keep querying yesterday's range.
     return { from: fmtDate(new Date(Date.now() - days * 86400000)), to: fmtDate(new Date()) };
   }, [preset, customFrom, customTo]);
 
@@ -100,8 +102,10 @@ export function AnalyticsSection() {
   useEffect(() => { fetchAnalytics(); }, [fetchAnalytics]);
 
   const dates = analytics?.dates ?? [];
-  const allVersions = analytics?.versions ?? [];
-  const allRows = analytics?.rows ?? [];
+  // Memoized so the empty-array fallbacks keep a stable identity — otherwise the
+  // memos below that depend on them would recompute on every render.
+  const allVersions = useMemo(() => analytics?.versions ?? [], [analytics]);
+  const allRows = useMemo(() => analytics?.rows ?? [], [analytics]);
   const labels = dates.map((d) => d.slice(5));
 
   // Cap to the 10 most recent versions — old versions clutter the legend and

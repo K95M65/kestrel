@@ -86,6 +86,10 @@ rớt thật thì *không* còn default route nào cả và `PrimaryInterface()`
 | GET | `/api/guard` | Kiểm tra trạng thái guard mode (trả về `{"guard_mode": true/false}`) |
 | POST | `/api/guard/alert` | Gửi cảnh báo thủ công đến tất cả chat session OpenClaw |
 
+Mọi guard endpoint yêu cầu xác thực quản trị với caller từ mạng. Caller nội bộ
+qua strict loopback, gồm HAL và agent runtime, vẫn được phép để guard mode nội
+bộ tiếp tục hoạt động.
+
 **Request body cảnh báo:**
 ```json
 {
@@ -143,9 +147,9 @@ Config field: `guard_mode` trong `config/config.json` (bool, mặc định `fals
 
 | Method | Endpoint | Mô tả |
 |--------|----------|-------|
-| GET | `/api/openclaw/status` | Trạng thái kết nối WS; gồm `uptime` (uptime WS phía OS server) và `agentUptime` (uptime tiến trình OpenClaw, không reset khi OS server restart) |
-| GET | `/api/openclaw/events` | SSE stream events real-time |
-| GET | `/api/openclaw/recent` | 100 events gần nhất (ring buffer) |
+| GET | `/api/agent/status` | Trạng thái kết nối WS; gồm `uptime` (uptime WS phía OS server) và `agentUptime` (uptime tiến trình OpenClaw, không reset khi OS server restart) |
+| GET | `/api/agent/events` | SSE stream events real-time |
+| GET | `/api/agent/recent` | 100 events gần nhất (ring buffer) |
 
 ---
 
@@ -298,7 +302,7 @@ Cần sensing có camera (InsightFace). Mặc định ảnh người đã đăng
 |--------|----------|-------|
 | GET | `/user/info?name=X` | Metadata user: `name`, `is_friend`, `telegram_id`, `telegram_username`. Mặc định `"unknown"` nếu thiếu name. Tự tạo folder. |
 
-> Wellbeing activity history giờ nằm trên OS server HTTP API (port 5000). Xem `POST /api/wellbeing/log` và `GET /api/openclaw/wellbeing-history` — entries ghi JSONL tại `/root/local/users/{user}/wellbeing/YYYY-MM-DD.jsonl` với schema `{ts, seq, hour, action, notes}` (action ∈ `drink`/`break`/`sedentary`/`emotional`). HAL không còn host endpoint wellbeing.
+> Wellbeing activity history giờ nằm trên OS server HTTP API (port 5000). Xem `POST /api/wellbeing/log` và `GET /api/agent/wellbeing-history` — entries ghi JSONL tại `/root/local/users/{user}/wellbeing/YYYY-MM-DD.jsonl` với schema `{ts, seq, hour, action, notes}` (action ∈ `drink`/`break`/`sedentary`/`emotional`). HAL không còn host endpoint wellbeing.
 
 ### Display (GC9A01 1.28" LCD tròn)
 
@@ -350,6 +354,15 @@ HAL (Python): FastAPI standard JSON responses.
    - Start ambient behaviors
    - Đặt volume loa theo `startup_volume` của thiết bị (front matter DEVICE.md, mặc định 100)
 4. Nếu chưa setup: chờ `POST /api/device/setup`
+
+## Logging
+
+Khi có cấu hình `GELF_URL`, OS Server gửi log từ mức INFO trở lên tới collector tập
+trung bằng một worker với queue giới hạn 256 record. Logging không block request path
+và không tạo goroutine theo từng record: khi collector chậm/không hoạt động và queue
+đầy, GELF record mới bị drop (có stderr notice rate-limit); log console và rotating
+file cục bộ vẫn tiếp tục. Khi shutdown, worker flush record trong queue tối đa năm
+giây trước khi hủy delivery còn lại.
 
 ## Local Intent Matching
 

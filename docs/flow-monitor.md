@@ -392,7 +392,7 @@ The agent session auto-compacts when context tokens cross ~80k. Every compaction
 
 **UI:** Flow Monitor header exposes a `📋 Summary` button. Click → fetch + render modal showing the latest compaction record: timestamp, `tokensBefore`, `summaryChars`, `compactionCount`, `readFiles` fed into the compaction prompt, and the full `summary` text.
 
-**Endpoint:** `GET /api/openclaw/compaction-latest?session=<key>` (default session key `agent:main:main`). Returns:
+**Endpoint:** `GET /api/agent/compaction-latest?session=<key>` (default session key `agent:main:main`). Returns:
 
 ```json
 {

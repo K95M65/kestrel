@@ -101,7 +101,7 @@ Log 2 loại event vào `/root/local/mood_YYYY-MM-DD.jsonl`:
 
 **Query API:**
 ```bash
-curl -s "http://127.0.0.1:5000/api/openclaw/mood-history?date=$(date +%Y-%m-%d)&last=100"
+curl -s "http://127.0.0.1:5000/api/agent/mood-history?date=$(date +%Y-%m-%d)&last=100"
 ```
 
 **Vấn đề:** Data thu thập được nhưng **không có component nào đọc lại để adjust timing hay personalize gợi ý**.

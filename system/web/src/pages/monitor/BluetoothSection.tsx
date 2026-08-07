@@ -47,6 +47,15 @@ function deviceLabel(d: { mac: string; name: string | null }): string {
   return d.name && d.name.trim() ? d.name : d.mac;
 }
 
+// A caught value is `unknown`: it may be an Error thrown here, a TypeError from
+// fetch, or a DOMException (AbortError). Read the two fields we care about
+// defensively instead of asserting a concrete class.
+type CaughtError = { name?: string; message?: string } | undefined;
+
+function errMessage(e: unknown, fallback: string): string {
+  return (e as CaughtError)?.message || fallback;
+}
+
 export function BluetoothSection() {
   const [status, setStatus] = useState<BTStatus | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
@@ -72,7 +81,7 @@ export function BluetoothSection() {
       setStatus(j);
       setStatusError(null);
     } catch (e) {
-      if ((e as any)?.name !== "AbortError") {
+      if ((e as CaughtError)?.name !== "AbortError") {
         setStatusError("Failed to fetch Bluetooth status");
       }
     }
@@ -92,7 +101,10 @@ export function BluetoothSection() {
         const j = await r.json();
         setDiscovered(j.devices || []);
         setScanning(!!j.scanning);
-      } catch {}
+      } catch {
+        // Best-effort poll: a failed tick keeps the last known scan results and
+        // retries on the next 2s interval rather than blanking the list.
+      }
     };
     tick();
     const id = setInterval(tick, 2000);
@@ -110,8 +122,8 @@ export function BluetoothSection() {
       const r = await fetch(`${HW}/bluetooth/scan/start`, { method: "POST" });
       if (!r.ok) throw new Error(await r.text());
       setScanning(true);
-    } catch (e: any) {
-      setPairError(e?.message || "Failed to start scan");
+    } catch (e) {
+      setPairError(errMessage(e, "Failed to start scan"));
     }
   };
 
@@ -130,8 +142,8 @@ export function BluetoothSection() {
       }
       setPairOpen(false);
       await refresh();
-    } catch (e: any) {
-      setPairError(e?.message || "Pairing failed");
+    } catch (e) {
+      setPairError(errMessage(e, "Pairing failed"));
     } finally {
       setPairingMac(null);
     }
@@ -151,8 +163,8 @@ export function BluetoothSection() {
         throw new Error(err.detail || "Failed to switch audio route");
       }
       await refresh();
-    } catch (e: any) {
-      setActionError(e?.message || "Failed to switch audio route");
+    } catch (e) {
+      setActionError(errMessage(e, "Failed to switch audio route"));
     } finally {
       setBusyMac(null);
     }
@@ -172,8 +184,8 @@ export function BluetoothSection() {
         throw new Error(err.detail || "Failed to forget device");
       }
       await refresh();
-    } catch (e: any) {
-      setActionError(e?.message || "Failed to forget device");
+    } catch (e) {
+      setActionError(errMessage(e, "Failed to forget device"));
     } finally {
       setBusyMac(null);
       setForgetConfirm(null);

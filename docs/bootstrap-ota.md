@@ -273,6 +273,12 @@ Tracks last known installed version per component:
 }
 ```
 
+State saves are atomic: bootstrap writes and syncs a temporary file in the same
+directory before renaming it into place. If an older state file is malformed
+(for example, after an interrupted legacy write), bootstrap preserves it as
+`state.json.corrupt-<timestamp>`, logs a warning, and resumes with empty state
+instead of failing to start OTA polling.
+
 ### Core Loop (`bootstrap/bootstrap.go`)
 
 ```
@@ -333,7 +339,7 @@ Bootstrap uses `lib/hal` to show update status on LEDs. See [status-led.md](../d
 | Phase | LED |
 |-------|-----|
 | Downloading + installing | Orange breathing `(255, 140, 0)` |
-| Success | Green flash `(0, 255, 80)` |
+| Success | Green flash `(0, 255, 80)`, then restore the user-selected LED look or the ambient resting look when none exists |
 | Failure | Red pulse `(255, 30, 30)` |
 
 ### Version Detection Per Component
