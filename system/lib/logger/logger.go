@@ -247,6 +247,7 @@ func (s *gelfSender) send(body []byte) {
 }
 
 func (s *gelfSender) close() {
+	defer s.cancel()
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
