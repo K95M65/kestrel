@@ -16,11 +16,12 @@ one place.
 # width ≥ the camera width for a no-op.
 VISION_MAX_WIDTH = 640
 
-# Fast loop target FPS — tracker update on Pi runs ~15-25ms/frame. Bus writes
-# are decoupled (the follow worker owns the ~33 Hz write cadence), so loop fps
-# no longer affects click noise; it only sets how often the goal/velocity
-# estimate refreshes. 15 gives finer velocity estimates and faster reaction on
-# quick targets at ~+50% ViT CPU (~20ms × 15 = 0.3 core).
+# Fast loop target FPS — tracker update on Pi runs ~15-25ms/frame. Servo
+# commands are decoupled: the follower wakes at ~33 Hz and coalesces tiny
+# setpoint changes, so loop fps no longer directly sets bus-write/click rate;
+# it only sets how often the goal/velocity estimate refreshes. 15 gives finer
+# velocity estimates and faster reaction on quick targets at ~+50% ViT CPU
+# (~20ms × 15 = 0.3 core).
 FAST_LOOP_FPS = 15
 
 # Hardware velocity limit for tracking (Feetech STS3215 Goal_Velocity register,
@@ -103,11 +104,19 @@ MISS_COAST_FRAMES = 6
 # stabilises after a move. Prevents servo shake → fake MOVE → immediate re-fire loop.
 SERVO_COOLDOWN_S = 0.10
 
-# Servo-worker tick period (dt) used by the SmoothDamp follower — one bus write
-# per tick. Spaced so the motor has time between commands to glide smoothly to
-# each intermediate point instead of getting retargeted before it settles
-# (which produced the click train).
+# Servo-worker wake interval. SmoothDamp uses measured monotonic elapsed time;
+# commands smaller than SERVO_COMMAND_MIN_DELTA are coalesced, so a wake does
+# not necessarily produce a bus write.
 SERVO_SUBSTEP_SLEEP = 0.030
+# Clamp a delayed worker iteration so a USB/serial stall cannot be turned into
+# one oversized SmoothDamp step when the loop resumes. 60 ms caps one resumed
+# command at two nominal 30 ms ticks; normal operation uses measured monotonic
+# time, not SERVO_SUBSTEP_SLEEP.
+SERVO_SUBSTEP_MAX_DT_S = 0.060
+# Coalesce only very small normalized setpoint changes. Keep this below the
+# near-centre correction size so the follower retains fine control instead of
+# suppressing genuine movement around the dead zone.
+SERVO_COMMAND_MIN_DELTA = 0.08
 
 # --- SmoothDamp follower (cinematic ease-in/ease-out) ---
 # The servo worker used to step a FIXED number of degrees toward the goal each
@@ -117,7 +126,8 @@ SERVO_SUBSTEP_SLEEP = 0.030
 # Gems 4 / Unity's Mathf.SmoothDamp) is a critically-damped follower: it carries
 # an internal per-joint velocity so every move accelerates smoothly and eases out
 # into the target, and when a fresh goal arrives mid-move the velocity carries
-# over (no restart jerk). Same one-write-per-tick cadence → no extra click/buzz.
+# over (no restart jerk). Coalesced commands avoid redundant click/buzz from
+# tiny intermediate setpoints.
 # SMOOTH_TIME = approximate seconds to reach the target: higher = smoother but
 # laggier; tune on-device. MAX_SPEED_DPS caps peak pan speed (deg/s) so a big
 # offset can't whip the camera and lose ViT lock (the hardware Goal_Velocity is
