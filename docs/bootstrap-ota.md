@@ -273,6 +273,12 @@ Tracks last known installed version per component:
 }
 ```
 
+State saves are atomic: bootstrap writes and syncs a temporary file in the same
+directory before renaming it into place. If an older state file is malformed
+(for example, after an interrupted legacy write), bootstrap preserves it as
+`state.json.corrupt-<timestamp>`, logs a warning, and resumes with empty state
+instead of failing to start OTA polling.
+
 ### Core Loop (`bootstrap/bootstrap.go`)
 
 ```

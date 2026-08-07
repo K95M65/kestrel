@@ -270,6 +270,11 @@ Lưu version đã cài của mỗi thành phần:
 }
 ```
 
+Việc lưu state là atomic: bootstrap ghi và sync file tạm trong cùng thư mục rồi
+mới rename vào vị trí chính thức. Nếu state cũ bị lỗi định dạng (ví dụ do lần ghi
+legacy bị gián đoạn), bootstrap giữ lại thành `state.json.corrupt-<timestamp>`,
+log cảnh báo và tiếp tục với state rỗng thay vì không khởi động OTA polling.
+
 ### Luồng xử lý chính (`bootstrap/bootstrap.go`)
 
 ```
