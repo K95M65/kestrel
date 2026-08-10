@@ -61,20 +61,29 @@ export function FlowDiagram({
     return () => el.removeEventListener("wheel", handler);
   }, []);
 
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (e.button !== 0) return;
+  // Pointer events cover mouse and touch. The old mouse-only handlers made
+  // dragging work on desktop but not on a phone's touch screen.
+  const handlePointerDown = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
+    if (!e.isPrimary || (e.pointerType === "mouse" && e.button !== 0)) return;
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
     setDragging(true);
     dragStart.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
   }, [pan]);
 
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!dragging) return;
+  const handlePointerMove = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
+    if (!dragging || !e.isPrimary) return;
     const dx = e.clientX - dragStart.current.x;
     const dy = e.clientY - dragStart.current.y;
     setPan({ x: dragStart.current.panX + dx / zoom, y: dragStart.current.panY + dy / zoom });
   }, [dragging, zoom]);
 
-  const handleMouseUp = useCallback(() => setDragging(false), []);
+  const handlePointerEnd = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    setDragging(false);
+  }, []);
 
   // Setters from useState are stable, so listing them keeps the callback
   // identity unchanged across renders (same as the previous empty dep array)
@@ -254,12 +263,16 @@ export function FlowDiagram({
         viewBox={`${vbX} ${vbY} ${vbW} ${vbH}`}
         style={{
           display: "block", width: "100%", flex: 1, minHeight: 0,
-          cursor: dragging ? "grabbing" : "grab", userSelect: dragging ? "none" : "auto",
+          cursor: dragging ? "grabbing" : "grab", userSelect: "none",
+          // Prevent the browser from treating a one-finger pan as page scroll
+          // while the pointer is over the diagram. Zoom remains available from
+          // the in-canvas − / + controls.
+          touchAction: "none",
         }}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerEnd}
+        onPointerCancel={handlePointerEnd}
       >
         <defs>
           <filter id={glowId}>

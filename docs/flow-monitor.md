@@ -131,7 +131,7 @@ Structured `slog.Info` lines for end-to-end ID alignment (device idempotency key
 
 ## Turn Pipeline (SVG `FlowDiagram`)
 
-Rendered by `FlowDiagram` in `system/web/src/pages/Monitor.tsx`. The diagram is **observational only** (zoom/pan, node highlights from recent events). Three **tinted cluster** regions group nodes:
+Rendered by `FlowDiagram` in `system/web/src/pages/Monitor.tsx`. The diagram is **observational only** (zoom/pan, node highlights from recent events). Drag with a mouse or one finger to pan; use the in-canvas minus/plus controls to zoom and reset to restore the default view. Three **tinted cluster** regions group nodes:
 
 | Region | Color (theme) | Stages |
 |--------|----------------|--------|
