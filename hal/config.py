@@ -727,8 +727,14 @@ REALTIME_GEMINI_BASE_URL: str = (
     or _RT.get("base_url", "")
     or ((_os_cfg_get("llm_base_url", "").rstrip("/") + "/ws/gemini") if _os_cfg_get("llm_base_url", "") else "")
 )
-# Default to 2.5 native-audio: same per-turn token usage as 3.1 (measured on
-# device) but ~33% cheaper text tokens ($0.50 vs $0.75 /M in). Requires the
+# Default to 3.1-flash-live. 2.5 native-audio is ~33% cheaper on text tokens
+# ($0.50 vs $0.75 /M in, same per-turn usage measured on device), but through the
+# campaign-api proxy it returns WS 1011 on a turn that follows an idle pause, so
+# it needs the whole idle-workaround set — including the suppressed
+# mid-activity [TURN CONTEXT], which silently drops the per-turn speaker identity
+# and language reminder (see gemini_needs_idle_workaround() in realtime/config.py).
+# 3.1 has neither problem, so every workaround stays off. Switching back to a
+# *native-audio* model re-enables them automatically, and also requires the
 # language_code-omit fix in gemini_live.py (native-audio rejects an explicit
 # language_code). Override via realtime.gemini.model or HAL_GEMINI_LIVE_MODEL.
 REALTIME_GEMINI_MODEL: str = _rt_str("HAL_GEMINI_LIVE_MODEL", _RT_GEMINI.get("model"), "gemini-3.1-flash-live-preview")
