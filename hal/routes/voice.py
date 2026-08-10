@@ -139,7 +139,7 @@ def start_voice(req: VoiceStartRequest):
             # don't open the mic. /voice/unmute (or the switch) starts it.
             state.logger.info("Voice pipeline created but not started -- mic muted")
         else:
-            state.voice_service.start()
+            state.start_voice_service("voice-pipeline-init")
         return {"status": "ok"}
     except Exception as e:
         state.voice_service = None
@@ -387,8 +387,7 @@ def unmute_mic():
         return {"status": "already_unmuted"}
     state._mic_muted = False
     state._mic_manual_override = False
-    if state.voice_service:
-        state.voice_service.start()
+    state.start_voice_service("mic-unmute")
     state._clear_mic_muted_led()
     state._persist_mic_state()
     state.logger.info("Mic unmuted")

@@ -28,12 +28,12 @@ User: "Lamp, follow the cup"
     3. TrackerVit init on the bbox
          |
     4. Two decoupled threads:
-         |   a. Vision loop @ FAST_LOOP_FPS (10):
+         |   a. Vision loop @ FAST_LOOP_FPS (15):
          |        ViT update → alpha-beta centroid filter → soft dead zone
          |        → PID + velocity feedforward → publish an absolute servo goal
          |        (background YOLO re-detect every 1.5s corrects drift)
          |   b. Servo worker: SmoothDamp glide toward the latest goal
-         |        (ease-in/ease-out, one bus write per ~30ms tick)
+         |        (ease-in/ease-out; coalesces tiny setpoint changes)
          |
     5. Lost / bloated / no-detect / timeout → auto-stop, hold or return to zero
 ```
@@ -90,16 +90,16 @@ Pitch is concentrated on the elbow (`PITCH_WEIGHT_ELBOW = 0.90`). Empirically on
 Each frame the loop turns the tracker bbox into an absolute servo goal:
 
 1. **Alpha-beta filter on the centroid** (`AlphaBetaFilter2D`) — a constant-velocity steady-state Kalman. Smooths jitter, coasts through dropped/garbage frames on prediction, gates outlier teleports (`AB_GATE_PX`), and exposes a velocity estimate. A velocity lead (`AB_LEAD_S = 0.20 s`) aims ahead of the target — cinematic "lead room".
-2. **Tiered dead zone** (`soft_deadband`) — three bands, continuous at both boundaries: true zero inside ±`DEAD_ZONE_INNER_PCT` (2 %, servo rests, PID clears); a gentle **creep band** up to the outer edge (`DEAD_ZONE_CREEP_GAIN` = 0.12 slope) so the camera lazily drifts toward center instead of freezing dead — a hard stop here produced the start-stop "security camera" feel; full error beyond the outer edge.
+2. **Tiered dead zone** (`soft_deadband`) — three bands, continuous at both boundaries: true zero inside ±`DEAD_ZONE_INNER_PCT` (2 %, PID clears and, when there is no velocity-pursuit command, the follower is retargeted to its current pose so it cannot continue toward a stale goal); a gentle **creep band** up to the outer edge (`DEAD_ZONE_CREEP_GAIN` = 0.12 slope) so the camera lazily drifts toward center instead of freezing dead — a hard stop here produced the start-stop "security camera" feel; full error beyond the outer edge.
 3. **Velocity feedforward first, PID second (smooth pursuit)** — the primary command is a feedforward term proportional to the target's measured pixel velocity (`VFF_GAIN` = 0.9): the camera *matches the target's speed* like human smooth pursuit, even at zero position error. A time-aware PID with anti-windup (KP deliberately small: 0.015 yaw / 0.02 pitch) only trims the residual position error. A position-centered but moving target keeps panning (does not freeze in the dead zone). Combined output is clamped to `PID_OUTPUT_MAX_DEG` (5°).
-4. **Saccade vs pursuit profiles** — mirroring human gaze: offset > `SACCADE_OFFSET_FRAC` (22 % of frame width) switches the follow worker to the **saccade** profile (`SACCADE_SMOOTH_TIME` 0.20 s, `SACCADE_MAX_SPEED_DPS` 80) for a fast relocation; small offsets use the heavy **pursuit** profile (`SERVO_SMOOTH_TIME` 0.32 s, `SERVO_MAX_SPEED_DPS` 40) — fluid-head inertia. One compromise profile did both badly. The loop state logs `SACCADE` vs `CHASING`.
+4. **Saccade vs pursuit profiles** — mirroring human gaze: offset > `SACCADE_OFFSET_FRAC` (22 % of frame width) switches the follow worker to the **saccade** profile (`SACCADE_SMOOTH_TIME` 0.20 s, `SACCADE_MAX_SPEED_DPS` 100) for a fast relocation; small offsets use the heavy **pursuit** profile (`SERVO_SMOOTH_TIME` 0.32 s, `SERVO_MAX_SPEED_DPS` 55) — fluid-head inertia. One compromise profile did both badly. The loop state logs `SACCADE` vs `CHASING`.
 5. **Publish goal** — the resulting absolute joint target is handed to the servo worker (non-blocking).
 
 ### Servo worker (SmoothDamp follower)
 
-`ServoFollower` (`servo_follow.py`) runs a worker on its own thread and continuously eases the joints toward the latest goal using **SmoothDamp** (`smooth_damp`, a critically-damped follower): each joint carries its own velocity, so every move accelerates smoothly and eases out into the target, and a fresh goal arriving mid-move retargets without a restart jerk — the cinematic "film camera" motion. It issues **one bus write per `SERVO_SUBSTEP_SLEEP` (30 ms) tick**, the same click cadence as the old fixed-substep ramp (the Feetech STS3215 clicks on each write, so the write rate must stay bounded — SmoothDamp changes *what* is commanded per tick, not *how often*).
+`ServoFollower` (`servo_follow.py`) runs a worker on its own thread and continuously eases the joints toward the latest goal using **SmoothDamp** (`smooth_damp`, a critically-damped follower): each joint carries its own velocity, so every move accelerates smoothly and eases out into the target, and a fresh goal arriving mid-move retargets without a restart jerk — the cinematic "film camera" motion. The worker wakes at the bounded `SERVO_SUBSTEP_SLEEP` (30 ms) cadence but calculates SmoothDamp from the actual elapsed monotonic time, capped at `SERVO_SUBSTEP_MAX_DT_S` (60 ms) after a scheduler/serial stall. It sends one multi-joint bus command only when at least one servo command changes by `SERVO_COMMAND_MIN_DELTA` (0.08), coalescing only tiny normalized setpoint changes; the final target is always sent once.
 
-Hardware motion during tracking: `TRACKING_GOAL_VELOCITY = 0` (unlimited — the software profiles own the speed; the old 150 steps/s ≈ 13°/s cap flattened the SmoothDamp curves into a constant crawl) with `TRACKING_ACCELERATION = 30` as the gentle hw ramp. The return-to-zero glide is capped at `TRACKING_RETURN_VELOCITY` (200 steps/s); snappy defaults restored after.
+Hardware motion during tracking: at every session start the HAL explicitly writes `TRACKING_GOAL_VELOCITY = 0` (unlimited) to clear any velocity cap left by an earlier mode. The software profiles therefore own the speed; the old 150 steps/s ≈ 13°/s cap flattened the SmoothDamp curves into a constant crawl. `TRACKING_ACCELERATION = 30` supplies the gentle hw ramp. The return-to-zero glide is capped at `TRACKING_RETURN_VELOCITY` (200 steps/s); snappy defaults restored after.
 
 ### Drift correction & lock management
 
@@ -132,7 +132,7 @@ pitch_correction = clamp(PID(soft_deadband(dy)) + VFF·vy·deg_per_px·dt,  ±5�
 | Constant | Value | Description |
 |----------|-------|-------------|
 | `VISION_MAX_WIDTH` | 640 | Downscale width for ViT + detectors (0 = off) |
-| `FAST_LOOP_FPS` | 15 | Vision loop frequency (writes decoupled — worker owns ~33 Hz cadence) |
+| `FAST_LOOP_FPS` | 15 | Vision loop frequency (servo commands are decoupled; the worker wakes at ~33 Hz and coalesces tiny setpoint changes) |
 | `CAMERA_FOV_DEG` | 60 | Horizontal FOV, for px→deg |
 | `DEAD_ZONE_INNER_PCT` | 0.02 | True-zero band (servo rests) |
 | `DEAD_ZONE_YAW_PCT` / `_PITCH_PCT` | 0.07 / 0.05 | Outer dead-zone edge (creep band ends) |
@@ -148,8 +148,9 @@ pitch_correction = clamp(PID(soft_deadband(dy)) + VFF·vy·deg_per_px·dt,  ±5�
 | `SERVO_SMOOTH_TIME` / `SERVO_MAX_SPEED_DPS` | 0.32 / 55 | Pursuit profile (heavy, fluid-head) |
 | `SACCADE_SMOOTH_TIME` / `SACCADE_MAX_SPEED_DPS` | 0.20 / 100 | Saccade profile (fast relocation) |
 | `SACCADE_OFFSET_FRAC` / `SACCADE_EXIT_FRAC` | 0.22 / 0.12 | Saccade enter/exit thresholds (hysteresis — no speed-cap flip-flop at the boundary) |
-| `SERVO_SUBSTEP_SLEEP` | 0.030 | Servo-worker tick / bus-write period |
-| `TRACKING_GOAL_VELOCITY` | 0 (unlimited) | Hardware velocity cap OFF — the SmoothDamp profiles own the speed envelope (150 steps/s ≈ 13°/s flattened every ease curve into a robotic crawl). `TRACKING_RETURN_VELOCITY` (200) caps only the return-to-zero glide |
+| `SERVO_SUBSTEP_SLEEP` / `SERVO_SUBSTEP_MAX_DT_S` | 0.030 / 0.060 | Servo-worker wake period / maximum measured SmoothDamp step after a stall |
+| `SERVO_COMMAND_MIN_DELTA` | 0.08 | Coalesce only tiny normalized setpoint changes; the final target is sent once |
+| `TRACKING_GOAL_VELOCITY` | 0 (unlimited) | Explicitly written at session start to clear a stale hardware cap; SmoothDamp profiles own the speed envelope (150 steps/s ≈ 13°/s flattened every ease curve into a robotic crawl). `TRACKING_RETURN_VELOCITY` (200) caps only the return-to-zero glide |
 | `TRACKING_ACCELERATION` | 30 | Hardware acceleration ramp |
 | `PITCH_WEIGHT_BASE/ELBOW/WRIST` | 0.10 / 0.90 / 0.0 | Pitch distribution across joints |
 | `ELBOW_PITCH_SIGN` | -1.0 | Elbow polarity (hardware reversed) |

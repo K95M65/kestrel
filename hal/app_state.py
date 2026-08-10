@@ -296,6 +296,27 @@ def _persist_speaker_state():
     _save_boot_sidecar(_SPEAKER_STATE_PATH, {"muted": _speaker_muted})
 
 
+def start_voice_service(reason: str) -> bool:
+    """Start the voice pipeline unless a live enrollment owns the mic.
+
+    ALSA capture is exclusive. record-enroll stops the pipeline, records with
+    arecord, then restarts it from its own finally block. A concurrent start()
+    on any other path steals the capture device mid-recording and BOTH sides
+    lose: the enroll dies with "audio open error: Device or resource busy" (a
+    500 to the web UI) and the voice loop dies on the same error. Every caller
+    except record-enroll's own restore must go through this gate.
+
+    Returns True when the pipeline was actually started.
+    """
+    if voice_service is None:
+        return False
+    if _enrolling:
+        logger.info("voice_service.start skipped (%s) -- enrollment owns the mic", reason)
+        return False
+    voice_service.start()
+    return True
+
+
 def _finalize_sleepy_peripherals(mute_mic: bool, mute_speaker: bool):
     """Enter silent sleep immediately without changing manual user mutes.
 
@@ -340,8 +361,7 @@ def _wake_sleepy_peripherals():
         _sleepy_auto_muted_mic = False
         if _hw_mic_switch_muted is not True:
             _mic_muted = False
-            if voice_service:
-                voice_service.start()
+            start_voice_service("sleepy-wake")
     logger.info("Sleepy wake: restored sleepy-owned audio state")
 
 
