@@ -133,8 +133,7 @@ Mọi giọng lạ được gom cụm local để server biết "đây là cùng
 
 | Tham số | Mặc định | Biến môi trường | Mô tả |
 |---------|----------|-----------------|-------|
-| Ngưỡng khớp | 0.5 | `SPEAKER_MATCH_COS` | Cosine **gốc** tối thiểu để khớp (trước là `SPEAKER_MATCH_THRESHOLD` = 0.75 scaled; `raw = 2 × scaled − 1`) |
-| Ngưỡng ăn khớp khi đăng ký | 0.5 | `SPEAKER_ENROLL_COHERENCE_COS` | Cosine gốc tối thiểu giữa các mẫu trong một lô enroll |
+| Ngưỡng khớp | 0.5 | `SPEAKER_MATCH_COS` | Cosine **gốc** tối thiểu để khớp; cũng dùng để ghép cặp clip trong lô enroll nhiều mẫu (trước là `SPEAKER_MATCH_THRESHOLD` = 0.75 scaled; `raw = 2 × scaled − 1`) |
 | Độ đa dạng | 0.7 | `SPEAKER_DIVERSITY_COS` | Trên mức này lượt nói trùng với mẫu đã lưu → không giữ. Đo độ dư thừa, không phải danh tính — phải nằm trên ngưỡng khớp |
 | Số mẫu extended tối đa | 3 | `SPEAKER_MAX_EXTENDED_SAMPLES` | Mẫu tự thu cho mỗi user. Cap an toàn: truy hồi là max-over-rows nên thêm hàng sẽ nâng điểm của mọi speaker |
 | Số mẫu cụm tối đa | 3 | `SPEAKER_MAX_CLUSTER_SAMPLES` | Số hàng giữ cho mỗi cụm giọng lạ |

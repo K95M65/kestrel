@@ -364,11 +364,9 @@ SPEAKER_MIN_AUDIO_S: float = float(os.environ.get("HAL_SPEAKER_MIN_AUDIO_S", "0.
 # stop matching dead). Conversion: raw = 2 * scaled - 1, so the old 0.75
 # scaled default is exactly 0.5 raw.
 SPEAKER_MATCH_COS: float = float(os.environ.get("SPEAKER_MATCH_COS", "0.5"))
-# Min cosine between enrollment samples in one batch. No-op for single-sample
-# enrolls (nothing to compare against).
-SPEAKER_ENROLL_COHERENCE_COS: float = float(
-    os.environ.get("SPEAKER_ENROLL_COHERENCE_COS", "0.5")
-)
+# The same bar also gates a multi-sample enroll batch: each clip must clear it
+# against at least one OTHER clip, so outliers are ejected without electing any
+# clip as a reference. Single-sample enrolls skip the check.
 # A confidently-matched utterance only joins a user's extended set when its max
 # cosine to their existing samples is BELOW this — anything above is a
 # near-duplicate of a sample we already hold. Must stay ABOVE

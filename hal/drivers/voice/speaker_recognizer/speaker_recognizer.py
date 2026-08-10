@@ -136,12 +136,11 @@ _VOICE_STRANGER_DIR_RE = re.compile(r"^voice_\d+$")
 #
 # One identity bar is used for every identity question — recognizing an
 # enrolled user, deciding a returning unknown voice belongs to an existing
-# cluster, and deciding an unknown cluster's audio belongs to the person being
-# enrolled. There is deliberately no looser merge gate: the old one admitted
+# cluster, deciding an unknown cluster's audio belongs to the person being
+# enrolled, and deciding two clips in one enroll batch are the same person. There is deliberately no looser merge gate: the old one admitted
 # clips at 0.625 scaled that were then used to judge genuine enroll audio at
 # 0.75 scaled.
 _MATCH_COS = config.SPEAKER_MATCH_COS
-_ENROLL_COHERENCE_COS = config.SPEAKER_ENROLL_COHERENCE_COS
 # Redundancy, NOT identity — a different axis, hence a different number. Must
 # stay above _MATCH_COS: both gates measure max cosine to the user's existing
 # samples, so the extended set admits exactly (_MATCH_COS, _DIVERSITY_COS].
@@ -1830,8 +1829,11 @@ class SpeakerRecognizer:
         if len(embs) <= _MAX_EXTENDED_SAMPLES:
             return []
 
-        anchor_embs, _ = self._read_tier(self._anchor_wavs(norm))
-        anchor = np.stack(anchor_embs, axis=0) if anchor_embs else None
+        # Via _load_user_bank (not _read_tier) so a pre-rewrite profile whose
+        # only anchor is the legacy embedding.npy still anchors the selection —
+        # reading the tier directly returns nothing for those users and the
+        # diversity walk silently falls back to seeding on the newest sample.
+        anchor, _ext = self._load_user_bank(norm)
         keep = set(
             _select_diverse(np.stack(embs, axis=0), anchor, _MAX_EXTENDED_SAMPLES)
         )
@@ -2094,37 +2096,54 @@ class SpeakerRecognizer:
             )
             raise SpeakerRecognizerError(f"no valid new samples — {details}")
 
-        # Step 3 — Coherence gate WITHIN the incoming batch.
+        # Step 3 — Mutual-match gate WITHIN the incoming batch.
         #
-        # Reference is the LONGEST new sample: given several clips to pick
-        # from, the longest carries the most speaker information and makes the
-        # steadiest reference. This used to be `new_embeddings[-1]` with the
-        # comment "user's most recent intent wins" — which held right up until
-        # the cluster pull below started appending to that same list, at which
-        # point the reference silently became an arbitrary pulled clip and the
-        # user's own recording was scored against it (and could be discarded).
-        # The reference is now fixed BEFORE anything else can be appended.
+        # Every clip must clear _MATCH_COS against at least ONE OTHER clip in
+        # the batch. No clip is privileged: a batch assembled from a voice_<N>
+        # cluster has no "correct" sample to anchor on, so electing one and
+        # judging the rest against it just moves the guesswork rather than
+        # removing it — if the elected clip is the wrong person, the right ones
+        # get dropped as incoherent and the wrong one is enrolled permanently.
         #
-        # No-op for single-sample enrolls: there is nothing to compare against.
+        # Requiring a partner instead lets natural variation through (a clip
+        # only has to agree with SOMETHING, not with a single chosen yardstick)
+        # while still ejecting true outliers, which by definition agree with
+        # nothing. Note this is degree >= 1, not one connected component: two
+        # disjoint pairs both survive.
+        #
+        # Single-sample enrolls skip the gate entirely — there is no pair to
+        # form, and the caller deliberately offered that one recording.
         durations = [_wav_duration_s(wb) for wb, _e in new_embeddings]
-        ref_idx = max(range(len(new_embeddings)), key=lambda i: durations[i])
-        ref_wb, ref_emb = new_embeddings[ref_idx]
-
-        anchors: list[tuple[bytes, np.ndarray]] = [(ref_wb, ref_emb)]
+        anchors: list[tuple[bytes, np.ndarray]] = []
         dropped_new = 0
-        for i, (wb, emb) in enumerate(new_embeddings):
-            if i == ref_idx:
-                continue
-            sim = _cosine_similarity(emb, ref_emb)
-            if sim >= _ENROLL_COHERENCE_COS:
-                anchors.append((wb, emb))
-            else:
-                dropped_new += 1
-                logger.info(
-                    "Enroll: dropped new sample #%d (%.1fs, cos=%.3f < %.2f vs "
-                    "reference #%d) — not written to disk",
-                    i, durations[i], sim, _ENROLL_COHERENCE_COS, ref_idx,
-                )
+
+        if len(new_embeddings) == 1:
+            anchors = list(new_embeddings)
+        else:
+            rows = np.stack([_l2(e) for _w, e in new_embeddings], axis=0)
+            sims = rows @ rows.T                     # [N, N] raw cosine
+            np.fill_diagonal(sims, -np.inf)          # a clip cannot partner itself
+            best_other = sims.max(axis=1)            # closest OTHER clip per row
+            for i, (wb, emb) in enumerate(new_embeddings):
+                if best_other[i] >= _MATCH_COS:
+                    anchors.append((wb, emb))
+                else:
+                    dropped_new += 1
+                    logger.info(
+                        "Enroll: dropped new sample #%d (%.1fs) — best match to any "
+                        "other sample in the batch is cos=%.3f < %.2f (no partner)",
+                        i, durations[i], float(best_other[i]), _MATCH_COS,
+                    )
+
+        if not anchors:
+            # Nothing agreed with anything: the batch is not one speaker (or is
+            # all noise). Fail loudly rather than committing an arbitrary clip
+            # as a permanent anchor — the caller can ask for a cleaner sample.
+            raise SpeakerRecognizerError(
+                f"no coherent samples — none of the {len(new_embeddings)} clips "
+                f"matched another at cos >= {_MATCH_COS}; audio may contain more "
+                f"than one speaker"
+            )
 
         # Step 4 — Claim unknown-voice clusters that belong to this person.
         #
@@ -2157,6 +2176,20 @@ class SpeakerRecognizer:
                     if _VOICE_STRANGER_DIR_RE.match(resolved.parent.name):
                         claimed_hashes.add(resolved.parent.name)
 
+            # Paths the caller handed us are ALREADY enrolled as anchors above.
+            # Claiming a cluster pulls its whole directory, which re-globs those
+            # same files — without this set they would be embedded a second time
+            # and stored again in the extended tier, so one clip would occupy two
+            # bank rows carrying identical information. Resolved rather than
+            # string-compared so a caller path and a glob result that differ only
+            # in form still match.
+            caller_resolved: set[str] = set()
+            for src in sources:
+                try:
+                    caller_resolved.add(str(Path(src).resolve()))
+                except OSError:
+                    continue
+
             anchor_rows = np.stack([_l2(e) for _w, e in anchors], axis=0)
             matched_hashes = set(
                 self._match_stranger_clusters(anchor_rows, _MATCH_COS)
@@ -2174,6 +2207,11 @@ class SpeakerRecognizer:
                     continue
                 for wav in sorted(cluster_dir_path.glob("*.wav")):
                     wav_str = str(wav)
+                    try:
+                        if str(wav.resolve()) in caller_resolved:
+                            continue  # already handled as an anchor above
+                    except OSError:
+                        pass
                     try:
                         raw = _read_bytes(wav_str)
                     except OSError as e:
@@ -2329,9 +2367,18 @@ class SpeakerRecognizer:
             # sample; a single "how tight is this enrollment" number. There is
             # no aggregated vector to measure against any more.
             try:
-                cohesion = round(
-                    float(np.mean([_cosine_similarity(e, ref_emb) for e in anchor_embs])), 4
-                ) if anchor_embs else None
+                if len(anchor_embs) > 1:
+                    _st = np.stack([_l2(e) for e in anchor_embs], axis=0)
+                    _sm = _st @ _st.T
+                    _n = len(anchor_embs)
+                    # Mean of the off-diagonal: how tightly the stored anchors
+                    # agree with each other. No reference sample exists now, so
+                    # there is nothing else meaningful to measure against.
+                    cohesion = round(
+                        float((_sm.sum() - np.trace(_sm)) / (_n * (_n - 1))), 4
+                    )
+                else:
+                    cohesion = None
             except Exception:
                 cohesion = None
             self._debug.record(
@@ -2352,14 +2399,12 @@ class SpeakerRecognizer:
                 },
                 result={
                     "name": norm, "cohesion": cohesion, "origin": origin,
-                    "coherence_threshold": _ENROLL_COHERENCE_COS,
                     "match_threshold": _MATCH_COS,
                     "num_new": len(new_wavs),
                     "num_anchors_written": len(written_new_paths),
                     "num_new_rejected_by_server": len(per_sample_errors),
-                    "num_new_dropped_coherence": dropped_new,
-                    "reference_index": ref_idx,
-                    "reference_duration_s": round(durations[ref_idx], 3),
+                    "num_new_dropped_no_partner": dropped_new,
+                    "batch_durations_s": [round(d, 3) for d in durations],
                     "num_claimed_to_extended": len(claimed),
                     "claimed_clusters": consume_hashes,
                     "sidecars_backfilled": backfilled,

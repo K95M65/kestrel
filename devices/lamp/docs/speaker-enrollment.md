@@ -132,8 +132,7 @@ Every unknown voice is locally clustered so the server can say "this is the same
 
 | Parameter | Default | Env var | Description |
 |-----------|---------|---------|-------------|
-| Match threshold | 0.5 | `SPEAKER_MATCH_COS` | Min **raw** cosine for speaker match (was `SPEAKER_MATCH_THRESHOLD` = 0.75 scaled; `raw = 2 × scaled − 1`) |
-| Enroll coherence | 0.5 | `SPEAKER_ENROLL_COHERENCE_COS` | Min raw cosine between samples in one enroll batch |
+| Match threshold | 0.5 | `SPEAKER_MATCH_COS` | Min **raw** cosine for speaker match; also pairs clips within a multi-sample enroll batch (was `SPEAKER_MATCH_THRESHOLD` = 0.75 scaled; `raw = 2 × scaled − 1`) |
 | Diversity | 0.7 | `SPEAKER_DIVERSITY_COS` | Above this a turn duplicates a stored sample → not kept. Redundancy, not identity — must stay above the match threshold |
 | Max extended samples | 3 | `SPEAKER_MAX_EXTENDED_SAMPLES` | Auto-collected samples per user. Safety cap: retrieval is max-over-rows, so extra rows lift every speaker's score |
 | Max cluster samples | 3 | `SPEAKER_MAX_CLUSTER_SAMPLES` | Rows kept per unknown-voice cluster |
