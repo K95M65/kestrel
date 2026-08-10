@@ -666,6 +666,21 @@
   .lm-grid-4 { grid-template-columns: 1fr 1fr; gap: 8px; }
   .lm-grid-3 { grid-template-columns: 1fr; }
   .lm-grid-5 { grid-template-columns: 1fr 1fr; gap: 6px; }
+
+  /* The Overview's Audio card contains labelled controls and VU meters. Give
+     it a full-width card on phones instead of squeezing controls into a
+     two-column status grid; this also prevents the short Presence card from
+     being stretched to Audio's height. Other four-card grids remain compact. */
+  .lm-overview-status-grid { grid-template-columns: 1fr; }
+  .lm-audio-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+  }
+  .lm-audio-row-label { min-width: 0; }
+  .lm-audio-row .lm-u-btn { flex-shrink: 0; }
 }
 
 /* ── Monitor/Settings sidebar — Setup nav styling + fancy upgrades ─────────── */

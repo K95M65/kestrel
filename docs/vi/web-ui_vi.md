@@ -213,6 +213,10 @@ Gồm các card:
   Stream vẫn mở khi mic nói bị mute (mic sensing độc lập với nút mute), và
   đóng khi tab trình duyệt bị ẩn.
 
+Ở độ rộng điện thoại **từ 480px trở xuống**, bốn card trạng thái của Overview
+xếp một cột. Cách này giữ đủ chỗ cho control và VU meter của Audio, đồng thời
+không kéo giãn card Presence ngắn theo card Audio cao hơn.
+
 **Hardware** (card ngang)
 - 8 badge: Servo / LED / Camera / Audio / Sensing / Voice / TTS / Display
 - **LED color swatch**: ô màu vuông bo góc hiển thị màu hiện tại của dải LED, kèm hex code. Lấy từ `GET /hw/led/color`.
