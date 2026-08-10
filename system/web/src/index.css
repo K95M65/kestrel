@@ -603,6 +603,11 @@
   .lm-grid-5 { grid-template-columns: repeat(3, 1fr); gap: 8px; }
 }
 
+/* View pipeline button — hidden by default (desktop), then made visible in
+   the mobile media query below. Keep this rule BEFORE that query: both rules
+   use !important to defeat inline display styles, so source order decides it. */
+.lm-view-pipeline-btn { display: none !important; }
+
 @media (max-width: 768px) {
   /* Sidebar becomes a slide-in drawer */
   .lm-sidebar {
@@ -656,11 +661,6 @@
      because the pipeline already sits inline next to the turn list. */
   .lm-view-pipeline-btn { display: flex !important; }
 }
-
-/* View pipeline button — hidden by default (desktop), shown only on mobile
-   via the media query above. `!important` so a per-button inline `display`
-   (e.g. an icon+label flex) can't leak the mobile-only button onto desktop. */
-.lm-view-pipeline-btn { display: none !important; }
 
 @media (max-width: 480px) {
   .lm-grid-4 { grid-template-columns: 1fr 1fr; gap: 8px; }
