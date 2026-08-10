@@ -1124,19 +1124,29 @@ class SpeakerRecognizer:
     def _start_migration(self, server_version: str) -> None:
         """Kick off a background re-embed migration to ``server_version``.
 
-        Idempotent: guarded so only one migration runs at a time, and a request
-        for a version already being migrated is a no-op.
+        Single-flight: at most ONE migration runs at a time, regardless of
+        version. A request that arrives while one is already running is dropped —
+        the next recognize (or the restart reconcile) re-triggers for the
+        then-current server version, so a model that changes mid-migration still
+        converges without ever running two migrations at once.
         """
         with self._migration_lock:
-            if self._migrating_version == server_version:
+            if self._migrating_version is not None:
                 return
             self._migrating_version = server_version
-        threading.Thread(
-            target=self._run_migration,
-            args=(server_version,),
-            name="speaker-embed-migration",
-            daemon=True,
-        ).start()
+        try:
+            threading.Thread(
+                target=self._run_migration,
+                args=(server_version,),
+                name="speaker-embed-migration",
+                daemon=True,
+            ).start()
+        except Exception:
+            # Thread never started — release the flag so a later call can retry
+            # (otherwise this version would be blocked from migrating forever).
+            with self._migration_lock:
+                self._migrating_version = None
+            raise
 
     def _run_migration(self, server_version: str) -> None:
         try:
@@ -2019,10 +2029,24 @@ class SpeakerRecognizer:
                 )
                 self._start_migration(server_ver)
             known = fresh
+        # Defensive dim guard — runs even when the version gate above was skipped
+        # (e.g. the server reports no `embed_model_version`). A stored embedding
+        # whose dim differs from the query can't be compared and would otherwise
+        # crash np.stack / the matmul below with a ValueError → HTTP 500. Drop the
+        # mismatches instead (the model almost certainly changed).
+        qdim = int(query_chunks.shape[1])
+        mismatched = [n for n, v in known.items() if int(v.shape[0]) != qdim]
+        if mismatched:
+            logger.warning(
+                "Recognize: %d profile(s) have embedding dim != query dim %d %s "
+                "— excluded from matching (embedding model likely changed).",
+                len(mismatched), qdim, sorted(mismatched),
+            )
+            known = {n: v for n, v in known.items() if int(v.shape[0]) == qdim}
         if not known:
-            # No enrolled users (or all stale/mid-migration) — every voice is
-            # unknown. Still assign a stable cluster hash so repeat speakers can
-            # be tracked before anyone is (re-)enrolled.
+            # No enrolled users (or all stale/mismatched/mid-migration) — every
+            # voice is unknown. Still assign a stable cluster hash so repeat
+            # speakers can be tracked before anyone is (re-)enrolled.
             logger.info("Recognize: no enrolled users — unknown + cluster-only path")
             vp_hash = self._debug_safe_assign_hash(  # SPEAKER-DEBUG (was: _assign_voiceprint_hash)
                 query_chunks, wav_bytes, resolved_name="unknown", is_match=False,
@@ -2384,20 +2408,24 @@ class SpeakerRecognizer:
             telegram_username=telegram_username or None,
             telegram_id=telegram_id or None,
         )
-        # Refresh mirrored fields in voice metadata + registry.
-        voice_meta = self._read_metadata(norm)
-        voice_meta["telegram_username"] = shared.get("telegram_username", "")
-        voice_meta["telegram_id"] = shared.get("telegram_id", "")
-        voice_meta["has_telegram_identity"] = bool(
-            shared.get("telegram_id") or shared.get("telegram_username")
-        )
-        voice_meta["display_name"] = shared.get(
-            "display_name", voice_meta.get("display_name", norm)
-        )
-        now_iso = self._now_iso()
-        voice_meta["updated_at"] = now_iso
-        self._write_metadata(norm, voice_meta)
-        self._update_registry(norm, voice_meta)
+        # Refresh mirrored fields in voice metadata + registry. Hold the per-user
+        # lock across read-modify-write so this can't clobber a concurrent enroll
+        # or migration commit (which would otherwise revert embed_model_version /
+        # needs_reenroll to this stale snapshot). Re-read inside the lock.
+        with self._user_lock(norm):
+            voice_meta = self._read_metadata(norm)
+            voice_meta["telegram_username"] = shared.get("telegram_username", "")
+            voice_meta["telegram_id"] = shared.get("telegram_id", "")
+            voice_meta["has_telegram_identity"] = bool(
+                shared.get("telegram_id") or shared.get("telegram_username")
+            )
+            voice_meta["display_name"] = shared.get(
+                "display_name", voice_meta.get("display_name", norm)
+            )
+            now_iso = self._now_iso()
+            voice_meta["updated_at"] = now_iso
+            self._write_metadata(norm, voice_meta)
+            self._update_registry(norm, voice_meta)
         logger.info(
             "Linked Telegram identity to '%s' (username=%s, id=%s)",
             norm, telegram_username, telegram_id,

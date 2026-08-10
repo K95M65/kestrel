@@ -100,8 +100,13 @@ class SpeakerDecorator:
             )
             return None
         try:
-            from hal.drivers.voice.speaker_recognizer import SpeakerRecognizer
-            recognizer = SpeakerRecognizer()
+            # Share the ONE process-wide instance with the HTTP routes so their
+            # commit locks / migration state / stranger clusters stay unified.
+            from hal.drivers.voice.speaker_recognizer import get_shared_recognizer
+            recognizer = get_shared_recognizer()
+            if recognizer is None:
+                logger.warning("Speaker recognizer unavailable (shared init failed)")
+                return None
             if not recognizer.available:
                 logger.info(
                     "Speaker recognizer idle — SPEAKER_EMBEDDING_API_URL not set "
