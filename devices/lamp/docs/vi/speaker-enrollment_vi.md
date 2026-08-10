@@ -214,6 +214,7 @@ Thư mục output mặc định đã được git-ignore — tuyệt đối khô
 | Method | Path | Mô tả |
 |--------|------|-------|
 | `POST` | `/speaker/enroll` | Đăng ký giọng nói từ wav_paths + tên |
+| `POST` | `/speaker/record-enroll` | Thu từ mic của thiết bị (`arecord`, `duration_sec` 1–60, mặc định 15) rồi đăng ký bản thu đó |
 | `POST` | `/speaker/recognize` | Nhận diện người nói từ wav_path |
 | `POST` | `/speaker/identity` | Liên kết Telegram với profile giọng nói |
 | `POST` | `/speaker/remove` | Xoá profile giọng nói theo tên |
@@ -231,6 +232,12 @@ Thư mục output mặc định đã được git-ignore — tuyệt đối khô
 
 `/speaker/recognize` **không bao giờ** trả 5xx khi embedding API chết — nó trả `200` với `{name: "unknown", error: "<lý do>"}` để skill tự xử graceful. Chỉ lỗi input (thiếu WAV, base64 sai) mới trả `400`.
 
+### Quyền sở hữu mic trong lúc record-enroll
+
+ALSA capture là độc chiếm — chỉ một tiến trình được giữ mic. Nên `/speaker/record-enroll` dừng voice pipeline, thu bằng `arecord`, rồi khởi động lại pipeline trong khối `finally` của chính nó.
+
+Bất kỳ đường nào khác khởi động pipeline trong lúc bản thu đang chạy sẽ cướp mất capture device, và **cả hai** bên cùng chết với `audio open error: Device or resource busy`: enroll trả `500`, còn voice loop cũng chết vì đúng lỗi đó. Vì vậy mọi caller đều đi qua `state.start_voice_service(reason)` — hàm này từ chối (và log lý do) khi `state._enrolling` đang bật. Ngoại lệ duy nhất là bước khôi phục của chính record-enroll: nó sở hữu lệnh stop và chạy sau khi cờ đã được xoá.
+
 ## Vị trí code chính
 
 | Thành phần | File | Hàm/Struct |
@@ -239,6 +246,8 @@ Thư mục output mặc định đã được git-ignore — tuyệt đối khô
 | Cổng đăng ký | `hal/drivers/voice/voice_service.py` | `_should_request_enroll()` |
 | Định dạng message | `hal/drivers/voice/voice_service.py` | `_format_unknown_speaker()` |
 | Bộ nhận diện giọng nói | `hal/drivers/voice/speaker_recognizer/speaker_recognizer.py` | `SpeakerRecognizer` |
+| Gate sở hữu mic | `hal/app_state.py` | `start_voice_service()` |
+| Route thu + đăng ký | `hal/routes/speaker.py` | `speaker_record_enroll()` |
 | Chèn instruction + cooldown | `system/domain/voice.go` | `AppendEnrollNudge()` |
 | Đường trực tiếp | `system/server/sensing/delivery/http/handler.go` | `PostEvent()` |
 | Đường hàng đợi/phát lại | `runtimes/openclaw/service.go` | `drainPendingEvents()` |

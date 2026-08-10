@@ -536,7 +536,7 @@ async def lifespan(app: FastAPI):
                     # the mic on every HAL restart while "muted".
                     logger.info("VoiceService created but NOT started -- mic muted")
                 else:
-                    state.voice_service.start()
+                    state.start_voice_service("boot-autostart")
                     logger.info("VoiceService auto-started (%s, wake_words=%s)", stt_provider.name, wake_words)
     except FileNotFoundError:
         logger.info(
