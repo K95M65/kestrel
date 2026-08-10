@@ -693,7 +693,9 @@ class SpeakerRecognizer:
     def _save_registry(self, registry: dict[str, Any]) -> None:
         try:
             _REGISTRY_FILE.parent.mkdir(parents=True, exist_ok=True)
-            _REGISTRY_FILE.write_text(json.dumps(registry, indent=2))
+            tmp = _REGISTRY_FILE.with_name(_REGISTRY_FILE.name + ".tmp")
+            tmp.write_text(json.dumps(registry, indent=2))
+            os.replace(tmp, _REGISTRY_FILE)
         except OSError as e:
             logger.warning("failed to save voice registry: %s", e)
 
