@@ -62,7 +62,11 @@ async def embed_audio(req: EmbedAudioRequest):
         ) from exc
 
     try:
-        return EmbedAudioResponse.from_raw_embedding(results[0], return_chunks=req.return_chunks)
+        return EmbedAudioResponse.from_raw_embedding(
+            results[0],
+            return_chunks=req.return_chunks,
+            embed_model_version=embedder.model_version,
+        )
     except Exception as exc:
         logger.exception(
             "Failed to build audio embedding response (num_audios=%d, durations_s=%s, return_chunks=%s)",

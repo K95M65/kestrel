@@ -135,11 +135,23 @@ caller (HAL). Disabled by default (`AUDIO_EMBEDDER__ENABLED=false`).
 // request  (EmbedAudioRequest)
 {"audios_b64": ["<base64 WAV>", "..."], "return_chunks": false, "preprocess": false}
 // response (EmbedAudioResponse)
-{"embedding": [0.01, -0.02, ...], "embedding_dim": 256, "chunk_embeddings": null}
+{"embedding": [0.01, -0.02, ...], "embedding_dim": 256,
+ "embed_model_version": "resnet293:1a2b3c4d5e6f", "chunk_embeddings": null}
 ```
 
 `embedding` is L2-normalized. When `return_chunks` is true, `chunk_embeddings`
 holds the per-window vectors before aggregation.
+
+`embed_model_version` identifies the weights that produced the embedding:
+`<model-name>:<sha256(weights)[:12]>`, where `<model-name>` is the
+`AUDIO_EMBEDDER__MODEL` config value (`resnet293` / `resnet34` / `campplus` /
+`ecapa-tdnn1024`). It changes whenever the ONNX weights change — **including a
+same-dimension checkpoint swap that `embedding_dim` would miss**. Clients store
+it alongside each enrolled vector; an embedding is only
+comparable to a query from the *same* version, so a client that sees a new
+version must re-embed its stored audio before matching again (HAL does this
+automatically — see the speaker-enrollment doc). `null` if the embedder has not
+started.
 
 `preprocess` **defaults to `false`** — this endpoint is embed-only. HAL (the only
 caller) runs the audio processor (Mono/Resample/HighPass/NoiseReduce/VAD/RMS)
@@ -238,8 +250,14 @@ GET /hal/api/dl/health
 {"status": "ok",
  "models": {"action": true, "emotion": true, "ser": true, "pose": true,
             "audio_embedder": false,
-            "object_detectors": {"yoloworld": false, "owlv2": false}}}
+            "object_detectors": {"yoloworld": false, "owlv2": false}},
+ "audio_embedder_version": "resnet293:1a2b3c4d5e6f"}
 ```
+
+`audio_embedder_version` is the same fingerprint the `/audio-recognizer/embed`
+response carries — exposed here so a client can poll for a model change **without
+sending audio** (HAL's restart reconcile uses this). `null` if the embedder is
+disabled or has not started.
 
 ---
 

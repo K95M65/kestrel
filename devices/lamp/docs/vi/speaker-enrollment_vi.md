@@ -104,6 +104,17 @@ Pipeline lọc/VAD/chuẩn hoá trước đây chạy trong perception-service n
 - **Cờ server**: HAL gửi `preprocess=false`; `/embed` của perception chỉ để embed và nay cũng mặc định `preprocess=false` (HAL là caller duy nhất). Caller nào upload audio thô có thể truyền `preprocess=true` để server tự làm sạch.
 - **Nhất quán**: enroll và recognize dùng chung một pipeline này, nên các đăng ký sau khi chuyển vẫn tự nhất quán. Giọng đã đăng ký dưới pipeline **server cũ** nên đăng ký lại nếu chất lượng khớp giảm.
 
+### Theo dõi phiên bản model embedding & migration
+
+Một embedding đã lưu chỉ so sánh được với embedding truy vấn do **cùng một** model server tạo ra. Nếu model embedding của perception-service bị đổi, mọi vector đã lưu trước đó âm thầm trở nên vô nghĩa khi so sánh — cosine vẫn ra một con số, nên lỗi biểu hiện là **khớp sai người**, không phải báo lỗi. HAL chặn việc này bằng cách đóng dấu định danh model lên từng hồ sơ và tính lại embedding khi định danh đổi. Vì mọi WAV đăng ký đều được giữ trên đĩa, đây là một tác vụ nền tự động — không ai phải thu âm lại.
+
+- **Định danh model**: response `/audio-recognizer/embed` (và `/health`) trả `embed_model_version` — `<tên-model>:<sha256(trọng_số)[:12]>`, tính một lần khi model nạp. `<tên-model>` là giá trị config `AUDIO_EMBEDDER__MODEL` (`resnet293` / `resnet34` / `campplus` / `ecapa-tdnn1024`), ví dụ `resnet293:1a2b3c4d5e6f`. Hash file trọng số bắt được cả trường hợp **đổi checkpoint cùng số chiều** mà phép kiểm `embedding_dim` bỏ sót. Chỉ model được lấy vân tay; config tiền xử lý tại thiết bị **cố ý không** nằm trong đó.
+- **Khi enroll**: HAL luôn lấy phiên bản mới nhất thấy được từ các lần gọi `/embed` của lần enroll đó và ghi vào `metadata.json` của giọng dưới khoá `embed_model_version` (đồng bộ vào registry).
+- **Khi recognize**: sau khi embed truy vấn (làm mới phiên bản server đang biết), HAL so từng hồ sơ đã đăng ký với phiên bản đó. Hồ sơ có phiên bản **khác** bị loại khỏi so khớp (nên trả về **"unknown"**), ghi log `Recognize: server embedding model is … stale …`, và khởi động một lần migration re-embed chạy nền. Hồ sơ còn khớp phiên bản vẫn nhận diện bình thường trong cùng lần gọi.
+- **Khi HAL khởi động lại**: một thread nền poll `/health` lấy `audio_embedder_version` hiện tại (thử lại vài lần để chờ server boot), quét metadata hồ sơ để tìm cái lỗi thời **trước khi** nạp model tiền xử lý nặng, rồi migrate các hồ sơ lỗi thời — để nhận diện đúng ngay từ turn đầu thay vì chờ một lần recognize phát hiện.
+- **Migration (re-embed)**: với mỗi hồ sơ lỗi thời, HAL tính lại embedding từ các file `sample_*.wav` đã giữ dưới model mới (cùng đường `_prepare_wav_for_embedding` → `/embed` → `_weighted_aggregate` như enroll), rồi **thay nguyên tử** `embedding.npy` (file tạm + đổi tên) và cập nhật `embed_model_version` / `embedding_dim` / `updated_at`. Có khoá để mỗi lần chỉ chạy một migration; nếu server mất giữa chừng (`EmbeddingAPIUnavailableError`) thì **dừng** sạch sẽ, không hỏng gì, và thử lại ở lần restart/recognize sau.
+- **Hồ sơ không migrate được**: hồ sơ mà WAV đã mất hết (hoặc bị gate hôm nay từ chối hết) thì không tính lại được — bị đánh dấu `needs_reenroll: true` trong metadata và registry (hiện ra ở `/speaker/list-owners` và response enroll/identity) và phải **đăng ký lại trực tiếp**. Đây là trường hợp duy nhất cần con người.
+
 ### Chất lượng đăng ký
 
 1. Mỗi file WAV → tiền xử lý tại thiết bị (như trên) → embedding qua perception-service (`preprocess=false`)
@@ -195,7 +206,8 @@ Thư mục output mặc định đã được git-ignore — tuyệt đối khô
   metadata.json                      # Danh tính chung (telegram, display_name)
   voice/
     embedding.npy                    # Vector chuẩn hoá L2 [256]
-    metadata.json                    # num_samples, dim, timestamps
+    metadata.json                    # num_samples, dim, timestamps,
+                                     #   embed_model_version, needs_reenroll
     sample_{origin}_{ts}_{uuid}.wav  # Các mẫu đăng ký (16kHz mono)
 
 /tmp/hal-unknown-voice/

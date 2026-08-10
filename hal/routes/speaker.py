@@ -156,6 +156,8 @@ class SpeakerMeta(BaseModel):
     updated_at: Optional[str] = None
     sample_files: list[str] = []
     sample_origins: dict[str, str] = {}
+    embed_model_version: Optional[str] = None
+    needs_reenroll: bool = False
 
 
 class SpeakerListItem(BaseModel):

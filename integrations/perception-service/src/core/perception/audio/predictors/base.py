@@ -1,5 +1,6 @@
 """Audio embedder base class using WeSpeaker ONNX models with sliding window."""
 
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +10,7 @@ import numpy.typing as npt
 import onnxruntime as ort
 from typing_extensions import override
 
+from core.enums.audio import AudioEmbedderEnum
 from core.models.audio import RawAudioEmbedding
 from core.models.media import Audio
 from core.perception.audio.processors import CompositeAudioProcessor
@@ -28,6 +30,9 @@ class AudioEmbedder(PredictorBase[Audio, RawAudioEmbedding]):
     embedded as a single whole-utterance chunk; longer speech is split into
     window_frames chunks (default 6 s) with hop_frames stride (default 4 s).
     """
+
+    # Enum identity of this embedder (e.g. AudioEmbedderEnum.RESNET293)
+    MODEL_NAME: AudioEmbedderEnum | None = None
 
     DEFAULT_MODEL_PATH: Path | None = None
     DEFAULT_REMOTE_URL: str | None = None
@@ -75,6 +80,21 @@ class AudioEmbedder(PredictorBase[Audio, RawAudioEmbedding]):
         self._session: ort.InferenceSession | None = None
         self._processor: CompositeAudioProcessor | None = None
         self._input_name: str = self.ONNX_INPUT_NAME
+        # Stable identity of the loaded weights — computed once at start (see
+        # _compute_model_version). Stamped onto every embedding so a client can
+        # tell that a stored vector was produced by a DIFFERENT model and must be
+        # re-embedded before it is comparable again.
+        self._model_version: str | None = None
+
+    @property
+    def model_version(self) -> str | None:
+        """Identity of the loaded weights (``<Class>:<sha256[:12]>``), or None.
+
+        None until the model is started. Changes whenever the ONNX weights file
+        changes — even a same-dimension checkpoint swap — so clients can detect
+        that their stored embeddings are stale.
+        """
+        return self._model_version
 
     @override
     def _start_impl(self) -> None:
@@ -103,7 +123,35 @@ class AudioEmbedder(PredictorBase[Audio, RawAudioEmbedding]):
             (self._batch_size, self._window_frames, self._num_mel_bins), dtype=np.float32,
         )})
         self._session = session
-        self._logger.info("Audio embedder started (input=%r)", self._input_name)
+        self._model_version = self._compute_model_version()
+        self._logger.info(
+            "Audio embedder started (input=%r, model_version=%s)",
+            self._input_name, self._model_version,
+        )
+
+    def _compute_model_version(self) -> str:
+        """Fingerprint the loaded weights: ``<model-name>:<sha256(file)[:12]>``.
+
+        ``<model-name>`` is the ``AudioEmbedderEnum`` value (e.g. ``resnet293``)
+        — the stable config name, not the Python class name — falling back to the
+        class name only if a subclass forgot to set ``MODEL_NAME``. Hashing the
+        ONNX file content (not just its path or dimension) means a silent
+        checkpoint swap that keeps the same embedding dimension still yields a new
+        version — exactly the case a dimension check would miss. Runs once at
+        start.
+        """
+        name = self.MODEL_NAME.value if self.MODEL_NAME is not None else self.__class__.__name__
+        digest = "unknown"
+        if self._model_path is not None:
+            try:
+                h = hashlib.sha256()
+                with open(self._model_path, "rb") as f:
+                    for chunk in iter(lambda: f.read(1 << 20), b""):
+                        h.update(chunk)
+                digest = h.hexdigest()[:12]
+            except OSError as e:
+                self._logger.warning("Failed to hash model weights: %s", e)
+        return f"{name}:{digest}"
 
     @override
     def _stop_impl(self) -> None:

@@ -103,6 +103,17 @@ The filter/VAD/normalize pipeline that used to run inside perception-service now
 - **Server flag**: HAL sends `preprocess=false`; perception's `/embed` is embed-only and now defaults to `preprocess=false` too (HAL is the only caller). A caller that uploads raw audio can pass `preprocess=true` to have the server clean it.
 - **Consistency**: enroll and recognize share this one pipeline, so enrollments made after the move stay self-consistent. Voices enrolled under the **old server-side** pipeline should be re-enrolled if match quality drops.
 
+### Embedding-model version tracking & migration
+
+A stored embedding is only comparable to a query embedding produced by the **same** server model. If the perception-service embedding model is swapped, every previously-stored vector silently becomes meaningless to compare against — cosine similarity still returns a number, so the failure is a **wrong match**, not an error. HAL guards against this by stamping each profile with the model identity and re-embedding when it changes. Because every enrollment WAV is retained on disk, this is an automatic background job — no user has to re-record.
+
+- **Model identity**: perception's `/audio-recognizer/embed` response (and `/health`) return `embed_model_version` — `<model-name>:<sha256(weights)[:12]>`, computed once when the model loads. `<model-name>` is the `AUDIO_EMBEDDER__MODEL` config value (`resnet293` / `resnet34` / `campplus` / `ecapa-tdnn1024`), e.g. `resnet293:1a2b3c4d5e6f`. Hashing the weights file catches even a **same-dimension checkpoint swap** that the `embedding_dim` check would miss. Only the model is fingerprinted; the on-device preprocessing config is deliberately **not** part of it.
+- **On enroll**: HAL always takes the freshest version seen from that enroll's `/embed` calls and writes it to the voice `metadata.json` as `embed_model_version` (mirrored into the registry).
+- **On recognize**: after embedding the query (which refreshes the known server version), HAL compares each enrolled profile's stored version against it. Profiles whose version **differs** are excluded from matching (so they read as **"unknown"**), a `Recognize: server embedding model is … stale …` line is logged, and a one-shot background re-embed migration is started. Fresh profiles match normally in the same call.
+- **On HAL restart**: a background thread polls `/health` for the current `audio_embedder_version` (a few retries to cover server boot), cheaply scans profile metadata for staleness **before** loading the heavy preprocessing model, and migrates any stale profiles — so recognition is correct from the first turn instead of waiting for a recognize to notice.
+- **Migration (re-embed)**: for each stale profile, HAL re-embeds its retained `sample_*.wav` files under the new model (same `_prepare_wav_for_embedding` → `/embed` → `_weighted_aggregate` path as enroll), then **atomically** swaps `embedding.npy` (temp file + rename) and updates `embed_model_version` / `embedding_dim` / `updated_at`. Guarded so only one migration runs at a time; a mid-migration server outage (`EmbeddingAPIUnavailableError`) **halts** cleanly with nothing corrupted and is retried on the next restart/recognize.
+- **Un-migratable profiles**: a profile whose WAVs are all gone (or all rejected by today's gate) can't be re-embedded — it is flagged `needs_reenroll: true` in its metadata and the registry (surfaced on `/speaker/list-owners` and enroll/identity responses) and must be **physically re-enrolled**. This is the only case that needs a human.
+
 ### Enrollment Quality
 
 1. Each WAV sample → on-device preprocess (as above) → embedding via perception-service (`preprocess=false`)
@@ -194,7 +205,8 @@ The default output dir is git-ignored — never commit trace output. The tracer 
   metadata.json                      # Shared identity (telegram, display_name)
   voice/
     embedding.npy                    # L2-normalized aggregated vector [256]
-    metadata.json                    # num_samples, dim, timestamps
+    metadata.json                    # num_samples, dim, timestamps,
+                                     #   embed_model_version, needs_reenroll
     sample_{origin}_{ts}_{uuid}.wav  # Individual enrollment samples (16kHz mono)
 
 /tmp/hal-unknown-voice/
