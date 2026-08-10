@@ -150,12 +150,18 @@ class SpeakerMeta(BaseModel):
     has_telegram_identity: bool = False
     enrollment_sources: list[str] = []
     last_enrollment_source: Optional[str] = None
+    # Samples the user deliberately enrolled (the permanent anchor tier).
     num_samples: int
+    # Auto-collected samples: unknown-cluster audio claimed at enroll plus
+    # confidently-recognized later turns. Capped and diversity-pruned, and
+    # counted separately so it can never be mistaken for enrolled audio.
+    num_extended: int = 0
     embedding_dim: int
     enrolled_at: Optional[str] = None
     updated_at: Optional[str] = None
     sample_files: list[str] = []
     sample_origins: dict[str, str] = {}
+    extended_files: list[str] = []
 
 
 class SpeakerListItem(BaseModel):
@@ -173,6 +179,7 @@ class SpeakerListItem(BaseModel):
     has_telegram_identity: bool = False
     enrollment_sources: list[str] = []
     num_samples: int
+    num_extended: int = 0
 
 
 class EnrollResponse(BaseModel):

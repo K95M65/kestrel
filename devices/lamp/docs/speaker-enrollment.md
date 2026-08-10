@@ -116,11 +116,11 @@ The filter/VAD/normalize pipeline that used to run inside perception-service now
 
 Every unknown voice is locally clustered so the server can say "this is the same unknown speaker we heard 3 minutes ago" without needing any backend support. Lets the agent combine multiple short utterances into one enroll call.
 
-1. After embedding the query audio, the recognizer aggregates per-chunk embeddings into a single L2-normalized vector.
-2. Compare against stored stranger-cluster centroids (cosine similarity).
-3. Match ≥ `SPEAKER_MATCH_THRESHOLD` (default `0.75` — the **same** threshold as known-speaker matching; there is no separate stranger threshold) → reuse existing label `voice_N`.
-4. No match → allocate new label `voice_{counter}`, append centroid to on-disk state.
-5. Cap at `HAL_MAX_VOICE_STRANGERS` (default `50`) — oldest evicted when exceeded.
+1. After embedding the query audio, the recognizer pools per-chunk embeddings into a single L2-normalized vector.
+2. Compare against every stored cluster **row**, taking each cluster's best row (raw cosine). A cluster holds several rows — not one averaged centroid — capped by `SPEAKER_MAX_CLUSTER_SAMPLES` (default `3`) and admitted through the same diversity gate the extended tier uses.
+3. Match ≥ `SPEAKER_MATCH_COS` (default `0.5` raw — the **same** threshold as known-speaker matching; there is no separate stranger threshold) → reuse existing label `voice_N` and, if the utterance adds something new, append it as another row.
+4. No match → allocate new label `voice_{counter}`, append its row to on-disk state.
+5. Cap at `HAL_MAX_VOICE_STRANGERS` (default `50`) **clusters** — the oldest whole cluster is evicted and its on-disk directory is deleted with it. (Eviction used to drop only the in-memory centroid, leaving the audio behind forever.)
 6. The assigned hash is:
    - returned on the recognize response as `voiceprint_hash: "voice_N"` (null for known speakers)
    - surfaced in the nudge message as `[voice:voice_N]` tag so the skill can correlate turns
@@ -132,16 +132,21 @@ Every unknown voice is locally clustered so the server can say "this is the same
 
 | Parameter | Default | Env var | Description |
 |-----------|---------|---------|-------------|
-| Match threshold | 0.75 | `SPEAKER_MATCH_THRESHOLD` | Min confidence for speaker match |
-| Enroll consistency | 0.75 | `SPEAKER_ENROLL_CONSISTENCY_THRESHOLD` | Min cosine similarity between enrollment samples |
+| Match threshold | 0.5 | `SPEAKER_MATCH_COS` | Min **raw** cosine for speaker match (was `SPEAKER_MATCH_THRESHOLD` = 0.75 scaled; `raw = 2 × scaled − 1`) |
+| Enroll coherence | 0.5 | `SPEAKER_ENROLL_COHERENCE_COS` | Min raw cosine between samples in one enroll batch |
+| Diversity | 0.7 | `SPEAKER_DIVERSITY_COS` | Above this a turn duplicates a stored sample → not kept. Redundancy, not identity — must stay above the match threshold |
+| Max extended samples | 3 | `SPEAKER_MAX_EXTENDED_SAMPLES` | Auto-collected samples per user. Safety cap: retrieval is max-over-rows, so extra rows lift every speaker's score |
+| Max cluster samples | 3 | `SPEAKER_MAX_CLUSTER_SAMPLES` | Rows kept per unknown-voice cluster |
+| Extend min duration | 2.0s | `SPEAKER_EXTEND_MIN_DURATION_SEC` | A turn must be this long to earn an extended slot |
+| Extend min margin | 0.05 | `SPEAKER_EXTEND_MIN_MARGIN_COS` | ...and must beat the runner-up speaker by this much |
 | API timeout | 15s | `SPEAKER_EMBEDDING_API_TIMEOUT_S` | HTTP timeout for embedding API |
 | Min audio for recognition | 0.8s | `HAL_SPEAKER_MIN_AUDIO_S` | Skip recognition below this |
 | Min words for enroll nudge | 15 | Hardcoded in `_should_request_enroll()` | Transcript word count gate |
 | Min duration for enroll nudge | 2.0s | Hardcoded in `_should_request_enroll()` | Audio duration gate |
 | Lamp nudge cooldown | 5 min | Hardcoded in `domain/voice.go` | Don't re-inject SKILL instruction globally |
 | Per-voiceprint nudge cooldown | 30 min | `HAL_ENROLL_NUDGE_COOLDOWN_S` | Don't re-ask name for same voiceprint cluster |
-| Voice stranger match threshold | _(shared)_ | `SPEAKER_MATCH_THRESHOLD` | Reuses the known-speaker match threshold to cluster an unknown voice into an existing `voice_N` — no separate knob |
-| Max voice strangers | 50 | `HAL_MAX_VOICE_STRANGERS` | Cluster cap; oldest evicted when exceeded |
+| Voice stranger match threshold | _(shared)_ | `SPEAKER_MATCH_COS` | Reuses the known-speaker match threshold to cluster an unknown voice into an existing `voice_N` — no separate knob |
+| Max voice strangers | 50 | `HAL_MAX_VOICE_STRANGERS` | Cluster **count** cap; oldest whole cluster evicted, its audio dir deleted with it |
 | Voice strangers dir | `/root/local/voice_strangers` | `HAL_VOICE_STRANGERS_DIR` | Persist cluster embeddings (survives reboot) |
 | Speaker recognition enabled | true | `HAL_SPEAKER_RECOGNITION_ENABLED` | Master toggle (default on; gated on the `audio` capability) |
 

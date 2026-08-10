@@ -119,7 +119,7 @@ Mọi giọng lạ được gom cụm local để server biết "đây là cùng
 
 1. Sau khi embedding audio, recognizer tổng hợp embedding theo chunk thành 1 vector chuẩn hoá L2.
 2. So với các centroid cụm stranger đã lưu (cosine similarity).
-3. Match ≥ `SPEAKER_MATCH_THRESHOLD` (mặc định `0.75` — **cùng** ngưỡng với khớp known-speaker; không có ngưỡng riêng cho người lạ) → dùng lại label `voice_N`.
+3. Match ≥ `SPEAKER_MATCH_COS` (mặc định `0.5` raw — **cùng** ngưỡng với khớp known-speaker; không có ngưỡng riêng cho người lạ) → dùng lại label `voice_N`, và nếu câu nói bổ sung điều gì mới thì thêm nó thành một hàng nữa. Một cụm giữ **nhiều hàng**, không phải một centroid trung bình, giới hạn bởi `SPEAKER_MAX_CLUSTER_SAMPLES` (mặc định `3`).
 4. Không match → tạo label mới `voice_{counter}`, thêm centroid vào state trên đĩa.
 5. Giới hạn `HAL_MAX_VOICE_STRANGERS` (mặc định `50`) — evict oldest khi vượt.
 6. Hash được:
@@ -133,15 +133,20 @@ Mọi giọng lạ được gom cụm local để server biết "đây là cùng
 
 | Tham số | Mặc định | Biến môi trường | Mô tả |
 |---------|----------|-----------------|-------|
-| Ngưỡng khớp | 0.75 | `SPEAKER_MATCH_THRESHOLD` | Confidence tối thiểu để khớp |
-| Ngưỡng consistency khi đăng ký | 0.75 | `SPEAKER_ENROLL_CONSISTENCY_THRESHOLD` | Cosine similarity tối thiểu giữa các mẫu |
+| Ngưỡng khớp | 0.5 | `SPEAKER_MATCH_COS` | Cosine **gốc** tối thiểu để khớp (trước là `SPEAKER_MATCH_THRESHOLD` = 0.75 scaled; `raw = 2 × scaled − 1`) |
+| Ngưỡng ăn khớp khi đăng ký | 0.5 | `SPEAKER_ENROLL_COHERENCE_COS` | Cosine gốc tối thiểu giữa các mẫu trong một lô enroll |
+| Độ đa dạng | 0.7 | `SPEAKER_DIVERSITY_COS` | Trên mức này lượt nói trùng với mẫu đã lưu → không giữ. Đo độ dư thừa, không phải danh tính — phải nằm trên ngưỡng khớp |
+| Số mẫu extended tối đa | 3 | `SPEAKER_MAX_EXTENDED_SAMPLES` | Mẫu tự thu cho mỗi user. Cap an toàn: truy hồi là max-over-rows nên thêm hàng sẽ nâng điểm của mọi speaker |
+| Số mẫu cụm tối đa | 3 | `SPEAKER_MAX_CLUSTER_SAMPLES` | Số hàng giữ cho mỗi cụm giọng lạ |
+| Thời lượng tối thiểu để mở rộng | 2.0s | `SPEAKER_EXTEND_MIN_DURATION_SEC` | Lượt nói phải dài tối thiểu bằng này mới được một suất extended |
+| Biên tối thiểu để mở rộng | 0.05 | `SPEAKER_EXTEND_MIN_MARGIN_COS` | ...và phải dẫn trước người á quân ít nhất bằng này |
 | Timeout API | 15s | `SPEAKER_EMBEDDING_API_TIMEOUT_S` | Timeout HTTP cho embedding API |
 | Audio tối thiểu cho nhận diện | 0.8s | `HAL_SPEAKER_MIN_AUDIO_S` | Bỏ qua nhận diện dưới ngưỡng này |
 | Số từ tối thiểu cho nudge đăng ký | 15 | Hardcoded trong `_should_request_enroll()` | Cổng số từ transcript |
 | Thời lượng tối thiểu cho nudge đăng ký | 2.0s | Hardcoded trong `_should_request_enroll()` | Cổng thời lượng audio |
 | Cooldown nhắc nhở phía Lamp | 5 phút | Hardcoded trong `domain/voice.go` | Không inject SKILL instruction toàn cục quá 1 lần/5 phút |
 | Cooldown nhắc nhở theo voiceprint | 30 phút | `HAL_ENROLL_NUDGE_COOLDOWN_S` | Không hỏi lại tên cho cùng cluster voiceprint |
-| Ngưỡng match voice stranger | _(dùng chung)_ | `SPEAKER_MATCH_THRESHOLD` | Dùng lại ngưỡng khớp known-speaker để gom giọng lạ vào `voice_N` đã có — không có knob riêng |
+| Ngưỡng match voice stranger | _(dùng chung)_ | `SPEAKER_MATCH_COS` | Dùng lại ngưỡng khớp known-speaker để gom giọng lạ vào `voice_N` đã có — không có knob riêng |
 | Số voice stranger tối đa | 50 | `HAL_MAX_VOICE_STRANGERS` | Giới hạn cluster; evict oldest khi vượt |
 | Thư mục voice strangers | `/root/local/voice_strangers` | `HAL_VOICE_STRANGERS_DIR` | Persist embedding cluster (tồn tại qua reboot) |
 | Bật/tắt nhận diện giọng nói | true | `HAL_SPEAKER_RECOGNITION_ENABLED` | Công tắc tổng (mặc định bật; gate theo capability `audio`) |

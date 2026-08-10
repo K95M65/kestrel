@@ -356,9 +356,44 @@ SPEAKER_RECOGNITION_ENABLED: bool = (
     os.environ.get("HAL_SPEAKER_RECOGNITION_ENABLED", "true").lower() == "true"
 )
 SPEAKER_MIN_AUDIO_S: float = float(os.environ.get("HAL_SPEAKER_MIN_AUDIO_S", "0.8")) # seconds
-SPEAKER_MATCH_THRESHOLD: float = float(os.environ.get("SPEAKER_MATCH_THRESHOLD", "0.75")) # 0.0 - 1.0
-SPEAKER_ENROLL_CONSISTENCY_THRESHOLD: float = float(
-    os.environ.get("SPEAKER_ENROLL_CONSISTENCY_THRESHOLD", "0.75")
+# Identity thresholds are RAW cosine in [-1, 1] — the same unit the face
+# pipeline uses (see faceid/recognizer.py). They were previously SCALED cosine
+# in [0, 1] under the names SPEAKER_MATCH_THRESHOLD /
+# SPEAKER_ENROLL_CONSISTENCY_THRESHOLD; the names changed WITH the unit so a
+# stale 0.75 in a device .env can never be silently reread as raw (which would
+# stop matching dead). Conversion: raw = 2 * scaled - 1, so the old 0.75
+# scaled default is exactly 0.5 raw.
+SPEAKER_MATCH_COS: float = float(os.environ.get("SPEAKER_MATCH_COS", "0.5"))
+# Min cosine between enrollment samples in one batch. No-op for single-sample
+# enrolls (nothing to compare against).
+SPEAKER_ENROLL_COHERENCE_COS: float = float(
+    os.environ.get("SPEAKER_ENROLL_COHERENCE_COS", "0.5")
+)
+# A confidently-matched utterance only joins a user's extended set when its max
+# cosine to their existing samples is BELOW this — anything above is a
+# near-duplicate of a sample we already hold. Must stay ABOVE
+# SPEAKER_MATCH_COS: both gates measure the same quantity, so the admission
+# band is (SPEAKER_MATCH_COS, SPEAKER_DIVERSITY_COS].
+SPEAKER_DIVERSITY_COS: float = float(os.environ.get("SPEAKER_DIVERSITY_COS", "0.7"))
+# Auto-captured extended samples kept per user, on top of their untouched
+# enrollment samples. This is a SAFETY cap, not a disk-space one: retrieval is
+# max-over-rows, so every extra row raises every speaker's score and with it
+# the false-accept rate.
+SPEAKER_MAX_EXTENDED_SAMPLES: int = int(
+    os.environ.get("SPEAKER_MAX_EXTENDED_SAMPLES", "3")
+)
+# Same cap, applied per unknown-voice cluster.
+SPEAKER_MAX_CLUSTER_SAMPLES: int = int(
+    os.environ.get("SPEAKER_MAX_CLUSTER_SAMPLES", "3")
+)
+# Extra bars an utterance must clear to extend a user's set, on top of matching.
+# A turn's audio can carry the TV, a second speaker, or the device's own TTS
+# tail, so extending demands more than recognizing does.
+SPEAKER_EXTEND_MIN_DURATION_SEC: float = float(
+    os.environ.get("SPEAKER_EXTEND_MIN_DURATION_SEC", "2.0")
+)
+SPEAKER_EXTEND_MIN_MARGIN_COS: float = float(
+    os.environ.get("SPEAKER_EXTEND_MIN_MARGIN_COS", "0.05")
 )
 SPEAKER_EMBEDDING_API_TIMEOUT_S: float = float(
     os.environ.get("SPEAKER_EMBEDDING_API_TIMEOUT_S", "15")

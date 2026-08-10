@@ -17,6 +17,20 @@ External API contract:
     Response: {"embedding": [float, float, ...]}  (single 1-D vector
               aggregated from all inputs, any dimension)
 
+A speaker is stored as a BANK of per-sample embeddings — one row per WAV, never
+averaged together. Retrieval takes the max over a speaker's rows, mirroring the
+face pipeline (``faceid/recognizer.py``). Averaging was removed because it made
+every sample able to damage every other: one bad clip shifted the single stored
+vector, so samples had to be filtered and deleted to protect the mean, and a
+merge decision could not be undone.
+
+Two tiers per user, kept separate exactly as face keeps uploads vs extended:
+
+* **anchor** — audio the user deliberately enrolled. Permanent; no automatic
+  path prunes or deletes it.
+* **extended** — auto-captured: unknown-cluster audio claimed at enroll time,
+  plus confidently-recognized later turns. Capped and diversity-pruned.
+
 Storage layout per user::
 
     /root/local/users/<norm>/
@@ -24,13 +38,16 @@ Storage layout per user::
                                    display_name). Same file face-enroll writes —
                                    merged on write, never overwritten blindly.
         voice/
-            embedding.npy       — single L2-normalized aggregated vector [D].
-                                   Mirrors perception-service's per-speaker storage so
-                                   recognize uses the same per-chunk voting
-                                   logic as perception-service's /recognize endpoint.
             metadata.json       — voice-specific (enrolled_at, updated_at,
                                    num_samples, sample_files, embedding_dim)
-            sample_<ts>_<uuid>.wav  — source WAV files (16kHz mono)
+            sample_<origin>_<ts>_<uuid>.wav  — anchor WAV (16kHz mono)
+            sample_<origin>_<ts>_<uuid>.npy  — its L2-normalized embedding [D]
+            .extended/
+                ext_<ts>_<seq>.wav           — auto-captured sample
+                ext_<ts>_<seq>.npy           — its embedding [D]
+            embedding.npy       — LEGACY aggregated vector. No longer written;
+                                   still READ as a one-row bank so profiles from
+                                   before the rewrite keep matching.
 
 Label normalization matches :class:`FaceRecognizer.normalize_label` so face /
 voice / mood / wellbeing all share the same per-user folder for a person.
@@ -68,17 +85,30 @@ logger = logging.getLogger("hal.voice.speaker")
 # --- Storage layout (paths come from hal.config) ---
 _USERS_DIR = Path(config.USERS_DIR)
 _VOICE_SUBDIR = "voice"
+# LEGACY single aggregated vector. No longer written — kept as a read-only
+# fallback so profiles enrolled before the bank rewrite keep matching as a
+# one-row bank instead of silently un-enrolling. See _load_user_bank.
 _EMBEDDING_FILE = "embedding.npy"
 _METADATA_FILE = "metadata.json"
 _REGISTRY_FILE = _USERS_DIR / ".voice_registry.json"
 _UNKNOWN_AUDIO_DIR = Path(config.SPEAKER_UNKNOWN_AUDIO_DIR)
 
+# Each stored WAV carries a sidecar .npy holding its (already L2-normalized)
+# embedding, so a reload never has to re-run inference on a clip the current
+# preprocessing gate might now reject — the very samples worth keeping are the
+# ones most likely to fail a re-gate. Mirrors faceid/recognizer.py.
+_SIDECAR_EXT = ".npy"
+# Auto-captured "extended" samples live in this per-user subfolder, i.e.
+# <user>/voice/.extended/. Dot-prefixed so the sample loader (which globs
+# sample_*.wav directly under voice/) never mistakes one for an enrollment
+# sample, and so the web UI's voice-file listing stays clean.
+_EXTENDED_SUBDIR = ".extended"
+_EXTENDED_PREFIX = "ext_"
+
 # --- External embedding API (centralized in hal.config) ---
 _API_URL = config.SPEAKER_EMBEDDING_API_URL
 _API_KEY = config.SPEAKER_EMBEDDING_API_KEY
 _API_TIMEOUT_S = config.SPEAKER_EMBEDDING_API_TIMEOUT_S
-_MATCH_THRESHOLD = config.SPEAKER_MATCH_THRESHOLD
-_ENROLL_CONSISTENCY_THRESHOLD = config.SPEAKER_ENROLL_CONSISTENCY_THRESHOLD
 
 # --- Voice stranger clustering ---
 # Assigns a stable "voiceprint_hash" (voice_<N> label) to every unknown voice
@@ -88,27 +118,38 @@ _ENROLL_CONSISTENCY_THRESHOLD = config.SPEAKER_ENROLL_CONSISTENCY_THRESHOLD
 _VOICE_STRANGERS_DIR = Path(
     os.environ.get("HAL_VOICE_STRANGERS_DIR", "/root/local/voice_strangers")
 )
-# All thresholds in this file use SCALED cosine in [0, 1] (`(raw + 1) / 2`).
-# That includes MATCH / CONSISTENCY plus CLUSTER_MERGE — call sites convert the
-# raw `embeds @ query` dot-product to scaled before comparing. Ordering:
-# CLUSTER_MERGE < MATCH = CONSISTENCY, i.e. the merge gate (used at enroll time
-# to pull fragmented clusters back together) is the loosest, and the
-# recognize/match decision is strictest.
-#
-# Stranger re-appearance matching uses the SAME threshold as enrolled-user
-# matching (SPEAKER_MATCH_THRESHOLD, i.e. self._match_threshold) — a returning
-# unknown voice must clear the same bar as a known one, so there is NO separate
-# stranger threshold. The trade-off is deliberate: the stricter bar means one
-# speaker may fragment across several voice_<N> rather than two speakers sharing
-# a cluster, and enroll's looser CLUSTER_MERGE gate pulls the fragments back
-# together. A cluster is claimed WHOLE at enroll time, so a merged-in second
-# voice is the more expensive error.
-# Cap cluster count so disk doesn't grow unbounded. Oldest evicted first.
+# Cap cluster COUNT (not row count) so disk doesn't grow unbounded. Oldest
+# cluster evicted first, and its on-disk dir goes with it — see
+# _evict_oldest_clusters. Each cluster holds up to _MAX_CLUSTER_SAMPLES rows.
 _MAX_VOICE_STRANGERS = int(
     os.environ.get("HAL_MAX_VOICE_STRANGERS", "50")
 )
 _VOICE_STRANGER_PREFIX = "voice_"
 _VOICE_STRANGER_DIR_RE = re.compile(r"^voice_\d+$")
+
+# --- Identity thresholds ---
+# EVERY similarity in this file is RAW cosine in [-1, 1] — embeddings are
+# L2-normalized, so `a @ b` IS the cosine and no rescaling happens anywhere.
+# (Before the bank rewrite these were SCALED cosine, `(raw + 1) / 2`; the
+# config names changed with the unit so a stale scaled value cannot be reread
+# as raw. Conversion: raw = 2 * scaled - 1.)
+#
+# One identity bar is used for every identity question — recognizing an
+# enrolled user, deciding a returning unknown voice belongs to an existing
+# cluster, and deciding an unknown cluster's audio belongs to the person being
+# enrolled. There is deliberately no looser merge gate: the old one admitted
+# clips at 0.625 scaled that were then used to judge genuine enroll audio at
+# 0.75 scaled.
+_MATCH_COS = config.SPEAKER_MATCH_COS
+_ENROLL_COHERENCE_COS = config.SPEAKER_ENROLL_COHERENCE_COS
+# Redundancy, NOT identity — a different axis, hence a different number. Must
+# stay above _MATCH_COS: both gates measure max cosine to the user's existing
+# samples, so the extended set admits exactly (_MATCH_COS, _DIVERSITY_COS].
+_DIVERSITY_COS = config.SPEAKER_DIVERSITY_COS
+_MAX_EXTENDED_SAMPLES = config.SPEAKER_MAX_EXTENDED_SAMPLES
+_MAX_CLUSTER_SAMPLES = config.SPEAKER_MAX_CLUSTER_SAMPLES
+_EXTEND_MIN_DURATION_S = config.SPEAKER_EXTEND_MIN_DURATION_SEC
+_EXTEND_MIN_MARGIN_COS = config.SPEAKER_EXTEND_MIN_MARGIN_COS
 
 # Target sample rate for stored/enrolled audio (matches STT pipeline).
 _TARGET_SR = 16000
@@ -230,14 +271,16 @@ def _normalize_label(name: str) -> str:
 
 
 def _cosine_similarity(e1: np.ndarray, e2: np.ndarray) -> float:
-    """Compute raw cosine similarity in range [-1, 1].
+    """Raw cosine similarity in [-1, 1].
 
     Tolerates non-normalized inputs (unlike plain ``np.dot`` which requires
     pre-normalized vectors). The ``+ 1e-12`` guards against zero-norm inputs.
-    Returns the confidence in range [0, 1].
+    This value is compared DIRECTLY against the thresholds in this file — there
+    is no [0, 1] rescaling step anywhere.
     """
-    raw_cos = float(np.dot(e1, e2) / (np.linalg.norm(e1) * np.linalg.norm(e2) + 1e-12))
-    return (raw_cos + 1.0) / 2.0
+    return float(
+        np.dot(e1, e2) / (np.linalg.norm(e1) * np.linalg.norm(e2) + 1e-12)
+    )
 
 
 def _l2(vec: np.ndarray) -> np.ndarray:
@@ -249,36 +292,53 @@ def _l2(vec: np.ndarray) -> np.ndarray:
     return (arr / n).astype(np.float32)
 
 
-def _weighted_aggregate(
-    embeddings: list[np.ndarray], *, power: float = 4.0
-) -> np.ndarray:
-    """Self-consistency weighted mean + L2-normalize.
+def _select_diverse(
+    candidates: np.ndarray, anchor: Optional[np.ndarray], k: int
+) -> list[int]:
+    """Greedy farthest-point selection: indices of the ``k`` most diverse rows.
 
-    Mirrors ``perception-service.audio_preprocess.weighted_aggregate`` so pooling
-    per-sample embeddings client-side produces a vector comparable with one
-    the server would produce from the same samples — without the server-side
-    artifact of concatenating multiple WAVs into a single waveform before
-    VAD / chunking (which the /embed endpoint currently does).
+    Ported from ``faceid/recognizer.py::_select_diverse``. Starting from
+    ``anchor`` (the user's permanent enrollment samples) as reference points,
+    repeatedly keep the candidate whose similarity to everything already kept is
+    LOWEST — the most novel sample. This packs the capped slots with audio that
+    COMPLEMENTS the enrollment (different distance, loudness, room) rather than
+    more of the same. If ``anchor`` is None/empty the newest candidate seeds it.
 
-    Each embedding is weighted by its cosine sim to the L2-normalized
-    median centroid, mapped to [0, 1] and raised to ``power`` to sharpen —
-    outlier samples (a rejected-but-still-on-disk recording, for example)
-    contribute near zero to the final vector.
+    Caveat worth knowing when tuning: in face space the dominant within-person
+    axis is pose, so "farthest" means "useful new angle". In speaker space the
+    dominant axis is channel and noise, so farthest-point will happily rank a
+    degraded clip as the most valuable one. The identity floor (a candidate must
+    clear _MATCH_COS to be considered at all) plus the duration gate in
+    _maybe_extend_user are what keep that in check — not this function.
     """
-    if not embeddings:
-        raise SpeakerRecognizerError("no embeddings to aggregate")
-    stack = np.stack([_l2(e) for e in embeddings], axis=0).astype(np.float32)
-    centroid = _l2(np.median(stack, axis=0))
-    sims = stack @ centroid
-    sims01 = np.clip((sims + 1.0) / 2.0, 0.0, 1.0)
-    weights = sims01.astype(np.float32) ** float(power)
-    total = float(weights.sum())
-    if total < 1e-9:
-        weights = np.full(stack.shape[0], 1.0 / stack.shape[0], dtype=np.float32)
+    m = len(candidates)
+    if m <= k:
+        return list(range(m))
+
+    if anchor is not None and len(anchor):
+        selected_ref: list[np.ndarray] = [anchor]
+        selected_local: list[int] = []
     else:
-        weights = (weights / total).astype(np.float32)
-    agg = (stack * weights[:, None]).sum(axis=0)
-    return _l2(agg)
+        seed = m - 1  # newest candidate
+        selected_ref = [candidates[seed][None, :]]
+        selected_local = [seed]
+
+    remaining = [j for j in range(m) if j not in selected_local]
+    while len(selected_local) < k and remaining:
+        ref = np.concatenate(selected_ref)          # [K, D]
+        sims = candidates[remaining] @ ref.T        # [R, K] raw cosine
+        nearest = sims.max(axis=1)
+        pick = int(np.argmin(nearest))
+        chosen = remaining.pop(pick)
+        selected_local.append(chosen)
+        selected_ref.append(candidates[chosen][None, :])
+    return selected_local
+
+
+def _sidecar_path(wav_path: Path) -> Path:
+    """The ``.npy`` embedding stored next to a sample WAV."""
+    return wav_path.with_suffix(_SIDECAR_EXT)
+
 
 def _sample_origin(filename: str) -> str:
     """Parse the origin tag encoded in ``sample_<origin>_<ts>_<uuid>.wav``.
@@ -330,6 +390,16 @@ def _merge_shared_metadata(
 def _read_bytes(path: str) -> bytes:
     with open(path, "rb") as f:
         return f.read()
+
+
+def _wav_duration_s(wav_bytes: bytes) -> float:
+    """Best-effort duration in seconds. 0.0 when the WAV cannot be decoded."""
+    try:
+        return float(
+            _wav_bytes_to_float32_16k_mono(wav_bytes).shape[0]
+        ) / _TARGET_SR
+    except Exception:
+        return 0.0
 
 
 def _wav_bytes_to_float32_16k_mono(raw: bytes) -> np.ndarray:
@@ -1021,9 +1091,24 @@ class SpeakerRecognizer:
         self._api_key = api_key or _API_KEY
         self._users_dir = Path(users_dir) if users_dir else _USERS_DIR
         self._match_threshold = (
-            match_threshold if match_threshold is not None else _MATCH_THRESHOLD
+            match_threshold if match_threshold is not None else _MATCH_COS
         )
         self._mu = threading.Lock()
+
+        # Bank cache + the lock guarding it and every extended-set mutation.
+        # RLock because the extend path takes it for two short critical sections
+        # around an unlocked disk write, and prune runs nested inside the
+        # second. Disk I/O must NEVER happen while this is held — see
+        # _maybe_extend_user, and faceid/recognizer.py:282 for what went wrong
+        # in the face pipeline when it did.
+        self._bank_lock = threading.RLock()
+        self._bank_cache: Optional[
+            tuple[Optional[np.ndarray], list[str], list[str]]
+        ] = None
+        self._bank_cache_sig: Optional[tuple] = None
+        # Monotonic counter appended to extended filenames so two samples
+        # captured in the same millisecond cannot overwrite each other.
+        self._extended_seq: int = 0
 
         self._debug = _SpeakerDebugTracer()  # SPEAKER-DEBUG (remove before deploy)
         # SPEAKER-DEBUG: last stranger-cluster match info, stashed by
@@ -1069,6 +1154,9 @@ class SpeakerRecognizer:
         self._stranger_counter: int = 0
         _VOICE_STRANGERS_DIR.mkdir(parents=True, exist_ok=True)
         self._load_strangers()
+        # Clear cluster dirs left orphaned by the previous row-based eviction,
+        # which dropped centroids without ever touching disk.
+        self._reconcile_cluster_dirs()
 
         logger.info(
             "SpeakerRecognizer ready (api=%s, threshold=%.2f, users_dir=%s, strangers=%d)",
@@ -1087,8 +1175,28 @@ class SpeakerRecognizer:
     def _voice_dir(self, norm: str) -> Path:
         return self._users_dir / norm / _VOICE_SUBDIR
 
+    def _extended_dir(self, norm: str) -> Path:
+        return self._voice_dir(norm) / _EXTENDED_SUBDIR
+
     def _embedding_path(self, norm: str) -> Path:
+        """LEGACY aggregated-vector path. Read-only — nothing writes this now."""
         return self._voice_dir(norm) / _EMBEDDING_FILE
+
+    def _has_profile(self, norm: str) -> bool:
+        """Whether this user has any usable voice bank on disk.
+
+        Replaces the old ``_embedding_path(norm).is_file()`` check: enrollments
+        made after the bank rewrite have no ``embedding.npy`` at all, so that
+        test would report every new user as un-enrolled.
+        """
+        voice_dir = self._voice_dir(norm)
+        if not voice_dir.is_dir():
+            return False
+        if self._embedding_path(norm).is_file():
+            return True  # legacy one-row profile
+        return any(
+            _sidecar_path(p).is_file() for p in voice_dir.glob("sample_*.wav")
+        )
 
     def _metadata_path(self, norm: str) -> Path:
         return self._voice_dir(norm) / _METADATA_FILE
@@ -1123,6 +1231,7 @@ class SpeakerRecognizer:
                 "enrolled_at": meta.get("enrolled_at"),
                 "updated_at": meta.get("updated_at"),
                 "num_samples": meta.get("num_samples", 0),
+                "num_extended": meta.get("num_extended", 0),
                 "embedding_dim": meta.get("embedding_dim", 0),
             }
             self._save_registry(reg)
@@ -1503,32 +1612,311 @@ class SpeakerRecognizer:
     def _write_metadata(self, norm: str, meta: dict[str, Any]) -> None:
         self._metadata_path(norm).write_text(json.dumps(meta, indent=2))
 
-    def _load_all_embeddings(self) -> dict[str, np.ndarray]:
-        """Load every stored aggregated embedding [D] — source of truth for recognize().
+    # ------------------------------------------------------------- bank (disk)
 
-        Mirrors perception-service's per-speaker storage: one L2-normalized vector
-        per user. Recognize then runs per-chunk voting against these.
+    @staticmethod
+    def _read_sidecar(wav_path: Path) -> Optional[np.ndarray]:
+        """L2-normalized embedding stored beside ``wav_path``, or None.
+
+        Trusted as-is — deliberately NOT re-gated against the preprocessing
+        chain. A sample worth keeping (far mic, quiet delivery) is exactly the
+        one a stricter gate would now reject, and re-running inference on every
+        load would also mean a remote API call per sample per restart.
         """
-        out: dict[str, np.ndarray] = {}
+        p = _sidecar_path(wav_path)
+        if not p.is_file():
+            return None
+        try:
+            vec = np.load(p).astype(np.float32).reshape(-1)
+        except (OSError, ValueError) as e:
+            logger.warning("bad sidecar %s: %s", p, e)
+            return None
+        if vec.size == 0 or float(np.linalg.norm(vec)) < 1e-12:
+            return None
+        return _l2(vec)
+
+    def _read_tier(self, wav_paths: list[Path]) -> tuple[list[np.ndarray], list[Path]]:
+        """Sidecar embeddings for a list of sample WAVs, skipping any without one."""
+        embs: list[np.ndarray] = []
+        keep: list[Path] = []
+        for p in wav_paths:
+            emb = self._read_sidecar(p)
+            if emb is None:
+                continue
+            embs.append(emb)
+            keep.append(p)
+        return embs, keep
+
+    def _anchor_wavs(self, norm: str) -> list[Path]:
+        return sorted(self._voice_dir(norm).glob("sample_*.wav"))
+
+    def _extended_wavs(self, norm: str) -> list[Path]:
+        ext_dir = self._extended_dir(norm)
+        if not ext_dir.is_dir():
+            return []
+        return sorted(ext_dir.glob(f"{_EXTENDED_PREFIX}*.wav"))
+
+    def _load_user_bank(
+        self, norm: str
+    ) -> tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+        """Return ``(anchor [Na, D], extended [Ne, D])`` for one user.
+
+        Legacy fallback: a profile enrolled before the bank rewrite has no
+        sidecars, only the aggregated ``embedding.npy``. That vector is loaded
+        as a one-row anchor bank so the user keeps matching. Nothing rewrites it
+        — the bank fills in naturally as they are re-enrolled or auto-extended.
+        """
+        anchor_embs, _ = self._read_tier(self._anchor_wavs(norm))
+        if not anchor_embs:
+            legacy = self._embedding_path(norm)
+            if legacy.is_file():
+                try:
+                    vec = np.load(legacy).astype(np.float32).reshape(-1)
+                    if vec.size and float(np.linalg.norm(vec)) >= 1e-12:
+                        anchor_embs = [_l2(vec)]
+                except (OSError, ValueError) as e:
+                    logger.warning("failed to load legacy embedding %s: %s", legacy, e)
+        ext_embs, _ = self._read_tier(self._extended_wavs(norm))
+        anchor = np.stack(anchor_embs, axis=0) if anchor_embs else None
+        extended = np.stack(ext_embs, axis=0) if ext_embs else None
+        return anchor, extended
+
+    def _bank_signature(self) -> tuple:
+        """Cheap invalidation key for the whole-bank cache.
+
+        Sidecars are only ever created or deleted, never edited in place, so a
+        directory mtime is a sufficient signal. This exists because recognize()
+        loads the bank on EVERY turn and the bank is now N rows per user rather
+        than one vector — without a cache that is N times the disk reads on the
+        voice hot path.
+        """
+        sig: list[tuple] = []
         if not self._users_dir.is_dir():
-            return out
+            return ()
         for entry in sorted(self._users_dir.iterdir()):
             if not entry.is_dir() or entry.name.startswith("."):
                 continue
-            emb_path = self._voice_dir(entry.name) / _EMBEDDING_FILE
-            if not emb_path.is_file():
+            voice_dir = entry / _VOICE_SUBDIR
+            if not voice_dir.is_dir():
                 continue
             try:
-                vec = np.load(emb_path).astype(np.float32)
-                if vec.ndim != 1 or vec.size == 0:
+                v_mt = voice_dir.stat().st_mtime_ns
+            except OSError:
+                continue
+            ext_dir = voice_dir / _EXTENDED_SUBDIR
+            try:
+                e_mt = ext_dir.stat().st_mtime_ns if ext_dir.is_dir() else 0
+            except OSError:
+                e_mt = 0
+            sig.append((entry.name, v_mt, e_mt))
+        return tuple(sig)
+
+    def _load_bank(self) -> tuple[Optional[np.ndarray], list[str], list[str]]:
+        """Load every user's bank, flattened.
+
+        Returns ``(rows [N, D], labels [N], tiers [N])`` where ``tiers[i]`` is
+        ``"anchor"`` or ``"extended"``. Flat rather than per-user because
+        recognize() scores one matmul against everything, then reduces per
+        speaker. Cached against :meth:`_bank_signature`.
+        """
+        sig = self._bank_signature()
+        with self._bank_lock:
+            if self._bank_cache is not None and self._bank_cache_sig == sig:
+                return self._bank_cache
+
+        rows: list[np.ndarray] = []
+        labels: list[str] = []
+        tiers: list[str] = []
+        if self._users_dir.is_dir():
+            for entry in sorted(self._users_dir.iterdir()):
+                if not entry.is_dir() or entry.name.startswith("."):
                     continue
-                n = float(np.linalg.norm(vec))
-                if n < 1e-12:
-                    continue
-                out[entry.name] = (vec / n).astype(np.float32)
-            except Exception as e:
-                logger.warning("failed to load embedding for %s: %s", entry.name, e)
-        return out
+                anchor, extended = self._load_user_bank(entry.name)
+                for bank, tier in ((anchor, "anchor"), (extended, "extended")):
+                    if bank is None:
+                        continue
+                    for r in bank:
+                        rows.append(r)
+                        labels.append(entry.name)
+                        tiers.append(tier)
+
+        # Guard against a model change mid-life: rows of differing width cannot
+        # be stacked, and silently dropping the minority would be worse than
+        # saying so. Keep the most common width and log the rest.
+        if rows:
+            widths = {int(r.shape[0]) for r in rows}
+            if len(widths) > 1:
+                keep_dim = max(widths, key=lambda d: sum(1 for r in rows if r.shape[0] == d))
+                logger.warning(
+                    "Bank holds mixed embedding dims %s — keeping %d, ignoring the rest",
+                    sorted(widths), keep_dim,
+                )
+                filtered = [
+                    (r, lb, t)
+                    for r, lb, t in zip(rows, labels, tiers)
+                    if r.shape[0] == keep_dim
+                ]
+                rows = [f[0] for f in filtered]
+                labels = [f[1] for f in filtered]
+                tiers = [f[2] for f in filtered]
+
+        stacked = np.stack(rows, axis=0).astype(np.float32) if rows else None
+        result = (stacked, labels, tiers)
+        with self._bank_lock:
+            self._bank_cache = result
+            self._bank_cache_sig = sig
+        return result
+
+    def _invalidate_bank(self) -> None:
+        """Drop the cached bank after a write that changed it."""
+        with self._bank_lock:
+            self._bank_cache = None
+            self._bank_cache_sig = None
+
+    # -------------------------------------------------- extended tier (disk)
+
+    @staticmethod
+    def _delete_sample(wav_path: Path) -> None:
+        """Delete a sample WAV and its sidecar (best-effort, never raises)."""
+        try:
+            wav_path.unlink(missing_ok=True)
+            _sidecar_path(wav_path).unlink(missing_ok=True)
+        except OSError as e:
+            logger.warning("failed to delete sample %s: %s", wav_path, e)
+
+    def _write_extended_sample(
+        self, norm: str, wav_bytes: bytes, embedding: np.ndarray
+    ) -> Optional[Path]:
+        """Persist one extended sample (WAV + sidecar). Returns its path or None.
+
+        The sidecar is written after the WAV, and a sample only counts as
+        present once both exist — a half-written pair is simply invisible to
+        the bank loader rather than corrupting it.
+        """
+        try:
+            dest = self._extended_dir(norm)
+            dest.mkdir(parents=True, exist_ok=True)
+            with self._bank_lock:
+                self._extended_seq += 1
+                seq = self._extended_seq
+            stem = f"{_EXTENDED_PREFIX}{int(time.time() * 1000)}_{seq}"
+            wav_path = dest / f"{stem}.wav"
+            wav_path.write_bytes(wav_bytes)
+            np.save(_sidecar_path(wav_path), _l2(embedding))
+            return wav_path
+        except OSError as e:
+            logger.warning("failed to write extended sample for %s: %s", norm, e)
+            return None
+
+    def _prune_extended(self, norm: str) -> list[Path]:
+        """Trim a user's extended tier to the most diverse _MAX_EXTENDED_SAMPLES.
+
+        Anchored on the user's enrollment samples, so the kept slots are the
+        ones that COMPLEMENT the enrollment rather than repeat it. Returns the
+        paths that were deleted. Anchor samples are never candidates here —
+        that tier is permanent by design.
+        """
+        paths = self._extended_wavs(norm)
+        embs, kept_paths = self._read_tier(paths)
+
+        # A WAV with no readable sidecar can never be scored or matched, so it
+        # is dead weight in this auto-managed tier — drop it. (The anchor tier
+        # keeps such files: enrollment audio is the user's, not ours to bin.)
+        for p in paths:
+            if p not in kept_paths:
+                logger.info("Extended prune: dropping unbacked sample %s", p.name)
+                self._delete_sample(p)
+
+        if len(embs) <= _MAX_EXTENDED_SAMPLES:
+            return []
+
+        anchor_embs, _ = self._read_tier(self._anchor_wavs(norm))
+        anchor = np.stack(anchor_embs, axis=0) if anchor_embs else None
+        keep = set(
+            _select_diverse(np.stack(embs, axis=0), anchor, _MAX_EXTENDED_SAMPLES)
+        )
+        dropped = [p for i, p in enumerate(kept_paths) if i not in keep]
+        for p in dropped:
+            self._delete_sample(p)
+        if dropped:
+            logger.info(
+                "Extended prune '%s': kept %d/%d, dropped %s",
+                norm, _MAX_EXTENDED_SAMPLES, len(embs),
+                [p.name for p in dropped],
+            )
+        return dropped
+
+    def _maybe_extend_user(
+        self,
+        norm: str,
+        embedding: np.ndarray,
+        wav_bytes: bytes,
+        *,
+        duration_s: float,
+        margin: float,
+    ) -> None:
+        """Consider folding one confidently-recognized turn into a user's set.
+
+        Ported from ``faceid/recognizer.py::_maybe_extend_user``, with two
+        extra bars that the face pipeline does not need. A camera frame holds
+        one face per crop; a turn's audio can hold the TV, a second speaker, or
+        the device's own TTS tail — so extending demands more than recognizing:
+
+        * ``duration_s`` must clear _EXTEND_MIN_DURATION_S. A ~1s clip carries
+          too little speaker information to be worth a permanent slot, and its
+          embedding is noisy enough to look "diverse" for the wrong reason.
+        * ``margin`` (winner's confidence minus runner-up's) must clear
+          _EXTEND_MIN_MARGIN_COS, so a near-tie between two enrolled users
+          never writes audio into either one's bank.
+
+        Then the diversity gate: keep the sample only if its max cosine to what
+        we already hold is BELOW _DIVERSITY_COS — above that it duplicates a
+        sample we have.
+
+        Like the face version, this NEVER holds ``_bank_lock`` across disk I/O.
+        """
+        if duration_s < _EXTEND_MIN_DURATION_S:
+            return
+        if margin < _EXTEND_MIN_MARGIN_COS:
+            logger.debug(
+                "[speaker] extend '%s': skip — margin %.3f < %.2f",
+                norm, margin, _EXTEND_MIN_MARGIN_COS,
+            )
+            return
+
+        anchor, extended = self._load_user_bank(norm)
+        existing = [b for b in (anchor, extended) if b is not None and len(b)]
+        if existing:
+            stack = np.concatenate(existing)
+            max_sim = float(np.max(stack @ _l2(embedding)))
+            if max_sim > _DIVERSITY_COS:
+                logger.debug(
+                    "[speaker] extend '%s': skip redundant (max_cos=%.3f > %.2f)",
+                    norm, max_sim, _DIVERSITY_COS,
+                )
+                return
+        else:
+            max_sim = float("nan")
+
+        path = self._write_extended_sample(norm, wav_bytes, embedding)
+        if path is None:
+            return
+        dropped = self._prune_extended(norm)
+        self._invalidate_bank()
+
+        if path in dropped:
+            logger.debug(
+                "[speaker] extend '%s': sample pruned on commit -> %s",
+                norm, path.name,
+            )
+            return
+        logger.info(
+            "[speaker] extend '%s': ADDED sample (%.1fs, max_cos_to_existing=%s, "
+            "margin=%.3f) -> %s",
+            norm, duration_s,
+            "n/a" if max_sim != max_sim else f"{max_sim:.3f}",
+            margin, path.name,
+        )
 
     # --------------------------------------------------------- public: enroll
 
@@ -1543,9 +1931,14 @@ class SpeakerRecognizer:
     ) -> dict[str, Any]:
         """Enroll or re-enroll a speaker.
 
-        New sample WAVs are appended to the user's ``voice/`` folder and the
-        embedding is (re)computed from ALL samples in the folder, producing a
-        single aggregated representative vector.
+        Each accepted WAV is stored with its own embedding sidecar and becomes
+        one row of the user's ANCHOR bank. Nothing is averaged, and no existing
+        sample is modified or deleted — a new enrollment can only add rows.
+
+        Unknown-voice clusters belonging to this person are claimed here too,
+        but their audio joins the EXTENDED tier (capped, prunable), never the
+        anchor tier, so auto-collected audio can never displace the recording
+        the user deliberately made.
 
         Identity (``telegram_username`` / ``telegram_id`` / display name) is
         merged into the SHARED ``/root/local/users/<norm>/metadata.json`` —
@@ -1613,11 +2006,12 @@ class SpeakerRecognizer:
         )
 
         # ------------------------------------------------------------
-        # Strict policy: the voice/ folder ONLY contains audios that
-        # contributed to the final embedding. So we do all the work in
-        # memory first — validate, embed, filter — and ONLY THEN commit
-        # surviving samples to disk. Any audio that fails validation or
-        # the consistency filter never touches the folder.
+        # No aggregation: every accepted sample becomes its OWN row in the
+        # bank. Work still happens in memory first — validate, embed — so
+        # audio that fails the gate never lands on disk. What changed is that
+        # committing no longer recomputes a shared vector, which means a new
+        # sample can no longer damage an existing one, and nothing already on
+        # disk has to be deleted to protect it.
         # ------------------------------------------------------------
 
         # Step 1 — Decode + normalize incoming audios (in-memory only).
@@ -1700,34 +2094,54 @@ class SpeakerRecognizer:
             )
             raise SpeakerRecognizerError(f"no valid new samples — {details}")
 
-        # Step 2b — Pull all WAVs from clusters that should contribute samples
-        # to this enrollment. Two paths into the cluster set, both unioned:
-        #   (a) Explicit claim — any source path whose parent dir is a
-        #       ``voice_<N>`` cluster. The caller (LLM via OpenClaw skill)
-        #       may pass only one path from a cluster even when the cluster
-        #       has more sibling WAVs; we treat passing any path as claiming
-        #       the WHOLE cluster, so no audio gets stranded if the LLM
-        #       happens to surface only one sample per turn.
-        #   (b) Centroid match — any cluster whose stored centroid sits within
-        #       merge_threshold of the query mean. Captures distance / volume
-        #       drift where the same person got fragmented across voice_<N>
-        #       clusters with low pairwise centroid similarity, but each one
-        #       still aligns with the new enrollment audio.
-        # Filepath sources only — base64 has no path to resolve. Samples
-        # pulled in go through the same consistency filter (Step 5) as any
-        # other sample, so false matches get their outliers dropped, and
-        # _drop_consumed_clusters at the tail cleans up every consumed
-        # cluster regardless of how many samples survived.
-        if source_type == "filepath" and new_embeddings:
-            # SCALED cosine in [0, 1] — same unit as the MATCH threshold.
-            # 0.625 sits below the EER band so same-person-different-distance
-            # gets absorbed; the Step 5 consistency filter below catches false
-            # merges from loose matches.
-            merge_threshold = float(
-                os.environ.get("HAL_CLUSTER_MERGE_THRESHOLD", "0.625")
-            )
+        # Step 3 — Coherence gate WITHIN the incoming batch.
+        #
+        # Reference is the LONGEST new sample: given several clips to pick
+        # from, the longest carries the most speaker information and makes the
+        # steadiest reference. This used to be `new_embeddings[-1]` with the
+        # comment "user's most recent intent wins" — which held right up until
+        # the cluster pull below started appending to that same list, at which
+        # point the reference silently became an arbitrary pulled clip and the
+        # user's own recording was scored against it (and could be discarded).
+        # The reference is now fixed BEFORE anything else can be appended.
+        #
+        # No-op for single-sample enrolls: there is nothing to compare against.
+        durations = [_wav_duration_s(wb) for wb, _e in new_embeddings]
+        ref_idx = max(range(len(new_embeddings)), key=lambda i: durations[i])
+        ref_wb, ref_emb = new_embeddings[ref_idx]
 
-            # (a) Path-based claim — collect cluster names from sources.
+        anchors: list[tuple[bytes, np.ndarray]] = [(ref_wb, ref_emb)]
+        dropped_new = 0
+        for i, (wb, emb) in enumerate(new_embeddings):
+            if i == ref_idx:
+                continue
+            sim = _cosine_similarity(emb, ref_emb)
+            if sim >= _ENROLL_COHERENCE_COS:
+                anchors.append((wb, emb))
+            else:
+                dropped_new += 1
+                logger.info(
+                    "Enroll: dropped new sample #%d (%.1fs, cos=%.3f < %.2f vs "
+                    "reference #%d) — not written to disk",
+                    i, durations[i], sim, _ENROLL_COHERENCE_COS, ref_idx,
+                )
+
+        # Step 4 — Claim unknown-voice clusters that belong to this person.
+        #
+        # Two ways in, unioned:
+        #   (a) Explicit — a source path lives inside a ``voice_<N>`` dir.
+        #       Passing ANY path from a cluster claims the whole cluster, so an
+        #       agent that surfaces one sample per turn strands nothing.
+        #   (b) Match — the cluster scores >= _MATCH_COS against the anchors we
+        #       just accepted. This previously ran at a deliberately looser
+        #       0.625 scaled bar; it now clears exactly the bar that
+        #       recognizing this person clears, so nothing enters an enrollment
+        #       that would not have been called this person at recognize time.
+        #
+        # Filepath sources only — base64 carries no path to resolve.
+        claimed: list[tuple[bytes, np.ndarray]] = []
+        consume_hashes: list[str] = []
+        if source_type == "filepath":
             try:
                 unknown_root = _UNKNOWN_AUDIO_DIR.resolve()
             except OSError:
@@ -1740,18 +2154,13 @@ class SpeakerRecognizer:
                         resolved.relative_to(unknown_root)
                     except (OSError, ValueError):
                         continue
-                    parent_name = resolved.parent.name
-                    if _VOICE_STRANGER_DIR_RE.match(parent_name):
-                        claimed_hashes.add(parent_name)
+                    if _VOICE_STRANGER_DIR_RE.match(resolved.parent.name):
+                        claimed_hashes.add(resolved.parent.name)
 
-            # (b) Centroid-based match.
-            query_mean = _weighted_aggregate(
-                [emb for _wb, emb in new_embeddings]
+            anchor_rows = np.stack([_l2(e) for _w, e in anchors], axis=0)
+            matched_hashes = set(
+                self._match_stranger_clusters(anchor_rows, _MATCH_COS)
             )
-            matched_hashes = set(self._match_stranger_clusters(
-                query_mean, merge_threshold,
-            ))
-
             consume_hashes = sorted(claimed_hashes | matched_hashes)
             if claimed_hashes:
                 logger.info(
@@ -1759,21 +2168,16 @@ class SpeakerRecognizer:
                     len(claimed_hashes), sorted(claimed_hashes),
                 )
 
-            merged_added = 0
             for h in consume_hashes:
                 cluster_dir_path = _UNKNOWN_AUDIO_DIR / h
                 if not cluster_dir_path.is_dir():
                     continue
                 for wav in sorted(cluster_dir_path.glob("*.wav")):
                     wav_str = str(wav)
-                    if wav_str in sources:
-                        continue  # caller already passed this path in
                     try:
                         raw = _read_bytes(wav_str)
-                    except Exception as e:
-                        logger.warning(
-                            "Cluster pull: cannot read %s — %s", wav_str, e,
-                        )
+                    except OSError as e:
+                        logger.warning("Cluster claim: cannot read %s — %s", wav_str, e)
                         continue
                     try:
                         wb = _ensure_wav_16k_mono(raw)
@@ -1782,143 +2186,95 @@ class SpeakerRecognizer:
                     except EmbeddingAPIUnavailableError:
                         raise
                     except SpeakerRecognizerError as e:
-                        logger.info(
-                            "Cluster pull: skip %s — %s", wav.name, e,
-                        )
+                        logger.info("Cluster claim: skip %s — %s", wav.name, e)
                         continue
-                    new_wavs.append(wb)
-                    new_embeddings.append((wb, emb))
-                    sources.append(wav_str)
-                    merged_added += 1
+                    claimed.append((wb, emb))
+                    if wav_str not in sources:
+                        sources.append(wav_str)
             if consume_hashes:
                 logger.info(
-                    "Cluster pull: %d WAV(s) from %d cluster(s) %s "
-                    "(claimed=%d, centroid-matched=%d, threshold=%.2f)",
-                    merged_added, len(consume_hashes), consume_hashes,
+                    "Cluster claim: %d WAV(s) from %d cluster(s) %s "
+                    "(claimed=%d, matched=%d, threshold=%.2f) -> extended tier",
+                    len(claimed), len(consume_hashes), consume_hashes,
                     len(claimed_hashes), len(matched_hashes - claimed_hashes),
-                    merge_threshold,
+                    _MATCH_COS,
                 )
 
-        # Step 3 — Load EXISTING samples on disk + compute their embeddings.
-        # Two failure modes, handled separately:
-        #   a) _prepare_wav_for_embedding fails → the WAV file itself is
-        #      corrupt / silent / too short. Safe to delete so the folder
-        #      doesn't carry a permanently broken sample.
-        #   b) _call_embedding_api fails → the server rejected or is down.
-        #      NEVER delete: the file was previously accepted and may be
-        #      fine once the API recovers. EmbeddingAPIUnavailableError
-        #      also aborts the whole enroll so we don't proceed with a
-        #      partial view of existing samples.
-        existing_on_disk = sorted(voice_dir.glob("sample_*.wav"))
-        existing_embs: dict[Path, np.ndarray] = {}
-        for p in existing_on_disk:
-            try:
-                payload = self._prepare_wav_for_embedding(p.read_bytes())
-            except EmbeddingAPIUnavailableError:
-                # Preprocessor unavailable (systemic) — abort, never delete.
-                raise
-            except AudioGateRejectedError as e:
-                # The gate (VAD/quality) rejected a previously-accepted sample.
-                # The gate is a moving target, so KEEP the file — deleting it
-                # would silently shrink an enrollment as thresholds change.
-                logger.warning(
-                    "Enroll: skipping existing sample %s — gate rejected (%s), file kept",
-                    p.name, e,
-                )
-                continue
-            except SpeakerRecognizerError as e:
-                # Genuine decode/corrupt failure — safe to delete.
-                logger.warning(
-                    "Enroll: removing broken existing sample %s — %s",
-                    p.name, e,
-                )
-                try:
-                    p.unlink()
-                except OSError as ose:
-                    logger.warning("Enroll: failed to delete %s: %s", p, ose)
+        # Step 5 — Backfill sidecars for any pre-existing sample that lacks one.
+        #
+        # Covers two cases without a migration script: a profile enrolled
+        # before the bank rewrite (aggregated embedding.npy, no sidecars), and
+        # a sample whose WAV was written but whose sidecar was not. Strictly
+        # best-effort — a failure just leaves the sample unbacked, and NOTHING
+        # is deleted. Once backfilled, the legacy embedding.npy stops being
+        # consulted (see _load_user_bank).
+        backfilled = 0
+        for p in self._anchor_wavs(norm):
+            if _sidecar_path(p).is_file():
                 continue
             try:
-                existing_embs[p] = self._call_embedding_api(payload)
+                emb = self._call_embedding_api(
+                    self._prepare_wav_for_embedding(p.read_bytes())
+                )
+                np.save(_sidecar_path(p), _l2(emb))
+                backfilled += 1
             except EmbeddingAPIUnavailableError:
                 raise
-            except SpeakerRecognizerError as e:
-                logger.warning(
-                    "Enroll: skipping existing sample %s — server rejected (%s), file kept",
+            except (SpeakerRecognizerError, OSError) as e:
+                logger.info(
+                    "Enroll: no sidecar for existing sample %s — %s (kept)",
                     p.name, e,
                 )
+        if backfilled:
+            logger.info("Enroll: backfilled %d sidecar(s) for %s", backfilled, norm)
 
-        # Step 4 — Reference = the LATEST NEW wav (user's most recent intent
-        # wins). All other samples (new + existing) are scored against it.
-        ref_wb, ref_emb = new_embeddings[-1]
-
-        kept_new: list[tuple[bytes, np.ndarray]] = [(ref_wb, ref_emb)]
-        dropped_new = 0
-        for wb, emb in new_embeddings[:-1]:
-            sim = _cosine_similarity(emb, ref_emb)
-            if sim >= _ENROLL_CONSISTENCY_THRESHOLD:
-                kept_new.append((wb, emb))
-            else:
-                dropped_new += 1
-                logger.info(
-                    "Enroll: dropped new sample (sim=%.2f < %.2f) — not written to disk",
-                    sim, _ENROLL_CONSISTENCY_THRESHOLD,
-                )
-
-        kept_existing: list[tuple[Path, np.ndarray]] = []
-        dropped_existing: list[tuple[Path, float]] = []
-        for p, emb in existing_embs.items():
-            sim = _cosine_similarity(emb, ref_emb)
-            if sim >= _ENROLL_CONSISTENCY_THRESHOLD:
-                kept_existing.append((p, emb))
-            else:
-                dropped_existing.append((p, sim))
-
-        # Step 5 — Delete dropped EXISTING samples from disk.
-        for p, sim in dropped_existing:
-            try:
-                p.unlink()
-                logger.info(
-                    "Enroll: removed stale existing sample %s (sim=%.2f < %.2f)",
-                    p.name, sim, _ENROLL_CONSISTENCY_THRESHOLD,
-                )
-            except OSError as e:
-                logger.warning("Enroll: failed to delete %s: %s", p, e)
-
-        # Step 6 — Commit kept NEW wavs to disk. Stable millisecond prefix
-        # ensures lex sort = chronological order for later reference picks.
-        # Tiny sleep between writes keeps timestamp uniqueness for the rare
-        # case where the same ms boundary is hit.
+        # Step 6 — Commit anchors. Each WAV gets its embedding sidecar written
+        # first-class alongside it. The millisecond stamp is offset by index so
+        # two samples in the same enroll can never collide, and lexical order
+        # stays chronological (the old code recomputed time.time() per file
+        # with a comment claiming a sleep kept them unique — there was no
+        # sleep, and same-batch samples routinely shared a timestamp).
         written_new_paths: list[Path] = []
-        for wb, _emb in kept_new:
-            fname = f"sample_{origin}_{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}.wav"
+        stamp = int(time.time() * 1000)
+        for i, (wb, emb) in enumerate(anchors):
+            fname = f"sample_{origin}_{stamp + i}_{uuid.uuid4().hex[:8]}.wav"
             fpath = voice_dir / fname
-            fpath.write_bytes(wb)
+            try:
+                fpath.write_bytes(wb)
+                np.save(_sidecar_path(fpath), _l2(emb))
+            except OSError as e:
+                logger.warning("Enroll: failed to write %s: %s", fpath, e)
+                continue
             written_new_paths.append(fpath)
 
-        # Step 7 — Aggregate the per-sample embeddings we already computed
-        # in Steps 2 + 3 instead of issuing one more /embed call with every
-        # kept WAV. Bundling all samples into one server call would concat
-        # them into a single waveform before VAD/chunking — a sample-level
-        # boundary loss that differs from what perception-service's own register()
-        # does (preprocess each file separately, then pool chunks). Each
-        # per-sample embedding is already L2-normalized, so the self-
-        # consistency weighted mean below matches the server's aggregation
-        # math, minus the cross-file concat artifact.
-        kept_embeddings = [emb for _p, emb in kept_existing] + [
-            emb for _wb, emb in kept_new
-        ]
-        embedding = _weighted_aggregate(kept_embeddings)
-        np.save(self._embedding_path(norm), embedding)
+        if not written_new_paths and not self._has_profile(norm):
+            raise SpeakerRecognizerError("failed to write any enrollment sample")
 
-        # Re-read the folder — it now contains ONLY samples that were valid
-        # AND passed the consistency filter (kept existing + written new).
-        all_samples = sorted(voice_dir.glob("sample_*.wav"))
+        # Step 7 — Commit claimed cluster audio to the EXTENDED tier, then
+        # prune that tier back to its cap by diversity. Written first and
+        # pruned after (rather than admission-tested up front like the face
+        # pipeline does) because enroll is not a hot path and the churn is
+        # bounded by one cluster's worth of files.
+        for wb, emb in claimed:
+            self._write_extended_sample(norm, wb, emb)
+        if claimed:
+            self._prune_extended(norm)
+
+        self._invalidate_bank()
+
+        # Re-read from disk so metadata reflects exactly what is stored.
+        anchor_paths = self._anchor_wavs(norm)
+        extended_paths = self._extended_wavs(norm)
+        anchor_embs, _ = self._read_tier(anchor_paths)
+        extended_embs, _ = self._read_tier(extended_paths)
+        dim = int(anchor_embs[0].shape[0]) if anchor_embs else 0
 
         logger.info(
-            "Enroll committed: new_written=%d new_rejected=%d existing_kept=%d existing_dropped=%d total_on_disk=%d dim=%d",
-            len(written_new_paths), dropped_new,
-            len(kept_existing), len(dropped_existing),
-            len(all_samples), int(embedding.shape[0]),
+            "Enroll committed: anchors_written=%d anchors_rejected=%d "
+            "batch_dropped=%d claimed_to_extended=%d "
+            "total_anchors=%d total_extended=%d dim=%d",
+            len(written_new_paths), len(per_sample_errors), dropped_new,
+            len(claimed), len(anchor_paths), len(extended_paths), dim,
         )
 
         # Update voice metadata + registry.
@@ -1927,7 +2283,7 @@ class SpeakerRecognizer:
             "%Y-%m-%dT%H:%M:%S"
         )
         enrollment_sources = sorted(
-            {_sample_origin(p.name) for p in all_samples} | {origin}
+            {_sample_origin(p.name) for p in anchor_paths} | {origin}
         )
         meta: dict[str, Any] = {
             "name": norm,
@@ -1945,56 +2301,71 @@ class SpeakerRecognizer:
             "last_enrollment_source": origin,
             "enrolled_at": existing.get("enrolled_at", now_iso),
             "updated_at": now_iso,
-            "num_samples": len(all_samples),
-            "sample_files": [p.name for p in all_samples],
-            "sample_origins": {p.name: _sample_origin(p.name) for p in all_samples},
-            "embedding_dim": int(embedding.shape[0]),
+            # num_samples keeps its meaning: samples the user enrolled.
+            # Auto-collected audio is counted separately so the two can never
+            # be confused in the UI or by a skill.
+            "num_samples": len(anchor_paths),
+            "sample_files": [p.name for p in anchor_paths],
+            "sample_origins": {p.name: _sample_origin(p.name) for p in anchor_paths},
+            "num_extended": len(extended_paths),
+            "extended_files": [p.name for p in extended_paths],
+            "embedding_dim": dim,
         }
         self._write_metadata(norm, meta)
         self._update_registry(norm, meta)
 
-        # Drop any stranger clusters whose WAVs were just enrolled. Keeping
-        # them would leave stale centroids that re-label the now-known
-        # speaker as voice_<N> on any recognition below the main threshold.
+        # Drop any stranger clusters whose WAVs were just claimed. Keeping them
+        # would leave stale rows that re-label the now-known speaker as
+        # voice_<N> on any recognition below the match threshold.
         if source_type == "filepath":
             self._drop_consumed_clusters(sources)
 
         logger.info(
-            "Enrolled speaker '%s' — %d total samples, dim=%d",
-            norm,
-            meta["num_samples"],
-            meta["embedding_dim"],
+            "Enrolled speaker '%s' — %d anchor + %d extended sample(s), dim=%d",
+            norm, meta["num_samples"], meta["num_extended"], dim,
         )
         if self._debug.enabled:  # SPEAKER-DEBUG
-            # cohesion = mean scaled-cosine of every kept sample to the final
-            # aggregated vector — a single "how tight is this enrollment" number.
+            # cohesion = mean cosine of every stored anchor to the reference
+            # sample; a single "how tight is this enrollment" number. There is
+            # no aggregated vector to measure against any more.
             try:
                 cohesion = round(
-                    float(np.mean([_cosine_similarity(e, embedding) for e in kept_embeddings])), 4
-                )
+                    float(np.mean([_cosine_similarity(e, ref_emb) for e in anchor_embs])), 4
+                ) if anchor_embs else None
             except Exception:
                 cohesion = None
             self._debug.record(
                 "enroll", cls=norm, confidence=cohesion,
                 wavs={
-                    f"sample_new_{i:02d}.wav": wb
-                    for i, (wb, _e) in enumerate(kept_new)
+                    f"anchor_new_{i:02d}.wav": wb
+                    for i, (wb, _e) in enumerate(anchors)
                 },
                 arrays={
-                    "embedding.npy": embedding,
-                    "kept_embeddings.npy": np.stack([_l2(e) for e in kept_embeddings], axis=0),
+                    "anchor_bank.npy": (
+                        np.stack(anchor_embs, axis=0) if anchor_embs
+                        else np.zeros((0, 0), dtype=np.float32)
+                    ),
+                    "extended_bank.npy": (
+                        np.stack(extended_embs, axis=0) if extended_embs
+                        else np.zeros((0, 0), dtype=np.float32)
+                    ),
                 },
                 result={
                     "name": norm, "cohesion": cohesion, "origin": origin,
-                    "consistency_threshold": _ENROLL_CONSISTENCY_THRESHOLD,
+                    "coherence_threshold": _ENROLL_COHERENCE_COS,
+                    "match_threshold": _MATCH_COS,
                     "num_new": len(new_wavs),
-                    "num_kept_new": len(kept_new),
+                    "num_anchors_written": len(written_new_paths),
                     "num_new_rejected_by_server": len(per_sample_errors),
-                    "num_new_dropped_consistency": dropped_new,
-                    "num_existing_kept": len(kept_existing),
-                    "num_existing_dropped": len(dropped_existing),
-                    "num_samples_total": meta["num_samples"],
-                    "embedding_dim": meta["embedding_dim"],
+                    "num_new_dropped_coherence": dropped_new,
+                    "reference_index": ref_idx,
+                    "reference_duration_s": round(durations[ref_idx], 3),
+                    "num_claimed_to_extended": len(claimed),
+                    "claimed_clusters": consume_hashes,
+                    "sidecars_backfilled": backfilled,
+                    "num_anchors_total": len(anchor_paths),
+                    "num_extended_total": len(extended_paths),
+                    "embedding_dim": dim,
                     "per_sample_errors": [
                         {"index": i, "error": m} for i, m in per_sample_errors
                     ],
@@ -2312,8 +2683,9 @@ class SpeakerRecognizer:
         )
 
         with self._debug_stage("load_enrolled"):
-            known = self._load_all_embeddings()
-        if not known:
+            bank_rows, bank_labels, bank_tiers = self._load_bank()
+            known = sorted(set(bank_labels))
+        if bank_rows is None or not known:
             # No enrolled users — every voice is unknown. Still assign a
             # stable cluster hash so repeat speakers can be tracked before
             # anyone is enrolled.
@@ -2376,10 +2748,23 @@ class SpeakerRecognizer:
         # one vote and one confidence sample. Winner = most votes, tiebreak
         # by avg confidence. Returned confidence = avg of winner's votes.
         with self._debug_stage("match_vote"):
-            names = list(known.keys())
-            ref_matrix = np.stack([known[n] for n in names], axis=0)  # [K, D]
-            sims = query_chunks @ ref_matrix.T                         # [M, K] raw cos
-            confs = (sims + 1.0) / 2.0                                  # mapped [0, 1]
+            names = list(known)
+            # Score every chunk against every ROW, then collapse each speaker's
+            # rows to their best. A speaker holds several independent samples
+            # now, so "how well does this chunk match Leo" is "how well does it
+            # match Leo's closest sample" — the same max-over-bank reduction
+            # faceid/recognizer.py:787 does across its upload and extended
+            # banks. Values are raw cosine throughout; nothing is rescaled.
+            #
+            # Note this makes the score monotonically non-decreasing in bank
+            # size: more rows means more chances at a high draw, for impostors
+            # too. _MAX_EXTENDED_SAMPLES is what bounds that drift.
+            row_sims = query_chunks @ bank_rows.T          # [M, N rows] raw cos
+            label_arr = np.asarray(bank_labels)
+            confs = np.stack(
+                [row_sims[:, label_arr == n].max(axis=1) for n in names],
+                axis=1,
+            )                                              # [M, K] raw cos
             best_idx = confs.argmax(axis=1)                             # [M]
             best_conf_per_chunk = confs[np.arange(confs.shape[0]), best_idx]
 
@@ -2429,6 +2814,29 @@ class SpeakerRecognizer:
         if vp_hash:
             saved_path = self._move_to_cluster(saved_path, vp_hash)
 
+        # Auto-extend: a confidently-recognized turn may earn a slot in the
+        # speaker's extended tier, so the bank picks up the acoustics this
+        # room actually produces (distance, loudness) instead of only the one
+        # enrollment recording. Gated hard inside _maybe_extend_user — most
+        # turns are rejected as too short, too close a tie, or redundant.
+        if is_match:
+            with self._debug_stage("auto_extend"):
+                margin = (
+                    best_conf - scores[1][1] if len(scores) > 1 else float("inf")
+                )
+                try:
+                    self._maybe_extend_user(
+                        best_name,
+                        _l2(query_chunks.mean(axis=0)),
+                        wav_bytes,
+                        duration_s=_wav_duration_s(wav_bytes),
+                        margin=float(margin),
+                    )
+                except Exception as e:
+                    # Never let bank maintenance break a turn — the identity
+                    # decision is already made and the reply depends on it.
+                    logger.warning("auto-extend failed for %s: %s", best_name, e)
+
         logger.info(
             "Recognize result: name=%s confidence=%.3f match=%s cluster=%s path=%s",
             resolved_name, best_conf, is_match, vp_hash or "(none)", saved_path,
@@ -2460,7 +2868,7 @@ class SpeakerRecognizer:
             # gets 0 votes and vanishes from `candidates` — even though it WAS
             # compared on every chunk. Capture the whole [chunk x speaker] matrix
             # so you can see the losers and why each chunk voted the way it did.
-            _confs = confs.tolist()  # [M chunks][K speakers], scaled cosine [0, 1]
+            _confs = confs.tolist()  # [M chunks][K speakers], RAW cosine [-1, 1]
             per_chunk_scores = [
                 {
                     "chunk": ci,
@@ -2523,7 +2931,7 @@ class SpeakerRecognizer:
                 arrays={
                     "input_chunks.npy": query_chunks,
                     "input_embedding.npy": _l2(query_chunks.mean(axis=0)),
-                    # [chunks x speakers] scaled cosine; columns = enrolled_speakers order.
+                    # [chunks x speakers] raw cosine; columns = enrolled_speakers order.
                     "chunk_scores.npy": confs,
                 },
                 result=dbg_result,
@@ -2544,7 +2952,7 @@ class SpeakerRecognizer:
         the existing meta instead of erroring out.
         """
         norm = _normalize_label(name)
-        if not self._embedding_path(norm).is_file():
+        if not self._has_profile(norm):
             return None
         voice_meta = self._read_metadata(norm)
         shared_meta = self._read_shared_metadata(norm)
@@ -2566,11 +2974,13 @@ class SpeakerRecognizer:
                 "last_enrollment_source", ""
             ),
             "num_samples": voice_meta.get("num_samples", 0),
+            "num_extended": voice_meta.get("num_extended", 0),
             "embedding_dim": voice_meta.get("embedding_dim", 0),
             "enrolled_at": voice_meta.get("enrolled_at"),
             "updated_at": voice_meta.get("updated_at"),
             "sample_files": voice_meta.get("sample_files", []),
             "sample_origins": voice_meta.get("sample_origins", {}),
+            "extended_files": voice_meta.get("extended_files", []),
         }
 
     # ----------------------------------------------------------- public: list
@@ -2590,7 +3000,7 @@ class SpeakerRecognizer:
         reg = self._load_registry()
         out: list[dict[str, Any]] = []
         for norm in sorted(reg.keys()):
-            if not self._embedding_path(norm).is_file():
+            if not self._has_profile(norm):
                 continue
             voice_meta = self._read_metadata(norm)
             shared_meta = self._read_shared_metadata(norm)
@@ -2615,11 +3025,13 @@ class SpeakerRecognizer:
                         "last_enrollment_source", ""
                     ),
                     "num_samples": voice_meta.get("num_samples", 0),
+                    "num_extended": voice_meta.get("num_extended", 0),
                     "embedding_dim": voice_meta.get("embedding_dim", 0),
                     "enrolled_at": voice_meta.get("enrolled_at"),
                     "updated_at": voice_meta.get("updated_at"),
                     "sample_files": voice_meta.get("sample_files", []),
                     "sample_origins": voice_meta.get("sample_origins", {}),
+                    "extended_files": voice_meta.get("extended_files", []),
                 }
             )
         return out
@@ -2671,7 +3083,7 @@ class SpeakerRecognizer:
         """
         norm = _normalize_label(name)
         user_dir = self._users_dir / norm
-        if not self._embedding_path(norm).is_file():
+        if not self._has_profile(norm):
             raise SpeakerRecognizerError(
                 f"no voice profile for '{norm}' — call enroll first"
             )
@@ -2781,17 +3193,121 @@ class SpeakerRecognizer:
 
     # ------------------------------------------------- voice stranger clustering
 
+    def _cluster_labels_in_order(self) -> list[str]:
+        """Distinct cluster labels, oldest first. Caller holds _stranger_lock.
+
+        A cluster now owns SEVERAL rows, so "oldest" is the label whose first
+        row appears earliest — not simply the first row in the array.
+        """
+        if self._stranger_labels is None:
+            return []
+        seen: list[str] = []
+        for lbl in self._stranger_labels:
+            s = str(lbl)
+            if s not in seen:
+                seen.append(s)
+        return seen
+
+    def _cluster_rows(self, label: str) -> Optional[np.ndarray]:
+        """Rows belonging to one cluster. Caller holds _stranger_lock."""
+        if self._stranger_embeds is None or self._stranger_labels is None:
+            return None
+        mask = np.asarray(self._stranger_labels) == label
+        if not np.any(mask):
+            return None
+        return self._stranger_embeds[mask]
+
+    def _evict_oldest_clusters(self) -> list[str]:
+        """Retire whole clusters once over _MAX_VOICE_STRANGERS. Holds the lock.
+
+        Evicts by LABEL, not by row. Slicing rows (as the face tracker does,
+        correctly, because each of its strangers owns exactly one row) would
+        here delete a cluster's oldest samples while leaving the rest —
+        silently shrinking clusters instead of retiring them.
+
+        Returns the evicted labels so the caller can remove their on-disk dirs
+        AFTER releasing the lock.
+        """
+        labels = self._cluster_labels_in_order()
+        if len(labels) <= _MAX_VOICE_STRANGERS:
+            return []
+        drop = set(labels[: len(labels) - _MAX_VOICE_STRANGERS])
+        keep_mask = np.array(
+            [str(lbl) not in drop for lbl in self._stranger_labels], dtype=bool
+        )
+        self._stranger_embeds = self._stranger_embeds[keep_mask]
+        self._stranger_labels = self._stranger_labels[keep_mask]
+        logger.info(
+            "Evicting %d oldest voice cluster(s): %s", len(drop), sorted(drop),
+        )
+        return sorted(drop)
+
+    @staticmethod
+    def _remove_cluster_dir(label: str) -> None:
+        """Delete a cluster's on-disk audio. Never call under _stranger_lock.
+
+        Eviction used to drop only the in-memory row, leaving the directory
+        behind forever: nothing else pruned _UNKNOWN_AUDIO_DIR, so evicted
+        clusters accumulated on disk AND kept showing up in GET /voice/strangers
+        (which lists the filesystem) as clusters that could never match again.
+        """
+        cluster_dir = _UNKNOWN_AUDIO_DIR / label
+        if not cluster_dir.is_dir():
+            return
+        try:
+            shutil.rmtree(cluster_dir)
+            logger.info("Removed evicted cluster dir %s", cluster_dir)
+        except OSError as e:
+            logger.warning("failed to remove cluster dir %s: %s", cluster_dir, e)
+
+    def _reconcile_cluster_dirs(self) -> int:
+        """Delete cluster dirs that no longer have any centroid row.
+
+        Run once at startup to clear orphans left behind by the old
+        row-eviction path. Deliberately skipped when the stranger state failed
+        to load — with no labels in memory, every dir would look orphaned and
+        we would wipe the lot.
+        """
+        with self._stranger_lock:
+            if self._stranger_labels is None:
+                return 0
+            live = {str(lbl) for lbl in self._stranger_labels}
+        if not _UNKNOWN_AUDIO_DIR.is_dir():
+            return 0
+        removed = 0
+        for d in sorted(_UNKNOWN_AUDIO_DIR.iterdir()):
+            if not d.is_dir() or not _VOICE_STRANGER_DIR_RE.match(d.name):
+                continue
+            if d.name in live:
+                continue
+            try:
+                shutil.rmtree(d)
+                removed += 1
+            except OSError as e:
+                logger.warning("reconcile: failed to remove %s: %s", d, e)
+        if removed:
+            logger.info(
+                "Reconciled unknown-audio dir: removed %d orphaned cluster(s)",
+                removed,
+            )
+        return removed
+
     def _assign_voiceprint_hash(self, query_chunks: np.ndarray) -> str:
         """Return a stable voice_<N> label for an unknown voice.
 
-        Aggregates the per-chunk query embeddings into one L2-normalized
-        vector, then compares against saved stranger centroids. A match
-        (cosine >= self._match_threshold — the SAME bar as enrolled-user
-        matching) reuses the existing label; otherwise a new label is
-        allocated and persisted.
+        Pools the per-chunk query embeddings into one L2-normalized vector and
+        compares it against the stored cluster rows. A cluster matches when its
+        BEST row scores >= self._match_threshold (raw cosine, the same bar an
+        enrolled user must clear); otherwise a new cluster is allocated.
 
-        Consumers don't call this directly — recognize() stamps the hash
-        into its response when the speaker is unknown.
+        A matching utterance is APPENDED to that cluster as another row rather
+        than folded into an average, subject to the same diversity gate and cap
+        the extended tier uses. The old code stored one centroid per cluster
+        and never updated it, so a cluster with eight clips was still being
+        matched against the embedding of clip #1 forever.
+
+        Consumers don't call this directly — recognize() stamps the hash into
+        its response when the speaker is unknown.
         """
         if query_chunks is None or len(query_chunks) == 0:
             return ""
@@ -2799,41 +3315,44 @@ class SpeakerRecognizer:
         norm = float(np.linalg.norm(agg))
         if norm == 0.0:
             return ""
-        agg = agg / norm
+        agg = (agg / norm).astype(np.float32)
 
+        evicted: list[str] = []
         with self._stranger_lock:
             best_sim_pre = None  # captured for the "new cluster" log path
             best_label_pre: Optional[str] = None
             breakdown_pre = ""
             if self._stranger_embeds is not None and len(self._stranger_embeds) > 0:
-                # Both sides L2-normalized → dot product is raw cosine [-1, 1].
-                # Convert to scaled [0, 1] so the threshold sits in the same
-                # unit as MATCH / CONSISTENCY elsewhere in the file.
-                raw_sims = self._stranger_embeds @ agg
-                sims = (raw_sims + 1.0) / 2.0
-                best_idx = int(np.argmax(sims))
-                best_sim = float(sims[best_idx])
-                # Capture full breakdown for diagnostics — this is the same
-                # data the matching loop sees, so we can surface it whether
-                # we matched or fell through to "new cluster".
+                # Both sides L2-normalized -> the dot product IS raw cosine,
+                # compared directly against the threshold. No rescaling.
+                row_sims = self._stranger_embeds @ agg
+                labels_in_order = self._cluster_labels_in_order()
+                label_arr = np.asarray(self._stranger_labels)
+                # Per-cluster score = its best row, mirroring how an enrolled
+                # speaker is scored across their bank.
+                cluster_sims = {
+                    lbl: float(row_sims[label_arr == lbl].max())
+                    for lbl in labels_in_order
+                }
+                best_label_pre = max(cluster_sims, key=lambda k: cluster_sims[k])
+                best_sim_pre = cluster_sims[best_label_pre]
                 breakdown_pre = ", ".join(
-                    f"{self._stranger_labels[i]}={float(sims[i]):.3f}"
-                    for i in range(len(sims))
+                    f"{lbl}={cluster_sims[lbl]:.3f}" for lbl in labels_in_order
                 )
-                best_sim_pre = best_sim
-                best_label_pre = str(self._stranger_labels[best_idx])
-                if best_sim >= self._match_threshold:
+                if best_sim_pre >= self._match_threshold:
                     logger.info(
                         "Voiceprint hash: %s (matched existing cluster, "
-                        "sim=%.3f, threshold=%.3f) | scores=[%s]",
-                        best_label_pre, best_sim,
+                        "cos=%.3f, threshold=%.3f) | scores=[%s]",
+                        best_label_pre, best_sim_pre,
                         self._match_threshold, breakdown_pre,
                     )
+                    self._append_cluster_row(best_label_pre, agg)
+                    self._save_strangers()
                     if self._debug.enabled:  # SPEAKER-DEBUG
                         self._debug_stranger = {
-                            "reappeared": True, "score": best_sim,
+                            "reappeared": True, "score": best_sim_pre,
                             "closest_label": best_label_pre,
-                            "num_clusters": int(len(self._stranger_embeds)),
+                            "num_clusters": len(self._cluster_labels_in_order()),
                         }
                     return best_label_pre
 
@@ -2853,22 +3372,16 @@ class SpeakerRecognizer:
                     [self._stranger_labels, new_lbl], axis=0,
                 )
 
-            # Evict oldest entries once over the cap. Keeps disk bounded
-            # without impacting recent speakers the agent still cares about.
-            if len(self._stranger_embeds) > _MAX_VOICE_STRANGERS:
-                drop = len(self._stranger_embeds) - _MAX_VOICE_STRANGERS
-                self._stranger_embeds = self._stranger_embeds[drop:]
-                self._stranger_labels = self._stranger_labels[drop:]
-
+            evicted = self._evict_oldest_clusters()
             self._save_strangers()
+            num_clusters = len(self._cluster_labels_in_order())
             if best_sim_pre is not None:
                 # Hit the "no existing cluster matched" branch — surface the
-                # closest miss so operators can spot threshold edge cases
-                # (e.g. same speaker scoring 0.73 vs threshold 0.75).
+                # closest miss so operators can spot threshold edge cases.
                 logger.info(
                     "Voiceprint hash: %s (new cluster, total=%d) | "
-                    "closest=%s sim=%.3f below threshold=%.3f | scores=[%s]",
-                    label, len(self._stranger_embeds),
+                    "closest=%s cos=%.3f below threshold=%.3f | scores=[%s]",
+                    label, num_clusters,
                     best_label_pre, best_sim_pre,
                     self._match_threshold, breakdown_pre,
                 )
@@ -2876,62 +3389,78 @@ class SpeakerRecognizer:
                 logger.info(
                     "Voiceprint hash: %s (new cluster, total=%d) | "
                     "no prior clusters",
-                label, len(self._stranger_embeds),
-            )
+                    label, num_clusters,
+                )
             if self._debug.enabled:  # SPEAKER-DEBUG
                 self._debug_stranger = {
                     "reappeared": False, "score": best_sim_pre,
                     "closest_label": best_label_pre,
-                    "num_clusters": int(len(self._stranger_embeds)),
+                    "num_clusters": num_clusters,
                 }
-            return label
+
+        # Disk work happens with the lock released.
+        for lbl in evicted:
+            self._remove_cluster_dir(lbl)
+        return label
+
+    def _append_cluster_row(self, label: str, row: np.ndarray) -> None:
+        """Add one row to a cluster, diversity-gated and capped. Holds the lock.
+
+        Same shape as the extended tier: a near-duplicate of a row we already
+        hold adds nothing but false-accept surface, and the cap bounds how far
+        max-over-rows can inflate this cluster's score.
+        """
+        rows = self._cluster_rows(label)
+        if rows is not None and len(rows):
+            if float(np.max(rows @ row)) > _DIVERSITY_COS:
+                return  # redundant with a row we already hold
+            if len(rows) >= _MAX_CLUSTER_SAMPLES:
+                return  # cluster is full; existing rows already span it
+        self._stranger_embeds = np.concatenate(
+            [self._stranger_embeds, row.reshape(1, -1).astype(np.float32)], axis=0,
+        )
+        self._stranger_labels = np.concatenate(
+            [self._stranger_labels, np.array([label])], axis=0,
+        )
 
     def _match_stranger_clusters(
-        self, query_embedding: np.ndarray, threshold: float,
+        self, query_rows: np.ndarray, threshold: float,
     ) -> list[str]:
-        """Return stranger labels whose centroid cosine-sim to query > threshold.
+        """Cluster labels whose best row scores >= ``threshold`` against any query row.
 
-        Used by enroll() to auto-include clusters that belong to the same
-        speaker but fragmented (e.g. distance / volume drift pushed centroids
-        below the match threshold so they landed in different clusters even
-        though it's one person). Pass a looser threshold than the match
-        threshold so the fragmented siblings get pulled back together; the
-        consistency filter downstream in enroll() handles any false positive.
-
-        ``threshold`` is SCALED cosine in [0, 1] — same unit as MATCH /
-        CONSISTENCY.
+        Used by enroll() to claim clusters that belong to the person being
+        enrolled. ``threshold`` is RAW cosine and callers pass _MATCH_COS —
+        there is no longer a looser merge gate. The old one admitted clips at
+        0.625 scaled that were then used to judge the user's own enrollment
+        audio at 0.75 scaled, which is how a stray 1s chat clip could end up
+        replacing a deliberate 15s recording.
         """
-        q = _l2(query_embedding)
-        if float(np.linalg.norm(q)) == 0.0:
-            logger.info("Auto-merge scan: query embedding has zero norm — skip")
-            return []
+        q = np.atleast_2d(np.asarray(query_rows, dtype=np.float32))
+        q = np.stack([_l2(r) for r in q], axis=0)
         with self._stranger_lock:
             if (
                 self._stranger_embeds is None
                 or self._stranger_labels is None
                 or len(self._stranger_embeds) == 0
             ):
-                logger.info("Auto-merge scan: no stranger centroids to compare")
+                logger.info("Cluster claim scan: no stranger rows to compare")
                 return []
-            # Both sides L2-normalized → dot product is raw cosine [-1, 1].
-            # Convert to scaled [0, 1] so the threshold lives in one unit
-            # across the file.
-            sims = (self._stranger_embeds @ q + 1.0) / 2.0
-            # Log every cluster's scaled similarity (not just matches) so
-            # operators can tune threshold from real data: e.g. see voice_5
-            # missed at sim=0.62 and decide to lower threshold to 0.60.
+            # [rows, queries] raw cosine -> best query per row -> best row per cluster.
+            row_sims = (self._stranger_embeds @ q.T).max(axis=1)
+            label_arr = np.asarray(self._stranger_labels)
+            labels_in_order = self._cluster_labels_in_order()
+            cluster_sims = {
+                lbl: float(row_sims[label_arr == lbl].max())
+                for lbl in labels_in_order
+            }
             breakdown = ", ".join(
-                f"{self._stranger_labels[i]}={float(sims[i]):.3f}"
-                for i in range(len(sims))
+                f"{lbl}={cluster_sims[lbl]:.3f}" for lbl in labels_in_order
             )
             logger.info(
-                "Auto-merge scan: threshold=%.2f query=[%s]",
-                threshold, breakdown,
+                "Cluster claim scan: threshold=%.2f query=[%s]", threshold, breakdown,
             )
             return [
-                str(self._stranger_labels[i])
-                for i, s in enumerate(sims)
-                if float(s) > threshold
+                lbl for lbl in labels_in_order if cluster_sims[lbl] >= threshold
             ]
 
     def _save_strangers(self) -> None:
