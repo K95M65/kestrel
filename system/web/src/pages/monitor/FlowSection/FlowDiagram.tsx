@@ -307,6 +307,7 @@ export function FlowDiagram({
   }
 
   const glowId = compact ? "flow-glow-c" : "flow-glow";
+  const pipelineClipId = compact ? "flow-pipeline-clip-c" : "flow-pipeline-clip";
 
   const nodeInfo = extractNodeInfo(turnEvents);
   const pipelineRows = aggregateEvents(turnEvents);
@@ -346,6 +347,9 @@ export function FlowDiagram({
         onPointerCancel={handlePointerEnd}
       >
         <defs>
+          <clipPath id={pipelineClipId}>
+            <rect x={PIPE.x + 6} y={PIPE.y + 18} width={PIPE.w - 12} height={PIPE.h - 24} />
+          </clipPath>
           <filter id={glowId}>
             <feGaussianBlur stdDeviation="4" result="blur" />
             <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
@@ -642,7 +646,7 @@ export function FlowDiagram({
               </text>
               {/* Copy button: just left of the guide ?. Copies the pipeline
                   content as plain text to the clipboard. */}
-              <g
+              {!isPhoneLayout && <g
                 onMouseDown={(e: React.MouseEvent) => { e.stopPropagation(); }}
                 onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleCopyPipeline(); }}
                 style={{ cursor: "pointer" }}
@@ -657,10 +661,10 @@ export function FlowDiagram({
                   style={{ pointerEvents: "none" }}>
                   {pipelineCopied ? "✓" : "⎘"}
                 </text>
-              </g>
+              </g>}
               {/* Guide button: top-right corner. Click toggles a popup
                   listing the OpenClaw stream types this pipeline can show. */}
-              <g
+              {!isPhoneLayout && <g
                 onMouseDown={(e: React.MouseEvent) => { e.stopPropagation(); }}
                 onClick={(e: React.MouseEvent) => { e.stopPropagation(); setPipelineGuideOpen(v => !v); }}
                 style={{ cursor: "pointer" }}
@@ -676,8 +680,8 @@ export function FlowDiagram({
                   style={{ pointerEvents: "none" }}>
                   ?
                 </text>
-              </g>
-              <foreignObject x={px + 6} y={py + 18} width={pw - 12} height={ph - 24} overflow="visible">
+              </g>}
+              {!isPhoneLayout && <foreignObject x={px + 6} y={py + 18} width={pw - 12} height={ph - 24} overflow="visible">
                 <div
                   // @ts-expect-error xmlns required for foreignObject HTML
                   xmlns="http://www.w3.org/1999/xhtml"
@@ -780,11 +784,39 @@ export function FlowDiagram({
                     );
                   })}
                 </div>
-              </foreignObject>
+              </foreignObject>}
+              {/* Mobile browsers can drop SVG foreignObject HTML entirely.
+                  Keep the stream summary in pure SVG text so the LLM/tool
+                  pipeline remains visible there; the native details sheet
+                  exposes full arguments and curl payloads. */}
+              {isPhoneLayout && (
+                <g clipPath={`url(#${pipelineClipId})`} pointerEvents="none">
+                  {pipelineRows.length === 0 ? (
+                    <text x={px + 10} y={py + 34} fill="var(--lm-text-muted)" fontSize={7} fontFamily="monospace">
+                      (no agent events)
+                    </text>
+                  ) : pipelineRows.slice(0, 11).map((row, index) => {
+                    const detail = row.kind === "tool" && row.detail
+                      ? ` · ${row.detail.replace(/\s+/g, " ").slice(0, 28)}`
+                      : row.kind === "thinking" || row.kind === "assistant"
+                        ? ` · ${formatPipelineDuration(row.durationMs)}`
+                        : "";
+                    return (
+                      <text key={`${row.kind}-${index}`} x={px + 10} y={py + 32 + index * 14}
+                        fill={pipelineRowColor(row.kind)} fontSize={7.5} fontWeight={700} fontFamily="monospace">
+                        {`${row.label}${detail}`}
+                      </text>
+                    );
+                  })}
+                  <text x={px + 10} y={py + ph - 12} fill="var(--lm-text-muted)" fontSize={6.5} fontFamily="monospace">
+                    View details for full payloads
+                  </text>
+                </g>
+              )}
               {/* Guide popup rendered LAST inside the pipeline group so it
                   paints on top of the event-row foreignObject (otherwise the
                   row list overlays the popup and swallows clicks on ✕). */}
-              {pipelineGuideOpen && (
+              {!isPhoneLayout && pipelineGuideOpen && (
                 <foreignObject
                   x={px + pw - 320} y={py + 22} width={320} height={ph - 30}
                   overflow="visible"
@@ -927,7 +959,7 @@ export function FlowDiagram({
                 </text>
               ))}
 
-              {hasInfo && (() => {
+              {hasInfo && !isPhoneLayout && (() => {
                 const textLines = lines.filter((l) => !l.startsWith("🖼"));
                 // agent_call carries the full chat_send message (often the
                 // pre-injected context for emotion.detected /
@@ -1097,7 +1129,7 @@ export function FlowDiagram({
             border: "1px solid var(--lm-blue)", color: "var(--lm-blue)",
             fontSize: 12, fontWeight: 700,
           }}
-        >View Agent details</button>
+        >LLM / Tool / Curl details</button>
       )}
 
       {/* The chart keeps its native boxes on mobile. This sheet is an optional
