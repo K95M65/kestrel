@@ -452,6 +452,19 @@
 .lm-grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
 .lm-grid-5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
 
+/* Shared Audio-card control rows. These must be base rules rather than
+   phone-only rules: desktop and tablet also need labels and action buttons on
+   the same line. */
+.lm-audio-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.lm-audio-row-label { min-width: 0; }
+.lm-audio-row .lm-u-btn { flex-shrink: 0; }
+
 /* Flow turn-list width (desktop). Clamps wider on large screens so the dense
    IN/REPLY text in turn cards stays readable and the canvas loses dead space;
    the mobile breakpoint below overrides this to full-width. */
@@ -672,15 +685,6 @@
      two-column status grid; this also prevents the short Presence card from
      being stretched to Audio's height. Other four-card grids remain compact. */
   .lm-overview-status-grid { grid-template-columns: 1fr; }
-  .lm-audio-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    min-width: 0;
-  }
-  .lm-audio-row-label { min-width: 0; }
-  .lm-audio-row .lm-u-btn { flex-shrink: 0; }
 }
 
 /* ── Monitor/Settings sidebar — Setup nav styling + fancy upgrades ─────────── */
