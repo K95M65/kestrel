@@ -384,6 +384,20 @@ SPEAKER_MAX_EXTENDED_SAMPLES: int = int(
 SPEAKER_MAX_CLUSTER_SAMPLES: int = int(
     os.environ.get("SPEAKER_MAX_CLUSTER_SAMPLES", "3")
 )
+# WAVs kept in a voice_<N>/ cluster dir, oldest evicted first. Distinct from
+# SPEAKER_MAX_CLUSTER_SAMPLES, which caps a cluster's *embeddings*: every
+# unknown turn's audio is filed here, so without a file cap a recurring
+# stranger's directory grows forever (cluster eviction only fires past 50
+# DISTINCT voices, which a household never reaches).
+#
+# Sized for two jobs at once. These files are the material an agent enrols a
+# stranger from, so too low weakens deferred enrollment; but each claimed clip
+# that survives the enroll gate becomes a PERMANENT anchor row, so this is also
+# the only bound on how many rows one deferred enrollment can add. Ten clips is
+# roughly 10-30 s of speech at typical turn lengths.
+SPEAKER_MAX_CLUSTER_FILES: int = int(
+    os.environ.get("HAL_MAX_CLUSTER_FILES", "10")
+)
 # Extra bars an utterance must clear to extend a user's set, on top of matching.
 # A turn's audio can carry the TV, a second speaker, or the device's own TTS
 # tail, so extending demands more than recognizing does.

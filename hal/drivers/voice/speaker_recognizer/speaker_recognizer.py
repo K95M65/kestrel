@@ -148,6 +148,7 @@ _MATCH_COS = config.SPEAKER_MATCH_COS
 _DIVERSITY_COS = config.SPEAKER_DIVERSITY_COS
 _MAX_EXTENDED_SAMPLES = config.SPEAKER_MAX_EXTENDED_SAMPLES
 _MAX_CLUSTER_SAMPLES = config.SPEAKER_MAX_CLUSTER_SAMPLES
+_MAX_CLUSTER_FILES = config.SPEAKER_MAX_CLUSTER_FILES
 _EXTEND_MIN_DURATION_S = config.SPEAKER_EXTEND_MIN_DURATION_SEC
 _EXTEND_MIN_MARGIN_COS = config.SPEAKER_EXTEND_MIN_MARGIN_COS
 
@@ -3362,6 +3363,10 @@ class SpeakerRecognizer:
             # but on a device hearing mostly strangers that is every turn.
             with self._roll_lock:
                 self._incoming_count = max(0, self._incoming_count - 1)
+            # Bound the cluster we just wrote to. Only that one directory is
+            # touched, so the work is proportional to its own size and settles
+            # at cap+1 entries — no sweep across every cluster.
+            self._prune_cluster_dir(vp_hash, keep=dst)
             return str(dst)
         except OSError as e:
             logger.warning(
@@ -3438,6 +3443,58 @@ class SpeakerRecognizer:
         except OSError as e:
             logger.warning("failed to remove cluster dir %s: %s", cluster_dir, e)
 
+    def _prune_cluster_dir(self, label: str, keep: Optional[Path] = None) -> int:
+        """Trim one cluster dir to _MAX_CLUSTER_FILES, oldest evicted first.
+
+        These WAVs are what an agent enrols a stranger from, so the cap is a
+        deliberate trade rather than pure housekeeping — see
+        SPEAKER_MAX_CLUSTER_FILES. Recency is the only criterion: the clips have
+        no embedding sidecars, so there is nothing to rank them by acoustically
+        without re-embedding every file.
+
+        ``keep`` is never evicted. Normally it is the newest and would survive
+        anyway, but ``rename`` preserves mtime, so a clip that sat in the root
+        across a clock change could sort old — and evicting the very clip whose
+        path was just handed to the agent is the one outcome worth ruling out.
+
+        Returns the number of files removed.
+        """
+        if _MAX_CLUSTER_FILES <= 0 or not label:
+            return 0
+        cluster_dir = _UNKNOWN_AUDIO_DIR / label
+        if not cluster_dir.is_dir():
+            return 0
+        try:
+            files = [
+                (p.stat().st_mtime, p)
+                for p in cluster_dir.glob("*.wav")
+                if p.is_file()
+            ]
+        except OSError as e:
+            logger.warning("cluster prune %s: cannot list dir: %s", label, e)
+            return 0
+        if len(files) <= _MAX_CLUSTER_FILES:
+            return 0
+
+        paths = [p for _mt, p in sorted(files, key=lambda t: t[0], reverse=True)]
+        if keep is not None and keep in paths:
+            paths.remove(keep)
+            paths.insert(0, keep)
+
+        removed = 0
+        for p in paths[_MAX_CLUSTER_FILES:]:
+            try:
+                p.unlink(missing_ok=True)
+                removed += 1
+            except OSError as e:
+                logger.warning("cluster prune %s: cannot remove %s: %s", label, p, e)
+        if removed:
+            logger.info(
+                "Cluster %s: evicted %d oldest clip(s), %d kept (cap=%d)",
+                label, removed, len(files) - removed, _MAX_CLUSTER_FILES,
+            )
+        return removed
+
     def _reconcile_cluster_dirs(self) -> int:
         """Delete cluster dirs that no longer have any centroid row.
 
@@ -3457,6 +3514,10 @@ class SpeakerRecognizer:
             if not d.is_dir() or not _VOICE_STRANGER_DIR_RE.match(d.name):
                 continue
             if d.name in live:
+                # Kept, but it may predate the file cap — trim it now rather
+                # than waiting for this stranger to speak again, which for a
+                # cluster nobody returns to would be never.
+                self._prune_cluster_dir(d.name)
                 continue
             try:
                 shutil.rmtree(d)
