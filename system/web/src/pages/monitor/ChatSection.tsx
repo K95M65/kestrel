@@ -211,10 +211,10 @@ function renderMarkdown(text: string): ReactNode {
     }
 
     // Unordered list: - item or * item
-    if (/^[\-\*]\s/.test(lines[i])) {
+    if (/^[-*]\s/.test(lines[i])) {
       const items: ReactNode[] = [];
-      while (i < lines.length && /^[\-\*]\s/.test(lines[i])) {
-        items.push(<li key={`li-${i}`} style={{ margin: "2px 0", lineHeight: 1.55, paddingLeft: 2 }}>{renderInline(lines[i].replace(/^[\-\*]\s/, ""), `ul-${i}`)}</li>);
+      while (i < lines.length && /^[-*]\s/.test(lines[i])) {
+        items.push(<li key={`li-${i}`} style={{ margin: "2px 0", lineHeight: 1.55, paddingLeft: 2 }}>{renderInline(lines[i].replace(/^[-*]\s/, ""), `ul-${i}`)}</li>);
         i++;
       }
       result.push(<ul key={`ul-${i}`} style={{ margin: "5px 0", paddingLeft: 22 }}>{items}</ul>);
@@ -267,13 +267,20 @@ function stripHWMarkers(text: string): string {
 
 // ─── Tool call parsing ──────────────────────────────────────────────────────
 
+// Dynamic wire payload: SSE/flow event `detail` blobs and LLM tool-call args.
+// Their shape is per-event-node / per-tool and decided by the server or the
+// model at runtime (nested `data` objects, arbitrary tool arguments), so they
+// are read defensively with optional chaining instead of a fixed interface.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type JsonObject = Record<string, any>;
+
 type IconKind = "tool" | "led" | "scene" | "led_off" | "music" | "servo" | "emotion" | "search";
 interface ToolChip {
   id: string;       // dedup key
   iconKind: IconKind;
   label: string;
   detail?: string;  // formatted arg summary, e.g. for web_search → query
-  args?: Record<string, any>; // raw args for expanded view
+  args?: JsonObject; // raw args for expanded view
   result?: string;  // result summary (when "result" phase arrives)
 }
 
@@ -319,7 +326,7 @@ function renderToolIcon(kind: IconKind, size = 12) {
 
 // Compact one-line preview of args — typically the user-relevant input like
 // the search query. Falls back to a JSON-ish stringification.
-function summarizeArgs(args: Record<string, any> | undefined): string | undefined {
+function summarizeArgs(args: JsonObject | undefined): string | undefined {
   if (!args || typeof args !== "object") return undefined;
   // Common keys we prefer to surface as the "headline" of the chip.
   for (const key of ["query", "q", "url", "command", "text", "name", "recording"]) {
@@ -340,7 +347,7 @@ interface ToolEventInput {
   type: string;
   summary: string;
   id: string;
-  detail?: Record<string, any> | null;
+  detail?: JsonObject | null;
   phase?: string;
 }
 
@@ -376,7 +383,7 @@ function parseToolChip(ev: ToolEventInput): ToolChip | null {
       return { id: ev.id, iconKind: "servo", label: "servo" };
     }
     case "tool_call": {
-      const d = ev.detail as Record<string, any> | undefined;
+      const d = ev.detail as JsonObject | undefined;
       // Server (handler_events.go) sets phase as a top-level event field; older
       // flow_event paths nest it under detail.data.phase — accept both.
       const phase: string = ev.phase ?? d?.data?.phase ?? d?.phase ?? "";
@@ -384,7 +391,7 @@ function parseToolChip(ev: ToolEventInput): ToolChip | null {
         d?.tool ?? d?.data?.tool ?? d?.data?.name ?? d?.name
         ?? (s.match(/^(\w+)/)?.[1] ?? "tool");
       if (HW_SHADOW_TOOLS.has(name)) return null;
-      let argsObj: Record<string, any> | undefined;
+      let argsObj: JsonObject | undefined;
       const rawArgs = d?.args ?? d?.data?.args;
       if (rawArgs) {
         try {
@@ -533,7 +540,10 @@ function saveConvos(convos: Conversation[]) {
     }));
     const envelope: ConvosEnvelope = { savedAt: Date.now(), convos: trimmed };
     localStorage.setItem(CONVOS_KEY, JSON.stringify(envelope));
-  } catch {}
+  } catch {
+    // localStorage can be full or blocked (private mode, quota). The cache is
+    // an optimisation — chat keeps working from server history without it.
+  }
 }
 
 // clearLocalChatHistory wipes the conversation cache from localStorage —
@@ -543,7 +553,10 @@ function clearLocalChatHistory() {
   try {
     localStorage.removeItem(CONVOS_KEY);
     localStorage.removeItem(ACTIVE_KEY);
-  } catch {}
+  } catch {
+    // Nothing to recover from: if localStorage is unavailable there is no
+    // cached history to clear, and the IndexedDB wipe below still runs.
+  }
   void clearChatImages();
 }
 
@@ -555,7 +568,10 @@ function saveActiveId(id: string | null) {
   try {
     if (id) localStorage.setItem(ACTIVE_KEY, id);
     else localStorage.removeItem(ACTIVE_KEY);
-  } catch {}
+  } catch {
+    // Same as saveConvos: losing the active-conversation pointer only costs
+    // the "reopen where you left off" convenience on the next mount.
+  }
 }
 
 // ─── Clipboard helper ───────────────────────────────────────────────────────
@@ -577,6 +593,10 @@ function copyToClipboard(text: string): Promise<void> {
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────
+
+// Attachment size ceiling. Module-level constant so it keeps a stable identity
+// across renders (it is read inside a memoized callback).
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
 interface Props {
   events: DisplayEvent[];
@@ -830,7 +850,7 @@ export function ChatSection({ events, isActive }: Props) {
         const pending = pendingRunIdRef.current;
         if (!pending || resolvedIds.current.has(pending)) return;
 
-        const evRunId = ev.runId ?? (ev.detail as any)?.run_id ?? (ev.detail as any)?.runId;
+        const evRunId = ev.runId ?? (ev.detail as JsonObject | undefined)?.run_id ?? (ev.detail as JsonObject | undefined)?.runId;
         if (!evRunId || evRunId !== pending) return;
 
         // Tool call chips. Dedup key on iconKind+label so the start + result
@@ -845,7 +865,7 @@ export function ChatSection({ events, isActive }: Props) {
         // because only shape #1 matched, which is why chips appeared "lúc có
         // lúc không" depending on whether the user was watching live or
         // reconnected mid-turn.
-        const detailNode = (ev.detail as Record<string, any> | undefined)?.node;
+        const detailNode = (ev.detail as JsonObject | undefined)?.node;
         const isToolCall =
           TOOL_EVENT_TYPES.has(ev.type) ||
           (ev.type === "flow_event" && detailNode && (
@@ -865,7 +885,7 @@ export function ChatSection({ events, isActive }: Props) {
             summary: ev.summary,
             id: ev.id,
             detail: ev.detail,
-            phase: ev.phase ?? (ev.detail as any)?.data?.phase,
+            phase: ev.phase ?? (ev.detail as JsonObject | undefined)?.data?.phase,
           });
           if (chip) {
             // Dedup key on iconKind+label+args so the start+result phases of
@@ -894,12 +914,12 @@ export function ChatSection({ events, isActive }: Props) {
         // since flow_event wraps the payload one level deeper.
         const isTokenUsage =
           ev.type === "token_usage" ||
-          (ev.type === "flow_event" && (ev.detail as any)?.node === "token_usage");
+          (ev.type === "flow_event" && (ev.detail as JsonObject | undefined)?.node === "token_usage");
         if (isTokenUsage) {
-          const d = ev.detail as Record<string, any> | undefined;
+          const d = ev.detail as JsonObject | undefined;
           const src = (d?.data && typeof d.data === "object") ? d.data : d;
           if (src) {
-            const num = (v: any) => typeof v === "number" ? v : parseInt(String(v ?? "0"), 10);
+            const num = (v: unknown) => typeof v === "number" ? v : parseInt(String(v ?? "0"), 10);
             tokenUsageRef.current = {
               input: num(src.input_tokens ?? src.input),
               output: num(src.output_tokens ?? src.output),
@@ -944,7 +964,7 @@ export function ChatSection({ events, isActive }: Props) {
 
         // Chat response (partial or final) from "chat" event path
         if (ev.type === "chat_response") {
-          const d = ev.detail as Record<string, any> | undefined;
+          const d = ev.detail as JsonObject | undefined;
           const chatMsg = d?.message ?? ev.summary ?? "";
 
           if (chatMsg === "[no reply]") {
@@ -1058,7 +1078,7 @@ export function ChatSection({ events, isActive }: Props) {
       for (let i = 0; i < events.length; i++) {
         const ev = events[i];
         if (ev.type !== "flow_event") continue;
-        const d = ev.detail as any;
+        const d = ev.detail as JsonObject | undefined;
         if (d?.node !== "chat_final_empty") continue;
         const r = ev.runId ?? d?.run_id ?? d?.data?.run_id;
         if (r === pending) { emptyIdx = i; break; }
@@ -1068,7 +1088,7 @@ export function ChatSection({ events, isActive }: Props) {
         for (let i = emptyIdx + 1; i < events.length; i++) {
           const ev = events[i];
           if (ev.type !== "flow_event") continue;
-          const d = ev.detail as any;
+          const d = ev.detail as JsonObject | undefined;
           if (d?.node !== "chat_input") continue;
           if (d?.data?.source !== "channel") continue;
           const msg = String(d?.data?.message ?? "");
@@ -1087,12 +1107,12 @@ export function ChatSection({ events, isActive }: Props) {
     for (const ev of [...events].reverse()) {
       const evRunId: string | undefined =
         ev.runId ??
-        (ev.detail as any)?.run_id ??
-        (ev.detail as any)?.runId ??
-        (ev.detail as any)?.data?.run_id;
+        (ev.detail as JsonObject | undefined)?.run_id ??
+        (ev.detail as JsonObject | undefined)?.runId ??
+        (ev.detail as JsonObject | undefined)?.data?.run_id;
       if (!evRunId || !acceptedRunIds.has(evRunId)) continue;
 
-      const d = ev.detail as Record<string, any> | undefined;
+      const d = ev.detail as JsonObject | undefined;
       if (ev.type === "flow_event" && (d?.node === "tts_send" || d?.node === "tts_suppressed")) {
         // Prefer full_text: tts_send.text is only the remainder when sentence 1
         // streamed mid-turn (logged as tts_stream_send, never read here). full_text
@@ -1283,8 +1303,6 @@ export function ChatSection({ events, isActive }: Props) {
     }
     setEditingId(null);
   };
-
-  const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
   const attachFile = useCallback((file: File) => {
     if (file.size > MAX_FILE_SIZE) {
@@ -1524,7 +1542,12 @@ export function ChatSection({ events, isActive }: Props) {
         ),
       );
     }
-  }, [activeId, sending, updateMessages, filePreview, fileBase64, fileIsImage, fileName, fileMime, fileSize]);
+    // scrollToBottom is a useCallback with an empty dep list — stable identity,
+    // so listing it here cannot change how often sendText is recreated.
+    // updateMessages is not referenced in this callback (retryMessage uses it);
+    // it only changed with activeId, which is already listed, so dropping it
+    // leaves the recreation frequency identical.
+  }, [activeId, sending, filePreview, fileBase64, fileIsImage, fileName, fileMime, fileSize, scrollToBottom]);
 
   // sendText derives the outbound field from fileIsImage. Passing the raw
   // base64 here would make every attachment look like an image.

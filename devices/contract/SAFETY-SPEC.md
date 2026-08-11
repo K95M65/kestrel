@@ -68,7 +68,7 @@ request, so the bound changes with the time of day without a restart.
 | `audio.quiet_hours` | no | **enforced (v1)** | `{ start, end }`. Inside the window loud discretionary output (music via `/audio/play`) is suppressed; spoken replies still play. (Slice 2.) |
 | `motion.max_speed` | no | **enforced (v1)** | deg/s ceiling. The servo route stretches a move's duration so no joint exceeds it (the move still reaches its target). (Slice 3.) |
 | `motion.max_accel` | no | reserved | Acceleration ceiling. (Reserved — no accel model yet.) |
-| `motion.stop_always` | no | **enforced (v1)** | `motion.stop`/release/zero/hold are deterministic recovery actions and never gated. (Slice 3.) |
+| `motion.stop_always` | no | declared (v1) | `motion.stop`/release/zero/hold are currently deterministic recovery actions because no route gates them. The field is parsed and reported, but no HAL route consumes it as an independent enforcement gate. |
 | **(motion declared, no bounds)** | — | **pass-through (v1)** | Presence-driven, like light/audio: a device that ships no `motion:` bounds moves unrestricted (that is the *off* state, not a refusal). A declared `max_speed` is enforced; an absent one is not. |
 | `thermal.max_temp_c` | no | **enforced (v1)** | SoC °C ceiling. A background monitor reads `/sys/class/thermal`; at/above this it raises a health event (`/health`) and stops discretionary motion (tracking), clearing on cool-down. Threshold is SoC-specific — read the board's own critical trip, not a generic guess. (Slice 4.) |
 | `thermal.resume_temp_c` | no | **enforced (v1)** | Cooled to/below this clears the over state (hysteresis). Defaults to `max_temp_c − 10`. (Slice 4.) |

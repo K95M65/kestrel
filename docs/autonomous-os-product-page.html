@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Autonomous OS gives physical AI agents a body." />
+    <title>Autonomous OS — AI, out in the world.</title>
+    <style>
+      :root {
+        --ink: #f5f5f7;
+        --paper: #ffffff;
+        --soft: #f5f5f7;
+        --muted: #86868b;
+        --blue: #2997ff;
+        --max: 1400px;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; background: #000; }
+      body {
+        margin: 0;
+        overflow-x: hidden;
+        background: var(--paper);
+        color: #1d1d1f;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      a { color: inherit; text-decoration: none; }
+      button { font: inherit; }
+      .eyebrow { margin: 0 0 15px; color: #6e6e73; font-size: 17px; font-weight: 600; letter-spacing: -.02em; }
+      .eyebrow.blue { color: var(--blue); }
+      .button {
+        display: inline-flex; align-items: center; justify-content: center;
+        min-height: 44px; padding: 0 19px; border: 0; border-radius: 980px;
+        background: #0071e3; color: white; font-size: 17px; font-weight: 500;
+        transition: background .2s ease, transform .2s ease;
+      }
+      .button:hover { background: #0077ed; transform: scale(1.02); }
+      .button.secondary { border: 1px solid rgba(41,151,255,.82); background: rgba(0,0,0,.22); color: var(--blue); }
+      .button.secondary:hover { background: rgba(41,151,255,.16); }
+      .text-link { color: #06c; font-size: 20px; font-weight: 500; }
+      .text-link::after { content: "›"; display: inline-block; margin-left: 5px; font-size: 25px; line-height: 12px; vertical-align: -1px; }
+
+      .nav {
+        position: fixed; z-index: 20; top: 0; left: 0; right: 0; height: 52px;
+        border-bottom: 1px solid rgba(255,255,255,.12);
+        background: rgba(0,0,0,.72); backdrop-filter: blur(18px) saturate(180%);
+      }
+      .nav-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1040px; height: 100%; margin: auto; padding: 0 22px; color: var(--ink); }
+      .brand { font-size: 21px; font-weight: 650; letter-spacing: -.04em; }
+      .nav-links { display: flex; align-items: center; gap: 26px; font-size: 12px; color: #ddd; }
+      .nav-links a:hover { color: #fff; }
+      .nav-links .button { min-height: 30px; padding: 0 13px; font-size: 12px; }
+
+      .hero {
+        position: relative; display: grid; min-height: max(760px, 100vh); overflow: hidden;
+        align-items: end; background: #000; color: white; isolation: isolate;
+      }
+      .hero-media { position: absolute; z-index: -2; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: .78; }
+      .hero::after { content: ""; position: absolute; z-index: -1; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,.52) 0%, rgba(0,0,0,.03) 30%, rgba(0,0,0,.2) 57%, #000 100%); }
+      .hero-copy { width: min(1120px, 100%); margin: 0 auto; padding: 150px 30px 72px; text-align: center; }
+      .hero-copy h1 { max-width: 920px; margin: 0 auto; font-size: clamp(64px, 10.2vw, 156px); font-weight: 700; letter-spacing: -.077em; line-height: .86; }
+      .hero-copy p { max-width: 590px; margin: 28px auto 0; font-size: clamp(23px, 2.55vw, 34px); font-weight: 500; letter-spacing: -.045em; line-height: 1.12; }
+      .hero-actions { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 12px; margin-top: 31px; }
+      .hero-actions .button { min-width: 150px; }
+      .github-proof {
+        display: inline-flex; align-items: center; justify-content: center; flex-wrap: wrap;
+        gap: 0; margin-top: 42px; padding: 0; border: 1px solid rgba(255,255,255,.25);
+        border-radius: 14px; overflow: hidden; background: rgba(0,0,0,.22); backdrop-filter: blur(12px);
+      }
+      .github-proof > a, .github-proof > span {
+        display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px;
+        color: #f5f5f7; font-size: 14px; font-weight: 600; letter-spacing: -.01em;
+      }
+      .github-proof > a + span, .github-proof > span + span { border-left: 1px solid rgba(255,255,255,.2); }
+      .github-proof > a:hover { background: rgba(255,255,255,.1); }
+      .github-proof svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; }
+      .github-proof .metric { color: #fff; }
+      .github-proof .metric-label { color: rgba(255,255,255,.68); font-weight: 500; }
+
+      .statement { padding: 184px 25px 170px; background: #000; color: var(--ink); text-align: center; }
+      .statement h2 { max-width: 1030px; margin: 0 auto; font-size: clamp(48px, 7.2vw, 102px); font-weight: 700; letter-spacing: -.072em; line-height: .98; }
+      .statement h2 span { color: #86868b; }
+      .statement p { max-width: 680px; margin: 35px auto 0; color: #a1a1a6; font-size: clamp(19px, 2vw, 26px); font-weight: 500; letter-spacing: -.025em; line-height: 1.34; }
+
+      .lamp-stage { position: relative; height: min(72vw, 900px); min-height: 560px; overflow: hidden; background: #0d0e10; color: white; }
+      .lamp-stage img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center; }
+      .lamp-stage::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(0,0,0,.75), rgba(0,0,0,.08) 72%), linear-gradient(0deg, rgba(0,0,0,.55), transparent 38%); }
+      .stage-copy { position: relative; z-index: 1; max-width: var(--max); margin: auto; padding: 116px 60px; }
+      .stage-copy h2 { max-width: 620px; margin: 0; font-size: clamp(46px, 6.4vw, 92px); font-weight: 700; letter-spacing: -.075em; line-height: .95; }
+      .stage-copy p { max-width: 470px; margin: 27px 0 0; color: #e8e8ed; font-size: clamp(19px, 2vw, 27px); font-weight: 500; letter-spacing: -.035em; line-height: 1.25; }
+
+      .knows { padding: 150px 22px; background: #fff; }
+      .knows-grid { max-width: 1280px; margin: auto; }
+      .knows-visual { position: relative; min-height: min(67vw, 850px); overflow: hidden; border-radius: 38px; background: #17171a; color: white; }
+      .knows-visual img { width: 100%; height: 100%; object-fit: cover; position: absolute; inset: 0; opacity: .78; }
+      .knows-visual::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(0,0,0,.76), rgba(0,0,0,.08) 72%), linear-gradient(0deg, rgba(0,0,0,.88), transparent 55%); }
+      .knows-copy { position: absolute; z-index: 1; top: clamp(40px, 6vw, 84px); left: clamp(30px, 6vw, 86px); max-width: 540px; }
+      .knows-copy .eyebrow { color: #8cc6ff; }
+      .knows-copy h2 { max-width: 520px; margin: 0; color: #fff; font-size: clamp(50px, 6.2vw, 84px); letter-spacing: -.073em; line-height: .96; }
+      .knows-copy > p:last-child { max-width: 470px; margin: 26px 0 0; color: #e8e8ed; font-size: clamp(18px, 1.8vw, 23px); font-weight: 500; letter-spacing: -.025em; line-height: 1.34; }
+      .moment-line { position: absolute; z-index: 1; left: clamp(30px, 6vw, 86px); right: 31px; bottom: clamp(31px, 5vw, 66px); }
+      .moment-line span { display: block; margin-bottom: 12px; color: #8cc6ff; font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+      .moment-line blockquote { margin: 0; max-width: 380px; font-size: clamp(30px, 3.4vw, 45px); font-weight: 600; letter-spacing: -.055em; line-height: 1.05; }
+      .emotion { padding: 150px 22px; background: #050505; color: var(--ink); }
+      .emotion-grid { position: relative; min-height: min(67vw, 850px); max-width: 1280px; margin: auto; overflow: hidden; border-radius: 38px; background: #121214; }
+      .emotion-copy { position: relative; z-index: 2; max-width: 560px; padding: clamp(40px, 6vw, 84px); }
+      .emotion-copy h2 { max-width: 520px; margin: 0; font-size: clamp(50px, 6.2vw, 84px); letter-spacing: -.073em; line-height: .96; }
+      .emotion-copy > p:last-of-type { max-width: 470px; margin: 26px 0 0; color: #e8e8ed; font-size: clamp(18px, 1.8vw, 23px); font-weight: 500; letter-spacing: -.025em; line-height: 1.34; }
+      .emotion-stage { --emotion-color: #69500a; --emotion-glow: rgba(105,80,10,.7); position: absolute; inset: 0; overflow: hidden; background: #121214; }
+      .emotion-stage video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: .86; }
+      .emotion-stage::after { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 52% 34%, var(--emotion-glow), transparent 39%), linear-gradient(0deg, rgba(0,0,0,.72), rgba(0,0,0,.04) 67%); mix-blend-mode: screen; pointer-events: none; transition: background .55s ease; }
+      .emotion-state { position: absolute; z-index: 3; right: clamp(30px, 6vw, 84px); bottom: clamp(31px, 5vw, 66px); width: min(390px, calc(100% - 60px)); }
+      .emotion-state .label { display: block; margin-bottom: 8px; color: var(--emotion-color); font-size: 12px; font-weight: 700; letter-spacing: .11em; text-transform: uppercase; transition: color .35s ease; }
+      .emotion-state strong { display: block; font-size: clamp(29px, 4vw, 46px); letter-spacing: -.06em; line-height: 1; }
+      .emotion-state p { margin: 11px 0 0; color: #e8e8ed; font-size: 16px; line-height: 1.35; }
+      .emotion-controls { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 32px; }
+      .emotion-choice { min-width: 95px; padding: 10px 14px; border: 1px solid #424245; border-radius: 980px; background: transparent; color: #a1a1a6; cursor: pointer; font-size: 15px; font-weight: 600; transition: border-color .25s ease, background .25s ease, color .25s ease; }
+      .emotion-choice:hover, .emotion-choice[aria-pressed="true"] { border-color: var(--emotion-color); background: color-mix(in srgb, var(--emotion-color) 24%, transparent); color: #fff; }
+
+      .carousel-section { padding: 174px 0 188px; overflow: hidden; background: var(--soft); }
+      .section-head { width: min(1120px, calc(100% - 44px)); margin: 0 auto 57px; text-align: center; }
+      .section-head h2 { max-width: 850px; margin: 0 auto; font-size: clamp(47px, 6.2vw, 87px); font-weight: 700; letter-spacing: -.074em; line-height: .98; }
+      .section-head p:last-child { max-width: 650px; margin: 25px auto 0; color: #6e6e73; font-size: 21px; line-height: 1.35; letter-spacing: -.025em; }
+      .carousel { width: 100%; margin: auto; }
+      .track { display: flex; gap: 30px; overflow-x: auto; padding: 0 max(28px, calc((100vw - 1280px) / 2)); scroll-padding-inline: max(28px, calc((100vw - 1280px) / 2)); scroll-snap-type: x mandatory; scrollbar-width: none; }
+      .track::-webkit-scrollbar { display: none; }
+      .slide { position: relative; flex: 0 0 min(89vw, 1240px); min-height: min(53vw, 760px); overflow: hidden; border-radius: 38px; scroll-snap-align: center; color: white; background: #15161a; }
+      .slide video, .slide img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+      .slide img.tracking { object-position: center; }
+      .slide::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,.02) 30%, rgba(0,0,0,.84) 100%); }
+      .slide-copy { position: absolute; z-index: 1; left: clamp(29px, 5vw, 68px); right: 28px; bottom: clamp(31px, 5vw, 64px); max-width: 610px; }
+      .slide-copy h3 { margin: 0; font-size: clamp(36px, 4.7vw, 64px); letter-spacing: -.07em; line-height: .96; }
+      .slide-copy p { margin: 17px 0 0; color: #e8e8ed; font-size: clamp(18px, 1.55vw, 21px); font-weight: 500; line-height: 1.3; }
+      .carousel-controls { display: flex; justify-content: center; align-items: center; gap: 14px; margin-top: 29px; }
+      .dot { width: 8px; height: 8px; padding: 0; border: 0; border-radius: 50%; background: #c5c5c7; cursor: pointer; }
+      .dot[aria-current="true"] { background: #1d1d1f; }
+      .round-control { display: grid; place-items: center; width: 36px; height: 36px; border: 0; border-radius: 50%; background: #dedee2; color: #37373b; cursor: pointer; font-size: 19px; }
+      .round-control:hover { background: #d1d1d6; }
+
+      .proof { padding: 160px 22px; background: white; }
+      .proof-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 92px; align-items: center; max-width: 1180px; margin: auto; }
+      .proof-copy h2 { margin: 0; font-size: clamp(48px, 5.7vw, 76px); letter-spacing: -.073em; line-height: .98; }
+      .proof-copy .body { max-width: 505px; margin: 27px 0 0; color: #6e6e73; font-size: 21px; font-weight: 500; line-height: 1.35; letter-spacing: -.025em; }
+      .proof-copy strong { color: #1d1d1f; }
+      .proof-copy .text-link { display: inline-block; margin-top: 26px; }
+      .demo { position: relative; aspect-ratio: .88; overflow: hidden; border-radius: 34px; background: #0c0c0d; }
+      .demo video { width: 100%; height: 100%; object-fit: cover; }
+      .demo::after { content: ""; position: absolute; pointer-events: none; inset: 0; box-shadow: inset 0 -120px 100px rgba(0,0,0,.55); }
+      .demo-badge { position: absolute; z-index: 1; left: 25px; bottom: 25px; right: 25px; color: white; font-size: 15px; font-weight: 600; line-height: 1.3; }
+      .demo-badge span { display: block; margin-bottom: 7px; color: #a1a1a6; font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: .08em; }
+
+      .contract { padding: 154px 22px; background: #050505; color: var(--ink); }
+      .contract-grid { display: grid; grid-template-columns: .84fr 1.16fr; gap: 104px; max-width: 1180px; margin: auto; }
+      .contract h2 { max-width: 450px; margin: 0; font-size: clamp(48px, 5.8vw, 80px); letter-spacing: -.073em; line-height: .98; }
+      .contract-copy { margin: 0 0 44px; color: #a1a1a6; font-size: 21px; font-weight: 500; line-height: 1.35; }
+      .rules { border-top: 1px solid #424245; }
+      .rule { display: grid; grid-template-columns: 112px 1fr; gap: 25px; padding: 23px 0; border-bottom: 1px solid #424245; }
+      .rule code { color: #7eb4ff; font: 600 14px ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .rule h3 { margin: 0; font-size: 23px; letter-spacing: -.04em; }
+      .rule p { margin: 7px 0 0; color: #a1a1a6; font-size: 16px; line-height: 1.35; }
+
+      .closing { padding: 150px 22px 160px; background: linear-gradient(136deg, #d6e3ff, #f9f5ff 48%, #d9f0ff); text-align: center; }
+      .closing h2 { max-width: 920px; margin: 0 auto; font-size: clamp(50px, 7.2vw, 100px); letter-spacing: -.078em; line-height: .94; }
+      .closing p { max-width: 550px; margin: 26px auto 0; color: #515154; font-size: 22px; line-height: 1.32; }
+      .closing .button { margin-top: 30px; }
+      footer { padding: 25px 22px; background: #f5f5f7; color: #6e6e73; font-size: 12px; }
+      footer div { max-width: 1080px; margin: auto; }
+
+      @media (max-width: 740px) {
+        .nav-links a:not(.button) { display: none; }
+        .nav-links { gap: 0; }
+        .hero { min-height: 720px; }
+        .hero-copy { padding: 130px 24px 72px; }
+        .github-proof { margin-top: 32px; }
+        .github-proof > a, .github-proof > span { min-height: 40px; padding: 0 11px; font-size: 12px; }
+        .statement { padding: 110px 23px; }
+        .lamp-stage { min-height: 640px; height: 100svh; }
+        .lamp-stage img { object-position: 60% center; }
+        .stage-copy { padding: 75px 27px; }
+        .knows { padding: 105px 22px; }
+        .knows-visual { min-height: 620px; }
+        .knows-copy { top: 52px; left: 28px; right: 28px; }
+        .moment-line { left: 28px; bottom: 35px; }
+        .emotion { padding: 105px 22px; }
+        .emotion-grid { min-height: 700px; }
+        .emotion-copy { padding: 50px 28px; }
+        .emotion-stage { max-width: none; }
+        .emotion-state { left: 28px; right: 28px; bottom: 34px; width: auto; }
+        .carousel-section { padding: 105px 0; }
+        .section-head { margin-bottom: 38px; }
+        .track { gap: 16px; padding-inline: 22px; scroll-padding-inline: 22px; }
+        .slide { flex-basis: calc(100% - 44px); min-height: 520px; border-radius: 26px; }
+        .proof { padding: 106px 22px; }
+        .proof-grid, .contract-grid { grid-template-columns: 1fr; gap: 48px; }
+        .demo { max-width: 530px; aspect-ratio: 1; }
+        .contract { padding: 105px 22px; }
+        .rule { grid-template-columns: 98px 1fr; gap: 15px; }
+        .closing { padding: 110px 22px; }
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      Handoff notes
+      - Images use owned Autonomous CDN / repository assets for a realistic prototype.
+      - The public GitHub attachment is the demo currently embedded in this repository's README.
+        Before production, upload that source video to Autonomous CDN and replace VIDEO_URL below.
+      - The carousel is intentionally working vanilla HTML/CSS/JS, not a static mockup.
+    -->
+    <script>
+      const VIDEO_URL = "https://github.com/user-attachments/assets/08a8f109-a165-4604-be5f-39e5ec9e8d11";
+    </script>
+
+    <nav class="nav" aria-label="Autonomous OS navigation">
+      <div class="nav-inner">
+        <a class="brand" href="#top">Autonomous OS</a>
+        <div class="nav-links">
+          <a href="#experience">Experience</a>
+          <a href="#proof">Reachy Mini</a>
+          <a href="#builders">For builders</a>
+          <a class="button" href="https://github.com/autonomous-ai/autonomous-os">View on GitHub</a>
+        </div>
+      </div>
+    </nav>
+
+    <main id="top">
+      <section class="hero" aria-labelledby="hero-title">
+        <!-- Real Autonomous Lamp video from this repository's README. -->
+        <video class="hero-media" autoplay muted loop playsinline poster="https://cdn.autonomous.ai/production/ecm/260514/18d1fd5ad50b5ba3d909a7af7da505a22599b8d1.webp" data-video-src></video>
+        <div class="hero-copy">
+          <p class="eyebrow blue">Autonomous OS</p>
+          <h1 id="hero-title">Make AI<br />feel alive.</h1>
+          <p>An open operating system for agents that can notice you, remember what matters, and respond in the world.</p>
+          <div class="hero-actions">
+            <a class="button" href="#experience">Meet the OS</a>
+            <a class="button secondary" href="https://github.com/autonomous-ai/autonomous-os">Explore the code</a>
+          </div>
+          <div class="github-proof" aria-label="Autonomous OS GitHub statistics">
+            <a href="https://github.com/autonomous-ai/autonomous-os" aria-label="Open Autonomous OS on GitHub">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8a9.5 9.5 0 0 0-3 18.51c.48.09.65-.2.65-.46v-1.66c-2.67.58-3.23-1.13-3.23-1.13-.44-1.1-1.07-1.4-1.07-1.4-.88-.59.06-.58.06-.58.97.07 1.49 1 1.49 1 .87 1.48 2.27 1.05 2.82.8.09-.63.34-1.05.62-1.29-2.13-.24-4.37-1.06-4.37-4.75 0-1.05.37-1.9 1-2.57-.1-.25-.43-1.22.1-2.54 0 0 .82-.26 2.61.98A9.16 9.16 0 0 1 12 6.98c.81 0 1.63.11 2.39.32 1.79-1.22 2.61-.98 2.61-.98.52 1.32.2 2.29.1 2.54.62.67 1 1.52 1 2.57 0 3.7-2.25 4.5-4.39 4.74.34.3.65.88.65 1.78v2.65c0 .26.17.56.66.46A9.5 9.5 0 0 0 12 2.8Z" /></svg>
+              Open source
+            </a>
+            <span><span class="metric" data-stars>30</span><span class="metric-label">stars</span></span>
+            <span><span class="metric" data-forks>0</span><span class="metric-label">forks</span></span>
+            <span>Apache 2.0</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="statement" id="experience" aria-labelledby="statement-title">
+        <p class="eyebrow blue">Not another chat window.</p>
+        <h2 id="statement-title">An agent with a <span>presence.</span></h2>
+        <p>Autonomous OS connects AI to cameras, microphones, speakers, lights, displays, motors, and sensors — so it can notice a moment, understand its context, and become part of it.</p>
+      </section>
+
+      <section class="lamp-stage" aria-labelledby="stage-title">
+        <!-- Owned asset currently used on autonomous.ai/open-source. -->
+        <img src="https://cdn.autonomous.ai/production/ecm/260514/18d1fd5ad50b5ba3d909a7af7da505a22599b8d1.webp" alt="Autonomous Lamp on a desk" />
+        <div class="stage-copy">
+          <p class="eyebrow blue">Built for the room you are in.</p>
+          <h2 id="stage-title">It notices.<br />Then it cares.</h2>
+          <p>Lamp looks toward the room, listens for what matters, and responds with light, movement, and voice. Not as an app you open — as a presence at your desk.</p>
+        </div>
+      </section>
+
+      <section class="knows" aria-labelledby="knows-title">
+        <div class="knows-grid">
+          <!-- Design can replace this real product asset with a cinematic presence / greeting sequence. -->
+          <div class="knows-visual">
+            <img src="https://cdn.autonomous.ai/production/ecm/260514/18d1fd5ad50b5ba3d909a7af7da505a22599b8d1.webp" alt="Autonomous Lamp noticing its owner at a desk" />
+            <div class="knows-copy">
+              <p class="eyebrow blue">It knows when you are here.</p>
+              <h2 id="knows-title">A companion that learns your rhythm.</h2>
+              <p>When you choose to introduce yourself, Lamp can recognize your return, turn toward you, remember the threads you share, and make a small moment of coming back feel personal.</p>
+            </div>
+            <div class="moment-line"><span>A small, real moment</span><blockquote>“Hey, been a while.”</blockquote></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="emotion" aria-labelledby="emotion-title">
+        <div class="emotion-grid">
+          <div class="emotion-copy">
+            <p class="eyebrow blue">It feels. And you can see it.</p>
+            <h2 id="emotion-title">A language beyond words.</h2>
+            <p>Lamp’s feelings are not trapped in a chat bubble. It can look up, wiggle, pause to think, and rest — while its light carries the emotion into the room.</p>
+            <div class="emotion-controls" aria-label="Lamp emotion states">
+              <button class="emotion-choice" type="button" aria-pressed="true" data-emotion="happy">Happy</button>
+              <button class="emotion-choice" type="button" aria-pressed="false" data-emotion="excited">Excited</button>
+              <button class="emotion-choice" type="button" aria-pressed="false" data-emotion="thinking">Thinking</button>
+              <button class="emotion-choice" type="button" aria-pressed="false" data-emotion="curious">Curious</button>
+              <button class="emotion-choice" type="button" aria-pressed="false" data-emotion="sleepy">Sleepy</button>
+            </div>
+          </div>
+          <!-- Replace this existing real Lamp demo with the final emotion-reel when design exports it. -->
+          <div class="emotion-stage" data-emotion-stage>
+            <video autoplay muted loop playsinline poster="https://raw.githubusercontent.com/autonomous-ai/autonomous-os/main/devices/lamp/images/lamp.webp" data-video-src></video>
+            <div class="emotion-state">
+              <span class="label" data-emotion-label>Happy</span>
+              <strong data-emotion-title>A little wiggle. A warm glow.</strong>
+              <p data-emotion-copy>Warm candlelight and a happy wiggle make the feeling visible before Lamp says a word.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="carousel-section" aria-labelledby="carousel-title">
+        <div class="section-head">
+          <p class="eyebrow">Responsive where it matters.</p>
+          <h2 id="carousel-title">Simple in the moment. Deep when it counts.</h2>
+          <p>Essential responses stay close to the device. When a moment calls for more, the agent can bring skills, memory, and broader intelligence to it.</p>
+        </div>
+        <div class="carousel" data-carousel>
+          <div class="track" aria-label="Autonomous OS capabilities" data-track>
+            <article class="slide">
+              <img class="tracking" src="https://raw.githubusercontent.com/autonomous-ai/autonomous-os/main/devices/lamp/images/lamp-tracking.webp" alt="A camera view recognizing a person and their mug" />
+              <div class="slide-copy"><h3>Understand the moment.</h3><p>Local sensing helps Lamp notice presence, movement, and context before it decides whether anything needs to be said.</p></div>
+            </article>
+            <article class="slide">
+              <video autoplay muted loop playsinline poster="https://raw.githubusercontent.com/autonomous-ai/autonomous-os/main/devices/lamp/images/lamp.webp" data-video-src></video>
+              <div class="slide-copy"><h3>Respond without breaking the flow.</h3><p>A quick request can stay immediate. A deeper question can reach skills, memory, and the full intelligence behind the companion.</p></div>
+            </article>
+            <article class="slide">
+              <img src="https://raw.githubusercontent.com/autonomous-ai/autonomous-os/main/devices/lamp/images/lamp.webp" alt="Autonomous Lamp with illuminated head" />
+              <div class="slide-copy"><h3>Make an answer physical.</h3><p>Skills turn understanding into light, motion, expression, and useful action — while the device’s physical limits remain in control.</p></div>
+            </article>
+          </div>
+          <div class="carousel-controls" aria-label="Carousel controls">
+            <button class="round-control" type="button" aria-label="Previous capability" data-prev>‹</button>
+            <button class="dot" type="button" aria-label="Show vision" aria-current="true" data-dot="0"></button>
+            <button class="dot" type="button" aria-label="Show voice" aria-current="false" data-dot="1"></button>
+            <button class="dot" type="button" aria-label="Show action" aria-current="false" data-dot="2"></button>
+            <button class="round-control" type="button" aria-label="Next capability" data-next>›</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="proof" id="proof" aria-labelledby="proof-title">
+        <div class="proof-grid">
+          <div class="proof-copy">
+            <p class="eyebrow blue">One shared OS. More than one body.</p>
+            <h2 id="proof-title">Lamp and Reachy Mini.<br />One conversation.</h2>
+            <p class="body">We brought Autonomous OS to <strong>Pollen Robotics’ Reachy Mini</strong> and let it converse with Autonomous Lamp. Different bodies and motion systems. One shared way to see, hear, speak, act, and stay within bounds.</p>
+            <a class="text-link" href="https://github.com/autonomous-ai/autonomous-os/tree/main/devices/reachy-mini">Explore Reachy Mini</a>
+          </div>
+          <!-- The same public demo source is deliberately placed in an editorial video frame. -->
+          <div class="demo">
+            <video autoplay muted loop playsinline poster="https://raw.githubusercontent.com/autonomous-ai/autonomous-os/main/devices/lamp/images/lamp.webp" data-video-src></video>
+            <div class="demo-badge"><span>Real-world demo</span>Autonomous Lamp × Reachy Mini conversation</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="contract" id="builders" aria-labelledby="contract-title">
+        <div class="contract-grid">
+          <div><p class="eyebrow blue">Open. Local-first. Bounded.</p><h2 id="contract-title">Built to live in the real world.</h2></div>
+          <div>
+            <p class="contract-copy">Physical AI should earn trust. Autonomous OS keeps sensing, essential device behavior, and physical safety close to the body — while its open standard lets builders create a new form without rebuilding the system around it.</p>
+            <div class="rules">
+              <div class="rule"><code>DEVICE.md</code><div><h3>The body</h3><p>The capabilities the OS can safely mount at boot.</p></div></div>
+              <div class="rule"><code>SKILL.md</code><div><h3>The hands</h3><p>The things an agent can do in the world.</p></div></div>
+              <div class="rule"><code>SOUL.md</code><div><h3>The self</h3><p>The character and context that make a device itself.</p></div></div>
+              <div class="rule"><code>SAFETY.md</code><div><h3>The bounds</h3><p>The non-negotiable physical limits enforced below the LLM.</p></div></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="closing" aria-labelledby="closing-title">
+        <p class="eyebrow">The future is physical.</p>
+        <h2 id="closing-title">Give intelligence a body.<br />Give people a companion.</h2>
+        <p>Autonomous OS is open source and ready for the next generation of physical AI agents.</p>
+        <a class="button" href="https://github.com/autonomous-ai/autonomous-os">Explore on GitHub</a>
+      </section>
+    </main>
+    <footer><div>© Autonomous. Autonomous OS is open source under the Apache 2.0 license.</div></footer>
+
+    <script>
+      document.querySelectorAll("[data-video-src]").forEach((video) => { video.src = VIDEO_URL; });
+
+      const carousel = document.querySelector("[data-carousel]");
+      const track = carousel.querySelector("[data-track]");
+      const slides = [...track.querySelectorAll(".slide")];
+      const dots = [...carousel.querySelectorAll("[data-dot]")];
+      let activeSlide = 0;
+
+      function goTo(index) {
+        activeSlide = (index + slides.length) % slides.length;
+        slides[activeSlide].scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+        dots.forEach((dot, dotIndex) => dot.setAttribute("aria-current", String(dotIndex === activeSlide)));
+      }
+
+      carousel.querySelector("[data-prev]").addEventListener("click", () => goTo(activeSlide - 1));
+      carousel.querySelector("[data-next]").addEventListener("click", () => goTo(activeSlide + 1));
+      dots.forEach((dot) => dot.addEventListener("click", () => goTo(Number(dot.dataset.dot))));
+      track.addEventListener("scrollend", () => {
+        const center = track.scrollLeft + track.clientWidth / 2;
+        activeSlide = slides.reduce((closest, slide, index) => Math.abs(slide.offsetLeft + slide.clientWidth / 2 - center) < Math.abs(slides[closest].offsetLeft + slides[closest].clientWidth / 2 - center) ? index : closest, 0);
+        dots.forEach((dot, dotIndex) => dot.setAttribute("aria-current", String(dotIndex === activeSlide)));
+      });
+
+      fetch("https://api.github.com/repos/autonomous-ai/autonomous-os", {
+        headers: { Accept: "application/vnd.github+json" },
+      })
+        .then((response) => response.ok ? response.json() : Promise.reject(response.status))
+        .then((repository) => {
+          document.querySelector("[data-stars]").textContent = Number(repository.stargazers_count).toLocaleString("en-US");
+          document.querySelector("[data-forks]").textContent = Number(repository.forks_count).toLocaleString("en-US");
+        })
+        .catch(() => { /* Keep the checked-in values if the public API is unavailable. */ });
+
+      const emotionStage = document.querySelector("[data-emotion-stage]");
+      const emotionPresets = {
+        happy: {
+          color: "#69500a", glow: "rgba(105,80,10,.72)", label: "Happy",
+          title: "A little wiggle. A warm glow.",
+          copy: "Warm candlelight and a happy wiggle make the feeling visible before Lamp says a word.",
+        },
+        excited: {
+          color: "#d581ff", glow: "rgba(142,62,176,.8)", label: "Excited",
+          title: "Energy you can feel across the room.",
+          copy: "An expressive movement and purple-pink candlelight turn a burst of joy into something physical.",
+        },
+        thinking: {
+          color: "#83d968", glow: "rgba(50,100,35,.82)", label: "Thinking",
+          title: "A pause that looks like thought.",
+          copy: "Lamp settles into a deep-thinking pose while a green pulse quietly says: I’m here with you.",
+        },
+        curious: {
+          color: "#d8a837", glow: "rgba(125,81,0,.8)", label: "Curious",
+          title: "Something caught its attention.",
+          copy: "A warm candle glow and a curious look make even a small moment feel noticed.",
+        },
+        sleepy: {
+          color: "#b4b4ba", glow: "rgba(16,16,20,.96)", label: "Sleepy",
+          title: "A gentle goodnight.",
+          copy: "The light goes dark, attention rests, and Lamp becomes quiet until the room comes alive again.",
+        },
+      };
+
+      function showEmotion(name) {
+        const emotion = emotionPresets[name];
+        emotionStage.style.setProperty("--emotion-color", emotion.color);
+        emotionStage.style.setProperty("--emotion-glow", emotion.glow);
+        document.querySelector("[data-emotion-label]").textContent = emotion.label;
+        document.querySelector("[data-emotion-title]").textContent = emotion.title;
+        document.querySelector("[data-emotion-copy]").textContent = emotion.copy;
+        document.querySelectorAll("[data-emotion]").forEach((choice) => choice.setAttribute("aria-pressed", String(choice.dataset.emotion === name)));
+      }
+
+      document.querySelectorAll("[data-emotion]").forEach((choice) => choice.addEventListener("click", () => showEmotion(choice.dataset.emotion)));
+    </script>
+  </body>
+</html>

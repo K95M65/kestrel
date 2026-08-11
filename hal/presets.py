@@ -134,7 +134,12 @@ EMOTION_PRESETS = {
     EMO_IDLE: {"servo": SERVO_IDLE, "color": [90, 60, 5], "effect": FX_BREATHING, "speed": 0.2},
     EMO_EXCITED: {"servo": SERVO_EXCITED, "color": [30, 21, 30], "effect": FX_CANDLE, "speed": 0.5, "camera": "on"},
     EMO_SHY: {"servo": SERVO_SHY, "color": [155, 70, 20], "effect": FX_BREATHING, "speed": 0.3, "camera": "on"},
-    EMO_SHOCK: {"servo": SERVO_SHOCK, "color": [255, 255, 255], "effect": FX_NOTIFICATION_FLASH, "speed": 1.0,
+    # White flash held at the same peak as STATUS_LED_PRESETS["ready_flash"]:
+    # full-value white is the harshest thing the strip can do, and being a brief
+    # flash does not soften it (tested by eye on a lamp). White is
+    # green-dominant, so it takes the 12 tier of the peak budget documented at
+    # STATUS_LED_PRESETS. Keep these two in step — same visual cue.
+    EMO_SHOCK: {"servo": SERVO_SHOCK, "color": [12, 12, 12], "effect": FX_NOTIFICATION_FLASH, "speed": 1.0,
                 "camera": "on"},
     EMO_LISTENING: {"servo": SERVO_LISTENING, "color": [51, 121, 230], "effect": FX_PULSE, "speed": 0.3,
                     "camera": "on"},
@@ -205,25 +210,89 @@ AIM_PRESETS = {
 # Applied transiently via POST /led/status {state} (does not clobber user state).
 # Keys MUST stay in sync with system/statusled State constants (Go) + the
 # "ready_flash" agent-ready cue. Effects are from VALID_LED_EFFECTS.
+# Brightness convention — read before changing a color here.
+#
+# These are INDICATORS, not illumination. Two rules keep them from glaring:
+#
+# 1. Stay BELOW the light.max_brightness ceiling. The safety gate (clamp_color)
+#    scales a color so its peak channel meets the ceiling (lamp: 120), so any
+#    channel written above the ceiling is dead value — [0,200,200] and
+#    [0,120,120] look identical on lamp. Dimming must happen HERE, not there.
+# 2. Equalize PERCEIVED brightness, not the numbers. Luminance is hue-weighted
+#    (Rec.709: R 0.2126, G 0.7152, B 0.0722), so identical peaks are not
+#    identically bright: at the 120 ceiling, cyan/yellow/white carry ~3-4x the
+#    luminance of red/purple. Scaling every preset by the same factor preserves
+#    that imbalance — which is what made agent_down (cyan, and a state that
+#    stays lit for minutes) the one users complained about.
+#
+# Every cue below is tuned to relative luminance ~0.045, anchored on
+# mic_muted (the one resting indicator already tuned on hardware and never
+# reported as harsh). An earlier pass used ~0.12 and was still called glaring
+# when viewed on a real lamp — in a dim room the strip sits close to the user's
+# eyeline, so numbers that look modest on a monitor do not read that way there.
+# Verify a change by eye on a device, not by arithmetic.
+#
+# Momentary flashes get the same treatment. Assuming a ~1s flash "cannot glare
+# because it is brief" was also wrong on hardware: a full-value white flash is
+# the harshest thing the strip does, and brevity does not soften it.
+# PEAK BUDGET — the rule these values follow, derived by eye on a lamp
+# (11/08/2026) after two model-driven passes both missed.
+#
+#   green-dominant hue (green, yellow, cyan, white) -> peak channel 12
+#   little or no green (red, purple, orange, blue)   -> peak channel 16
+#
+# That is the whole rule. What it replaced, and why:
+#
+# Pass 1 wrote everything at 255 and let the light.max_brightness ceiling
+# (lamp: 120) do the dimming. The gate scales a color so its PEAK channel meets
+# the ceiling, so cyan landed at [0,120,120] while red landed at [120,0,0] —
+# same clamp, wildly different brightness. Anything above the ceiling is also
+# dead value: [0,200,200] and [0,120,120] are the same light.
+#
+# Pass 2 equalised Rec.709 relative luminance (R 0.2126, G 0.7152, B 0.0722).
+# On hardware this overshot badly in both directions: it licensed red up to 54
+# (clearly the brightest cue on the strip, though the maths called it dimmest)
+# while holding green to 16 (still too bright). Rec.709 describes sRGB display
+# primaries, not WS2812 dies, and it models linear light while the eye responds
+# roughly to its cube root — so at these very low levels the weighting is wrong
+# twice over. Do not reintroduce it.
+#
+# What survived testing is the green channel: it drives perceived brightness far
+# more than red or blue, but nowhere near the 3.4x Rec.709 claims. Hence one
+# small correction (12 vs 16) instead of a formula.
+#
+# Floor: do not go below peak ~8. The effect loop scales a color per frame and
+# truncates (`int(c * brightness)`, effects.py), so a peak of 3 leaves the
+# breathing cycle 4 distinct levels and the strip visibly steps.
+#
+# Tune by eye on a device. Both formulas above looked right on a monitor.
 STATUS_LED_PRESETS = {
-    "ota": {"effect": FX_BREATHING, "color": [0, 255, 0], "speed": 3.0},  # green — firmware updating
-    "error": {"effect": FX_BREATHING, "color": [255, 0, 0], "speed": 3.0},  # red — system error
-    "booting": {"effect": FX_BREATHING, "color": [0, 80, 255], "speed": 3.0},  # blue — starting up
-    "connectivity": {"effect": FX_BREATHING, "color": [255, 80, 0], "speed": 3.0},  # orange — no internet
-    "wifi_connecting": {"effect": FX_BLINK, "color": [0, 135, 255], "speed": 0.5},
+    "ota": {"effect": FX_BREATHING, "color": [0, 12, 0], "speed": 3.0},  # green — firmware updating
+    # Red pulse, not breathing: mic_muted is also dim red breathing, so at these
+    # levels a breathing red error was indistinguishable from "mic is muted" —
+    # only the speed differed. Pulse separates them by shape, which reads
+    # without having to count breaths, and suits a fault better anyway.
+    "error": {"effect": FX_PULSE, "color": [16, 0, 0], "speed": 1.5},  # red — system error
+    "booting": {"effect": FX_BREATHING, "color": [0, 6, 16], "speed": 3.0},  # blue — starting up
+    "connectivity": {"effect": FX_BREATHING, "color": [16, 7, 0], "speed": 3.0},  # orange — no internet
+    "wifi_connecting": {"effect": FX_BLINK, "color": [0, 6, 16], "speed": 0.5},
     # blue blink — associating with Wi-Fi during POST /api/device/setup
-    "hal_down": {"effect": FX_BREATHING, "color": [180, 0, 255], "speed": 3.0},  # purple — HAL unreachable
-    "agent_down": {"effect": FX_BREATHING, "color": [0, 200, 200], "speed": 3.0},  # cyan — agent disconnected
-    "hardware": {"effect": FX_BREATHING, "color": [255, 255, 0], "speed": 3.0},  # yellow — hardware fault
-    "ready_flash": {"effect": FX_NOTIFICATION_FLASH, "color": [255, 255, 255], "speed": 1.0},
-    # white — agent ready/listening
+    "hal_down": {"effect": FX_BREATHING, "color": [11, 0, 16], "speed": 3.0},  # purple — HAL unreachable
+    "agent_down": {"effect": FX_BREATHING, "color": [0, 12, 12], "speed": 3.0},  # cyan — agent disconnected
+    "hardware": {"effect": FX_BREATHING, "color": [12, 12, 0], "speed": 3.0},  # yellow — hardware fault
+    "ready_flash": {"effect": FX_NOTIFICATION_FLASH, "color": [12, 12, 12], "speed": 1.0},
+    # white — agent ready/listening (brief, but a full-value white flash is the
+    # harshest thing the strip does; brevity does not soften it)
     # OTA progress (driven by the bootstrap worker, not the statusled state machine)
-    "ota_progress": {"effect": FX_BREATHING, "color": [255, 140, 0], "speed": 0.4},  # orange — updating
-    "ota_error": {"effect": FX_PULSE, "color": [255, 30, 30], "speed": 1.5},  # red pulse — update failed
-    "ota_success": {"effect": FX_NOTIFICATION_FLASH, "color": [0, 255, 80], "speed": 1.0},  # green flash — update ok
+    "ota_progress": {"effect": FX_BREATHING, "color": [16, 8, 0], "speed": 0.4},  # orange — updating
+    "ota_error": {"effect": FX_PULSE, "color": [16, 2, 2], "speed": 1.5},  # red pulse — update failed
+    "ota_success": {"effect": FX_NOTIFICATION_FLASH, "color": [0, 12, 4], "speed": 1.0},  # green flash — update ok
     # Setup/provisioning "device ready, join the AP" cue. effect "solid" = a
     # persistent fill (saved as the displayed state), not a transient overlay.
-    "setup": {"effect": "solid", "color": [255, 255, 255], "speed": 1.0},  # white solid — AP/setup ready
+    # The one deliberate exception to the peak budget: white is green-dominant so
+    # the rule says 12, but this cue has to be spotted across a room by someone
+    # asking "is it on yet?" during onboarding, so it gets the 16 tier instead.
+    "setup": {"effect": "solid", "color": [16, 16, 16], "speed": 1.0},  # white solid — AP/setup ready
     # Mic-muted idle indicator — HAL-local key (no Go statusled state). The
     # strip's RESTING look while the mic is muted: emotions/effects/waves run
     # normally on top, and every LED restore lands back on this instead of the

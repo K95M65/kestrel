@@ -131,7 +131,7 @@ Structured `slog.Info` lines for end-to-end ID alignment (device idempotency key
 
 ## Turn Pipeline (SVG `FlowDiagram`)
 
-Rendered by `FlowDiagram` in `system/web/src/pages/Monitor.tsx`. The diagram is **observational only** (zoom/pan, node highlights from recent events). Three **tinted cluster** regions group nodes:
+Rendered by `FlowDiagram` in `system/web/src/pages/Monitor.tsx`. The diagram is **observational only** (zoom/pan, node highlights from recent events). Drag with a mouse or one finger to pan; pinch with two fingers (or use the in-canvas minus/plus controls) to zoom, and use reset to restore the default view. On phones, the LLM/tool stream is rendered as pure SVG text for reliable display; **LLM / Tool / Curl details** opens a responsive native sheet for long payloads and node output. Three **tinted cluster** regions group nodes:
 
 | Region | Color (theme) | Stages |
 |--------|----------------|--------|
@@ -392,7 +392,7 @@ The agent session auto-compacts when context tokens cross ~80k. Every compaction
 
 **UI:** Flow Monitor header exposes a `📋 Summary` button. Click → fetch + render modal showing the latest compaction record: timestamp, `tokensBefore`, `summaryChars`, `compactionCount`, `readFiles` fed into the compaction prompt, and the full `summary` text.
 
-**Endpoint:** `GET /api/openclaw/compaction-latest?session=<key>` (default session key `agent:main:main`). Returns:
+**Endpoint:** `GET /api/agent/compaction-latest?session=<key>` (default session key `agent:main:main`). Returns:
 
 ```json
 {

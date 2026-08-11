@@ -19,5 +19,19 @@ export default defineConfig([
       ecmaVersion: 2020,
       globals: globals.browser,
     },
+    rules: {
+      // The codebase marks a deliberately-unused binding with a leading
+      // underscore — a prop kept because it is part of the component's
+      // contract, or a key destructured only to drop it from the rest object.
+      // Honor that convention rather than reporting every such binding.
+      '@typescript-eslint/no-unused-vars': ['error', {
+        args: 'all',
+        argsIgnorePattern: '^_',
+        varsIgnorePattern: '^_',
+        caughtErrorsIgnorePattern: '^_',
+        destructuredArrayIgnorePattern: '^_',
+        ignoreRestSiblings: true,
+      }],
+    },
   },
 ])

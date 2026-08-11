@@ -22,9 +22,13 @@ memory:     { backend: local }
 
 # Unitree Go2-W
 
-A **third-party** mobile robot — Unitree's wheeled quadruped — running Autonomous. We fitted
-it with a camera, microphone, speaker, and a 3D depth camera; it hears you, sees the room in
-3D, drives through the space, and acts.
+> **Status: declaration-only reference.** This repository does not ship a Unitree
+> board profile, SDK driver, or HAL locomotion/depth routes. It is not a supported
+> deployment target and must not be represented as a running Autonomous device.
+
+This is the intended declaration for a **third-party** mobile robot — Unitree's
+wheeled quadruped. A future port would fit it with a camera, microphone, speaker,
+and 3D depth camera so it can hear, see the room in 3D, and drive through space.
 
 ## The point: any device, any manufacturer
 
@@ -32,10 +36,10 @@ This is the Android playbook. Lamp and Intern are Autonomous's own devices; the 
 **someone else's hardware** running the same OS — the way Android runs on Samsung, Pixel, and
 the rest. Onboarding it was writing this `DEVICE.md` plus a driver, not a fork:
 
-- **`motion` is locomotion**, and its driver is the **Unitree SDK**, not Feetech servos — yet a
-  skill calling `motion.move` ("come here") runs on the Go2-W *and* on Lamp, because skills
-  address capabilities, never hardware.
-- It runs on **Unitree's onboard compute**, not a Raspberry Pi — a new board profile.
-- `vision` adds a **depth** route (the 3D camera) for navigation.
+- **`motion` would be locomotion**, with a Unitree SDK driver rather than Feetech
+  servos. A port can then map capability-level motion skills to the body.
+- It would run on **Unitree's onboard compute**, requiring a new board profile.
+- `vision` would add a **depth** route (the 3D camera) for navigation.
 
-Desk arm (Lamp) → desk cube (Intern) → a different vendor's mobile robot (Go2-W): one OS.
+It is a contract/reference example for extending the OS to a different vendor's
+mobile robot, not evidence that this port exists.

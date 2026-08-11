@@ -1,9 +1,12 @@
 # Unitree Go2-W
 
-**Autonomous on someone else's robot.** The Go2-W is Unitree's wheeled quadruped — a
-third-party manufacturer's hardware — running the Autonomous OS. We fitted it with a camera,
-microphone, speaker, and a 3D depth camera; it hears you, sees the room in 3D, drives through
-the space, and acts. A true mobile agent, not a remote-controlled toy.
+> **Status: declaration-only reference — not a supported runtime target.** This
+> repository does not contain a Unitree board profile, Unitree SDK driver, or HAL
+> locomotion/depth route. No Unitree hardware is claimed as validated here.
+
+**The intended Autonomous port for someone else's robot.** The Go2-W is Unitree's
+wheeled quadruped — third-party hardware that a future Autonomous port could equip
+with a camera, microphone, speaker, and 3D depth camera.
 
 <p align="center">
   <img src="images/go2-w.webp" alt="Unitree Go2-W" width="480">
@@ -12,18 +15,15 @@ the space, and acts. A true mobile agent, not a remote-controlled toy.
 ## Why it matters — the Android playbook
 
 Android runs on Samsung, Pixel, and a hundred other vendors' phones. Autonomous is the same
-idea for physical agents: Lamp and Intern are *our* devices; the **Go2-W is a different
-manufacturer's robot** running the identical OS. Bringing it up was writing a `DEVICE.md` plus
-a driver — never a fork:
+idea for physical agents: Lamp and Intern are *our* devices; the **Go2-W declaration** shows
+the intended contract for a different manufacturer's robot. A real port still needs a board
+profile, driver, HAL routes, and runtime validation:
 
-- **`motion` is locomotion**, driven by the **Unitree SDK**, not Feetech servos — yet a skill
-  that calls `motion.move` ("come here") runs on the Go2-W *and* on Lamp, because skills
-  address capabilities, never hardware.
-- It runs on **Unitree's onboard compute**, not a Raspberry Pi — a new board profile.
-- Add a **depth** vision route and the desk OS becomes a roaming agent.
+- **`motion` would be locomotion**, driven by the **Unitree SDK**, not Feetech servos.
+- It would run on **Unitree's onboard compute**, requiring a new board profile.
+- A **depth** vision route would make the desk OS suitable for a roaming agent.
 
-The thesis at its strongest: a desk arm (Lamp), a desk cube (Intern), and **a robot from a
-different vendor** (Go2-W) — one OS, three `DEVICE.md` files.
+The declaration demonstrates the extension point; it does not implement the port.
 
 ## Capabilities
 
@@ -32,7 +32,7 @@ bounds in [`SAFETY.md`](SAFETY.md) — mobile safety is non-negotiable.
 
 ## Status
 
-Pilot — validated on Unitree hardware.
+Reference declaration only — no hardware validation or production support.
 
 ## For developers
 

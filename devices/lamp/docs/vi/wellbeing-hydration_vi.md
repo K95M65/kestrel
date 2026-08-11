@@ -2,7 +2,7 @@
 
 > Lamp chủ động nhắc uống nước và nghỉ ngơi — AI tự schedule, tự quan sát qua camera, tự học thói quen từng người.
 
-> **⚠️ 2026-04-17 — Storage đã đổi.** File này còn đúng về cơ chế cron + flow agent. Nhưng chi tiết về `wellbeing.md` summary và `wellbeing/YYYY-MM-DD.md` daily log đã **deprecated** — giờ dùng JSONL schema `{ts, seq, hour, action, notes}` mirror mood. Xem `docs/vi/sensing-behavior_vi.md` và `docs/vi/os-server_vi.md` cho đúng endpoint. Endpoint `POST /user/wellbeing/log`, `/summary`, `/today` trên HAL đã bị gỡ — thay bằng `POST http://127.0.0.1:5000/api/wellbeing/log` + `GET /api/openclaw/wellbeing-history` trên Lamp.
+> **⚠️ 2026-04-17 — Storage đã đổi.** File này còn đúng về cơ chế cron + flow agent. Nhưng chi tiết về `wellbeing.md` summary và `wellbeing/YYYY-MM-DD.md` daily log đã **deprecated** — giờ dùng JSONL schema `{ts, seq, hour, action, notes}` mirror mood. Xem `docs/vi/sensing-behavior_vi.md` và `docs/vi/os-server_vi.md` cho đúng endpoint. Endpoint `POST /user/wellbeing/log`, `/summary`, `/today` trên HAL đã bị gỡ — thay bằng `POST http://127.0.0.1:5000/api/wellbeing/log` + `GET /api/agent/wellbeing-history` trên Lamp.
 
 ---
 
@@ -480,7 +480,7 @@ ls /root/local/users/<name>/wellbeing/
 cat /root/local/users/<name>/wellbeing/$(date +%Y-%m-%d).md
 
 # Xem mood history có wellbeing events
-curl -s "http://127.0.0.1:5000/api/openclaw/mood-history?date=$(date +%Y-%m-%d)&last=200" | jq '.data.events[] | select(.event | startswith("wellbeing"))'
+curl -s "http://127.0.0.1:5000/api/agent/mood-history?date=$(date +%Y-%m-%d)&last=200" | jq '.data.events[] | select(.event | startswith("wellbeing"))'
 ```
 
 ---

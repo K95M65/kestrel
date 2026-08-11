@@ -9,26 +9,28 @@ import (
 
 func TestNewMQTTInfoResponseIncludesWakeWordState(t *testing.T) {
 	enabled := true
+	// cfg is a pointer: config.Config carries a sync.Mutex, so holding it by
+	// value in the table would copy the lock on every range iteration.
 	tests := []struct {
 		name string
-		cfg  config.Config
+		cfg  *config.Config
 		want bool
 	}{
 		{
 			name: "enabled",
-			cfg:  config.Config{WakeWord: &enabled},
+			cfg:  &config.Config{WakeWord: &enabled},
 			want: true,
 		},
 		{
 			name: "missing defaults to disabled",
-			cfg:  config.Config{},
+			cfg:  &config.Config{},
 			want: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			msg := NewMQTTInfoResponse(&tt.cfg, "info", "00:11:22:33:44:55")
+			msg := NewMQTTInfoResponse(tt.cfg, "info", "00:11:22:33:44:55")
 			if msg.WakeWordEnabled != tt.want {
 				t.Fatalf("WakeWordEnabled = %t, want %t", msg.WakeWordEnabled, tt.want)
 			}

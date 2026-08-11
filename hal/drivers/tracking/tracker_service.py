@@ -305,10 +305,12 @@ class TrackerService:
         _tracking_motors = ["base_yaw", "base_pitch", "elbow_pitch", "wrist_pitch"]
         try:
             with animation_service.bus_lock:
-                if C.TRACKING_GOAL_VELOCITY > 0:
-                    animation_service.robot.bus.sync_write(
-                        "Goal_Velocity", {m: C.TRACKING_GOAL_VELOCITY for m in _tracking_motors}
-                    )
+                # Always write the register, including zero (= unlimited), so
+                # a prior return-to-zero or external command cannot leave a
+                # stale hardware velocity cap on this tracking session.
+                animation_service.robot.bus.sync_write(
+                    "Goal_Velocity", {m: C.TRACKING_GOAL_VELOCITY for m in _tracking_motors}
+                )
                 animation_service.robot.bus.sync_write(
                     "Acceleration", {m: C.TRACKING_ACCELERATION for m in _tracking_motors}
                 )
@@ -638,6 +640,11 @@ class TrackerService:
                     # on feedforward so it never drifts out before the PID reacts.)
                     self._yaw_pid.reset()
                     self._pitch_pid.reset()
+                    # A previous PID goal can still be several command units
+                    # away. Retarget to the current pose; merely stopping new
+                    # PID fires lets the follower overshoot that stale goal and
+                    # then reverse on the next camera correction.
+                    self._follower.hold()
                     motion_state = "CENTERED"
                 elif confidence < C.SERVO_MIN_CONF:
                     # Tracker barely holding the lock — don't chase, even with a

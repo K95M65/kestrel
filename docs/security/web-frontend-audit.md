@@ -12,7 +12,7 @@ The Lamp web app is a privileged device-control UI, not a normal public website.
 - Read and write device config, including API keys, bot tokens, WiFi password, MQTT password.
 - Call raw HAL hardware endpoints under `/hw/*` for camera, mic/speaker, servo, face, bluetooth, display, voice, LED.
 - Open an interactive shell through `/api/system/shell`.
-- Fetch raw OpenClaw config and gateway token from `/api/openclaw/config-json`.
+- Fetch raw OpenClaw config and gateway token from `/api/agent/config-json`.
 - Generate `/gw/chat#token=...` links containing the gateway token.
 - Store chat/history/UI data in `localStorage`.
 - Accept secrets through URL query parameters during setup.
@@ -482,7 +482,7 @@ Expected after load:
 `lamp/web/src/pages/monitor/index.tsx`:
 
 ```ts
-fetch("/api/openclaw/config-json")
+fetch("/api/agent/config-json")
   .then((r) => r.json())
   .then((res) => {
     const t = res?.data?.gateway?.auth?.token;
@@ -533,15 +533,15 @@ Options:
 
 1. **Local-only gateway UI**: remove remote web link entirely; show “Gateway is local-only”.
 2. **Backend-minted short-lived gateway session**:
-   - Browser calls authenticated `/api/openclaw/gateway-session`.
+   - Browser calls authenticated `/api/agent/gateway-session`.
    - Backend returns short-lived one-time URL/token with narrow scope.
    - Token expires quickly and is not the raw gateway auth token.
 3. **Redacted config summary**:
-   - Replace `config-json` UI with `/api/openclaw/config-summary` that redacts all secrets.
+   - Replace `config-json` UI with `/api/agent/config-summary` that redacts all secrets.
 
 #### Frontend changes
 
-- `lamp/web/src/pages/monitor/index.tsx`: remove fetch of `/api/openclaw/config-json` and do not build `#token=` with raw token.
+- `lamp/web/src/pages/monitor/index.tsx`: remove fetch of `/api/agent/config-json` and do not build `#token=` with raw token.
 - `lamp/web/src/pages/GwConfig.tsx`: call `config-summary` or delete page from production.
 - `lamp/web/src/pages/monitor/ChatSection.tsx`: stop fetching raw config; use sanitized status/model endpoint.
 
@@ -955,7 +955,7 @@ Expected headers:
 Only `apiRequest` wraps some `/api` calls. Many components call `fetch` directly:
 
 - `/hw/*`
-- `/api/openclaw/*`
+- `/api/agent/*`
 - `/api/logs/*`
 - `/api/sensing/event`
 - `/api/system/software-update/*`
@@ -1286,7 +1286,7 @@ Files:
 
 Actions:
 
-1. Remove `/api/openclaw/config-json` calls from production UI.
+1. Remove `/api/agent/config-json` calls from production UI.
 2. Replace with redacted config summary.
 3. Do not construct `/gw/chat#token=<raw-token>` from config.
 

@@ -164,7 +164,7 @@ grep '<runId>' flow_events.jsonl | python3 -c '…' # filter node=="tts_send"
 ### 4.2 Aggregated flow API (for UI)
 
 ```bash
-$SSH "curl -s 'http://127.0.0.1:5000/api/openclaw/flow-events?last=200'" \
+$SSH "curl -s 'http://127.0.0.1:5000/api/agent/flow-events?last=200'" \
   | python3 -c 'import json,sys; [print(e["id"], e.get("runId","-")[-12:], e["summary"][:80]) for e in json.load(sys.stdin)["data"]["events"]]'
 ```
 
@@ -245,7 +245,7 @@ See **[`busy-stuck.md`](./busy-stuck.md)** for full root-cause + diagnostic comm
 
 ```bash
 # Remove a specific cron by ID
-$SSH "curl -s -X POST http://127.0.0.1:5000/api/openclaw/cron -d '{\"action\":\"remove\",\"id\":\"<cron-id>\"}'"
+$SSH "curl -s -X POST http://127.0.0.1:5000/api/agent/cron -d '{\"action\":\"remove\",\"id\":\"<cron-id>\"}'"
 
 # Clear mood for a user (manual — no API, just truncate)
 $SSH "echo $PASS | sudo -S truncate -s 0 /root/local/users/<user>/mood/$(date +%Y-%m-%d).jsonl"

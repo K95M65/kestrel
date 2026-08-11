@@ -16,7 +16,8 @@ export function CameraSection({
 }: {
   displayTs: number;
 }) {
-  const [snapTs, setSnapTs] = useState(Date.now());
+  // Lazy initializer: the clock is read once on mount, not on every render.
+  const [snapTs, setSnapTs] = useState(() => Date.now());
   const [snapError, setSnapError] = useState(false);
   const [streamError, setStreamError] = useState(false);
   // Bumped to force the MJPEG <img> to remount with a fresh connection —
@@ -50,6 +51,7 @@ export function CameraSection({
   // immediately — no page refresh needed.
   useEffect(() => {
     if (!cameraDisabled) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- this reacts to a DEVICE state transition (the poll seeing the camera come back), not to a prop that could be derived during render. Bumping streamEpoch is what forces the MJPEG <img> to remount with a fresh connection; there is no render-time equivalent.
       setStreamError(false);
       setSnapError(false);
       setStreamEpoch((e) => e + 1);
@@ -74,7 +76,10 @@ export function CameraSection({
     try {
       const r = await fetch(`${HW}/servo/track`).then((x) => x.json());
       setTrack({ tracking: !!r.tracking, target: r.target, bbox: r.bbox, confidence: r.confidence ?? null });
-    } catch {}
+    } catch {
+      // Best-effort status read: keep the previously rendered tracking state
+      // instead of flipping the panel to "not tracking" on a transient failure.
+    }
   }, []);
 
   usePolling(async (signal) => {
@@ -113,7 +118,10 @@ export function CameraSection({
     try {
       await fetch(`${HW}/camera/${cameraDisabled ? "enable" : "disable"}`, { method: "POST" });
       setCameraDisabled(!cameraDisabled);
-    } catch {}
+    } catch {
+      // Leave cameraDisabled untouched when the toggle never reached HAL: the
+      // next poll below is the source of truth for the real camera state.
+    }
     setToggling(false);
   };
 
@@ -136,14 +144,20 @@ export function CameraSection({
         body: JSON.stringify(body),
       }).then((x) => x.json());
       setTrack({ tracking: !!r.tracking, target: r.target, bbox: r.bbox, confidence: r.confidence ?? null });
-    } catch {}
+    } catch {
+      // Start failed: don't fake a tracking state the device isn't in — the
+      // status poll reports what actually happened.
+    }
   };
 
   const stopTracking = async () => {
     try {
       await fetch(`${HW}/servo/track/stop`, { method: "POST" });
       setTrack({ tracking: false, target: null, bbox: null, confidence: null });
-    } catch {}
+    } catch {
+      // Stop failed: leave the tracking state as-is so the panel keeps showing
+      // that the tracker is still running.
+    }
   };
 
   const refreshSnapshot = () => {

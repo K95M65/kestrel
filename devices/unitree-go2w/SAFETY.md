@@ -1,8 +1,14 @@
+---
+schema: autonomous.safety.v1
+motion:
+  stop_always: true
+---
+
 # SAFETY.md — Unitree Go2-W
 
-The Go2-W moves through shared human space, so the safety floor matters more here than on any
-desk device. Everything below is enforced by deterministic policy (the `safety` System
-Manager), never by the agentic runtime.
+This is a declaration-only safety reference, not evidence of a deployed safety
+implementation. A supported Unitree port must implement and validate the controls
+below before claiming the device is runnable.
 
 ## motion
 

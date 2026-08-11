@@ -263,6 +263,7 @@ The default output dir is git-ignored — never commit trace output. The tracer 
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST` | `/speaker/enroll` | Enroll voice from wav_paths + name |
+| `POST` | `/speaker/record-enroll` | Record from the device mic (`arecord`, `duration_sec` 1–60, default 15) then enroll the capture |
 | `POST` | `/speaker/recognize` | Recognize speaker from wav_path |
 | `POST` | `/speaker/identity` | Link Telegram identity to existing profile |
 | `POST` | `/speaker/remove` | Remove voice profile by name |
@@ -280,6 +281,12 @@ The default output dir is git-ignored — never commit trace output. The tracer 
 
 `/speaker/recognize` never fails with 5xx for embedding outages — it returns `200` with `{name: "unknown", error: "<reason>"}` so the skill can gracefully degrade. Only input-level problems (missing WAV, bad base64) return `400`.
 
+### Mic ownership during record-enroll
+
+ALSA capture is exclusive — only one process may hold the mic. `/speaker/record-enroll` therefore stops the voice pipeline, records with `arecord`, and restarts the pipeline from its own `finally` block.
+
+Any other path that starts the pipeline while that recording is in flight steals the capture device and **both** sides fail with `audio open error: Device or resource busy`: the enroll returns `500` and the voice loop dies on the same error. So every caller goes through `state.start_voice_service(reason)`, which refuses (and logs the reason) while `state._enrolling` is set. The single exception is record-enroll's own restore — it owns the stop and runs after the flag is cleared.
+
 ## Key Code Locations
 
 | Component | File | Function/Struct |
@@ -288,6 +295,8 @@ The default output dir is git-ignored — never commit trace output. The tracer 
 | Enroll gate | `hal/drivers/voice/_internal/speaker_decorate.py` | `_should_request_speaker_enroll()` |
 | Message formatting | `hal/drivers/voice/_internal/speaker_decorate.py` | `_format_unknown_speaker_message()` |
 | Speaker recognizer | `hal/drivers/voice/speaker_recognizer/speaker_recognizer.py` | `SpeakerRecognizer` |
+| Mic-ownership gate | `hal/app_state.py` | `start_voice_service()` |
+| Record + enroll route | `hal/routes/speaker.py` | `speaker_record_enroll()` |
 | Nudge injection + cooldown | `system/domain/voice.go` | `AppendEnrollNudge()` |
 | Direct event path | `system/server/sensing/delivery/http/handler.go` | `PostEvent()` |
 | Drain/replay path | `runtimes/openclaw/service.go` | `drainPendingEvents()` |

@@ -139,8 +139,7 @@ def activate_scene(req: SceneRequest):
     elif mic == "on" and state._mic_muted:
         state._mic_muted = False
         state._mic_manual_override = False
-        if state.voice_service:
-            state.voice_service.start()
+        state.start_voice_service("scene:mic-on")
         # Mic is live again — drop a lingering privacy indicator flag (the
         # scene paint already owns the strip look).
         state._clear_mic_muted_led()
@@ -197,8 +196,7 @@ def deactivate_scene():
     if state._mic_muted:
         state._mic_muted = False
         state._mic_manual_override = False
-        if state.voice_service:
-            state.voice_service.start()
+        state.start_voice_service("scene:off")
         state._clear_mic_muted_led()
         state._persist_mic_state()
         state.logger.info("Scene off: mic unmuted")

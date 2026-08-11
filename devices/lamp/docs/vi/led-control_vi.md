@@ -123,14 +123,14 @@ LED phản hồi trạng thái hệ thống (tất cả `breathing` speed 3.0 tr
 
 | Trạng thái | Màu | RGB |
 |-----------|-----|-----|
-| Mất internet (Connectivity) | Cam | `(255, 80, 0)` |
-| Đang khởi động (Booting) | Xanh dương | `(0, 80, 255)` |
-| HAL Down | Tím | `(180, 0, 255)` |
-| Agent Down | Cyan | `(0, 200, 200)` |
-| Hardware Failure | Vàng | `(255, 255, 0)` |
-| OTA đang chạy (bootstrap) | Cam | `(255, 140, 0)` |
-| OTA thành công (bootstrap) | Flash xanh lá | `(0, 255, 80)` |
-| OTA thất bại (bootstrap) | Đỏ pulse | `(255, 30, 30)` |
+| Mất internet (Connectivity) | Cam | `(16, 7, 0)` |
+| Đang khởi động (Booting) | Xanh dương | `(0, 6, 16)` |
+| HAL Down | Tím | `(11, 0, 16)` |
+| Agent Down | Cyan | `(0, 12, 12)` |
+| Hardware Failure | Vàng | `(12, 12, 0)` |
+| OTA đang chạy (bootstrap) | Cam | `(16, 8, 0)` |
+| OTA thành công (bootstrap) | Flash xanh lá | `(0, 12, 4)` |
+| OTA thất bại (bootstrap) | Đỏ pulse | `(16, 2, 2)` |
 
 Quản lý bởi `system/statusled/Service` (lamp) và `lib/hal` trực tiếp (bootstrap).
 

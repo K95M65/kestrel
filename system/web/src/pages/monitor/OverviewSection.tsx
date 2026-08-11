@@ -35,7 +35,8 @@ function useEmotionPresets() {
   return { emotions, colors };
 }
 import type { SystemInfo, NetworkInfo, HWHealth, OCStatus, PresenceInfo, VoiceStatus, ServoState, DisplayState, AudioVolume, LEDColor, SceneInfo } from "./types";
-import { StatusDot, HWBadge, SignalBars, formatUptime, formatAgo, useCountUp, Skeleton, SkeletonRows, SoftwareUpdateButton, StatRow, StatusBadge, STATUS_TONE, CardLabel } from "./components";
+import { StatusDot, HWBadge, SignalBars, Skeleton, SkeletonRows, SoftwareUpdateButton, StatRow, StatusBadge, STATUS_TONE, CardLabel } from "./components";
+import { formatUptime, formatAgo, useCountUp } from "./utils";
 import { BuddyCard } from "./BuddyCard";
 
 export function OverviewSection({
@@ -117,6 +118,7 @@ export function OverviewSection({
   // Sync from server when not dragging
   useEffect(() => {
     if (!draggingVolume.current && audio?.volume != null) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- the slider is an uncontrolled-while-dragging input: server volume may only overwrite it BETWEEN drags. Deriving it during render would yank the handle out from under the operator's finger mid-drag.
       setLocalVolume(audio.volume);
     }
   }, [audio?.volume]);
@@ -183,7 +185,7 @@ export function OverviewSection({
       </div>
 
       {/* Row 1: 4 status cards in one row */}
-      <div className="lm-grid-4">
+      <div className="lm-grid-4 lm-overview-status-grid">
         {/* Agent Gateway */}
         <div className="lm-mon-card" style={monCard}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
@@ -252,8 +254,8 @@ export function OverviewSection({
           {voice ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {/* Mic row */}
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div className="lm-audio-row">
+                <div className="lm-audio-row-label" style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <StatusDot ok={voice.voice_available && !voice.mic_muted} />
                   <span style={{ fontSize: 13, fontWeight: 600 }}>Mic</span>
                   {voice.mic_muted ? (
@@ -281,8 +283,8 @@ export function OverviewSection({
               )}
 
               {/* TTS row */}
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div className="lm-audio-row">
+                <div className="lm-audio-row-label" style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <StatusDot ok={voice.tts_available} />
                   <span style={{ fontSize: 13, fontWeight: 600 }}>TTS</span>
                   {voice.tts_speaking && (
@@ -298,8 +300,8 @@ export function OverviewSection({
               </div>
 
               {/* Speaker row */}
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div className="lm-audio-row">
+                <div className="lm-audio-row-label" style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <StatusDot ok={!speakerMuted} />
                   <span style={{ fontSize: 13, fontWeight: 600 }}>Speaker</span>
                   {speakerMuted && (
@@ -714,7 +716,10 @@ function MicLevelBar({ muted, onPlayback }: { muted: boolean; onPlayback?: (tts:
   // CHANGE (ref-compared) so 10Hz frames never re-render the Audio card. Ref
   // for the callback keeps the once-mounted SSE effect free of stale closures.
   const onPlaybackRef = useRef(onPlayback);
-  onPlaybackRef.current = onPlayback;
+  // Keep the ref current from an effect rather than during render: the ref is
+  // only ever read from the async SSE handler, so a post-commit write is
+  // equivalent and keeps render side-effect free.
+  useEffect(() => { onPlaybackRef.current = onPlayback; }, [onPlayback]);
   const lastPlaybackRef = useRef<string>("");
 
   useEffect(() => {

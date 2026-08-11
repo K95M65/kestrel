@@ -97,7 +97,6 @@ export function useSetupStatusPolling({
   useEffect(() => {
     if (!setupWorking) return;
     let cancelled = false;
-    setApLost(false);
     lastPollOkRef.current = performance.now();
     // Guards against reading the PREVIOUS attempt's verdict as this one's.
     // handler.Setup answers 200 immediately but defers device.Setup by 2s, and
@@ -163,7 +162,18 @@ export function useSetupStatusPolling({
         setApLost(true);
       }
     }, 1000);
-    return () => { cancelled = true; clearInterval(id); clearInterval(watchdog); };
+    // Clear the AP-loss verdict when the session ends (retry, or an aborted
+    // submit) rather than when the next one starts: `apLost` is only ever read
+    // under a `setupWorking` gate, so resetting on teardown leaves every
+    // reader with exactly the same value it saw before, while keeping the
+    // reset out of the effect body (no synchronous setState → no cascading
+    // render). A fresh mount already starts at false.
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+      clearInterval(watchdog);
+      setApLost(false);
+    };
   }, [setupWorking, setSetupPhase, setSetupLanIP, setSetupErrorMsg]);
 
   // Join timeout → client-side "failed" verdict. See JOIN_TIMEOUT_SEC above for

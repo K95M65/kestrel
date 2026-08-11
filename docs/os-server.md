@@ -88,6 +88,10 @@ outage the escalation exists for still passes the guard.
 | GET | `/api/guard` | Check guard mode status (returns `{"guard_mode": true/false}`) |
 | POST | `/api/guard/alert` | Manually broadcast alert to all OpenClaw chat sessions |
 
+All guard endpoints require administrator authentication for network callers.
+Device-local callers on strict loopback, including HAL and the agent runtime, are
+allowed so internal guard-mode operation remains available.
+
 **Alert request body:**
 ```json
 {
@@ -145,9 +149,9 @@ Config field: `guard_mode` in `config/config.json` (bool, default `false`). The 
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/openclaw/status` | WS connection status; includes `uptime` (OS server WS uptime) and `agentUptime` (OpenClaw process uptime, survives OS server restarts) |
-| GET | `/api/openclaw/events` | SSE stream real-time events |
-| GET | `/api/openclaw/recent` | 100 most recent events (ring buffer) |
+| GET | `/api/agent/status` | WS connection status; includes `uptime` (OS server WS uptime) and `agentUptime` (OpenClaw process uptime, survives OS server restarts) |
+| GET | `/api/agent/events` | SSE stream real-time events |
+| GET | `/api/agent/recent` | 100 most recent events (ring buffer) |
 
 ---
 
@@ -302,7 +306,7 @@ Requires sensing with camera (InsightFace). Enrolled person JPEGs persist under 
 |--------|----------|-------------|
 | GET | `/user/info?name=X` | User metadata: `name`, `is_friend`, `telegram_id`, `telegram_username`. Defaults to `"unknown"` if name omitted. Auto-creates folder. |
 
-> Wellbeing activity history lives on the OS server HTTP API (port 5000). See `POST /api/wellbeing/log` and `GET /api/openclaw/wellbeing-history` — entries are JSONL under `/root/local/users/{user}/wellbeing/YYYY-MM-DD.jsonl` with schema `{ts, seq, hour, action, notes}` (action ∈ `drink`/`break`/`sedentary`/`emotional`). HAL no longer hosts wellbeing endpoints.
+> Wellbeing activity history lives on the OS server HTTP API (port 5000). See `POST /api/wellbeing/log` and `GET /api/agent/wellbeing-history` — entries are JSONL under `/root/local/users/{user}/wellbeing/YYYY-MM-DD.jsonl` with schema `{ts, seq, hour, action, notes}` (action ∈ `drink`/`break`/`sedentary`/`emotional`). HAL no longer hosts wellbeing endpoints.
 
 ### Display (GC9A01 1.28" round LCD)
 
@@ -354,6 +358,16 @@ HAL (Python): FastAPI standard JSON responses.
    - Start ambient behaviors
    - Set speaker volume to the device's `startup_volume` (DEVICE.md front matter, default 100)
 4. If not yet set up: wait for `POST /api/device/setup`
+
+## Logging
+
+When `GELF_URL` is configured, OS Server ships INFO-and-higher records to that
+central collector through one worker with a bounded queue of 256 records. Logging
+never blocks the request path or creates a goroutine per record: when the collector
+is slow or unavailable and the queue is full, newly produced GELF records are
+dropped (with rate-limited stderr notices) while console and local rotating-file
+logging continue. On shutdown, the worker flushes queued records for up to five
+seconds before cancelling any remaining delivery.
 
 ## Local Intent Matching
 

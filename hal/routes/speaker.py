@@ -430,7 +430,10 @@ def speaker_record_enroll(req: RecordEnrollRequest) -> EnrollResponse:
         if not prev_speaker_muted:
             state._speaker_muted = False
         # Always restart the listener so passive recognition / wake word
-        # doesn't stay broken after a failed enroll.
+        # doesn't stay broken after a failed enroll. This is the one caller
+        # that bypasses state.start_voice_service(): it owns the stop above
+        # and must restore the pipeline unconditionally. Safe because
+        # _enrolling was already cleared, so the gate would pass anyway.
         if was_running and state.voice_service is not None:
             try:
                 state.voice_service.start()

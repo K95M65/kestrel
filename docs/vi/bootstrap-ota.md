@@ -270,6 +270,11 @@ Lưu version đã cài của mỗi thành phần:
 }
 ```
 
+Việc lưu state là atomic: bootstrap ghi và sync file tạm trong cùng thư mục rồi
+mới rename vào vị trí chính thức. Nếu state cũ bị lỗi định dạng (ví dụ do lần ghi
+legacy bị gián đoạn), bootstrap giữ lại thành `state.json.corrupt-<timestamp>`,
+log cảnh báo và tiếp tục với state rỗng thay vì không khởi động OTA polling.
+
 ### Luồng xử lý chính (`bootstrap/bootstrap.go`)
 
 ```
@@ -329,7 +334,7 @@ Bootstrap dùng `lib/hal` để báo trạng thái update qua LED. Xem chi tiế
 | Giai đoạn | LED |
 |----------|-----|
 | Đang tải + cài | Cam breathing `(255, 140, 0)` |
-| Thành công | Flash xanh lá `(0, 255, 80)` |
+| Thành công | Flash xanh lá `(0, 255, 80)`, rồi khôi phục LED look user đã chọn hoặc ambient resting look nếu chưa có user state |
 | Thất bại | Đỏ pulse `(255, 30, 30)` |
 
 ### Phát hiện version hiện tại

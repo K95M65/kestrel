@@ -37,23 +37,14 @@ system/
 runtimes/                   — Swappable brains: openclaw/ hermes/ picoclaw/ codex/ claudecode/ opencode/
 
 hal/
-├── server.py                     — FastAPI server (38 endpoints)
+├── server.py                     — FastAPI server
 ├── config.py                     — Hằng số runtime (ngưỡng sensing, timeout, URL)
-├── drivers/camera/               — Camera device (LocalVideoCaptureDevice, V4L2)
-├── service/
-│   ├── voice/voice_service.py    — Local VAD + Deepgram STT, speaker ID, SER submit
-│   ├── voice/speech_emotion/     — Queue SER → perception-service → OS server speech_emotion.detected
-│   ├── voice/stt/                — STT có thể plug in (Deepgram / autonomous)
-│   ├── voice/tts/                — TTS service + backend plug in (OpenAI / ElevenLabs)
-│   ├── sensing/
-│   │   ├── sensing_service.py    — Vòng lặp sensing nền
-│   │   ├── presence_service.py   — State machine tự bật/tắt đèn theo presence
-│   │   └── perceptions/          — Các detector có thể plug in
-│   │       ├── motion.py         — Phát hiện chuyển động (frame diff)
-│   │       ├── facerecognizer.py — Nhận diện friend/stranger (InsightFace) (legacy, không dùng)
-│   │       ├── faceid/           — Nhận diện friend/stranger đang dùng (SCRFD + EdgeFace ONNX; model tải về lần đầu)
-│   │       └── light_level.py    — Phát hiện thay đổi độ sáng môi trường
-│   └── display/                  — GC9A01 LCD eyes + info
+├── board/                        — Profile thiết bị, pin map board và overlay
+├── drivers/                      — Service phần cứng (camera, motor, RGB, sensing, voice, display)
+├── routes/                       — Module FastAPI route theo capability
+├── safety/                       — Safety policy đã parse và gate tất định
+├── realtime/                     — Realtime voice agent và context manager
+├── server_support/               — HTTP/security support dùng chung
 └── pyproject.toml                — Python dependencies (opencv-python, insightface)
 
 devices/                          — Per-device configs and overlays

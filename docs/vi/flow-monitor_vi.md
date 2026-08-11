@@ -44,7 +44,7 @@ Tối đa 4 dòng JSONL bonus / turn (thực tế 0–2). Stream name từ OpenC
 
 ## Sơ đồ Turn Pipeline (SVG)
 
-Component `FlowDiagram` trong `system/web/src/pages/Monitor.tsx` vẽ **ba vùng** (màu viền nền):
+Component `FlowDiagram` trong `system/web/src/pages/Monitor.tsx` vẽ **ba vùng** (màu viền nền). Có thể kéo bằng chuột hoặc một ngón tay để pan; chụm/mở hai ngón tay (hoặc dùng nút trừ/cộng trong canvas) để zoom, và dùng nút reset để về góc nhìn mặc định. Trên phone, stream LLM/tool được vẽ bằng SVG text thuần để hiển thị ổn định; nút **LLM / Tool / Curl details** mở panel native responsive cho payload dài và output node:
 
 | Vùng | Màu | Node |
 |------|-----|------|
@@ -199,7 +199,7 @@ Session agent auto-compact khi context vượt ~80k tokens. Mỗi lần compact 
 
 **UI:** header Flow Monitor có nút `📋 Summary`. Click → fetch + render modal show: `timestamp`, `tokensBefore`, `summaryChars`, `compactionCount`, `readFiles` (file nào được đọc vào compaction prompt), và toàn văn `summary`.
 
-**Endpoint:** `GET /api/openclaw/compaction-latest?session=<key>` (mặc định `agent:main:main`). Response format: `{status:1, data:{found, sessionFile, timestamp, tokensBefore, summary, details:{readFiles}, ...}}`.
+**Endpoint:** `GET /api/agent/compaction-latest?session=<key>` (mặc định `agent:main:main`). Response format: `{status:1, data:{found, sessionFile, timestamp, tokensBefore, summary, details:{readFiles}, ...}}`.
 
 Dùng khi agent viện rule mà grep không thấy trong bất kỳ `skills/**/SKILL.md` — gần như 100% nguồn là compaction summary, không phải skill đang load. Handler: `system/server/openclaw/delivery/sse/handler_api_compaction.go`.
 

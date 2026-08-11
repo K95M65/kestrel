@@ -28,12 +28,12 @@ User: "Lamp, follow the cup"
     3. TrackerVit init on the bbox
          |
     4. Two decoupled threads:
-         |   a. Vision loop @ FAST_LOOP_FPS (10):
+         |   a. Vision loop @ FAST_LOOP_FPS (15):
          |        ViT update → alpha-beta centroid filter → soft dead zone
          |        → PID + velocity feedforward → publish an absolute servo goal
          |        (background YOLO re-detect every 1.5s corrects drift)
          |   b. Servo worker: SmoothDamp glide toward the latest goal
-         |        (ease-in/ease-out, one bus write per ~30ms tick)
+         |        (ease-in/ease-out; gộp các thay đổi setpoint rất nhỏ)
          |
     5. Lost / bloated / no-detect / timeout → auto-stop, hold or return to zero
 ```
@@ -90,16 +90,16 @@ Pitch được dồn vào elbow (`PITCH_WEIGHT_ELBOW = 0.90`). Thực nghiệm c
 Mỗi frame vòng lặp biến bbox của tracker thành một servo goal tuyệt đối:
 
 1. **Alpha-beta filter trên centroid** (`AlphaBetaFilter2D`) — một Kalman steady-state vận tốc-hằng. Làm mượt jitter, coast qua các frame bị rớt/rác bằng prediction, gate các cú teleport outlier (`AB_GATE_PX`), và phơi ra ước lượng vận tốc. Một velocity lead (`AB_LEAD_S = 0.20 s`) nhắm trước mặt target — "lead room" kiểu điện ảnh.
-2. **Dead zone 3 tầng** (`soft_deadband`) — liên tục tại cả hai ranh giới: zero thật bên trong ±`DEAD_ZONE_INNER_PCT` (2%, servo nghỉ, PID xả); **dải creep** tới rìa ngoài (độ dốc `DEAD_ZONE_CREEP_GAIN` = 0.12) để camera lững thững trôi về tâm thay vì đứng khựng — dừng cứng ở đây tạo cảm giác "camera an ninh" đi–dừng–đi; ngoài rìa ngoài là error đầy đủ.
+2. **Dead zone 3 tầng** (`soft_deadband`) — liên tục tại cả hai ranh giới: zero thật bên trong ±`DEAD_ZONE_INNER_PCT` (2%, PID xả và, khi không có lệnh bám theo vận tốc, follower được retarget về pose *hiện tại* để không thể tiếp tục chạy theo goal cũ); **dải creep** tới rìa ngoài (độ dốc `DEAD_ZONE_CREEP_GAIN` = 0.12) để camera lững thững trôi về tâm thay vì đứng khựng — dừng cứng ở đây tạo cảm giác "camera an ninh" đi–dừng–đi; ngoài rìa ngoài là error đầy đủ.
 3. **Velocity feedforward chính, PID phụ (smooth pursuit)** — lệnh chủ đạo là feedforward tỉ lệ với vận tốc pixel đo được của target (`VFF_GAIN` = 0.9): camera *khớp tốc độ vật* như mắt người bám mượt, kể cả khi sai số vị trí bằng 0. PID time-aware chống windup (KP cố tình nhỏ: 0.015 yaw / 0.02 pitch) chỉ sửa phần dư vị trí. Vật đang ở giữa nhưng di chuyển thì vẫn pan tiếp (không đóng băng trong dead zone). Output tổng clamp về `PID_OUTPUT_MAX_DEG` (5°).
-4. **Hai profile saccade / pursuit** — mô phỏng mắt người: lệch > `SACCADE_OFFSET_FRAC` (22% bề ngang frame) thì follow worker chuyển sang profile **saccade** (`SACCADE_SMOOTH_TIME` 0.20s, `SACCADE_MAX_SPEED_DPS` 80) để lia nhanh về chỗ; lệch nhỏ dùng profile **pursuit** nặng (`SERVO_SMOOTH_TIME` 0.32s, `SERVO_MAX_SPEED_DPS` 40) — quán tính fluid-head. Một profile thỏa hiệp làm cả hai việc đều dở. State log ra `SACCADE` vs `CHASING`.
+4. **Hai profile saccade / pursuit** — mô phỏng mắt người: lệch > `SACCADE_OFFSET_FRAC` (22% bề ngang frame) thì follow worker chuyển sang profile **saccade** (`SACCADE_SMOOTH_TIME` 0.20s, `SACCADE_MAX_SPEED_DPS` 100) để lia nhanh về chỗ; lệch nhỏ dùng profile **pursuit** nặng (`SERVO_SMOOTH_TIME` 0.32s, `SERVO_MAX_SPEED_DPS` 55) — quán tính fluid-head. Một profile thỏa hiệp làm cả hai việc đều dở. State log ra `SACCADE` vs `CHASING`.
 5. **Publish goal** — joint target tuyệt đối kết quả được giao cho servo worker (non-blocking).
 
 ### Servo worker (SmoothDamp follower)
 
-`ServoFollower` (`servo_follow.py`) chạy worker trên thread riêng và liên tục ease các joint về phía goal mới nhất bằng **SmoothDamp** (`smooth_damp`, một follower critically-damped): mỗi joint mang vận tốc riêng, nên mọi cú di chuyển đều tăng tốc mượt và ease-out vào target, và một goal mới đến giữa cú di chuyển sẽ retarget mà không giật restart — chuyển động "film camera" điện ảnh. Nó phát ra **một bus write mỗi tick `SERVO_SUBSTEP_SLEEP` (30 ms)**, cùng nhịp click như ramp fixed-substep cũ (Feetech STS3215 click mỗi lần write, nên tần suất write phải giữ có giới hạn — SmoothDamp thay đổi *cái gì* được ra lệnh mỗi tick, không phải *bao lâu một lần*).
+`ServoFollower` (`servo_follow.py`) chạy worker trên thread riêng và liên tục ease các joint về phía goal mới nhất bằng **SmoothDamp** (`smooth_damp`, một follower critically-damped): mỗi joint mang vận tốc riêng, nên mọi cú di chuyển đều tăng tốc mượt và ease-out vào target, và một goal mới đến giữa cú di chuyển sẽ retarget mà không giật restart — chuyển động "film camera" điện ảnh. Worker thức dậy theo nhịp bị giới hạn bởi `SERVO_SUBSTEP_SLEEP` (30 ms), nhưng tính SmoothDamp từ thời gian monotonic thực tế đã trôi qua và cap ở `SERVO_SUBSTEP_MAX_DT_S` (60 ms) sau một lần scheduler/serial bị stall. Nó chỉ gửi một lệnh bus đa-joint khi có ít nhất một servo command đổi ít nhất `SERVO_COMMAND_MIN_DELTA` (0.08), chỉ gộp các thay đổi normalized rất nhỏ; final target luôn được gửi một lần.
 
-Giới hạn chuyển động phần cứng khi tracking: `TRACKING_GOAL_VELOCITY = 150` steps/s và `TRACKING_ACCELERATION = 30` (ramp nhẹ nhàng). Khôi phục về default nhạy bén khi tracking kết thúc.
+Chuyển động phần cứng khi tracking: ở mỗi lần bắt đầu session, HAL luôn ghi rõ `TRACKING_GOAL_VELOCITY = 0` (unlimited) để xóa giới hạn vận tốc còn sót lại từ mode trước. Vì vậy software profile sở hữu tốc độ; cap cũ 150 steps/s ≈ 13°/s đã làm các đường cong SmoothDamp phẳng thành một chuyển động chậm đều. `TRACKING_ACCELERATION = 30` tạo ramp phần cứng nhẹ nhàng. Lượt trượt về zero bị cap bởi `TRACKING_RETURN_VELOCITY` (200 steps/s); sau đó khôi phục default nhạy bén.
 
 ### Sửa drift & quản lý lock
 
@@ -148,8 +148,9 @@ pitch_correction = clamp(PID(soft_deadband(dy)) + VFF·vy·deg_per_px·dt,  ±5�
 | `SERVO_SMOOTH_TIME` / `SERVO_MAX_SPEED_DPS` | 0.32 / 55 | Profile pursuit (nặng, fluid-head) |
 | `SACCADE_SMOOTH_TIME` / `SACCADE_MAX_SPEED_DPS` | 0.20 / 100 | Profile saccade (lia nhanh) |
 | `SACCADE_OFFSET_FRAC` / `SACCADE_EXIT_FRAC` | 0.22 / 0.12 | Ngưỡng vào/ra saccade (hysteresis — hết nhấp nháy cap tốc độ ở ranh giới) |
-| `SERVO_SUBSTEP_SLEEP` | 0.030 | Tick servo-worker / chu kỳ bus-write |
-| `TRACKING_GOAL_VELOCITY` | 0 (unlimited) | Giới hạn vận tốc phần cứng (steps/s) |
+| `SERVO_SUBSTEP_SLEEP` / `SERVO_SUBSTEP_MAX_DT_S` | 0.030 / 0.060 | Chu kỳ worker thức dậy / bước SmoothDamp đo thực tế lớn nhất sau stall |
+| `SERVO_COMMAND_MIN_DELTA` | 0.08 | Chỉ gộp các thay đổi normalized rất nhỏ; final target được gửi một lần |
+| `TRACKING_GOAL_VELOCITY` | 0 (unlimited) | Được ghi rõ khi session bắt đầu để xóa hardware cap cũ; các profile SmoothDamp sở hữu speed envelope (150 steps/s ≈ 13°/s đã làm mọi đường cong ease thành một chuyển động chậm đều). `TRACKING_RETURN_VELOCITY` (200) chỉ cap lượt trượt về zero |
 | `TRACKING_ACCELERATION` | 30 | Ramp gia tốc phần cứng |
 | `PITCH_WEIGHT_BASE/ELBOW/WRIST` | 0.10 / 0.90 / 0.0 | Phân bổ pitch qua các joint |
 | `ELBOW_PITCH_SIGN` | -1.0 | Chiều elbow (phần cứng đảo) |

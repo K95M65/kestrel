@@ -73,7 +73,8 @@ mới là pass-through.
 |-------|---------|------|----------------|-----------|
 | 1 | trần `light.max_brightness` | `clamp_brightness` / `clamp_color` | gate LED (`rgb_service` `_handle_solid`/`_handle_paint`) | **đã thực thi (v1)** |
 | 2 | `quiet_hours` (light + audio) | `active_max_brightness` (theo giờ) + `audio_quiet_now` | gate LED + route music | **đã thực thi (v1)** |
-| 3 | `motion.max_speed` + `stop_always` (theo sự hiện diện) | `min_move_duration` | route servo | **đã thực thi (v1)** (`max_accel` dự trữ) |
+| 3 | `motion.max_speed` (theo sự hiện diện) | `min_move_duration` | route servo | **đã thực thi (v1)** (`max_accel` dự trữ) |
+| 3b | `motion.stop_always` | — | — | **được khai báo / đảm bảo theo cấu trúc** — chưa có route-level gate nào dùng field này (xem bên dưới) |
 | 4 | trạng thái fail-safe (mất mạng/gateway → dừng tracking; lỗi board → cô lập `503`; `thermal.max_temp_c` → health event quá nhiệt SoC + dừng tracking; setup + quá dòng servo dự trữ) | hook WS-disconnect + `503` theo từng capability + monitor nhiệt (`thermal_over`/`read_soc_temp_c`) | `services` khi gateway WS disconnect + route HAL/`/health` + `server.py` `_thermal_monitor` | **thực thi một phần (v1)** (setup + quá dòng dự trữ) |
 
 Mỗi slice thêm field vào `SafetyPolicy` và gate function rồi nối một/nhiều route;
@@ -151,6 +152,9 @@ thi, vắng thì pass-through (device không khai `motion:` bounds sẽ chạy k
 hạn — đó là trạng thái *tắt*, không phải từ chối). `max_speed` enforce bằng **kéo
 dài duration** (move vẫn tới target, chỉ chậm lại) — không cắt cụt đích. Recovery
 (`release`/`zero`/`hold`/`stop`) không bao giờ bị gate để luôn safe được body.
+`stop_always` được parse và trả về như một phần policy đã khai báo, nhưng hiện chưa
+có HAL route nào dùng field này: tính chất recovery là cấu trúc (các route không bị
+gate), không phải policy gate được thực thi độc lập.
 
 - [x] **Unit:** `min_move_duration` kéo dài move quá nhanh (120° @120 deg/s → 1.0s),
       giữ move chậm, kẹp request tức thì (duration 0), pass-through khi không có

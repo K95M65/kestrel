@@ -37,22 +37,14 @@ system/
 runtimes/                   — Swappable brains: openclaw/ hermes/ picoclaw/ codex/ claudecode/ opencode/
 
 hal/
-├── server.py                     — FastAPI server (38 endpoints)
+├── server.py                     — FastAPI server
 ├── config.py                     — Runtime constants (sensing thresholds, timeouts, URLs)
-├── drivers/camera/               — Camera device (LocalVideoCaptureDevice, V4L2)
-├── service/
-│   ├── voice/voice_service.py    — Local VAD + Deepgram STT
-│   ├── voice/stt/                — Pluggable STT (Deepgram / autonomous)
-│   ├── voice/tts/                — TTS service + pluggable backends (OpenAI / ElevenLabs)
-│   ├── sensing/
-│   │   ├── sensing_service.py    — Background sensing loop
-│   │   ├── presence_service.py   — Auto light on/off state machine
-│   │   └── perceptions/          — Pluggable detectors
-│   │       ├── motion.py         — Frame differencing motion detector
-│   │       ├── facerecognizer.py — InsightFace friend/stranger recognizer (legacy, unused)
-│   │       ├── faceid/           — Active friend/stranger recognizer (SCRFD + EdgeFace ONNX; weights fetched on first use)
-│   │       └── light_level.py    — Ambient brightness detector
-│   └── display/                  — GC9A01 LCD eyes + info
+├── board/                        — Device profiles, board pin maps, and overlays
+├── drivers/                      — Hardware services (camera, motors, RGB, sensing, voice, display)
+├── routes/                       — FastAPI capability route modules
+├── safety/                       — Parsed safety policy and deterministic gates
+├── realtime/                     — Realtime voice agent and context managers
+├── server_support/               — Shared HTTP/security support
 └── pyproject.toml                — Python dependencies (opencv-python, insightface)
 
 devices/                          — Per-device configs and overlays

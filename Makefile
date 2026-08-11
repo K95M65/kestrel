@@ -71,6 +71,28 @@ hal-clean:
 	rm -rf $(HAL_DIR)/.venv $(HAL_DIR)/__pycache__
 
 # ============================================================================
+# CTS — Compatibility Test Suite (devices/contract/cts)
+# ============================================================================
+
+.PHONY: cts cts-runtime
+
+# Static half: validates every devices/<id>/DEVICE.md against COMPATIBILITY.md.
+# No hardware, no deps — this is what CI runs.
+cts:
+	python3 -m unittest discover -s devices/contract/cts -v
+
+# Runtime half: compares a LIVE device against its own declaration.
+#   make cts-runtime TARGET=lamp-ac82.local
+# Add ALLOW_MOTION=1 to also exercise torque-off (it drops a raised arm).
+# See devices/contract/cts/README.md for the full environment.
+cts-runtime:
+	@test -n "$(TARGET)" || { echo "usage: make cts-runtime TARGET=<device-host>" >&2; exit 2; }
+	CTS_HAL=http://$(TARGET):5001 \
+	CTS_OS=http://$(TARGET):5000 \
+	CTS_ALLOW_MOTION=$(ALLOW_MOTION) \
+	  python3 -m unittest discover -s devices/contract/cts -v
+
+# ============================================================================
 # Web (React/Vite/Tailwind) — install | dev | build
 # ============================================================================
 
