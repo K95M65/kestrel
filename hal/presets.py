@@ -251,11 +251,11 @@ STATUS_LED_PRESETS = {
     "ota_success": {"effect": FX_NOTIFICATION_FLASH, "color": [0, 54, 17], "speed": 1.0},  # green flash — update ok
     # Setup/provisioning "device ready, join the AP" cue. effect "solid" = a
     # persistent fill (saved as the displayed state), not a transient overlay.
-    # Dimmed well below the other status cues' ~0.12 luminance target is NOT
-    # wanted here: this one has to be spotted across a room by someone looking
-    # for "is it on yet?", and white solid is the brightest thing the strip can
-    # do. Tuned to ~0.25 — half the old full-value white, still unmistakable.
-    "setup": {"effect": "solid", "color": [64, 64, 64], "speed": 1.0},  # white solid — AP/setup ready
+    # Deliberately the brightest cue in this table (~0.12 vs ~0.045): it has to
+    # be spotted across a room by someone asking "is it on yet?" during
+    # onboarding. Still well under the old full-value white, which was the
+    # harshest look the strip had.
+    "setup": {"effect": "solid", "color": [31, 31, 31], "speed": 1.0},  # white solid — AP/setup ready
     # Mic-muted idle indicator — HAL-local key (no Go statusled state). The
     # strip's RESTING look while the mic is muted: emotions/effects/waves run
     # normally on top, and every LED restore lands back on this instead of the
