@@ -96,9 +96,10 @@ class EnrollSpeakerRequest(BaseModel):
     origin: Optional[str] = Field(
         default=None,
         description="Channel the audio came from: 'mic' | 'telegram' | "
-        "'other'. Auto-inferred from presence of telegram_* fields if "
+        "'web' | 'other'. Auto-inferred from presence of telegram_* fields if "
         "omitted. Encoded in the stored sample filename so list_registered "
-        "can show which channels contributed.",
+        "can show which channels contributed. Single token, no underscore — "
+        "anything else becomes 'other'.",
     )
 
 
@@ -118,9 +119,12 @@ class RecordEnrollRequest(BaseModel):
         description="Recording length in seconds. Capped at 60 to bound ALSA hold.",
     )
     origin: Optional[str] = Field(
-        default="web_device_mic",
+        default="web",
         description="Tagged into stored sample filenames so list_registered "
-        "can distinguish web-triggered enrolls from telegram / mic ambient.",
+        "can distinguish web-triggered enrolls from telegram / mic ambient. "
+        "Must be a single token with no underscore — the tag is recovered from "
+        "the filename by splitting on '_'. Anything unrecognised becomes "
+        "'other'.",
     )
 
 
@@ -401,7 +405,7 @@ def speaker_record_enroll(req: RecordEnrollRequest) -> EnrollResponse:
                 name,
                 [wav_path],
                 source_type="filepath",
-                origin=req.origin or "web_device_mic",
+                origin=req.origin or "web",
             )
         except EmbeddingAPIUnavailableError as e:
             logger.warning("record-enroll embedding API unavailable for %r: %s", name, e)

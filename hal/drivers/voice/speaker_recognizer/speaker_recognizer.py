@@ -106,6 +106,11 @@ _SIDECAR_EXT = ".npy"
 _EXTENDED_SUBDIR = ".extended"
 _EXTENDED_PREFIX = "ext_"
 
+# Where an enrollment sample came from, embedded in its filename. Single tokens
+# with no "_", because _sample_origin recovers the tag by splitting on "_".
+# "other" is the catch-all for anything a caller sends that is not in this set.
+_SAMPLE_ORIGINS = ("mic", "telegram", "web", "other")
+
 # --- External embedding API (centralized in hal.config) ---
 _API_URL = config.SPEAKER_EMBEDDING_API_URL
 _API_KEY = config.SPEAKER_EMBEDDING_API_KEY
@@ -349,7 +354,7 @@ def _sample_origin(filename: str) -> str:
     parts = filename.split("_", 2)
     if len(parts) >= 2 and parts[0] == "sample":
         candidate = parts[1]
-        if candidate in ("mic", "telegram", "other"):
+        if candidate in _SAMPLE_ORIGINS:
             return candidate
     return "unknown"
 
@@ -2071,7 +2076,12 @@ class SpeakerRecognizer:
             origin = (
                 "telegram" if (telegram_username or telegram_id) else "mic"
             )
-        origin = origin if origin in ("mic", "telegram", "other") else "other"
+        # Single tokens only: the tag is embedded as sample_<origin>_<ts>_<uuid>
+        # and _sample_origin parses it back with split("_", 2), so an origin
+        # containing "_" would read back as its first word and fail the round
+        # trip. That is why the web route sends "web" and not "web_device_mic",
+        # which used to land here and get silently relabelled "other".
+        origin = origin if origin in _SAMPLE_ORIGINS else "other"
 
         # SPEAKER-DEBUG: per-call latency/memory profile. Enroll runs the
         # preprocessing chain + embedding call once per sample, so the shared
