@@ -14,17 +14,17 @@ Lamp identifies who is speaking via **WeSpeaker ResNet34** (256-dim embedding, O
 │                                                                     │
 │  VoiceService._stream_session()                                     │
 │    ├─ STT transcript ready                                          │
-│    ├─ _identify_and_decorate(transcript)                            │
+│    ├─ identify_and_decorate(transcript)                             │
 │    │   ├─ audio_buffer → WAV → on-device preprocess (VAD gate)     │
 │    │   │   └─ Mono→Resample→[HPF]→[NR]→VAD→[STOI]→RMS; reject clip  │
 │    │   ├─ POST /audio-recognizer/embed  (preprocess=false)         │
 │    │   │   └─ WeSpeaker ONNX → 256-dim L2-normalized (embed only)  │
 │    │   ├─ Per-chunk voting vs enrolled embeddings                   │
-│    │   ├─ Match ≥ 0.7 → "Speaker - Name: transcript"               │
-│    │   └─ No match → _format_unknown_speaker()                     │
-│    │       ├─ _should_request_enroll() gate                         │
-│    │       │   ├─ ≥ 25 words in transcript                          │
-│    │       │   └─ ≥ 5s audio duration                               │
+│    │   ├─ Match ≥ 0.5 raw cos → "Speaker - Name: transcript"        │
+│    │   └─ No match → _format_unknown_speaker_message()              │
+│    │       ├─ _should_request_speaker_enroll() gate                 │
+│    │       │   ├─ ≥ 10 words in transcript                          │
+│    │       │   └─ ≥ 2s audio duration                               │
 │    │       ├─ PASS → "Unknown Speaker: ... (audio save at <path>,   │
 │    │       │          auto enroll ...)"                              │
 │    │       └─ FAIL → "Unknown Speaker: ..." (no enroll instruction) │
@@ -68,10 +68,10 @@ Four layers prevent the agent from repeatedly asking "who are you?":
 
 | Layer | Where | Gate | Purpose |
 |-------|-------|------|---------|
-| **Audio duration** | HAL `voice_service.py` | `duration_s < SPEAKER_MIN_AUDIO_S` (0.8s) | Skip recognition entirely for very short audio |
-| **Enroll instruction** | HAL `_should_request_enroll()` | `≥ 15 words AND ≥ 2s audio` | Don't append full enroll instruction for short utterances (short variant with multi-turn combine hint is still sent) |
+| **Audio duration** | HAL `_internal/speaker_decorate.py` | `duration_s < SPEAKER_MIN_AUDIO_S` (0.8s) | Skip recognition entirely for very short audio |
+| **Enroll instruction** | HAL `_should_request_speaker_enroll()` | `≥ 10 words AND ≥ 2s audio` | Don't append full enroll instruction for short utterances (short variant with multi-turn combine hint is still sent) |
 | **Lamp-side nudge cooldown** | Lamp `domain/voice.go` | `5 min since last nudge` | Don't inject SKILL.md instruction more than once per 5 min |
-| **Per-voiceprint nudge cooldown** | HAL `voice_service.py` | `30 min per voiceprint_hash` (`HAL_ENROLL_NUDGE_COOLDOWN_S`) | Don't repeat "ask user's name" for the same unknown voice cluster; plain `Unknown Speaker:` message sent instead |
+| **Per-voiceprint nudge cooldown** | HAL `_internal/speaker_decorate.py` | `30 min per voiceprint_hash` (`HAL_ENROLL_NUDGE_COOLDOWN_S`) | Don't repeat "ask user's name" for the same unknown voice cluster; plain `Unknown Speaker:` message sent instead |
 
 ## Model & Embedding
 
@@ -140,8 +140,8 @@ Every unknown voice is locally clustered so the server can say "this is the same
 | Extend min margin | 0.05 | `SPEAKER_EXTEND_MIN_MARGIN_COS` | ...and must beat the runner-up speaker by this much |
 | API timeout | 15s | `SPEAKER_EMBEDDING_API_TIMEOUT_S` | HTTP timeout for embedding API |
 | Min audio for recognition | 0.8s | `HAL_SPEAKER_MIN_AUDIO_S` | Skip recognition below this |
-| Min words for enroll nudge | 15 | Hardcoded in `_should_request_enroll()` | Transcript word count gate |
-| Min duration for enroll nudge | 2.0s | Hardcoded in `_should_request_enroll()` | Audio duration gate |
+| Min words for enroll nudge | 10 | Hardcoded in `_should_request_speaker_enroll()` | Transcript word count gate |
+| Min duration for enroll nudge | 2.0s | Hardcoded in `_should_request_speaker_enroll()` | Audio duration gate |
 | Lamp nudge cooldown | 5 min | Hardcoded in `domain/voice.go` | Don't re-inject SKILL instruction globally |
 | Per-voiceprint nudge cooldown | 30 min | `HAL_ENROLL_NUDGE_COOLDOWN_S` | Don't re-ask name for same voiceprint cluster |
 | Voice stranger match threshold | _(shared)_ | `SPEAKER_MATCH_COS` | Reuses the known-speaker match threshold to cluster an unknown voice into an existing `voice_N` — no separate knob |
@@ -284,9 +284,9 @@ The default output dir is git-ignored — never commit trace output. The tracer 
 
 | Component | File | Function/Struct |
 |-----------|------|-----------------|
-| STT → speaker ID | `hal/drivers/voice/voice_service.py` | `_identify_and_decorate()` |
-| Enroll gate | `hal/drivers/voice/voice_service.py` | `_should_request_enroll()` |
-| Message formatting | `hal/drivers/voice/voice_service.py` | `_format_unknown_speaker()` |
+| STT → speaker ID | `hal/drivers/voice/_internal/speaker_decorate.py` | `identify_and_decorate()` |
+| Enroll gate | `hal/drivers/voice/_internal/speaker_decorate.py` | `_should_request_speaker_enroll()` |
+| Message formatting | `hal/drivers/voice/_internal/speaker_decorate.py` | `_format_unknown_speaker_message()` |
 | Speaker recognizer | `hal/drivers/voice/speaker_recognizer/speaker_recognizer.py` | `SpeakerRecognizer` |
 | Nudge injection + cooldown | `system/domain/voice.go` | `AppendEnrollNudge()` |
 | Direct event path | `system/server/sensing/delivery/http/handler.go` | `PostEvent()` |
@@ -308,7 +308,7 @@ User says: "hey" (2 words, 0.9s audio)
 ### Medium utterance (recognized but no enroll nudge)
 ```
 User says: "turn on the lights please" (5 words, 3s audio)
-→ HAL: recognize → unknown, _should_request_enroll(5 words, 3s) = false
+→ HAL: recognize → unknown, _should_request_speaker_enroll(5 words, 3s) = false
 → Message: "Unknown Speaker: turn on the lights please"
 → Lamp: no "audio save at" in message → AppendEnrollNudge returns unchanged
 → Agent: responds normally, doesn't ask who user is
@@ -334,7 +334,7 @@ User turn 2: "I'm Alex." (2 words)
 ### Long utterance (full enroll flow)
 ```
 User says: "Hi my name is Leo and I just got home from work..." (30 words, 8s audio)
-→ HAL: recognize → unknown, _should_request_enroll(30 words, 8s) = true
+→ HAL: recognize → unknown, _should_request_speaker_enroll(30 words, 8s) = true
 → Message: "Unknown Speaker: Hi my name is Leo... (audio save at /tmp/hal-unknown-voice/incoming_xxx.wav, auto enroll...)"
 → Lamp: AppendEnrollNudge → cooldown OK → append "[REQUIRED: Follow speaker-recognizer/SKILL.md...]"
 → Agent: detects "my name is Leo" → POST /speaker/enroll → "Nice to meet you, Leo!"
@@ -343,7 +343,7 @@ User says: "Hi my name is Leo and I just got home from work..." (30 words, 8s au
 ### Cooldown (blocked)
 ```
 Same unknown speaker, 2 minutes later:
-→ HAL: _should_request_enroll = true (long enough)
+→ HAL: _should_request_speaker_enroll = true (long enough)
 → Message has "audio save at"
 → Lamp: AppendEnrollNudge → cooldown NOT elapsed (< 5 min) → skip instruction
 → Agent: sees "Unknown Speaker: ..." without SKILL instruction → responds normally

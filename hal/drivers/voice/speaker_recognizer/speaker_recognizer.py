@@ -493,7 +493,7 @@ def pcm16_bytes_to_wav(pcm_bytes: bytes, sample_rate: int = _TARGET_SR) -> bytes
 # `speaker_logs/` folder beside this file for fast inspection:
 #   <root>/recognize/<ts>_<class>_<confidence>/       (class = enrolled name | stranger-<N> | unknown)
 #   <root>/recognize/<ts>_FAIL-<reason>/              (too-short | too-silent | server-error | ...)
-#   <root>/enroll/<ts>_<norm>_<cohesion>/             (cohesion = mean sim of kept samples to centroid)
+#   <root>/enroll/<ts>_<norm>_<cohesion>/             (cohesion = mean pairwise sim among the stored anchors)
 #   <root>/enroll/<ts>_FAIL-<reason>/
 # each dir holds: input.wav (raw) + preprocessed.wav (post VAD/STOI/RMS, what was
 # uploaded) / sample_NN.wav, *.npy embeddings, result.json + profile.json.
