@@ -535,6 +535,7 @@ def speaker_list() -> ListResponse:
             has_telegram_identity=bool(s.get("has_telegram_identity", False)),
             enrollment_sources=list(s.get("enrollment_sources", [])),
             num_samples=int(s.get("num_samples", 0)),
+            num_extended=int(s.get("num_extended", 0)),
         )
         for s in speakers
     ]

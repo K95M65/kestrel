@@ -1274,9 +1274,10 @@ func shouldQueueEvent(eventType, message string, inVoiceWindow bool) bool {
 
 // VoiceFileRemoveRequest deletes ONE voice sample file from a user's
 // /root/local/users/<name>/voice/ folder. Used by the Voice Enroll UI's
-// per-file delete button. After deletion the speaker embedding is
-// recomputed by calling /speaker/enroll with the remaining WAV files;
-// if no WAVs remain we POST /speaker/remove to drop the whole profile.
+// per-file delete button. The sample's embedding sidecar (.npy) goes with it;
+// because a speaker is a bank of independent per-sample rows, that is the
+// whole operation — no re-enroll, no recompute. If no WAVs remain we POST
+// /speaker/remove to drop the whole profile.
 type VoiceFileRemoveRequest struct {
 	Name string `json:"name" validate:"required"`
 	File string `json:"file" validate:"required"`
@@ -1302,10 +1303,12 @@ func (h *SensingHandler) RemoveVoiceFile(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, serializers.ResponseError("invalid name or file"))
 		return
 	}
-	// Only allow deleting audio samples — json/npy are critical state for
-	// speaker_recognizer (metadata, embedding cache); deleting them silently
-	// corrupts the profile. UI hides Delete for these too; this is the
-	// belt-and-braces guard.
+	// Only allow deleting audio samples. Each sample WAV owns a sibling .npy
+	// holding its embedding, and the two are managed as a pair (deleting the
+	// WAV below removes the sidecar with it) — letting the UI delete a .npy on
+	// its own would strip a sample from the bank while leaving its audio
+	// behind. metadata.json is profile state and must never be deleted here.
+	// UI hides Delete for these too; this is the belt-and-braces guard.
 	switch strings.ToLower(filepath.Ext(file)) {
 	case ".wav", ".ogg", ".mp3", ".webm", ".m4a":
 	default:
@@ -1330,6 +1333,14 @@ func (h *SensingHandler) RemoveVoiceFile(c *gin.Context) {
 		slog.Warn("voice file remove failed", "component", "voice", "path", target, "error", err)
 		c.JSON(http.StatusInternalServerError, serializers.ResponseError("delete failed: "+err.Error()))
 		return
+	}
+	// Remove the sample's embedding sidecar with it. The bank indexes by WAV,
+	// so an orphaned .npy is invisible to matching — but it lingers in the
+	// voice-file listing forever, and the guard above (correctly) refuses to
+	// let the UI delete a .npy directly, so there would be no way to clear it.
+	sidecar := strings.TrimSuffix(target, filepath.Ext(target)) + ".npy"
+	if err := os.Remove(sidecar); err != nil && !os.IsNotExist(err) {
+		slog.Warn("voice sidecar remove failed", "component", "voice", "path", sidecar, "error", err)
 	}
 	slog.Info("voice file deleted", "component", "voice", "name", name, "file", file)
 
@@ -1363,27 +1374,23 @@ func (h *SensingHandler) RemoveVoiceFile(c *gin.Context) {
 		return
 	}
 
-	// Re-enroll with the remaining WAVs so speaker_recognizer recomputes
-	// the embedding from what's actually on disk.
-	body, _ := json.Marshal(map[string]any{
-		"name":      name,
-		"wav_paths": remainingWavs,
-		"origin":    "web_recompute",
-	})
-	resp, err := http.Post("http://127.0.0.1:5001/speaker/enroll", "application/json", bytes.NewReader(body))
-	if err != nil {
-		slog.Warn("speaker/enroll recompute failed", "component", "voice", "error", err)
-		c.JSON(http.StatusOK, serializers.ResponseSuccess(map[string]any{
-			"deleted": file,
-			"warning": "embedding not recomputed: " + err.Error(),
-		}))
-		return
-	}
-	defer resp.Body.Close()
-	respBody, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode >= 400 {
-		slog.Warn("speaker/enroll recompute returned error", "component", "voice", "status", resp.StatusCode, "body", string(respBody))
-	}
+	// Nothing else to do. A speaker is stored as a BANK of per-sample
+	// embeddings — one independent row per WAV — so removing the WAV and its
+	// sidecar removes exactly that row and leaves every other row correct.
+	//
+	// This used to re-POST the remaining WAVs to /speaker/enroll, which was
+	// necessary under the old model: the profile was a single aggregated
+	// vector that still carried the deleted sample's contribution, so the only
+	// way to drop it was to recompute from scratch. Against the bank that call
+	// is actively harmful — enroll treats already-stored files as new input and
+	// writes fresh copies beside them, so deleting 1 of 3 samples left 4. Every
+	// duplicate is another max-over-rows chance for an impostor to score high,
+	// which is exactly what the bank's sample caps exist to bound.
+	//
+	// HAL reads the bank straight off disk and derives its sample counts the
+	// same way, so both matching and the UI are correct with no further call.
+	slog.Info("voice file deleted", "component", "voice", "name", name,
+		"file", file, "remaining", len(remainingWavs))
 	c.JSON(http.StatusOK, serializers.ResponseSuccess(map[string]any{
 		"deleted":   file,
 		"remaining": len(remainingWavs),

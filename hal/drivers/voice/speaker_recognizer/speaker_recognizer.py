@@ -1649,6 +1649,60 @@ class SpeakerRecognizer:
     def _anchor_wavs(self, norm: str) -> list[Path]:
         return sorted(self._voice_dir(norm).glob("sample_*.wav"))
 
+    def _disk_sample_fields(self, norm: str) -> dict[str, Any]:
+        """Sample counts and file lists read LIVE from disk.
+
+        metadata.json still records these at enroll time, but reads derive them
+        from the directory instead so they cannot drift. Anything may remove a
+        sample between enrolls — the OS server's per-file delete button is the
+        common case — and under the old model that drift was hidden because the
+        delete path re-ran a full enroll purely to refresh the profile. That
+        re-enroll duplicated every surviving sample, so it was removed; deriving
+        here is what makes the follow-up call unnecessary rather than merely
+        skipped.
+        """
+        anchor_paths = self._anchor_wavs(norm)
+        extended_paths = self._extended_wavs(norm)
+        return {
+            "num_samples": len(anchor_paths),
+            "sample_files": [p.name for p in anchor_paths],
+            "sample_origins": {p.name: _sample_origin(p.name) for p in anchor_paths},
+            "num_extended": len(extended_paths),
+            "extended_files": [p.name for p in extended_paths],
+        }
+
+    def _reconcile_sidecars(self, norm: str) -> int:
+        """Delete embedding sidecars whose sample WAV is gone.
+
+        The mirror image of the backfill in :meth:`enroll` — that creates a
+        missing sidecar for an existing WAV, this removes a sidecar left behind
+        by a deleted WAV. Safe in a way that deleting audio never is: a sidecar
+        is DERIVED data, so an orphan loses nothing recoverable.
+
+        Orphans are invisible to matching (the bank indexes by WAV) but they
+        show up in the voice-file listing, and the OS server correctly refuses
+        to let the UI delete a .npy directly — so without this there is no way
+        to clear one. Covers devices that accumulated orphans before the OS
+        server started removing sidecars alongside their WAV.
+        """
+        removed = 0
+        for d in (self._voice_dir(norm), self._extended_dir(norm)):
+            if not d.is_dir():
+                continue
+            for npy in sorted(d.glob("*.npy")):
+                if npy.name == _EMBEDDING_FILE:
+                    continue  # legacy aggregate, not a sidecar
+                if npy.with_suffix(".wav").is_file():
+                    continue
+                try:
+                    npy.unlink()
+                    removed += 1
+                except OSError as e:
+                    logger.warning("failed to remove orphan sidecar %s: %s", npy, e)
+        if removed:
+            logger.info("Reconciled %d orphan sidecar(s) for '%s'", removed, norm)
+        return removed
+
     def _extended_wavs(self, norm: str) -> list[Path]:
         ext_dir = self._extended_dir(norm)
         if not ext_dir.is_dir():
@@ -2265,6 +2319,8 @@ class SpeakerRecognizer:
                 )
         if backfilled:
             logger.info("Enroll: backfilled %d sidecar(s) for %s", backfilled, norm)
+        # Opposite direction: drop sidecars whose WAV was deleted outside HAL.
+        self._reconcile_sidecars(norm)
 
         # Step 6 — Commit anchors. Each WAV gets its embedding sidecar written
         # first-class alongside it. The millisecond stamp is offset by index so
@@ -3018,14 +3074,12 @@ class SpeakerRecognizer:
             "last_enrollment_source": voice_meta.get(
                 "last_enrollment_source", ""
             ),
-            "num_samples": voice_meta.get("num_samples", 0),
-            "num_extended": voice_meta.get("num_extended", 0),
             "embedding_dim": voice_meta.get("embedding_dim", 0),
             "enrolled_at": voice_meta.get("enrolled_at"),
             "updated_at": voice_meta.get("updated_at"),
-            "sample_files": voice_meta.get("sample_files", []),
-            "sample_origins": voice_meta.get("sample_origins", {}),
-            "extended_files": voice_meta.get("extended_files", []),
+            # Counts/file lists come from disk, not the JSON — see
+            # _disk_sample_fields.
+            **self._disk_sample_fields(norm),
         }
 
     # ----------------------------------------------------------- public: list
@@ -3069,14 +3123,10 @@ class SpeakerRecognizer:
                     "last_enrollment_source": voice_meta.get(
                         "last_enrollment_source", ""
                     ),
-                    "num_samples": voice_meta.get("num_samples", 0),
-                    "num_extended": voice_meta.get("num_extended", 0),
                     "embedding_dim": voice_meta.get("embedding_dim", 0),
                     "enrolled_at": voice_meta.get("enrolled_at"),
                     "updated_at": voice_meta.get("updated_at"),
-                    "sample_files": voice_meta.get("sample_files", []),
-                    "sample_origins": voice_meta.get("sample_origins", {}),
-                    "extended_files": voice_meta.get("extended_files", []),
+                    **self._disk_sample_fields(norm),
                 }
             )
         return out
