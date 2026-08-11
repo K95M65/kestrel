@@ -154,12 +154,30 @@ def voice_user() -> tuple[str, str, float]:
 def face_user() -> str:
     """Return HAL's face-derived current user, or "" when the camera has nobody.
 
-    Also "" when face perception never started (no `presence` capability, no
-    camera) — the orchestrator's observer is simply never written in that case.
+    Calls the perception object's ``current_user()`` — which RECOMPUTES from the
+    live people map — rather than reading the cached
+    ``_perception_state.current_user.data`` mirror. The mirror only advances when
+    a frame is processed, which made it wrong in two ways: it survived
+    ``/face/cooldowns/reset`` (the reset clears the people map, not the mirror),
+    and it froze at the last person seen whenever frames stopped (camera
+    disabled, perception stopped). Either way identity kept reporting a face
+    user, and since face wins, the voice speaker was never consulted — breaking
+    exactly the camera-off case this resolution exists for.
+
+    Same accessor `/face/current-user` uses (``routes/sensing.py``), so the two
+    endpoints agree by construction.
+
+    "" when face perception never started (no `presence` capability, no camera),
+    when nobody is in frame, or if the lookup fails — all of which correctly let
+    the voice speaker fill the slot.
     """
     try:
-        if sensing_service:
-            return sensing_service._perception_orchestrator.current_user or ""
+        if not sensing_service:
+            return ""
+        fr = sensing_service._perception_orchestrator._processors.face_recognizer
+        if fr is None:
+            return ""
+        return fr.current_user() or ""
     except Exception:
         logger.exception("[identity] face current_user lookup failed")
     return ""

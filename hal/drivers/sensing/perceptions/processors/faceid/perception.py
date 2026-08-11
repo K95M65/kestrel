@@ -903,6 +903,13 @@ class FacePerception(Perception[cv2.typing.MatLike]):
             # restart loses the first post-reset sighting and re-enters again.
             self._last_presence_save_ts = 0.0
             _ = self._flush_stranger_buffer(time.time())
+            # Clearing the people map is not enough: the shared observable holds
+            # a COPY of the last computed answer, refreshed only when a frame is
+            # processed. Consumers that read it directly (MotionPerception dedup
+            # keys, EmotionPerception's skip-when-empty) would keep attributing
+            # to the person we just forgot — indefinitely if frames stopped.
+            # Blank it here so the reset is visible immediately to everyone.
+            self._perception_state.current_user.data = ""
             logger.info("Face recognition cooldowns reset")
 
     # -- Events -----------------------------------------------------------------
