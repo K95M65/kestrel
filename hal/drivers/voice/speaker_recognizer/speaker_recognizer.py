@@ -394,7 +394,25 @@ def _read_bytes(path: str) -> bytes:
 
 
 def _wav_duration_s(wav_bytes: bytes) -> float:
-    """Best-effort duration in seconds. 0.0 when the WAV cannot be decoded."""
+    """Best-effort duration in seconds. 0.0 when the clip cannot be read.
+
+    Read from the RIFF header, which already carries the frame count and rate.
+    This used to decode the whole file through
+    ``_wav_bytes_to_float32_16k_mono`` and divide by the target rate — correct,
+    but it paid a full decode plus a ``resample_poly`` pass to count samples.
+    On a 44.1 kHz clip (a Telegram voice note) that was ~5 ms to answer "how
+    long is this"; the header answers it in ~8 us with an identical result.
+
+    Falls back to the decode for anything ``wave`` cannot parse, so a container
+    it does not understand still gets a real answer instead of 0.0.
+    """
+    try:
+        with wave.open(io.BytesIO(wav_bytes), "rb") as wf:
+            rate = wf.getframerate()
+            if rate > 0:
+                return float(wf.getnframes()) / float(rate)
+    except Exception:
+        pass
     try:
         return float(
             _wav_bytes_to_float32_16k_mono(wav_bytes).shape[0]
@@ -1917,6 +1935,7 @@ class SpeakerRecognizer:
         embedding: np.ndarray,
         wav_bytes: bytes,
         *,
+        existing_rows: Optional[np.ndarray],
         duration_s: float,
         margin: float,
     ) -> None:
@@ -1938,9 +1957,20 @@ class SpeakerRecognizer:
         we already hold is BELOW _DIVERSITY_COS — above that it duplicates a
         sample we have.
 
+        ``existing_rows`` is this speaker's slice of the bank recognize() just
+        matched against — anchor and extended concatenated, legacy fallback
+        included, which is exactly what _load_user_bank would rebuild. Taking
+        it as an argument rather than re-reading the sidecars saves one np.load
+        per stored sample on EVERY recognized turn, almost always to be thrown
+        away a line later when the diversity gate rejects a redundant clip.
+
         Like the face version, this NEVER holds ``_bank_lock`` across disk I/O.
         """
         if duration_s < _EXTEND_MIN_DURATION_S:
+            logger.debug(
+                "[speaker] extend '%s': skip — %.1fs < %.1fs",
+                norm, duration_s, _EXTEND_MIN_DURATION_S,
+            )
             return
         if margin < _EXTEND_MIN_MARGIN_COS:
             logger.debug(
@@ -1949,11 +1979,8 @@ class SpeakerRecognizer:
             )
             return
 
-        anchor, extended = self._load_user_bank(norm)
-        existing = [b for b in (anchor, extended) if b is not None and len(b)]
-        if existing:
-            stack = np.concatenate(existing)
-            max_sim = float(np.max(stack @ _l2(embedding)))
+        if existing_rows is not None and len(existing_rows):
+            max_sim = float(np.max(existing_rows @ _l2(embedding)))
             if max_sim > _DIVERSITY_COS:
                 logger.debug(
                     "[speaker] extend '%s': skip redundant (max_cos=%.3f > %.2f)",
@@ -2935,10 +2962,14 @@ class SpeakerRecognizer:
                     best_conf - scores[1][1] if len(scores) > 1 else float("inf")
                 )
                 try:
+                    # This speaker's slice of the bank we already matched
+                    # against — no reason to read their sidecars back off disk.
+                    own_rows = bank_rows[label_arr == best_name]
                     self._maybe_extend_user(
                         best_name,
                         _l2(query_chunks.mean(axis=0)),
                         wav_bytes,
+                        existing_rows=own_rows,
                         duration_s=_wav_duration_s(wav_bytes),
                         margin=float(margin),
                     )
