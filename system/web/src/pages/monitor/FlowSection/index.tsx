@@ -229,16 +229,28 @@ export function FlowSection({
 
   const turns = useMemo(() => groupIntoTurns(events), [events]);
 
-  // Live current_user — polled from the device every 2s (same source the Users
-  // tab uses). Reading from turn events instead was stale: if the agent is
-  // busy and no motion/emotion event has streamed through, the last tagged
-  // turn can be minutes old and show the wrong person.
+  // Live current user — polled from the device every 5s. Reading from turn
+  // events instead was stale: if the agent is busy and no motion/emotion event
+  // has streamed through, the last tagged turn can be minutes old and show the
+  // wrong person.
+  //
+  // This asks for the device-wide identity, not `/face/current-user`: the face
+  // endpoint is empty whenever nobody is in frame — and permanently empty on a
+  // device with no camera — so the chip stayed blank even right after
+  // speaker-ID recognized an enrolled user. HAL resolves face-then-voice, so
+  // the value is the face user whenever the camera has one.
+  //
+  // `user` is the normalized label ("long"), the same shape the face endpoint
+  // returned, which keeps the chip's `capitalize` + photo lookup working
+  // identically for both modalities.
   const [currentUser, setCurrentUser] = useState<string>("");
+  const [currentUserSource, setCurrentUserSource] = useState<string>("");
   usePolling(async (signal) => {
-    const r = await fetch(`${HW}/face/current-user`, { signal });
+    const r = await fetch(`${HW}/identity/current-user`, { signal });
     if (!r.ok) return;
     const j = await r.json();
-    setCurrentUser(typeof j?.current_user === "string" ? j.current_user : "");
+    setCurrentUser(typeof j?.user === "string" ? j.user : "");
+    setCurrentUserSource(typeof j?.source === "string" ? j.source : "");
   }, 5000);
 
   // First enrolled photo per known user, so the header chip can show the real
@@ -614,7 +626,16 @@ export function FlowSection({
               const photo = !isUnknown ? userPhotos[currentUser] : undefined;
               return (
                 <span
-                  title={isUnknown ? "Device currently sees only strangers" : `Device's current user: ${currentUser}`}
+                  title={
+                    isUnknown
+                      ? "Device knows someone is here but not who (stranger / unrecognized voice)"
+                      : `Device's current user: ${currentUser}` +
+                        (currentUserSource === "voice"
+                          ? " (heard — recognized by voice)"
+                          : currentUserSource === "face"
+                            ? " (seen — recognized by camera)"
+                            : "")
+                  }
                   style={{
                     display: "inline-flex", alignItems: "center", gap: 6,
                     fontSize: 11, padding: "2px 9px 2px 3px", borderRadius: 999,

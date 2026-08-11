@@ -476,6 +476,52 @@ def speaker_reset() -> RemoveResponse:
     return RemoveResponse(status="ok", name="*", removed=n > 0)
 
 
+@router.get("/identity/current-user", tags=["Speaker"])
+def identity_current_user():
+    """Return who the device is with right now, across BOTH modalities.
+
+    ``/face/current-user`` answers only "who does the camera see", which is
+    empty on a device with no camera and on any turn where nobody is in frame —
+    even immediately after speaker-ID recognized an enrolled user. This
+    endpoint applies the device-wide rule instead (face wins; the voice speaker
+    fills the slot only when face has nobody), so callers get an identity
+    whenever either modality has one.
+
+    - ``user`` — normalized label ("long"), the same shape ``/face/current-user``
+      returns and the same slug the per-user folders use. Empty when neither
+      modality has anyone.
+    - ``display`` — human spelling ("Long") for display; falls back to ``user``.
+    - ``source`` — "face", "voice", or "" when nobody is known.
+    - ``age_s`` — seconds since the voice match (0 for face, which is
+      continuously refreshed while someone is visible).
+    """
+    from hal import app_state as identity_state
+
+    user, display, source, age_s = identity_state.resolve_current_user()
+    return {
+        "user": user,
+        "display": display,
+        "source": source,
+        "age_s": round(age_s, 1),
+    }
+
+
+@router.post("/speaker/current-user/reset", tags=["Speaker"])
+def speaker_current_user_reset():
+    """Forget the current voice user — the voice twin of /face/cooldowns/reset.
+
+    Presence state only: enrolled voice profiles are untouched (that is
+    ``/speaker/reset``). Use it to emulate "a brand new day, the device has
+    not heard anyone yet" without waiting out ``VOICE_USER_FORGET_S``. Pair it
+    with ``/face/cooldowns/reset`` to blank both modalities at once.
+    """
+    from hal import app_state as identity_state
+
+    logger.info("POST /speaker/current-user/reset — forgetting current voice user")
+    identity_state.clear_voice_user()
+    return {"status": "ok"}
+
+
 @router.post("/speaker/remove", response_model=RemoveResponse)
 def speaker_remove(req: RemoveSpeakerRequest) -> RemoveResponse:
     """Delete the user's voice folder (embedding + samples + metadata).

@@ -132,6 +132,15 @@ FACE_STRANGER_ENTER_FLOOR_S = float(os.environ.get("HAL_FACE_STRANGER_ENTER_FLOO
 FACE_STRANGER_FLUSH_S = float(os.environ.get("HAL_FACE_STRANGER_FLUSH_S", "10.0"))
 FACE_AREA_RATIO_THRESHOLD = float(os.environ.get("HAL_FACE_AREA_RATIO_THRESHOLD", "0.05"))
 
+# --- Sensing: Voice identity (speaker-ID as a presence signal) ---
+# How long a confidently matched speaker stays the "current voice user" after
+# they last spoke. Deliberately far shorter than FACE_OWNER_FORGET_S (3600s):
+# a face keeps proving presence every frame, while a voice proves only that
+# someone spoke ONCE at that instant, so the same window would leave a speaker
+# "present" long after they left. Only consulted when face has nobody (face
+# always wins — see app_state.resolve_current_user).
+VOICE_USER_FORGET_S = float(os.environ.get("HAL_VOICE_USER_FORGET_S", "300.0"))
+
 # --- DL backend connection ---
 OS_CONFIG_PATH = os.environ.get("OS_CONFIG_PATH", "/root/config/config.json")
 

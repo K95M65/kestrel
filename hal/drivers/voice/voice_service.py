@@ -1408,6 +1408,19 @@ class VoiceService:
                         _final_text, audio_buffer
                     )
                     turn_speaker_display = turn_identity[2]
+                    # Promote a confident match to the device-wide voice
+                    # identity, so it outlives this turn the way a face does.
+                    # display (index 2) is set ONLY on a confident match, so it
+                    # gates the write: unknown / gate-reject / server error all
+                    # leave the previous value to age out on its own rather
+                    # than replacing it with a guess. The stored label is the
+                    # NORMALIZED name (index 1), matching what face reports.
+                    if turn_speaker_display and turn_identity[1]:
+                        from hal import app_state as _identity_state
+
+                        _identity_state.set_voice_user(
+                            turn_identity[1], turn_speaker_display
+                        )
                 except Exception as e:
                     logger.warning("[realtime] speaker-ID prepass failed: %s", e)
                 logger.info(

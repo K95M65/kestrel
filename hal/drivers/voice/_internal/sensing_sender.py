@@ -66,6 +66,20 @@ class SensingSender:
             return
 
         payload = {"type": event_type, "message": message}
+        # Voice turns used to ship NO current_user at all, so the identity in
+        # them reached os-server only as the `Speaker - <Name>:` text prefix and
+        # the backend fell back to its last cached value. Send the resolved
+        # identity like every sensing event does. Face still wins inside the
+        # resolver, so on a camera device this is the same value those events
+        # already carry — it only adds a user on the voice-only path.
+        try:
+            from hal import app_state as identity_state
+
+            cu, _display, _source, _age = identity_state.resolve_current_user()
+            if cu:
+                payload["current_user"] = cu
+        except Exception:
+            logger.exception("[voice] current_user resolution failed")
         if image_b64:
             payload["image"] = image_b64
         # Log a copy with the image masked — a ~70KB base64 blob would drown the log.

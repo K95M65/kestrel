@@ -10,8 +10,10 @@ import csv
 import logging
 import os
 import threading
+import time
 from typing import Optional
 
+from hal import config
 from hal.presets import (
     AMBIENT_RESTING_LED,
     ambient_resting_is_dark,
@@ -85,6 +87,105 @@ _camera_manual_override = False
 # per-turn). Path is a file in _SNAPSHOT_DIR; ts is time.monotonic() of capture.
 realtime_look_frame_path: Optional[str] = None
 realtime_look_frame_ts: float = 0.0
+
+# --- Voice identity (speaker-ID as a presence signal) ---
+#
+# Face identity is STATEFUL: every camera frame refreshes `current_user`, so it
+# is always populated while someone is visible. Speaker-ID was the opposite — a
+# per-turn value that evaporated when the turn ended — so a device with no
+# camera (or nobody in frame) had NO identity at all, even right after
+# recognizing an enrolled speaker.
+#
+# These slots give voice the same shape as face: a last-known label that ages
+# out. Written ONLY on a confident match (see set_voice_user); an unknown /
+# rejected / failed recognition must never overwrite a good value, and must
+# never invent one.
+#
+# `_voice_user` is the NORMALIZED label (e.g. "long") — the same shape face
+# reports and the same slug the per-user folders use, so downstream attribution
+# and the UI's photo lookup work identically for both modalities.
+# `_voice_user_display` is the human spelling ("Long") for display only.
+_voice_user: Optional[str] = None
+_voice_user_display: Optional[str] = None
+_voice_user_ts: float = 0.0
+_voice_user_lock = threading.RLock()
+
+
+def set_voice_user(label: str, display: Optional[str] = None) -> None:
+    """Record the speaker resolved for the turn that just finished.
+
+    Call ONLY with a confident speaker-ID match. `label` is the normalized
+    name from the recognizer (result["name"]), not the decorated transcript
+    prefix and not the display spelling.
+    """
+    global _voice_user, _voice_user_display, _voice_user_ts
+    if not label:
+        return
+    with _voice_user_lock:
+        _voice_user = label
+        _voice_user_display = display or label
+        _voice_user_ts = time.time()
+
+
+def clear_voice_user() -> None:
+    """Forget the current voice user (the voice twin of /face/cooldowns/reset)."""
+    global _voice_user, _voice_user_display, _voice_user_ts
+    with _voice_user_lock:
+        _voice_user = None
+        _voice_user_display = None
+        _voice_user_ts = 0.0
+
+
+def voice_user() -> tuple[str, str, float]:
+    """Return (label, display, age_s) for the current voice user.
+
+    ("", "", 0.0) when nobody has spoken recently — either nothing was ever
+    matched, or the last match aged past VOICE_USER_FORGET_S.
+    """
+    with _voice_user_lock:
+        if not _voice_user:
+            return "", "", 0.0
+        age = time.time() - _voice_user_ts
+        if age > config.VOICE_USER_FORGET_S:
+            return "", "", 0.0
+        return _voice_user, _voice_user_display or _voice_user, age
+
+
+def face_user() -> str:
+    """Return HAL's face-derived current user, or "" when the camera has nobody.
+
+    Also "" when face perception never started (no `presence` capability, no
+    camera) — the orchestrator's observer is simply never written in that case.
+    """
+    try:
+        if sensing_service:
+            return sensing_service._perception_orchestrator.current_user or ""
+    except Exception:
+        logger.exception("[identity] face current_user lookup failed")
+    return ""
+
+
+def resolve_current_user() -> tuple[str, str, str, float]:
+    """Resolve who the device is with right now → (label, display, source, age_s).
+
+    **Face always wins.** A visible face is continuously re-proven by the
+    camera, while a voice proves only that someone spoke at one instant, so
+    voice is consulted ONLY when face reports nobody. That ordering also keeps
+    existing camera devices behaving exactly as before: voice can fill an empty
+    slot, never displace a live face.
+
+    source is "face", "voice", or "" when neither modality has anyone.
+
+    This is the single definition of the rule — every producer (sensing events,
+    voice turns, the identity route) calls this rather than re-deriving it.
+    """
+    face = face_user()
+    if face:
+        return face, face, "face", 0.0
+    label, display, age = voice_user()
+    if label:
+        return label, display, "voice", age
+    return "", "", "", 0.0
 
 # --- LED effect state ---
 
