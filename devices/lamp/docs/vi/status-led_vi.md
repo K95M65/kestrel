@@ -15,13 +15,13 @@ Tất cả các state dùng effect `breathing` speed 3.0 trừ khi ghi rõ. Giá
 
 | Trạng thái (hằng số code) | Màu | RGB | Ý nghĩa | Trigger | Tự tắt |
 |---|---|---|---|---|---|
-| `StateConnectivity` | Cam | `(255, 80, 0)` | **Mất internet** — Wi-Fi kết nối nhưng không có internet | Network monitor: 5 lần ping thất bại liên tiếp (~25s) | Có — khi ping thành công |
-| `StateError` | Đỏ | `(255, 0, 0)` | **Lỗi** — Lỗi hệ thống (reserved) | Lỗi nghiêm trọng | Có — khi lỗi được khắc phục |
-| `StateOTA` | Xanh lá | `(0, 255, 0)` | **Đang update** — OTA firmware đang chạy (enum dự trữ; bootstrap drive LED OTA trực tiếp qua `lib/hal` — xem "Bootstrap (OTA)" bên dưới) | Bootstrap reconcile phát hiện update | Khởi động lại sau khi update xong |
-| `StateBooting` | Xanh dương | `(0, 80, 255)` | **Đang khởi động** — Lamp đang bật | `server.go` lúc startup | Có — khi OpenClaw agent connect và sẵn sàng |
-| `StateLeLampDown` | Tím | `(180, 0, 255)` | **HAL Down** — Server phần cứng không phản hồi. Khi HAL đang down LED **tắt hẳn** vì driver LED cũng chết theo; tím breathing chỉ flash ~3s khi phục hồi | `healthwatch` poll HAL `/health` thất bại | Tự tắt 3s sau khi phục hồi |
-| `StateAgentDown` | Cyan | `(0, 200, 200)` | **Agent Down** — AI brain mất kết nối | OpenClaw WebSocket ngắt (`runtimes/openclaw/service_ws.go`) | Có — khi WebSocket reconnect |
-| `StateHardware` | Vàng | `(255, 255, 0)` | **Hardware Failure** — servo/LED/audio/voice không healthy qua HAL `/health` | `healthwatch` poll (mỗi 5s); camera và sensing không tính | Có — khi tất cả linh kiện báo OK |
+| `StateConnectivity` | Cam | `(70, 22, 0)` | **Mất internet** — Wi-Fi kết nối nhưng không có internet | Network monitor: 5 lần ping thất bại liên tiếp (~25s) | Có — khi ping thành công |
+| `StateError` | Đỏ | `(120, 0, 0)` | **Lỗi** — Lỗi hệ thống (reserved) | Lỗi nghiêm trọng | Có — khi lỗi được khắc phục |
+| `StateOTA` | Xanh lá | `(0, 43, 0)` | **Đang update** — OTA firmware đang chạy (enum dự trữ; bootstrap drive LED OTA trực tiếp qua `lib/hal` — xem "Bootstrap (OTA)" bên dưới) | Bootstrap reconcile phát hiện update | Khởi động lại sau khi update xong |
+| `StateBooting` | Xanh dương | `(0, 32, 103)` | **Đang khởi động** — Lamp đang bật | `server.go` lúc startup | Có — khi OpenClaw agent connect và sẵn sàng |
+| `StateLeLampDown` | Tím | `(84, 0, 120)` | **HAL Down** — Server phần cứng không phản hồi. Khi HAL đang down LED **tắt hẳn** vì driver LED cũng chết theo; tím breathing chỉ flash ~3s khi phục hồi | `healthwatch` poll HAL `/health` thất bại | Tự tắt 3s sau khi phục hồi |
+| `StateAgentDown` | Cyan | `(0, 43, 43)` | **Agent Down** — AI brain mất kết nối | OpenClaw WebSocket ngắt (`runtimes/openclaw/service_ws.go`) | Có — khi WebSocket reconnect |
+| `StateHardware` | Vàng | `(33, 33, 0)` | **Hardware Failure** — servo/LED/audio/voice không healthy qua HAL `/health` | `healthwatch` poll (mỗi 5s); camera và sensing không tính | Có — khi tất cả linh kiện báo OK |
 
 ### Ready flash
 
@@ -33,9 +33,9 @@ Bootstrap binary gọi `lib/hal` trực tiếp (không qua `statusled.Service`):
 
 | Giai đoạn | LED | Source |
 |---|---|---|
-| Đang tải + cài | Cam `(255, 140, 0)` `breathing` speed 0.4 | `bootstrap/bootstrap.go` |
+| Đang tải + cài | Cam `(50, 28, 0)` `breathing` speed 0.4 | `bootstrap/bootstrap.go` |
 | Thành công | Xanh lá `(0, 255, 80)` `notification_flash` ngắn rồi dừng | `bootstrap/bootstrap.go` |
-| Thất bại | Đỏ `(255, 30, 30)` `pulse` speed 1.5 | `bootstrap/bootstrap.go` |
+| Thất bại | Đỏ `(120, 14, 14)` `pulse` speed 1.5 | `bootstrap/bootstrap.go` |
 
 Lưu ý: cam/đỏ OTA của bootstrap dùng RGB và effect parameters hơi khác so với enum trong `statusled.Service` — bootstrap là binary riêng, sở hữu LED trong khi OTA đang chạy.
 
@@ -126,10 +126,10 @@ Service gọi HAL `/led/effect` qua `lib/hal` (shared HTTP client).
 Bootstrap là binary riêng. Gọi `lib/hal` **trực tiếp** trong hàm `reconcile` (không qua `statusled.Service`):
 
 ```
-reconcile phát hiện update → lelamp.SetEffect("breathing", 255, 140, 0, 0.4)   // cam
+reconcile phát hiện update → lelamp.SetEffect("breathing", 50, 28, 0, 0.4)   // cam
         ↓ cài update...
 thành công → lelamp.SetEffect("notification_flash", 0, 255, 80, 1.0)            // xanh lá flash
-thất bại   → lelamp.SetEffect("pulse", 255, 30, 30, 1.5)                        // đỏ pulse
+thất bại   → lelamp.SetEffect("pulse", 120, 14, 14, 1.5)                        // đỏ pulse
 ```
 
 ## Tích Hợp Với Ambient

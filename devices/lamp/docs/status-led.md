@@ -15,13 +15,13 @@ All states use the `breathing` effect at speed 3.0 unless noted. RGB values come
 
 | State (code constant) | Color | RGB | Meaning | Triggered by | Auto-clears |
 |---|---|---|---|---|---|
-| `StateConnectivity` | Orange | `(255, 80, 0)` | **No Internet** — Wi-Fi connected but no internet | Network monitor: 5 consecutive ping failures (~25s) | Yes — when ping succeeds |
-| `StateError` | Red | `(255, 0, 0)` | **Error** — System error (reserved) | Critical failure | Yes — when error resolves |
-| `StateOTA` | Green | `(0, 255, 0)` | **Updating** — OTA firmware update in progress (reserved enum; bootstrap drives OTA LED directly via `lib/hal` — see "Bootstrap (OTA)" below) | Bootstrap reconcile detects update | Reboots after update completes |
-| `StateBooting` | Blue | `(0, 80, 255)` | **Booting** — Lamp is starting up | `server.go` on startup | Yes — when OpenClaw agent connects and is ready |
-| `StateLeLampDown` | Purple | `(180, 0, 255)` | **HAL Down** — Hardware server unreachable. While HAL is down the LED is **dark** because the LED driver itself is down; the purple breathing only shows for ~3s on recovery | `healthwatch` poll fails to reach HAL `/health` | Auto-clears 3s after recovery |
-| `StateAgentDown` | Cyan | `(0, 200, 200)` | **Agent Down** — AI brain disconnected | OpenClaw WebSocket drops (`runtimes/openclaw/service_ws.go`) | Yes — when WebSocket reconnects |
-| `StateHardware` | Yellow | `(255, 255, 0)` | **Hardware Failure** — servo/LED/audio/voice component reports unhealthy via HAL `/health` | `healthwatch` poll (every 5s); camera and sensing excluded | Yes — when all monitored components report healthy |
+| `StateConnectivity` | Orange | `(70, 22, 0)` | **No Internet** — Wi-Fi connected but no internet | Network monitor: 5 consecutive ping failures (~25s) | Yes — when ping succeeds |
+| `StateError` | Red | `(120, 0, 0)` | **Error** — System error (reserved) | Critical failure | Yes — when error resolves |
+| `StateOTA` | Green | `(0, 43, 0)` | **Updating** — OTA firmware update in progress (reserved enum; bootstrap drives OTA LED directly via `lib/hal` — see "Bootstrap (OTA)" below) | Bootstrap reconcile detects update | Reboots after update completes |
+| `StateBooting` | Blue | `(0, 32, 103)` | **Booting** — Lamp is starting up | `server.go` on startup | Yes — when OpenClaw agent connects and is ready |
+| `StateLeLampDown` | Purple | `(84, 0, 120)` | **HAL Down** — Hardware server unreachable. While HAL is down the LED is **dark** because the LED driver itself is down; the purple breathing only shows for ~3s on recovery | `healthwatch` poll fails to reach HAL `/health` | Auto-clears 3s after recovery |
+| `StateAgentDown` | Cyan | `(0, 43, 43)` | **Agent Down** — AI brain disconnected | OpenClaw WebSocket drops (`runtimes/openclaw/service_ws.go`) | Yes — when WebSocket reconnects |
+| `StateHardware` | Yellow | `(33, 33, 0)` | **Hardware Failure** — servo/LED/audio/voice component reports unhealthy via HAL `/health` | `healthwatch` poll (every 5s); camera and sensing excluded | Yes — when all monitored components report healthy |
 
 ### Ready flash
 
@@ -33,9 +33,9 @@ The bootstrap binary calls `lib/hal` directly (it does not go through `statusled
 
 | Phase | LED behavior | Source |
 |---|---|---|
-| Downloading + installing | Orange `(255, 140, 0)` `breathing` speed 0.4 | `bootstrap/bootstrap.go` |
+| Downloading + installing | Orange `(50, 28, 0)` `breathing` speed 0.4 | `bootstrap/bootstrap.go` |
 | Success | Green `(0, 255, 80)` brief `notification_flash` then stop | `bootstrap/bootstrap.go` |
-| Failure | Red `(255, 30, 30)` `pulse` speed 1.5 | `bootstrap/bootstrap.go` |
+| Failure | Red `(120, 14, 14)` `pulse` speed 1.5 | `bootstrap/bootstrap.go` |
 
 Note that bootstrap's OTA orange/red use slightly different RGB and effect parameters than the `statusled.Service` enum entries — bootstrap is a separate binary that owns the LED while OTA is in progress.
 
@@ -126,10 +126,10 @@ The service calls HAL's `/led/effect` endpoint via `lib/hal` (shared HTTP client
 Bootstrap is a separate binary. It calls `lib/hal` **directly** in the `reconcile` function (not through `statusled.Service`):
 
 ```
-reconcile detects update → lelamp.SetEffect("breathing", 255, 140, 0, 0.4)   // orange
+reconcile detects update → lelamp.SetEffect("breathing", 50, 28, 0, 0.4)   // orange
         ↓ applies update...
 success → lelamp.SetEffect("notification_flash", 0, 255, 80, 1.0)            // green flash
-failure → lelamp.SetEffect("pulse", 255, 30, 30, 1.5)                        // red pulse
+failure → lelamp.SetEffect("pulse", 120, 14, 14, 1.5)                        // red pulse
 ```
 
 ## Integration with Ambient

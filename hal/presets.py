@@ -134,7 +134,10 @@ EMOTION_PRESETS = {
     EMO_IDLE: {"servo": SERVO_IDLE, "color": [90, 60, 5], "effect": FX_BREATHING, "speed": 0.2},
     EMO_EXCITED: {"servo": SERVO_EXCITED, "color": [30, 21, 30], "effect": FX_CANDLE, "speed": 0.5, "camera": "on"},
     EMO_SHY: {"servo": SERVO_SHY, "color": [155, 70, 20], "effect": FX_BREATHING, "speed": 0.3, "camera": "on"},
-    EMO_SHOCK: {"servo": SERVO_SHOCK, "color": [255, 255, 255], "effect": FX_NOTIFICATION_FLASH, "speed": 1.0,
+    # White flash dimmed to match ready_flash: full-value white is the harshest
+    # thing the strip can do, and being a brief flash does not soften it (tested
+    # by eye on a lamp). Keep these two in step — they are the same visual cue.
+    EMO_SHOCK: {"servo": SERVO_SHOCK, "color": [40, 40, 40], "effect": FX_NOTIFICATION_FLASH, "speed": 1.0,
                 "camera": "on"},
     EMO_LISTENING: {"servo": SERVO_LISTENING, "color": [51, 121, 230], "effect": FX_PULSE, "speed": 0.3,
                     "camera": "on"},
@@ -220,31 +223,39 @@ AIM_PRESETS = {
 #    that imbalance — which is what made agent_down (cyan, and a state that
 #    stays lit for minutes) the one users complained about.
 #
-# Long-lived states below are tuned to relative luminance ~0.12, anchored on
-# booting/hal_down (the two nobody found harsh). Red- and purple-dominant hues
-# sit a touch lower because they cannot reach 0.12 under a 120 ceiling — that is
-# fine, they read as faults without glare. Momentary cues (ready_flash,
-# ota_success) stay at full value on purpose: a ~1s flash does not glare, and
-# dimming it would cost the "did that just happen?" legibility it exists for.
+# Every cue below is tuned to relative luminance ~0.045, anchored on
+# mic_muted (the one resting indicator already tuned on hardware and never
+# reported as harsh). An earlier pass used ~0.12 and was still called glaring
+# when viewed on a real lamp — in a dim room the strip sits close to the user's
+# eyeline, so numbers that look modest on a monitor do not read that way there.
+# Verify a change by eye on a device, not by arithmetic.
+#
+# Momentary flashes get the same treatment. Assuming a ~1s flash "cannot glare
+# because it is brief" was also wrong on hardware: a full-value white flash is
+# the harshest thing the strip does, and brevity does not soften it.
 STATUS_LED_PRESETS = {
-    "ota": {"effect": FX_BREATHING, "color": [0, 43, 0], "speed": 3.0},  # green — firmware updating
-    "error": {"effect": FX_BREATHING, "color": [120, 0, 0], "speed": 3.0},  # red — system error
-    "booting": {"effect": FX_BREATHING, "color": [0, 32, 103], "speed": 3.0},  # blue — starting up
-    "connectivity": {"effect": FX_BREATHING, "color": [70, 22, 0], "speed": 3.0},  # orange — no internet
-    "wifi_connecting": {"effect": FX_BLINK, "color": [0, 36, 68], "speed": 0.5},
+    "ota": {"effect": FX_BREATHING, "color": [0, 16, 0], "speed": 3.0},  # green — firmware updating
+    "error": {"effect": FX_BREATHING, "color": [54, 0, 0], "speed": 3.0},  # red — system error
+    "booting": {"effect": FX_BREATHING, "color": [0, 12, 39], "speed": 3.0},  # blue — starting up
+    "connectivity": {"effect": FX_BREATHING, "color": [26, 8, 0], "speed": 3.0},  # orange — no internet
+    "wifi_connecting": {"effect": FX_BLINK, "color": [0, 13, 25], "speed": 0.5},
     # blue blink — associating with Wi-Fi during POST /api/device/setup
-    "hal_down": {"effect": FX_BREATHING, "color": [84, 0, 120], "speed": 3.0},  # purple — HAL unreachable
-    "agent_down": {"effect": FX_BREATHING, "color": [0, 43, 43], "speed": 3.0},  # cyan — agent disconnected
-    "hardware": {"effect": FX_BREATHING, "color": [33, 33, 0], "speed": 3.0},  # yellow — hardware fault
-    "ready_flash": {"effect": FX_NOTIFICATION_FLASH, "color": [255, 255, 255], "speed": 1.0},
-    # white — agent ready/listening (momentary flash, deliberately full value)
+    "hal_down": {"effect": FX_BREATHING, "color": [36, 0, 52], "speed": 3.0},  # purple — HAL unreachable
+    "agent_down": {"effect": FX_BREATHING, "color": [0, 15, 15], "speed": 3.0},  # cyan — agent disconnected
+    "hardware": {"effect": FX_BREATHING, "color": [12, 12, 0], "speed": 3.0},  # yellow — hardware fault
+    "ready_flash": {"effect": FX_NOTIFICATION_FLASH, "color": [40, 40, 40], "speed": 1.0},
+    # white — agent ready/listening (brief, but still dimmed: see note above)
     # OTA progress (driven by the bootstrap worker, not the statusled state machine)
-    "ota_progress": {"effect": FX_BREATHING, "color": [50, 28, 0], "speed": 0.4},  # orange — updating
-    "ota_error": {"effect": FX_PULSE, "color": [120, 14, 14], "speed": 1.5},  # red pulse — update failed
-    "ota_success": {"effect": FX_NOTIFICATION_FLASH, "color": [0, 255, 80], "speed": 1.0},  # green flash — update ok
+    "ota_progress": {"effect": FX_BREATHING, "color": [19, 10, 0], "speed": 0.4},  # orange — updating
+    "ota_error": {"effect": FX_PULSE, "color": [50, 6, 6], "speed": 1.5},  # red pulse — update failed
+    "ota_success": {"effect": FX_NOTIFICATION_FLASH, "color": [0, 54, 17], "speed": 1.0},  # green flash — update ok
     # Setup/provisioning "device ready, join the AP" cue. effect "solid" = a
     # persistent fill (saved as the displayed state), not a transient overlay.
-    "setup": {"effect": "solid", "color": [255, 255, 255], "speed": 1.0},  # white solid — AP/setup ready
+    # Dimmed well below the other status cues' ~0.12 luminance target is NOT
+    # wanted here: this one has to be spotted across a room by someone looking
+    # for "is it on yet?", and white solid is the brightest thing the strip can
+    # do. Tuned to ~0.25 — half the old full-value white, still unmistakable.
+    "setup": {"effect": "solid", "color": [64, 64, 64], "speed": 1.0},  # white solid — AP/setup ready
     # Mic-muted idle indicator — HAL-local key (no Go statusled state). The
     # strip's RESTING look while the mic is muted: emotions/effects/waves run
     # normally on top, and every LED restore lands back on this instead of the

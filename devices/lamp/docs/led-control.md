@@ -123,14 +123,14 @@ LED feedback for system states (all `breathing` at speed 3.0 unless noted):
 
 | State | Color | RGB |
 |-------|-------|-----|
-| Connectivity (no internet) | Orange | `(255, 80, 0)` |
-| Booting | Blue | `(0, 80, 255)` |
-| HAL Down | Purple | `(180, 0, 255)` |
-| Agent Down | Cyan | `(0, 200, 200)` |
-| Hardware Failure | Yellow | `(255, 255, 0)` |
-| OTA in progress (bootstrap) | Orange | `(255, 140, 0)` |
+| Connectivity (no internet) | Orange | `(70, 22, 0)` |
+| Booting | Blue | `(0, 32, 103)` |
+| HAL Down | Purple | `(84, 0, 120)` |
+| Agent Down | Cyan | `(0, 43, 43)` |
+| Hardware Failure | Yellow | `(33, 33, 0)` |
+| OTA in progress (bootstrap) | Orange | `(50, 28, 0)` |
 | OTA success (bootstrap) | Green flash | `(0, 255, 80)` |
-| OTA failure (bootstrap) | Red pulse | `(255, 30, 30)` |
+| OTA failure (bootstrap) | Red pulse | `(120, 14, 14)` |
 
 Managed by `system/statusled/Service` (lamp) and `lib/hal` directly (bootstrap).
 
