@@ -812,10 +812,28 @@ class FacePerception(Perception[cv2.typing.MatLike]):
         scene latest wins. last_seen ties at ~now while both remain visible,
         so it can't distinguish them. See docs/plan-presence-logging.md.
         """
+        return self.current_user_with_age()[0]
+
+    def current_user_with_age(self) -> tuple[str, float]:
+        """``current_user()`` plus how long ago that person was actually seen.
+
+        The label alone hides its own staleness: a friend stays the answer for
+        `FACE_OWNER_FORGET_S` (1h) and a stranger for `FACE_STRANGER_FORGET_S`
+        (30m) after they were last in frame, so "who is in front of the device"
+        can be up to an hour old. Callers that surface identity for debugging
+        (`/identity/current-user`) need that age to tell "here right now" from
+        "seen 50 minutes ago".
+
+        age is seconds since:
+        - the winning FRIEND was last seen (not since their session started), or
+        - the MOST RECENTLY seen stranger, for the collapsed "unknown" bucket.
+        0.0 when nobody is known — there is nothing to be stale.
+        """
         now = time.time()
         last_friend: str | None = None
         last_friend_ts: float | None = None
-        have_stranger: bool = False
+        last_friend_seen: float = 0.0
+        newest_stranger_seen: float | None = None
         with self._state_lock:
             for person_id, person_data in self._people_data_dict.items():
                 if person_data.last_seen is None:
@@ -824,7 +842,11 @@ class FacePerception(Perception[cv2.typing.MatLike]):
                     person_data.kind == PersonKind.STRANGER
                     and (now - person_data.last_seen) <= self._strangers_forget_ts
                 ):
-                    have_stranger = True
+                    if (
+                        newest_stranger_seen is None
+                        or person_data.last_seen > newest_stranger_seen
+                    ):
+                        newest_stranger_seen = person_data.last_seen
 
                 if person_data.kind != PersonKind.FRIEND:
                     continue
@@ -835,14 +857,15 @@ class FacePerception(Perception[cv2.typing.MatLike]):
                 if last_friend_ts is None or last_friend_ts < session_start:
                     last_friend = person_id
                     last_friend_ts = session_start
+                    last_friend_seen = person_data.last_seen
 
             if last_friend is not None:
-                return self.normalize_label(last_friend)
+                return self.normalize_label(last_friend), max(0.0, now - last_friend_seen)
 
-            if have_stranger:
-                return "unknown"
+            if newest_stranger_seen is not None:
+                return "unknown", max(0.0, now - newest_stranger_seen)
 
-            return ""
+            return "", 0.0
 
     # -- Cooldown state / reset -------------------------------------------------
 

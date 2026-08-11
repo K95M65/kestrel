@@ -151,8 +151,13 @@ def voice_user() -> tuple[str, str, float]:
         return _voice_user, _voice_user_display or _voice_user, age
 
 
-def face_user() -> str:
-    """Return HAL's face-derived current user, or "" when the camera has nobody.
+def face_user() -> tuple[str, float]:
+    """Return (label, age_s) for the face-derived user; ("", 0.0) for nobody.
+
+    age_s is seconds since that person was last actually in frame — NOT 0 just
+    because a face answered. `current_user()` keeps returning a friend for
+    FACE_OWNER_FORGET_S (1h) after they leave, so the age is what distinguishes
+    "standing here" from "left 50 minutes ago".
 
     Calls the perception object's ``current_user()`` — which RECOMPUTES from the
     live people map — rather than reading the cached
@@ -173,14 +178,20 @@ def face_user() -> str:
     """
     try:
         if not sensing_service:
-            return ""
+            return "", 0.0
         fr = sensing_service._perception_orchestrator._processors.face_recognizer
         if fr is None:
-            return ""
-        return fr.current_user() or ""
+            return "", 0.0
+        # getattr: an older perception.py (partial file sync) has only
+        # current_user() — degrade to a nameless age rather than raising.
+        with_age = getattr(fr, "current_user_with_age", None)
+        if with_age is None:
+            return fr.current_user() or "", 0.0
+        label, age = with_age()
+        return label or "", age
     except Exception:
         logger.exception("[identity] face current_user lookup failed")
-    return ""
+    return "", 0.0
 
 
 def resolve_current_user() -> tuple[str, str, str, float]:
@@ -193,13 +204,15 @@ def resolve_current_user() -> tuple[str, str, str, float]:
     slot, never displace a live face.
 
     source is "face", "voice", or "" when neither modality has anyone.
+    age_s is seconds since that identity was last positively observed — last
+    seen in frame for face, last spoken for voice — so the two are comparable.
 
     This is the single definition of the rule — every producer (sensing events,
     voice turns, the identity route) calls this rather than re-deriving it.
     """
-    face = face_user()
+    face, face_age = face_user()
     if face:
-        return face, face, "face", 0.0
+        return face, face, "face", face_age
     label, display, age = voice_user()
     if label:
         return label, display, "voice", age

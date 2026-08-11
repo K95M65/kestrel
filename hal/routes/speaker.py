@@ -492,8 +492,12 @@ def identity_current_user():
       modality has anyone.
     - ``display`` — human spelling ("Long") for display; falls back to ``user``.
     - ``source`` — "face", "voice", or "" when nobody is known.
-    - ``age_s`` — seconds since the voice match (0 for face, which is
-      continuously refreshed while someone is visible).
+    - ``age_s`` — seconds since this identity was last positively observed: last
+      seen in frame (face) or last spoken (voice). NOT zero just because a face
+      answered — ``current_user()`` keeps returning a friend for
+      FACE_OWNER_FORGET_S (1h) and a stranger for FACE_STRANGER_FORGET_S (30m)
+      after they leave, so this is what separates "standing here" from "left 50
+      minutes ago". 0.0 only when nobody is known.
     """
     from hal import app_state as identity_state
 
