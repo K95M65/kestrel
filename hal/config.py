@@ -396,6 +396,21 @@ SPEAKER_EXTEND_MIN_MARGIN_COS: float = float(
 SPEAKER_EMBEDDING_API_TIMEOUT_S: float = float(
     os.environ.get("SPEAKER_EMBEDDING_API_TIMEOUT_S", "15")
 )
+# Every recognize() logs its utterance to the root of SPEAKER_UNKNOWN_AUDIO_DIR
+# — on a match too, deliberately, so there is always a recent record of what the
+# device heard and a stable path a skill can reuse for a follow-up enroll.
+#
+# Despite the directory's name this cap is mostly about KNOWN speakers: an
+# unrecognized turn is moved out into a voice_<N>/ sub-dir, so what accumulates
+# in the root is recognized-user audio plus gate-reject/error clips. It counts
+# incoming_*.wav in the root only, hence the name.
+#
+# Rolling log: keep the newest N, evict oldest-first. ~32 KB per audio-second,
+# so a 4 s turn is ~128 KB and 100 files ≈ 13 MB.
+# 0 disables the cap (unbounded growth — not recommended on a device).
+SPEAKER_MAX_INCOMING_FILES: int = int(
+    os.environ.get("HAL_MAX_INCOMING_FILES", "100")
+)
 SPEAKER_UNKNOWN_AUDIO_DIR: str = os.environ.get(
     "HAL_UNKNOWN_AUDIO_DIR",
     os.path.join(tempfile.gettempdir(), "hal-unknown-voice"),

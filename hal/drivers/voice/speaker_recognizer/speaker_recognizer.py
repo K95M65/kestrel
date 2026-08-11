@@ -92,6 +92,7 @@ _EMBEDDING_FILE = "embedding.npy"
 _METADATA_FILE = "metadata.json"
 _REGISTRY_FILE = _USERS_DIR / ".voice_registry.json"
 _UNKNOWN_AUDIO_DIR = Path(config.SPEAKER_UNKNOWN_AUDIO_DIR)
+_MAX_INCOMING_FILES = config.SPEAKER_MAX_INCOMING_FILES
 
 # Each stored WAV carries a sidecar .npy holding its (already L2-normalized)
 # embedding, so a reload never has to re-run inference on a clip the current
@@ -1108,6 +1109,13 @@ class SpeakerRecognizer:
         # Monotonic counter appended to extended filenames so two samples
         # captured in the same millisecond cannot overwrite each other.
         self._extended_seq: int = 0
+
+        # Live count of incoming_*.wav in the log root, so a turn knows whether
+        # it is over the cap without stat-ing the directory. Seeded from disk,
+        # which is what trims a device that ran before the cap existed: an old
+        # backlog is counted at startup and rolled away on the first turn.
+        self._roll_lock = threading.Lock()
+        self._incoming_count: int = self._count_incoming()
 
         self._debug = _SpeakerDebugTracer()  # SPEAKER-DEBUG (remove before deploy)
         # SPEAKER-DEBUG: last stranger-cluster match info, stashed by
@@ -3246,8 +3254,14 @@ class SpeakerRecognizer:
     def _save_incoming_audio(self, wav_bytes: bytes) -> str:
         """Save the incoming recognize() WAV to the unknown-audio dir.
 
-        We always save — even on a match — so that skills have a stable path
-        to reuse for follow-up enrollment flows.
+        We always save — even on a match — so there is a record of what the
+        device heard and a stable path skills can reuse for follow-up
+        enrollment flows. Written BEFORE recognition runs, so the paths that
+        never reach a match decision (gate reject, embedding-server error)
+        still have one.
+
+        This is a ROLLING log: :meth:`_roll_incoming_log` keeps the newest
+        ``HAL_MAX_INCOMING_FILES`` and evicts oldest-first.
         """
         _UNKNOWN_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
         fname = (
@@ -3259,7 +3273,71 @@ class SpeakerRecognizer:
         except OSError as e:
             logger.warning("failed to save incoming audio: %s", e)
             return ""
+        with self._roll_lock:
+            self._incoming_count += 1
+            over = self._incoming_count > _MAX_INCOMING_FILES
+        if over:
+            self._roll_incoming_log()
         return str(fpath)
+
+    @staticmethod
+    def _count_incoming() -> int:
+        """Number of incoming_*.wav currently in the log root."""
+        if not _UNKNOWN_AUDIO_DIR.is_dir():
+            return 0
+        try:
+            return sum(1 for p in _UNKNOWN_AUDIO_DIR.glob("incoming_*.wav") if p.is_file())
+        except OSError as e:
+            logger.warning("incoming-audio log: cannot count dir: %s", e)
+            return 0
+
+    def _roll_incoming_log(self) -> None:
+        """Trim the incoming log to _MAX_INCOMING_FILES, oldest evicted first.
+
+        Only reached when the in-memory counter says we are over, so the
+        directory listing here is not paid for on an ordinary turn. The listing
+        also RESYNCS the counter, which makes any drift self-healing — a file
+        removed out-of-band, or a move whose decrement was lost, costs at most
+        one early listing before the count is exact again.
+
+        Touches ``incoming_*.wav`` in the root only. Cluster sub-dirs belong to
+        the stranger tracker and are bounded by cluster eviction.
+        """
+        if _MAX_INCOMING_FILES <= 0:
+            return
+        if not _UNKNOWN_AUDIO_DIR.is_dir():
+            return
+        try:
+            files = [
+                (p.stat().st_mtime, p)
+                for p in _UNKNOWN_AUDIO_DIR.glob("incoming_*.wav")
+                if p.is_file()
+            ]
+        except OSError as e:
+            logger.warning("incoming-audio log: cannot list dir: %s", e)
+            return
+
+        with self._roll_lock:
+            self._incoming_count = len(files)
+        if len(files) <= _MAX_INCOMING_FILES:
+            return
+
+        # Newest first, so everything past the cap is the oldest tail.
+        ordered = sorted(files, key=lambda t: t[0], reverse=True)
+        removed = 0
+        for _mt, p in ordered[_MAX_INCOMING_FILES:]:
+            try:
+                p.unlink(missing_ok=True)
+                removed += 1
+            except OSError as e:
+                logger.warning("incoming-audio log: cannot remove %s: %s", p, e)
+        with self._roll_lock:
+            self._incoming_count = max(0, len(files) - removed)
+        if removed:
+            logger.info(
+                "Incoming-audio log: evicted %d oldest clip(s), %d kept (cap=%d)",
+                removed, self._incoming_count, _MAX_INCOMING_FILES,
+            )
 
     def _move_to_cluster(self, saved_path: str, vp_hash: Optional[str]) -> str:
         """Move a saved WAV into a per-cluster sub-dir, return the new path.
@@ -3279,6 +3357,11 @@ class SpeakerRecognizer:
             cluster_dir.mkdir(parents=True, exist_ok=True)
             dst = cluster_dir / src.name
             src.rename(dst)
+            # It left the root, so it no longer counts against the log cap.
+            # Skipping this would only cost an early (self-correcting) listing,
+            # but on a device hearing mostly strangers that is every turn.
+            with self._roll_lock:
+                self._incoming_count = max(0, self._incoming_count - 1)
             return str(dst)
         except OSError as e:
             logger.warning(
