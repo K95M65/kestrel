@@ -205,21 +205,42 @@ AIM_PRESETS = {
 # Applied transiently via POST /led/status {state} (does not clobber user state).
 # Keys MUST stay in sync with system/statusled State constants (Go) + the
 # "ready_flash" agent-ready cue. Effects are from VALID_LED_EFFECTS.
+# Brightness convention — read before changing a color here.
+#
+# These are INDICATORS, not illumination. Two rules keep them from glaring:
+#
+# 1. Stay BELOW the light.max_brightness ceiling. The safety gate (clamp_color)
+#    scales a color so its peak channel meets the ceiling (lamp: 120), so any
+#    channel written above the ceiling is dead value — [0,200,200] and
+#    [0,120,120] look identical on lamp. Dimming must happen HERE, not there.
+# 2. Equalize PERCEIVED brightness, not the numbers. Luminance is hue-weighted
+#    (Rec.709: R 0.2126, G 0.7152, B 0.0722), so identical peaks are not
+#    identically bright: at the 120 ceiling, cyan/yellow/white carry ~3-4x the
+#    luminance of red/purple. Scaling every preset by the same factor preserves
+#    that imbalance — which is what made agent_down (cyan, and a state that
+#    stays lit for minutes) the one users complained about.
+#
+# Long-lived states below are tuned to relative luminance ~0.12, anchored on
+# booting/hal_down (the two nobody found harsh). Red- and purple-dominant hues
+# sit a touch lower because they cannot reach 0.12 under a 120 ceiling — that is
+# fine, they read as faults without glare. Momentary cues (ready_flash,
+# ota_success) stay at full value on purpose: a ~1s flash does not glare, and
+# dimming it would cost the "did that just happen?" legibility it exists for.
 STATUS_LED_PRESETS = {
-    "ota": {"effect": FX_BREATHING, "color": [0, 255, 0], "speed": 3.0},  # green — firmware updating
-    "error": {"effect": FX_BREATHING, "color": [255, 0, 0], "speed": 3.0},  # red — system error
-    "booting": {"effect": FX_BREATHING, "color": [0, 80, 255], "speed": 3.0},  # blue — starting up
-    "connectivity": {"effect": FX_BREATHING, "color": [255, 80, 0], "speed": 3.0},  # orange — no internet
-    "wifi_connecting": {"effect": FX_BLINK, "color": [0, 135, 255], "speed": 0.5},
+    "ota": {"effect": FX_BREATHING, "color": [0, 43, 0], "speed": 3.0},  # green — firmware updating
+    "error": {"effect": FX_BREATHING, "color": [120, 0, 0], "speed": 3.0},  # red — system error
+    "booting": {"effect": FX_BREATHING, "color": [0, 32, 103], "speed": 3.0},  # blue — starting up
+    "connectivity": {"effect": FX_BREATHING, "color": [70, 22, 0], "speed": 3.0},  # orange — no internet
+    "wifi_connecting": {"effect": FX_BLINK, "color": [0, 36, 68], "speed": 0.5},
     # blue blink — associating with Wi-Fi during POST /api/device/setup
-    "hal_down": {"effect": FX_BREATHING, "color": [180, 0, 255], "speed": 3.0},  # purple — HAL unreachable
-    "agent_down": {"effect": FX_BREATHING, "color": [0, 200, 200], "speed": 3.0},  # cyan — agent disconnected
-    "hardware": {"effect": FX_BREATHING, "color": [255, 255, 0], "speed": 3.0},  # yellow — hardware fault
+    "hal_down": {"effect": FX_BREATHING, "color": [84, 0, 120], "speed": 3.0},  # purple — HAL unreachable
+    "agent_down": {"effect": FX_BREATHING, "color": [0, 43, 43], "speed": 3.0},  # cyan — agent disconnected
+    "hardware": {"effect": FX_BREATHING, "color": [33, 33, 0], "speed": 3.0},  # yellow — hardware fault
     "ready_flash": {"effect": FX_NOTIFICATION_FLASH, "color": [255, 255, 255], "speed": 1.0},
-    # white — agent ready/listening
+    # white — agent ready/listening (momentary flash, deliberately full value)
     # OTA progress (driven by the bootstrap worker, not the statusled state machine)
-    "ota_progress": {"effect": FX_BREATHING, "color": [255, 140, 0], "speed": 0.4},  # orange — updating
-    "ota_error": {"effect": FX_PULSE, "color": [255, 30, 30], "speed": 1.5},  # red pulse — update failed
+    "ota_progress": {"effect": FX_BREATHING, "color": [50, 28, 0], "speed": 0.4},  # orange — updating
+    "ota_error": {"effect": FX_PULSE, "color": [120, 14, 14], "speed": 1.5},  # red pulse — update failed
     "ota_success": {"effect": FX_NOTIFICATION_FLASH, "color": [0, 255, 80], "speed": 1.0},  # green flash — update ok
     # Setup/provisioning "device ready, join the AP" cue. effect "solid" = a
     # persistent fill (saved as the displayed state), not a transient overlay.
