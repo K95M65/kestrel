@@ -11,7 +11,7 @@ Source: `hal/presets.py` — `EMOTION_PRESETS`
 | `idle` | 90, 60, 5 | `#5a3c05` vàng dim | breathing | 0.2 | idle |
 | `excited` | 30, 21, 30 | `#1e151e` hồng tím | candle | 0.5 | excited |
 | `shy` | 155, 70, 20 | `#9b4614` hồng | breathing | 0.3 | shy |
-| `shock` | 40, 40, 40 | `#282828` trắng dịu | notification_flash | 1.0 | shock |
+| `shock` | 12, 12, 12 | `#0c0c0c` trắng dịu | notification_flash | 1.0 | shock |
 | `listening` | 51, 121, 230 | `#3379E6` xanh dương | pulse | 0.1 | listening |
 | `laugh` | 130, 91, 11 | `#825a0b` vàng sẫm | candle | 0.2 | laugh |
 | `confused` | 124, 71, 25 | `#7c4719` cam đậm | candle | 0.2 | confused |
