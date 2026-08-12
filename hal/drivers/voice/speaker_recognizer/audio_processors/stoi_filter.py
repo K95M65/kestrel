@@ -40,7 +40,7 @@ from .base import Audio, AudioProcessorBase, gpu_lock
 from .exceptions import REJECT_LOW_INTELLIGIBILITY, PreprocessRejected
 
 # --- Defaults (calibrated on the SQUIM-STOI opt graph; see audio-metrics research) ---
-DEFAULT_THRESHOLD: float = 0.75
+DEFAULT_THRESHOLD: float = 0.70
 DEFAULT_CHUNK_SEC: float = 5.0
 DEFAULT_MIN_TAIL_SEC: float = 1.0  # a trailing remainder shorter than this is dropped
 

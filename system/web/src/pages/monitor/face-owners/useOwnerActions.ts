@@ -186,10 +186,10 @@ export function useOwnerActions(refresh: () => void) {
     }
   };
 
-  // Voice sample delete — only audio files. JSON/NPY (metadata, embedding
-  // cache) are protected because deleting them silently corrupts the
-  // speaker_recognizer profile. Backend OS server /api/voice/file/remove
-  // re-enrolls from remaining samples to refresh the embedding.
+  // Voice sample delete — only audio files. metadata.json is profile state, and
+  // a sample's .npy sidecar is deleted together with its WAV by the backend, so
+  // neither is individually deletable here. /api/voice/file/remove removes the
+  // pair; the remaining samples are independent bank rows and need no rebuild.
   // Open the themed confirm dialog for removing a voice sample.
   const handleRemoveVoiceFile = (label: string, filename: string) => setConfirmVoice({ label, filename });
 

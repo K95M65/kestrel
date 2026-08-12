@@ -92,9 +92,10 @@ class EnrollSpeakerRequest(BaseModel):
     origin: Optional[str] = Field(
         default=None,
         description="Channel the audio came from: 'mic' | 'telegram' | "
-        "'other'. Auto-inferred from presence of telegram_* fields if "
+        "'web' | 'other'. Auto-inferred from presence of telegram_* fields if "
         "omitted. Encoded in the stored sample filename so list_registered "
-        "can show which channels contributed.",
+        "can show which channels contributed. Single token, no underscore — "
+        "anything else becomes 'other'.",
     )
 
 
@@ -114,9 +115,12 @@ class RecordEnrollRequest(BaseModel):
         description="Recording length in seconds. Capped at 60 to bound ALSA hold.",
     )
     origin: Optional[str] = Field(
-        default="web_device_mic",
+        default="web",
         description="Tagged into stored sample filenames so list_registered "
-        "can distinguish web-triggered enrolls from telegram / mic ambient.",
+        "can distinguish web-triggered enrolls from telegram / mic ambient. "
+        "Must be a single token with no underscore — the tag is recovered from "
+        "the filename by splitting on '_'. Anything unrecognised becomes "
+        "'other'.",
     )
 
 
@@ -146,7 +150,12 @@ class SpeakerMeta(BaseModel):
     has_telegram_identity: bool = False
     enrollment_sources: list[str] = []
     last_enrollment_source: Optional[str] = None
+    # Samples the user deliberately enrolled (the permanent anchor tier).
     num_samples: int
+    # Auto-collected samples: unknown-cluster audio claimed at enroll plus
+    # confidently-recognized later turns. Capped and diversity-pruned, and
+    # counted separately so it can never be mistaken for enrolled audio.
+    num_extended: int = 0
     embedding_dim: int
     enrolled_at: Optional[str] = None
     updated_at: Optional[str] = None
@@ -154,6 +163,7 @@ class SpeakerMeta(BaseModel):
     sample_origins: dict[str, str] = {}
     embed_model_version: Optional[str] = None
     needs_reenroll: bool = False
+    extended_files: list[str] = []
 
 
 class SpeakerListItem(BaseModel):
@@ -171,6 +181,7 @@ class SpeakerListItem(BaseModel):
     has_telegram_identity: bool = False
     enrollment_sources: list[str] = []
     num_samples: int
+    num_extended: int = 0
 
 
 class EnrollResponse(BaseModel):
@@ -392,7 +403,7 @@ def speaker_record_enroll(req: RecordEnrollRequest) -> EnrollResponse:
                 name,
                 [wav_path],
                 source_type="filepath",
-                origin=req.origin or "web_device_mic",
+                origin=req.origin or "web",
             )
         except EmbeddingAPIUnavailableError as e:
             logger.warning("record-enroll embedding API unavailable for %r: %s", name, e)
@@ -466,6 +477,56 @@ def speaker_reset() -> RemoveResponse:
     return RemoveResponse(status="ok", name="*", removed=n > 0)
 
 
+@router.get("/identity/current-user", tags=["Speaker"])
+def identity_current_user():
+    """Return who the device is with right now, across BOTH modalities.
+
+    ``/face/current-user`` answers only "who does the camera see", which is
+    empty on a device with no camera and on any turn where nobody is in frame —
+    even immediately after speaker-ID recognized an enrolled user. This
+    endpoint applies the device-wide rule instead (face wins; the voice speaker
+    fills the slot only when face has nobody), so callers get an identity
+    whenever either modality has one.
+
+    - ``user`` — normalized label ("long"), the same shape ``/face/current-user``
+      returns and the same slug the per-user folders use. Empty when neither
+      modality has anyone.
+    - ``display`` — human spelling ("Long") for display; falls back to ``user``.
+    - ``source`` — "face", "voice", or "" when nobody is known.
+    - ``age_s`` — seconds since this identity was last positively observed: last
+      seen in frame (face) or last spoken (voice). NOT zero just because a face
+      answered — ``current_user()`` keeps returning a friend for
+      FACE_OWNER_FORGET_S (1h) and a stranger for FACE_STRANGER_FORGET_S (30m)
+      after they leave, so this is what separates "standing here" from "left 50
+      minutes ago". 0.0 only when nobody is known.
+    """
+    from hal import app_state as identity_state
+
+    user, display, source, age_s = identity_state.resolve_current_user()
+    return {
+        "user": user,
+        "display": display,
+        "source": source,
+        "age_s": round(age_s, 1),
+    }
+
+
+@router.post("/speaker/current-user/reset", tags=["Speaker"])
+def speaker_current_user_reset():
+    """Forget the current voice user — the voice twin of /face/cooldowns/reset.
+
+    Presence state only: enrolled voice profiles are untouched (that is
+    ``/speaker/reset``). Use it to emulate "a brand new day, the device has
+    not heard anyone yet" without waiting out ``VOICE_USER_FORGET_S``. Pair it
+    with ``/face/cooldowns/reset`` to blank both modalities at once.
+    """
+    from hal import app_state as identity_state
+
+    logger.info("POST /speaker/current-user/reset — forgetting current voice user")
+    identity_state.clear_voice_user()
+    return {"status": "ok"}
+
+
 @router.post("/speaker/remove", response_model=RemoveResponse)
 def speaker_remove(req: RemoveSpeakerRequest) -> RemoveResponse:
     """Delete the user's voice folder (embedding + samples + metadata).
@@ -529,6 +590,7 @@ def speaker_list() -> ListResponse:
             has_telegram_identity=bool(s.get("has_telegram_identity", False)),
             enrollment_sources=list(s.get("enrollment_sources", [])),
             num_samples=int(s.get("num_samples", 0)),
+            num_extended=int(s.get("num_extended", 0)),
         )
         for s in speakers
     ]
