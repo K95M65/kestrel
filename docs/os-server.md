@@ -204,7 +204,9 @@ runtime config, channels, and onboarding files; those steps can restart a
 gateway. Before it sends the physical wake greeting, os-server therefore
 requires the active gateway to remain ready continuously for 15 seconds. This
 prevents a greeting from being sent into a gateway that passed an earlier health
-probe but is still restarting.
+probe but is still restarting. The system greeting also tells the agent that its
+device skills are available; it should use the relevant skill only for a later
+action or device-related request, rather than scanning all skills during boot.
 
 Alerts are enabled whenever `llm_base_url` + `llm_api_key` are set; set
 `alerts_disabled: true` in `config/config.json` to mute a device.

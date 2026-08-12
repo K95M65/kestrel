@@ -200,7 +200,10 @@ Khi boot sau một runtime switch, startup sequence vẫn có thể reconcile co
 channel và file onboarding của runtime; các bước này có thể restart gateway.
 Trước khi gửi wake greeting vật lý, os-server vì vậy yêu cầu gateway active giữ
 trạng thái ready liên tục trong 15 giây. Điều này tránh gửi greeting vào gateway
-đã pass một health probe cũ nhưng vẫn đang restart.
+đã pass một health probe cũ nhưng vẫn đang restart. System greeting cũng báo cho
+agent biết các skill của thiết bị đã sẵn sàng; agent chỉ dùng skill phù hợp cho
+yêu cầu hành động hoặc liên quan đến thiết bị ở lượt sau, thay vì quét mọi skill
+khi boot.
 
 Cảnh báo bật khi `llm_base_url` + `llm_api_key` được set; đặt
 `alerts_disabled: true` trong `config/config.json` để tắt cảnh báo cho một thiết bị.
