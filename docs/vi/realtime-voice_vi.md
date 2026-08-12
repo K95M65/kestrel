@@ -427,6 +427,11 @@ sớm ("hello") ngay sau khi restart sẽ rớt xuống main agent.
    được câu trả lời, và model rơi về định danh còn lưu trong memory của session.
    `gemini-3.1-flash-live` và OpenAI thì nhận cả hai. Mọi lần bỏ đều được log
    (`[realtime->model] DROPPED …`).
+
+   **Điều này không áp dụng cho cấu hình mặc định đang ship.** `REALTIME_GEMINI_MODEL`
+   mặc định là `gemini-3.1-flash-live-preview` (`hal/config.py:734`), không phải
+   native-audio, nên guard tắt và cả context lẫn correction đều tới được model. Nó chỉ
+   bật lại khi ai đó cấu hình một model `*native-audio*`.
 4. **Commit.** Cuối session, nếu enabled + `available` + có audio buffer, gọi
    `commit_audio()`. Cue emotion `thinking` fire cùng lúc commit (mặt + servo +
    LED pulse tím ÉP HIỆN — `thinking` vốn là background emotion có LED nhường

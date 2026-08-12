@@ -358,10 +358,16 @@ class SensingService:
         # downgrades mood.CurrentUser() to "unknown", even though the
         # friend is still within forget window). HAL's current_user()
         # is the source of truth — ship it.
+        # Face always wins; the voice speaker fills the slot only when the
+        # camera has nobody (or there is no camera at all), so a camera device
+        # behaves exactly as before while a voice-only device stops reporting
+        # an empty user forever. See app_state.resolve_current_user.
         try:
-            cu = self._perception_orchestrator.current_user or ""
+            from hal import app_state as identity_state
+
+            cu, _display, _source, _age = identity_state.resolve_current_user()
         except Exception:
-            logger.exception("[sensing] face_recognizer.current_user() failed")
+            logger.exception("[sensing] current_user resolution failed")
             cu = ""
         payload["current_user"] = cu
         logger.debug("[sensing] payload = %s", payload)

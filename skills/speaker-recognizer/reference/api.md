@@ -68,6 +68,7 @@ curl -s -X POST http://127.0.0.1:5001/speaker/reset
 - **400 `all wav paths missing and no existing voice profile`** — every path is gone AND user not enrolled. Ask once with the "25–30 words" guidance.
 - **400 `invalid base64` / `empty audio` / `cannot decode WAV`** — corrupt file. Apologize + skip.
 - **400 `no audio chunks extracted` / `no valid new samples`** — too short / silent / VAD rejected. Ask user to speak longer.
+- **400 `no coherent samples`** — the clips you sent don't match each other, so they are probably not all the same person (a cluster can pick up a second voice). **Do NOT retry the same paths — it will fail again.** Ask the person to say one fresh sentence on their own, then enroll from that.
 - **503 `embedding service unavailable`** — perception-service down. Tell user "voice recognition is offline, please try again in a moment."
 - **503 `Speaker recognizer unavailable`** — service not initialized (missing deps).
 - **404 on `/speaker/identity`** — no voice profile yet; enroll first.
