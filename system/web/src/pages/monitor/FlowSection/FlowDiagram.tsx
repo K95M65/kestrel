@@ -131,7 +131,7 @@ export function FlowDiagram({
     const nextPan = { x: dragStart.current.panX + dx / zoom, y: dragStart.current.panY + dy / zoom };
     panRef.current = nextPan;
     setPan(nextPan);
-  }, [dragging, zoom]);
+  }, [dragging, zoom, setZoom, setPan]);
 
   const handlePointerEnd = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
     if (e.currentTarget.hasPointerCapture(e.pointerId)) {
@@ -1289,17 +1289,21 @@ export function FlowDiagram({
         <span style={{ fontSize: 9, color: "var(--lm-text-muted)", marginRight: 4 }}>
           {Math.round(zoom * 100)}%
         </span>
-        {[
-          { label: "−", action: () => setZoom((z) => Math.max(0.4, z - 0.2)) },
-          { label: "⟳", action: resetView },
-          { label: "+", action: () => setZoom((z) => Math.min(4, z + 0.2)) },
-        ].map((btn) => (
-          <button key={btn.label} onClick={btn.action} className="lm-u-btn" style={{
-            width: 22, height: 22, borderRadius: 5,
-            color: "var(--lm-text-dim)", fontSize: 12, lineHeight: 1, padding: 0,
-            display: "flex", alignItems: "center", justifyContent: "center",
-          }}>{btn.label}</button>
-        ))}
+        <button onClick={() => setZoom((z) => Math.max(0.4, z - 0.2))} className="lm-u-btn" style={{
+          width: 22, height: 22, borderRadius: 5,
+          color: "var(--lm-text-dim)", fontSize: 12, lineHeight: 1, padding: 0,
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>−</button>
+        <button onClick={resetView} className="lm-u-btn" style={{
+          width: 22, height: 22, borderRadius: 5,
+          color: "var(--lm-text-dim)", fontSize: 12, lineHeight: 1, padding: 0,
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>⟳</button>
+        <button onClick={() => setZoom((z) => Math.min(4, z + 0.2))} className="lm-u-btn" style={{
+          width: 22, height: 22, borderRadius: 5,
+          color: "var(--lm-text-dim)", fontSize: 12, lineHeight: 1, padding: 0,
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>+</button>
       </div>
     </div>
   );
