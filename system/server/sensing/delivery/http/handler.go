@@ -200,8 +200,8 @@ func (h *SensingHandler) PostEvent(c *gin.Context) {
 
 	// Sleep guard: while the agent is in "sleepy" state, drop all passive sensing
 	// (light.level, motion, sound) so they don't wake the agent and override the
-	// sleepy emotion. Only presence.enter, fire_hazard.detected, and authorized
-	// voice commands/follow-ups can wake the device.
+	// sleepy emotion. Only presence.enter, fire_hazard.detected, authorized
+	// voice commands/follow-ups, and realtime-handled turns pass through.
 	// Typed chat (web_chat from the monitor composer, mqtt_chat from chat.send)
 	// is user-initiated text — bypasses sleep-drop (forwarded to agent, TTS
 	// suppressed) but does NOT trigger physical wake. It counts as passive for
@@ -210,8 +210,17 @@ func (h *SensingHandler) PostEvent(c *gin.Context) {
 	isVoice := req.Type == "voice" || req.Type == "voice_command" || req.Type == "voice_followup"
 	isVoiceCommand := req.Type == "voice_command" || req.Type == "voice_followup"
 	isChat := sensingmsg.IsChat(req.Type)
+	// A realtime-handled turn is user-initiated by definition: the user spoke and
+	// the realtime agent ALREADY replied out loud. That exchange happens entirely
+	// in HAL and never consults this sleep flag, so the device can be "asleep"
+	// here while it is actively holding a conversation. Dropping the event costs
+	// the main agent its [HANDLED]/[REPLY] memory sync — the conversation happened
+	// and the agent has no record of it. Kept OUT of isVoice deliberately: that
+	// flag also fires the opening filler below, which must never play for a turn
+	// the realtime agent already answered (the run is MarkSilentRun).
+	isRealtimeHandled := req.Type == "voice_agent_handled"
 	isPassive := !isVoiceCommand
-	if isPassive && !isVoice && !isChat && req.Type != "presence.enter" && req.Type != "fire_hazard.detected" && h.isSleeping != nil && h.isSleeping() {
+	if isPassive && !isVoice && !isRealtimeHandled && !isChat && req.Type != "presence.enter" && req.Type != "fire_hazard.detected" && h.isSleeping != nil && h.isSleeping() {
 		slog.Info("INBOUND from HAL → SLEEP-DROPPED (lamp sleeping)",
 			"component", "sensing", "backend", h.agentGateway.Name(), "type", req.Type)
 		h.monitorBus.Push(domain.MonitorEvent{
@@ -1261,6 +1270,16 @@ var ambientFloorTypes = map[string]bool{
 func shouldQueueEvent(eventType, message string, inVoiceWindow bool) bool {
 	switch eventType {
 	case "presence.enter", "presence.leave", "voice",
+		// voice_agent_handled carries the [HANDLED]/[REPLY] sync for a
+		// conversation the realtime agent already spoke. It must never be
+		// dropped: the exchange is real and the main agent's memory depends on
+		// it. It used to fall to `default: inVoiceWindow`, which is effectively
+		// always false — the 10s window opened by voice_listening has long
+		// expired by the time a realtime turn finishes (measured ~21s), and
+		// HAL sends voice_listening_end AFTER dispatch. The drain path has
+		// always been ready for it (service_events.go re-applies MarkSilentRun
+		// on replay); that branch was simply unreachable.
+		"voice_agent_handled",
 		"motion.activity", "emotion.detected", "speech_emotion.detected",
 		"fire_hazard.detected",
 		"web_chat", "mqtt_chat":
