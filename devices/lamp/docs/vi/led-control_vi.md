@@ -6,6 +6,15 @@
 - Driver: `rpi_ws281x` (Python, HAL owns)
 - FastAPI endpoints trên `:5001`
 
+### Xoá dải LED lúc khởi động
+
+`RGBService.__init__` xoá sạch dải LED ngay khi driver sẵn sàng, trước khi bất kỳ
+route hay effect nào kịp vẽ. WS2812 giữ nguyên màu đã chốt khi không có dữ liệu
+trên dây, và chân SPI bị cấu hình lại trong lúc kernel boot — xung nhiễu trên dây
+data làm vài pixel chốt nhầm một màu rác (hay gặp nhất là xanh lá, vì G là byte
+đầu tiên của mỗi frame WS2812). Không có bước xoá này thì màu rác đó sáng cho tới
+lệnh LED đầu tiên, có thể vài phút sau khi boot.
+
 ## Endpoints
 
 | Method | Endpoint | Mô tả |

@@ -187,6 +187,22 @@ class RGBService(ServiceBase):
         # Expose .strip.getPixelColor() for server.py compatibility
         self.strip = self
 
+        # Blank the strip before anyone can paint it. WS2812 pixels hold their
+        # last latched colour with no data on the wire, and the SPI pins are
+        # re-muxed during kernel boot -- that transition puts stray edges on the
+        # data line, so a few pixels come up latched to a garbage colour (green
+        # first: G is the leading byte of every WS2812 frame). Without this the
+        # garbage stays lit until the first LED command lands, which can be
+        # minutes after boot -- and looks exactly like the lamp painting a random
+        # green dot on its own. Device-verified 12/08/2026 on lamp-ac82: strip
+        # showed a green arc while GET /led/color reported [0,0,0], and a single
+        # clear() wiped it.
+        if self._driver:
+            try:
+                self.clear()
+            except Exception as e:
+                self.logger.warning("Initial LED clear failed: %s", e)
+
     def getPixelColor(self, index: int) -> int:
         """Return packed 0xRRGGBB int for server.py compatibility."""
         if not self._driver:

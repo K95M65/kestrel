@@ -6,6 +6,15 @@
 - Driver: `rpi_ws281x` (Python, HAL owns)
 - FastAPI endpoints on `:5001`
 
+### Boot clear
+
+`RGBService.__init__` blanks the strip as soon as the driver is up, before any
+route or effect can paint. WS2812 pixels hold their last latched colour with no
+data on the wire, and the SPI pins are re-muxed during kernel boot — stray edges
+on the data line leave a few pixels latched to a garbage colour (green shows up
+most, being the leading byte of a WS2812 frame). Without the clear that garbage
+stays lit until the first LED command, which may be minutes after boot.
+
 ## Endpoints
 
 | Method | Endpoint | Description |
