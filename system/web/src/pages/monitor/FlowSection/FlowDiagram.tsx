@@ -22,6 +22,21 @@ function fallbackCopy(text: string): void {
   document.body.removeChild(ta);
 }
 
+function formatPipelineDuration(ms: number): string {
+  return ms >= 60_000 ? `${(ms / 60_000).toFixed(1)}m`
+    : ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
+}
+
+function pipelineRowColor(kind: string): string {
+  if (kind === "thinking" || kind === "thinking_first_token") return "var(--lm-purple)";
+  if (kind === "assistant" || kind === "agent_first_token") return "var(--lm-blue)";
+  if (kind === "tool" || kind === "tool_result") return "var(--lm-amber)";
+  if (kind === "lifecycle_start" || kind === "lifecycle_end") return "var(--lm-green)";
+  if (kind === "error") return "var(--lm-red)";
+  if (kind === "compaction") return "var(--lm-purple)";
+  return "var(--lm-text-muted)";
+}
+
 export function FlowDiagram({
   activeStage,
   visitedStages,
@@ -36,6 +51,8 @@ export function FlowDiagram({
   const VW = 1200;
   const VH = 1320;
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [isPhoneLayout, setIsPhoneLayout] = useState(false);
+  const [mobileDetailsOpen, setMobileDetailsOpen] = useState(false);
   const [, , themeClass] = useTheme();
 
   const [zoom, setZoom] = useState(1);
@@ -44,7 +61,23 @@ export function FlowDiagram({
   const [pipelineGuideOpen, setPipelineGuideOpen] = useState(false);
   const [pipelineCopied, setPipelineCopied] = useState(false);
   const dragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
+  const panRef = useRef(pan);
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const pinchStart = useRef<{ distance: number; zoom: number } | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+
+  useEffect(() => { panRef.current = pan; }, [pan]);
+
+  // Keep verbose event payloads out of the fixed-coordinate SVG on phones.
+  // They instead render in a native HTML sheet below, where long curl/tool
+  // arguments can wrap and scroll at the device's actual width.
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 768px)");
+    const update = () => setIsPhoneLayout(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
 
   // Use native wheel listener with { passive: false } so preventDefault actually works
   // and stops scroll from bubbling to parent (Turns list).
@@ -61,25 +94,67 @@ export function FlowDiagram({
     return () => el.removeEventListener("wheel", handler);
   }, []);
 
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (e.button !== 0) return;
+  // Pointer events cover mouse and touch: one pointer pans, two pointers
+  // pinch-zoom. Native browser gestures are disabled on the SVG itself by
+  // touchAction below, letting both gestures coexist inside the chart.
+  const handlePointerDown = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     setDragging(true);
-    dragStart.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
-  }, [pan]);
+    if (pointers.current.size === 1) {
+      dragStart.current = { x: e.clientX, y: e.clientY, panX: panRef.current.x, panY: panRef.current.y };
+    } else if (pointers.current.size === 2) {
+      const [first, second] = [...pointers.current.values()];
+      pinchStart.current = {
+        distance: Math.hypot(second.x - first.x, second.y - first.y),
+        zoom,
+      };
+    }
+  }, [zoom]);
 
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+  const handlePointerMove = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
+    if (!pointers.current.has(e.pointerId)) return;
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.current.size >= 2 && pinchStart.current) {
+      const [first, second] = [...pointers.current.values()];
+      const distance = Math.hypot(second.x - first.x, second.y - first.y);
+      if (pinchStart.current.distance > 0) {
+        setZoom(Math.min(4, Math.max(0.4, pinchStart.current.zoom * distance / pinchStart.current.distance)));
+      }
+      return;
+    }
     if (!dragging) return;
     const dx = e.clientX - dragStart.current.x;
     const dy = e.clientY - dragStart.current.y;
-    setPan({ x: dragStart.current.panX + dx / zoom, y: dragStart.current.panY + dy / zoom });
+    const nextPan = { x: dragStart.current.panX + dx / zoom, y: dragStart.current.panY + dy / zoom };
+    panRef.current = nextPan;
+    setPan(nextPan);
   }, [dragging, zoom]);
 
-  const handleMouseUp = useCallback(() => setDragging(false), []);
+  const handlePointerEnd = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    pointers.current.delete(e.pointerId);
+    pinchStart.current = null;
+    if (pointers.current.size === 1) {
+      const [remaining] = pointers.current.values();
+      dragStart.current = { x: remaining.x, y: remaining.y, panX: panRef.current.x, panY: panRef.current.y };
+    }
+    setDragging(pointers.current.size > 0);
+  }, []);
 
   // Setters from useState are stable, so listing them keeps the callback
   // identity unchanged across renders (same as the previous empty dep array)
   // while matching the deps the React Compiler infers.
-  const resetView = useCallback(() => { setZoom(1); setPan({ x: 0, y: 0 }); }, [setZoom, setPan]);
+  const resetView = useCallback(() => {
+    const initialPan = { x: 0, y: 0 };
+    panRef.current = initialPan;
+    setZoom(1);
+    setPan(initialPan);
+  }, [setZoom, setPan]);
 
   const vbW = VW / zoom;
   const vbH = VH / zoom;
@@ -232,8 +307,15 @@ export function FlowDiagram({
   }
 
   const glowId = compact ? "flow-glow-c" : "flow-glow";
+  const pipelineClipId = compact ? "flow-pipeline-clip-c" : "flow-pipeline-clip";
 
   const nodeInfo = extractNodeInfo(turnEvents);
+  const pipelineRows = aggregateEvents(turnEvents);
+  const mobileNodeDetails = FLOW_NODES.flatMap((node) => {
+    if (node.id === "agent_thinking" || node.id === "tool_exec") return [];
+    const lines = (nodeInfo[node.id] ?? []).filter((line) => !line.startsWith("🖼"));
+    return lines.length > 0 ? [{ label: node.label, lines }] : [];
+  });
 
   // Extract snapshot URLs from agent_call lines (🖼 added by helpers.ts from sensing_input or chat_send).
   const sensingSnapshotUrls: string[] = (nodeInfo.agent_call ?? [])
@@ -254,14 +336,20 @@ export function FlowDiagram({
         viewBox={`${vbX} ${vbY} ${vbW} ${vbH}`}
         style={{
           display: "block", width: "100%", flex: 1, minHeight: 0,
-          cursor: dragging ? "grabbing" : "grab", userSelect: dragging ? "none" : "auto",
+          cursor: dragging ? "grabbing" : "grab", userSelect: "none",
+          // Prevent browser page gestures while the pointer is over the
+          // diagram; the component handles one-finger pan and two-finger zoom.
+          touchAction: "none",
         }}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerEnd}
+        onPointerCancel={handlePointerEnd}
       >
         <defs>
+          <clipPath id={pipelineClipId}>
+            <rect x={PIPE.x + 6} y={PIPE.y + 18} width={PIPE.w - 12} height={PIPE.h - 24} />
+          </clipPath>
           <filter id={glowId}>
             <feGaussianBlur stdDeviation="4" result="blur" />
             <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
@@ -424,7 +512,6 @@ export function FlowDiagram({
             with consecutive same-type deltas merged into one row. */}
         {(() => {
           const px = PIPE.x, py = PIPE.y, pw = PIPE.w, ph = PIPE.h;
-          const pipelineRows = aggregateEvents(turnEvents);
           // Pipeline is always visible — it's the canonical visual anchor for
           // the agent core. When the turn is local-match / idle / dropped, the
           // rows list shows the "(no agent stream events ...)" placeholder so
@@ -559,7 +646,7 @@ export function FlowDiagram({
               </text>
               {/* Copy button: just left of the guide ?. Copies the pipeline
                   content as plain text to the clipboard. */}
-              <g
+              {!isPhoneLayout && <g
                 onMouseDown={(e: React.MouseEvent) => { e.stopPropagation(); }}
                 onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleCopyPipeline(); }}
                 style={{ cursor: "pointer" }}
@@ -574,10 +661,10 @@ export function FlowDiagram({
                   style={{ pointerEvents: "none" }}>
                   {pipelineCopied ? "✓" : "⎘"}
                 </text>
-              </g>
+              </g>}
               {/* Guide button: top-right corner. Click toggles a popup
                   listing the OpenClaw stream types this pipeline can show. */}
-              <g
+              {!isPhoneLayout && <g
                 onMouseDown={(e: React.MouseEvent) => { e.stopPropagation(); }}
                 onClick={(e: React.MouseEvent) => { e.stopPropagation(); setPipelineGuideOpen(v => !v); }}
                 style={{ cursor: "pointer" }}
@@ -593,8 +680,8 @@ export function FlowDiagram({
                   style={{ pointerEvents: "none" }}>
                   ?
                 </text>
-              </g>
-              <foreignObject x={px + 6} y={py + 18} width={pw - 12} height={ph - 24} overflow="visible">
+              </g>}
+              {!isPhoneLayout && <foreignObject x={px + 6} y={py + 18} width={pw - 12} height={ph - 24} overflow="visible">
                 <div
                   // @ts-expect-error xmlns required for foreignObject HTML
                   xmlns="http://www.w3.org/1999/xhtml"
@@ -697,11 +784,39 @@ export function FlowDiagram({
                     );
                   })}
                 </div>
-              </foreignObject>
+              </foreignObject>}
+              {/* Mobile browsers can drop SVG foreignObject HTML entirely.
+                  Keep the stream summary in pure SVG text so the LLM/tool
+                  pipeline remains visible there; the native details sheet
+                  exposes full arguments and curl payloads. */}
+              {isPhoneLayout && (
+                <g clipPath={`url(#${pipelineClipId})`} pointerEvents="none">
+                  {pipelineRows.length === 0 ? (
+                    <text x={px + 10} y={py + 34} fill="var(--lm-text-muted)" fontSize={7} fontFamily="monospace">
+                      (no agent events)
+                    </text>
+                  ) : pipelineRows.slice(0, 11).map((row, index) => {
+                    const detail = row.kind === "tool" && row.detail
+                      ? ` · ${row.detail.replace(/\s+/g, " ").slice(0, 28)}`
+                      : row.kind === "thinking" || row.kind === "assistant"
+                        ? ` · ${formatPipelineDuration(row.durationMs)}`
+                        : "";
+                    return (
+                      <text key={`${row.kind}-${index}`} x={px + 10} y={py + 32 + index * 14}
+                        fill={pipelineRowColor(row.kind)} fontSize={7.5} fontWeight={700} fontFamily="monospace">
+                        {`${row.label}${detail}`}
+                      </text>
+                    );
+                  })}
+                  <text x={px + 10} y={py + ph - 12} fill="var(--lm-text-muted)" fontSize={6.5} fontFamily="monospace">
+                    View details for full payloads
+                  </text>
+                </g>
+              )}
               {/* Guide popup rendered LAST inside the pipeline group so it
                   paints on top of the event-row foreignObject (otherwise the
                   row list overlays the popup and swallows clicks on ✕). */}
-              {pipelineGuideOpen && (
+              {!isPhoneLayout && pipelineGuideOpen && (
                 <foreignObject
                   x={px + pw - 320} y={py + 22} width={320} height={ph - 30}
                   overflow="visible"
@@ -844,7 +959,7 @@ export function FlowDiagram({
                 </text>
               ))}
 
-              {hasInfo && (() => {
+              {hasInfo && !isPhoneLayout && (() => {
                 const textLines = lines.filter((l) => !l.startsWith("🖼"));
                 // agent_call carries the full chat_send message (often the
                 // pre-injected context for emotion.detected /
@@ -1002,6 +1117,94 @@ export function FlowDiagram({
           );
         })}
       </svg>
+
+      {isPhoneLayout && (
+        <button
+          type="button"
+          className="lm-u-btn"
+          onClick={() => setMobileDetailsOpen(true)}
+          style={{
+            alignSelf: "center", marginTop: 4, padding: "7px 12px", borderRadius: 7,
+            background: "var(--lm-blue-dim, rgba(96,165,250,0.14))",
+            border: "1px solid var(--lm-blue)", color: "var(--lm-blue)",
+            fontSize: 12, fontWeight: 700,
+          }}
+        >LLM / Tool / Curl details</button>
+      )}
+
+      {/* The chart keeps its native boxes on mobile. This sheet is an optional
+          readable view for long tool/curl payloads at the real viewport width. */}
+      {isPhoneLayout && mobileDetailsOpen && createPortal(
+        <div
+          className={`lm-root ${themeClass}`}
+          onClick={() => setMobileDetailsOpen(false)}
+          style={{
+            position: "fixed", inset: 0, zIndex: 102,
+            display: "flex", alignItems: "flex-end",
+            background: "rgba(0,0,0,0.62)", backdropFilter: "blur(3px)",
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-label="Agent details"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%", maxHeight: "78vh", overflowY: "auto",
+              background: "var(--lm-card)", border: "1px solid var(--lm-border)",
+              borderRadius: "16px 16px 0 0", padding: "16px 14px 24px",
+              boxSizing: "border-box",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "var(--lm-text)" }}>Agent details</div>
+                <div style={{ fontSize: 11, color: "var(--lm-text-muted)", marginTop: 2 }}>LLM, tools, curl arguments and node output</div>
+              </div>
+              <button
+                type="button"
+                className="lm-u-btn"
+                onClick={() => setMobileDetailsOpen(false)}
+                aria-label="Close agent details"
+                style={{ width: 32, height: 32, padding: 0, borderRadius: 7, fontSize: 17, color: "var(--lm-text)" }}
+              >×</button>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {pipelineRows.length === 0 ? (
+                <div style={{ padding: 12, borderRadius: 8, background: "var(--lm-surface)", color: "var(--lm-text-muted)", fontSize: 12 }}>
+                  No agent stream events were captured for this turn.
+                </div>
+              ) : pipelineRows.map((row, index) => {
+                const color = pipelineRowColor(row.kind);
+                const isStream = row.kind === "thinking" || row.kind === "assistant";
+                return (
+                  <div key={`${row.kind}-${index}`} style={{ borderLeft: `3px solid ${color}`, borderRadius: 7, padding: "8px 10px", background: "var(--lm-surface)" }}>
+                    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                      <span style={{ color, fontSize: 12, fontWeight: 700 }}>{row.label}</span>
+                      {isStream && <span style={{ color: "var(--lm-purple)", fontSize: 11, fontWeight: 600 }}>{formatPipelineDuration(row.durationMs)} · {row.chunks} chunks</span>}
+                      {row.kind === "tool" && <span style={{ color: "var(--lm-purple)", fontSize: 11, fontWeight: 600 }}>{row.durationMs > 0 ? formatPipelineDuration(row.durationMs) : "…"}</span>}
+                    </div>
+                    {row.detail && (
+                      <pre style={{ margin: "7px 0 0", whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 11, lineHeight: 1.45, color: "var(--lm-text-dim)" }}>{row.detail}</pre>
+                    )}
+                  </div>
+                );
+              })}
+
+              {mobileNodeDetails.map((detail) => (
+                <div key={detail.label} style={{ borderLeft: "3px solid var(--lm-teal)", borderRadius: 7, padding: "8px 10px", background: "var(--lm-surface)" }}>
+                  <div style={{ color: "var(--lm-teal)", fontSize: 12, fontWeight: 700, marginBottom: 5 }}>{detail.label}</div>
+                  {detail.lines.map((line, index) => (
+                    <pre key={index} style={{ margin: index === 0 ? 0 : "6px 0 0", whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 11, lineHeight: 1.45, color: "var(--lm-text-dim)" }}>{line}</pre>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>,
+        document.body,
+      )}
 
       {/* Snapshot lightbox — portalled to <body> so position:fixed anchors to
           the viewport. The diagram lives inside transformed/animated ancestors

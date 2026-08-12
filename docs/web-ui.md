@@ -215,6 +215,10 @@ Cards included:
   independent of the mute switch) and closes while the browser tab is
   hidden.
 
+On phone widths of **480px or less**, the four Overview status cards use one
+column. This preserves room for the Audio controls and VU meters, and prevents
+the shorter Presence card from being stretched by the taller Audio card.
+
 **Hardware** (horizontal card)
 - 8 badges: Servo / LED / Camera / Audio / Sensing / Voice / TTS / Display
 - **LED color swatch**: rounded square showing current LED strip color with hex code. Fetched from `GET /hw/led/color`.

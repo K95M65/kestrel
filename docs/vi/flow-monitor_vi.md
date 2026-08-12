@@ -44,7 +44,7 @@ Tối đa 4 dòng JSONL bonus / turn (thực tế 0–2). Stream name từ OpenC
 
 ## Sơ đồ Turn Pipeline (SVG)
 
-Component `FlowDiagram` trong `system/web/src/pages/Monitor.tsx` vẽ **ba vùng** (màu viền nền):
+Component `FlowDiagram` trong `system/web/src/pages/Monitor.tsx` vẽ **ba vùng** (màu viền nền). Có thể kéo bằng chuột hoặc một ngón tay để pan; chụm/mở hai ngón tay (hoặc dùng nút trừ/cộng trong canvas) để zoom, và dùng nút reset để về góc nhìn mặc định. Trên phone, stream LLM/tool được vẽ bằng SVG text thuần để hiển thị ổn định; nút **LLM / Tool / Curl details** mở panel native responsive cho payload dài và output node:
 
 | Vùng | Màu | Node |
 |------|-----|------|
