@@ -649,6 +649,7 @@ class SpeakerRecognizer:
         self._stranger_embeds: Optional[np.ndarray] = None  # [N, D] L2-normalized
         self._stranger_labels: Optional[np.ndarray] = None  # [N] str labels
         self._stranger_counter: int = 0
+        self._stranger_model_version: Optional[str] = None
         _VOICE_STRANGERS_DIR.mkdir(parents=True, exist_ok=True)
         self._load_strangers()
 
@@ -2533,6 +2534,8 @@ class SpeakerRecognizer:
         agg = agg / norm
 
         with self._stranger_lock:
+            # Model-change guard
+            self._ensure_stranger_store_compatible(int(agg.shape[0]))
             best_sim_pre = None  # captured for the "new cluster" log path
             best_label_pre: Optional[str] = None
             breakdown_pre = ""
@@ -2584,12 +2587,16 @@ class SpeakerRecognizer:
                     [self._stranger_labels, new_lbl], axis=0,
                 )
 
-            # Evict oldest entries once over the cap. Keeps disk bounded
-            # without impacting recent speakers the agent still cares about.
+            # Evict oldest entries once over the cap, dropping BOTH the centroid
+            # row and the cluster's on-disk voice_<N>/ WAV dir — an evicted
+            # cluster can never be matched again, so keeping its folder is pure
+            # disk leak. Recent speakers the agent still cares about are kept.
             if len(self._stranger_embeds) > _MAX_VOICE_STRANGERS:
                 drop = len(self._stranger_embeds) - _MAX_VOICE_STRANGERS
+                evicted = [str(lbl) for lbl in self._stranger_labels[:drop]]
                 self._stranger_embeds = self._stranger_embeds[drop:]
                 self._stranger_labels = self._stranger_labels[drop:]
+                self._remove_cluster_dirs(evicted)
 
             self._save_strangers()
             if best_sim_pre is not None:
@@ -2637,6 +2644,10 @@ class SpeakerRecognizer:
             logger.info("Auto-merge scan: query embedding has zero norm — skip")
             return []
         with self._stranger_lock:
+            # Same model-change guard as the recognize path (see
+            # _assign_voiceprint_hash) — never compare against centroids from a
+            # superseded model.
+            self._ensure_stranger_store_compatible(int(q.shape[0]))
             if (
                 self._stranger_embeds is None
                 or self._stranger_labels is None
@@ -2665,16 +2676,115 @@ class SpeakerRecognizer:
                 if float(s) > threshold
             ]
 
-    def _save_strangers(self) -> None:
-        """Persist stranger state to disk. Caller must hold _stranger_lock."""
-        if self._stranger_embeds is None or self._stranger_labels is None:
+    def _ensure_stranger_store_compatible(self, query_dim: int) -> None:
+        """Wipe the stranger store unless it is PROVEN to match the current model.
+
+        Caller must hold ``_stranger_lock``. The verdict is deliberately
+        conservative — the store is kept ONLY when we can prove it came from the
+        model in use right now:
+
+        * ``_server_model_version`` (the live model, refreshed by every /embed
+          call) is known, the store's stamp **equals** it, AND the stored
+          embedding dim equals the query dim → **keep**.
+        * Anything else — a **missing** stamp, a **different** stamp, or a
+          **different** dim — cannot prove same-model provenance, so the store
+          is **wiped**. We never ASSUME an unstamped store is current: a
+          same-dim checkpoint swap under a different model would otherwise slip
+          through (exactly the case a dim check alone misses).
+
+        When the server reports **no** version at all we have no version signal,
+        so we fall back to a dim-only guard (a same-dim swap is undetectable
+        without a version). Strangers are anonymous / ephemeral, so a mismatch
+        WIPES the table (never re-embeds); ``_stranger_counter`` stays monotonic
+        so a fresh ``voice_<N>`` never collides with a leftover cluster dir.
+        """
+        cur = self._server_model_version
+        if self._stranger_embeds is None or len(self._stranger_embeds) == 0:
+            # Empty store — nothing to invalidate; adopt the current stamp so a
+            # fresh store is labelled with the model it will be built under.
+            if cur and self._stranger_model_version != cur:
+                self._stranger_model_version = cur
+                self._save_strangers()
             return
+
+        dim_ok = int(self._stranger_embeds.shape[1]) == int(query_dim)
+        version_ok = (not cur) or (self._stranger_model_version == cur)
+        if version_ok and dim_ok:
+            return
+        reason = (
+            f"stranger store not confirmed for current model "
+            f"(store={self._stranger_model_version or '<unset>'}/"
+            f"dim{int(self._stranger_embeds.shape[1])} -> "
+            f"server={cur or '<unset>'}/dim{int(query_dim)})"
+        )
+        self._stranger_model_version = cur
+        self._wipe_stranger_store(reason)
+
+    def _wipe_stranger_store(self, reason: str) -> None:
+        """Drop all stranger data: in-memory centroids + on-disk WAV clusters.
+
+        Caller must hold ``_stranger_lock``. ``_stranger_counter`` is KEPT
+        (monotonic) so a new ``voice_<N>`` label can never collide with any
+        leftover cluster dir. Persists the wipe so a restart does not reload the
+        superseded centroids.
+        """
+        n = 0 if self._stranger_embeds is None else len(self._stranger_embeds)
+        logger.warning(
+            "Wiping voice stranger store (%d cluster(s), counter kept at %d) — %s",
+            n, self._stranger_counter, reason,
+        )
+        self._stranger_embeds = None
+        self._stranger_labels = None
+        # Remove EVERY on-disk voice_<N>/ dir — including orphans whose centroid
+        # was already evicted. Scan the disk (not the label table) so nothing is
+        # stranded; _remove_cluster_dirs applies the same regex filter, so any
+        # non-cluster entry is skipped.
         try:
-            np.save(_VOICE_STRANGERS_DIR / "embeds.npy", self._stranger_embeds)
-            np.save(_VOICE_STRANGERS_DIR / "labels.npy", self._stranger_labels)
+            names = [e.name for e in _UNKNOWN_AUDIO_DIR.iterdir() if e.is_dir()]
+        except OSError as e:
+            logger.warning("Wipe strangers: failed to list cluster dirs: %s", e)
+            names = []
+        self._remove_cluster_dirs(names)
+        self._save_strangers()
+
+    def _remove_cluster_dirs(self, labels: Iterable[str]) -> None:
+        """rmtree the on-disk ``voice_<N>/`` WAV dirs for the given labels.
+
+        The single place that deletes cluster folders. Used by eviction (the
+        specific labels pushed out of the centroid table) and by
+        ``_wipe_stranger_store`` (every on-disk dir). Non-cluster names are
+        skipped via the ``voice_<N>`` regex. Best-effort; never raises. Caller
+        holds ``_stranger_lock``.
+        """
+        for label in labels:
+            if not label or not _VOICE_STRANGER_DIR_RE.match(label):
+                continue
+            cluster_dir = _UNKNOWN_AUDIO_DIR / label
+            if cluster_dir.is_dir():
+                shutil.rmtree(cluster_dir, ignore_errors=True)
+
+    def _save_strangers(self) -> None:
+        """Persist stranger state to disk. Caller must hold _stranger_lock.
+
+        Always persists the counter + model-version stamp. Centroid tables are
+        written when present and DELETED when the store was wiped (embeds None),
+        so a restart never reloads centroids a model change invalidated.
+        """
+        embeds_path = _VOICE_STRANGERS_DIR / "embeds.npy"
+        labels_path = _VOICE_STRANGERS_DIR / "labels.npy"
+        try:
+            if self._stranger_embeds is not None and self._stranger_labels is not None:
+                np.save(embeds_path, self._stranger_embeds)
+                np.save(labels_path, self._stranger_labels)
+            else:
+                embeds_path.unlink(missing_ok=True)
+                labels_path.unlink(missing_ok=True)
             np.save(
                 _VOICE_STRANGERS_DIR / "counter.npy",
                 np.array(self._stranger_counter),
+            )
+            (_VOICE_STRANGERS_DIR / "version.txt").write_text(
+                self._stranger_model_version or ""
             )
         except OSError as e:
             logger.warning("save voice strangers failed: %s", e)
@@ -2684,19 +2794,30 @@ class SpeakerRecognizer:
         embeds_path = _VOICE_STRANGERS_DIR / "embeds.npy"
         labels_path = _VOICE_STRANGERS_DIR / "labels.npy"
         counter_path = _VOICE_STRANGERS_DIR / "counter.npy"
+        version_path = _VOICE_STRANGERS_DIR / "version.txt"
+        # Counter + version stamp survive a wipe (centroids may be absent) — load
+        # them first so a monotonic counter never reuses an old label.
+        if counter_path.exists():
+            try:
+                self._stranger_counter = int(np.load(counter_path))
+            except Exception:
+                self._stranger_counter = 0
+        if version_path.exists():
+            try:
+                self._stranger_model_version = version_path.read_text().strip() or None
+            except OSError:
+                self._stranger_model_version = None
         if not (embeds_path.exists() and labels_path.exists()):
             return
         try:
             self._stranger_embeds = np.load(embeds_path)
             self._stranger_labels = np.load(labels_path)
-            if counter_path.exists():
-                self._stranger_counter = int(np.load(counter_path))
             logger.info(
-                "Loaded %d voice strangers (counter=%d)",
+                "Loaded %d voice strangers (counter=%d, model=%s)",
                 len(self._stranger_embeds), self._stranger_counter,
+                self._stranger_model_version or "<unset>",
             )
         except Exception as e:
             logger.warning("load voice strangers failed: %s", e)
             self._stranger_embeds = None
             self._stranger_labels = None
-            self._stranger_counter = 0

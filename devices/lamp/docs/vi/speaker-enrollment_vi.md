@@ -130,11 +130,13 @@ Mọi giọng lạ được gom cụm local để server biết "đây là cùng
 2. So với các centroid cụm stranger đã lưu (cosine similarity).
 3. Match ≥ `SPEAKER_MATCH_THRESHOLD` (mặc định `0.75` — **cùng** ngưỡng với khớp known-speaker; không có ngưỡng riêng cho người lạ) → dùng lại label `voice_N`.
 4. Không match → tạo label mới `voice_{counter}`, thêm centroid vào state trên đĩa.
-5. Giới hạn `HAL_MAX_VOICE_STRANGERS` (mặc định `50`) — evict oldest khi vượt.
+5. Giới hạn `HAL_MAX_VOICE_STRANGERS` (mặc định `50`) — evict oldest khi vượt; eviction xoá **cả** hàng centroid **lẫn** thư mục WAV `voice_N/` của cụm đó trên đĩa (cụm bị evict không bao giờ match lại được nữa nên giữ folder là rác đĩa).
 6. Hash được:
    - trả trong response recognize dưới field `voiceprint_hash: "voice_N"` (null cho known speaker)
    - gắn vào message nudge dạng tag `[voice:voice_N]` để skill đối chiếu qua các turn
    - dùng để group WAV vào subdir (xem Lưu trữ)
+
+**Đổi model thì xoá sạch cluster stranger.** Centroid stranger chỉ so được với query của **cùng** model embedding — nên khác với profile đã enroll (được *re-embed* từ WAV giữ lại), toàn bộ store stranger bị **xoá** khi model đổi. Store được dán nhãn version model đã dựng nó (`voice_strangers/version.txt`); trước mỗi lần so, HAL **chỉ giữ store khi chứng minh được cùng model** — biết version server hiện tại, stamp của store **bằng** nó, **và** dim lưu bằng dim query. Còn lại — **thiếu** stamp, **khác** stamp, hoặc **khác** dim — đều không chứng minh được centroid do model hiện tại tạo, nên HAL bỏ centroid in-memory, xoá `embeds.npy`/`labels.npy` và mọi thư mục WAV `voice_N/` trên đĩa, rồi dán nhãn lại. (Store chưa stamp **không bao giờ được mặc định** là hiện tại: swap checkpoint cùng chiều dưới model khác sẽ lọt.) Khi server **không** báo version, HAL lùi về guard chỉ theo dim. `_stranger_counter` **giữ đơn điệu** để `voice_N` mới không đụng thư mục cũ còn sót. Chọn xoá (không re-embed) là có chủ đích: stranger ẩn danh và ngắn hạn, re-embed cụm vứt đi không đáng chi phí network.
 
 **Trim silence cuối**: trước khi WAV đi qua embedding API, buffer speaker-ID được cắt tại frame speech cuối cùng + 200ms tail. Nếu không, câu 3s sẽ thành ~5.5s với ~45% silence, làm loãng embedding. Chỉ ảnh hưởng path speaker-ID — STT vẫn nhận đủ stream.
 
@@ -216,9 +218,10 @@ Thư mục output mặc định đã được git-ignore — tuyệt đối khô
     incoming_{ts}_{uuid}.wav         # Audio unknown — gom theo cụm voiceprint
 
 /root/local/voice_strangers/
-  embeds.npy                         # Centroid các cluster stranger [N, 256]
-  labels.npy                         # Label cluster ["voice_1", "voice_2", ...]
-  counter.npy                        # Counter tăng cho label mới
+  embeds.npy                         # Centroid các cluster stranger [N, 256] (bị xoá khi store bị wipe)
+  labels.npy                         # Label cluster ["voice_1", "voice_2", ...] (bị xoá khi store bị wipe)
+  counter.npy                        # Counter tăng cho label mới (giữ qua wipe)
+  version.txt                        # Version model embedding đã dựng centroid; lệch → wipe
 ```
 
 ## API Endpoints (HAL, port 5001)

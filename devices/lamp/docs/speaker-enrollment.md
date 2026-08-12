@@ -129,11 +129,13 @@ Every unknown voice is locally clustered so the server can say "this is the same
 2. Compare against stored stranger-cluster centroids (cosine similarity).
 3. Match ≥ `SPEAKER_MATCH_THRESHOLD` (default `0.75` — the **same** threshold as known-speaker matching; there is no separate stranger threshold) → reuse existing label `voice_N`.
 4. No match → allocate new label `voice_{counter}`, append centroid to on-disk state.
-5. Cap at `HAL_MAX_VOICE_STRANGERS` (default `50`) — oldest evicted when exceeded.
+5. Cap at `HAL_MAX_VOICE_STRANGERS` (default `50`) — oldest evicted when exceeded; eviction drops **both** the centroid row and that cluster's on-disk `voice_N/` WAV dir (an evicted cluster can never be matched again, so keeping its folder is dead disk).
 6. The assigned hash is:
    - returned on the recognize response as `voiceprint_hash: "voice_N"` (null for known speakers)
    - surfaced in the nudge message as `[voice:voice_N]` tag so the skill can correlate turns
    - used to subdir-group the saved WAV (see Storage)
+
+**Model change wipes the cluster store.** Stranger centroids are only comparable to a query from the **same** embedding model — so unlike enrolled profiles (which are *re-embedded* from retained WAVs), the whole stranger store is **wiped** when the model changes. The store is stamped with the model version it was built under (`voice_strangers/version.txt`); before any compare, HAL keeps the store **only when it can prove same-model provenance** — the live server version is known, the store's stamp **equals** it, **and** the stored dim equals the query dim. Anything else — a **missing** stamp, a **different** stamp, or a **different** dim — cannot prove the centroids came from the current model, so HAL drops the in-memory centroids, deletes the `embeds.npy`/`labels.npy` and every on-disk `voice_N/` WAV dir, and re-stamps. (An unstamped store is **never assumed** current: a same-dim checkpoint swap under a different model would otherwise slip through.) When the server reports **no** version at all, HAL falls back to a dim-only guard. `_stranger_counter` is kept **monotonic** so a freshly minted `voice_N` never collides with a leftover dir. Wiping (not re-embedding) is deliberate: strangers are anonymous and short-lived, so re-embedding throwaway clusters isn't worth the network cost.
 
 **Trailing-silence trim**: before the WAV goes to the embedding API, the speaker-ID buffer is truncated at the last speech frame + 200 ms tail. Without this a 3-second utterance ends up as ~5.5 s with ~45% silence, diluting the embedding. Only affects the speaker-ID path — STT still receives the full stream.
 
@@ -215,9 +217,10 @@ The default output dir is git-ignored — never commit trace output. The tracer 
     incoming_{ts}_{uuid}.wav         # Unknown audio — grouped by voiceprint cluster
 
 /root/local/voice_strangers/
-  embeds.npy                         # Stranger cluster centroids [N, 256]
-  labels.npy                         # Cluster labels ["voice_1", "voice_2", ...]
-  counter.npy                        # Monotonic counter for next new label
+  embeds.npy                         # Stranger cluster centroids [N, 256] (deleted while store is wiped)
+  labels.npy                         # Cluster labels ["voice_1", "voice_2", ...] (deleted while store is wiped)
+  counter.npy                        # Monotonic counter for next new label (survives a wipe)
+  version.txt                        # Embed-model version the centroids were built under; mismatch → wipe
 ```
 
 ## API Endpoints (HAL, port 5001)
