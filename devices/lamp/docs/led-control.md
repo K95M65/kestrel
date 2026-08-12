@@ -6,6 +6,15 @@
 - Driver: `rpi_ws281x` (Python, HAL owns)
 - FastAPI endpoints on `:5001`
 
+### SPI bit timing
+
+The SPI driver encodes WS2812 bits at 6.4 MHz: `_BIT0 = 0xC0` (~312ns high),
+`_BIT1 = 0xFC` (~937ns high). `_BIT1` used to be `0xF8` (~781ns) and individual
+pixels dropped 1-bits — a dim solid such as the setup cue `[16,16,16]` came up
+with one pixel blue or yellow depending on which channel that pixel misread.
+781ns is inside the 580-1000ns datasheet window on paper, but the strip runs at
+5V off a 3.3V data line and the slow rise time eats the effective high.
+
 ### Boot clear
 
 `RGBService.__init__` blanks the strip as soon as the driver is up, before any
