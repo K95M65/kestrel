@@ -444,6 +444,11 @@ turn ("hello") right after a restart would leak to the main agent.
    correction reaches the reply, and the model falls back to whatever identity its
    session memory holds. `gemini-3.1-flash-live` and OpenAI accept both. Every drop
    is logged (`[realtime->model] DROPPED …`).
+
+   **This does not apply to the shipped default.** `REALTIME_GEMINI_MODEL` defaults to
+   `gemini-3.1-flash-live-preview` (`hal/config.py:734`), which is not native-audio, so
+   the guard is off and both the context and the correction reach the model. It
+   re-engages only when a `*native-audio*` model is configured.
 4. **Commit.** At session end, if enabled + `available` + audio buffered,
    `commit_audio()` fires. A `thinking` emotion cue fires with the commit
    (face + servo + a FORCED purple LED pulse — `thinking` is normally a

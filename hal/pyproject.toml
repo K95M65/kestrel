@@ -29,15 +29,16 @@ dependencies = [
     "ultralytics>=8.4,<9",
     "soundfile>=0.12",
     "scipy>=1.8",
-    "silero-vad",
     "noisereduce",
-    # Pin torchaudio to the torch version resolved per-platform (silero-vad pulls
-    # it transitively). Left unconstrained, uv grabs the latest torchaudio, whose
-    # aarch64 wheel is CUDA-linked (needs libcudart.so.13) and fails to import on
-    # the GPU-less device Pi, breaking the on-device VAD. Markers mirror torch.
-    "torchaudio==2.7.1; sys_platform != 'darwin' or platform_machine != 'x86_64'",
-    "torchaudio==2.2.2; sys_platform == 'darwin' and platform_machine == 'x86_64'",
-    "sounddevice",
+    # NOTE: `silero-vad` and its `torchaudio` pins used to sit here. The
+    # speaker-recognition VAD now runs TEN-VAD from the vendored
+    # `hal/drivers/voice/ten_vad_lite` (numpy + onnxruntime, both already listed
+    # above), and nothing in `hal/` imports torch or torchaudio any more — so
+    # both are gone rather than pinned. Don't re-add the pins to "be safe": a
+    # direct entry FORCES the install, which is what we are removing. They only
+    # ever existed because silero-vad pulled torchaudio in and the latest aarch64
+    # wheel is CUDA-linked (needs libcudart.so.13), so it failed to import on the
+    # GPU-less device Pi and took the on-device VAD down with it.
     "insightface>=0.7.3; sys_platform != 'darwin' or platform_machine != 'x86_64'",
     "onnxruntime>=1.23.2",
     "insightface>=0.7.3",

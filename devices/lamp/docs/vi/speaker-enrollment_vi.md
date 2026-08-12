@@ -14,17 +14,17 @@ Lamp nhận diện người nói qua **WeSpeaker ResNet34** (vector nhúng 256 c
 │                                                                     │
 │  VoiceService._stream_session()                                     │
 │    ├─ STT chuyển giọng nói → văn bản                                │
-│    ├─ _identify_and_decorate(transcript)                            │
+│    ├─ identify_and_decorate(transcript)                             │
 │    │   ├─ audio_buffer → WAV → tiền xử lý tại thiết bị (cổng VAD)   │
 │    │   │   └─ Mono→Resample→[HPF]→[NR]→VAD→[STOI]→RMS; loại clip kém rõ│
 │    │   ├─ POST /audio-recognizer/embed  (preprocess=false)         │
 │    │   │   └─ WeSpeaker ONNX → vector 256 chiều (chỉ lấy embedding) │
 │    │   ├─ Bình chọn theo từng chunk so với embedding đã đăng ký     │
-│    │   ├─ Khớp ≥ 0.7 → "Speaker - Tên: transcript"                 │
-│    │   └─ Không khớp → _format_unknown_speaker()                   │
-│    │       ├─ _should_request_enroll() kiểm tra điều kiện           │
-│    │       │   ├─ ≥ 25 từ trong transcript                          │
-│    │       │   └─ ≥ 5 giây audio                                    │
+│    │   ├─ Khớp ≥ 0.5 cos gốc → "Speaker - Tên: transcript"          │
+│    │   └─ Không khớp → _format_unknown_speaker_message()            │
+│    │       ├─ _should_request_speaker_enroll() kiểm tra điều kiện   │
+│    │       │   ├─ ≥ 10 từ trong transcript                          │
+│    │       │   └─ ≥ 2 giây audio                                    │
 │    │       ├─ ĐẠT → "Unknown Speaker: ... (audio save at <path>,   │
 │    │       │          auto enroll ...)"                              │
 │    │       └─ KHÔNG ĐẠT → "Unknown Speaker: ..." (không kèm yêu   │
@@ -69,10 +69,10 @@ Bốn lớp ngăn agent hỏi "bạn là ai?" liên tục:
 
 | Lớp | Vị trí | Điều kiện | Mục đích |
 |-----|--------|-----------|----------|
-| **Thời lượng audio** | HAL `voice_service.py` | `duration_s < SPEAKER_MIN_AUDIO_S` (0.8s) | Bỏ qua nhận diện hoàn toàn cho audio quá ngắn |
-| **Yêu cầu đăng ký** | HAL `_should_request_enroll()` | `≥ 15 từ VÀ ≥ 2s audio` | Không kèm instruction đăng ký đầy đủ cho câu ngắn (biến thể ngắn kèm gợi ý combine vẫn được gửi) |
+| **Thời lượng audio** | HAL `_internal/speaker_decorate.py` | `duration_s < SPEAKER_MIN_AUDIO_S` (0.8s) | Bỏ qua nhận diện hoàn toàn cho audio quá ngắn |
+| **Yêu cầu đăng ký** | HAL `_should_request_speaker_enroll()` | `≥ 10 từ VÀ ≥ 2s audio` | Không kèm instruction đăng ký đầy đủ cho câu ngắn (biến thể ngắn kèm gợi ý combine vẫn được gửi) |
 | **Cooldown nhắc nhở phía Lamp** | Lamp `domain/voice.go` | `5 phút kể từ lần nhắc trước` | Không chèn SKILL.md instruction quá 1 lần mỗi 5 phút |
-| **Cooldown theo voiceprint** | HAL `voice_service.py` | `30 phút mỗi voiceprint_hash` (`HAL_ENROLL_NUDGE_COOLDOWN_S`) | Không lặp lại "hỏi tên user" cho cùng một cluster giọng lạ; gửi message `Unknown Speaker:` trần |
+| **Cooldown theo voiceprint** | HAL `_internal/speaker_decorate.py` | `30 phút mỗi voiceprint_hash` (`HAL_ENROLL_NUDGE_COOLDOWN_S`) | Không lặp lại "hỏi tên user" cho cùng một cluster giọng lạ; gửi message `Unknown Speaker:` trần |
 
 ## Model & Embedding
 
@@ -96,11 +96,13 @@ Bốn lớp ngăn agent hỏi "bạn là ai?" liên tục:
 
 ### Tiền xử lý audio (tại thiết bị)
 
-Pipeline lọc/VAD/chuẩn hoá trước đây chạy trong perception-service nay chạy trên HAL, ngay cạnh mic — cùng bộ processor, cùng thứ tự, cùng giá trị mặc định, được port sang `hal/drivers/voice/speaker_recognizer/audio_processors/` (khớp `AudioProcessorFactory` bên perception-service). Nhờ vậy audio bị loại không tốn băng thông và quyết định cổng nằm ngay tại thiết bị.
+Pipeline lọc/VAD/chuẩn hoá trước đây chạy trong perception-service nay chạy trên HAL, ngay cạnh mic — cùng bộ processor, cùng thứ tự, được port sang `hal/drivers/voice/speaker_recognizer/audio_processors/` (khớp `AudioProcessorFactory` bên perception-service). Nhờ vậy audio bị loại không tốn băng thông và quyết định cổng nằm ngay tại thiết bị.
 
-- **Chuỗi mặc định**: `MonoConverter → Resampler(16k) → VoiceActivityFilter(silero) → SpeechIntelligibilityFilter(0.75) → RMSNormalizer(0.1)`. `HighPassFilter` và `NoiseReducer` có sẵn nhưng **tắt mặc định** (giống perception).
-- **Cổng VAD** (silero-vad): cắt phần không có tiếng ở đầu/cuối và loại clip khi VAD xoá hết speech, phần còn lại `< 0.5s`, hoặc tỉ lệ tiếng nói `< 0.4`. Clip bị loại sẽ raise `PreprocessRejected` → HAL trả "không xác định" khi recognize và bỏ qua mẫu khi enroll — đúng như hành vi khi perception trả HTTP 400 trước đây.
-- **Cổng STOI** (`SpeechIntelligibilityFilter`, STOI SQUIM-OBJECTIVE không cần tham chiếu): chạy **sau VAD, trước RMS**. Chấm điểm clip đã cắt theo từng chunk 5 giây rồi lấy **trung bình**, sau đó loại khi STOI trung bình `< 0.75` (chunk NaN do im lặng cũng bị loại), raise `PreprocessRejected(reason="low_intelligibility")` → cùng đường audio-level reject như VAD (recognize → "không xác định", enroll → bỏ qua mẫu, giữ nguyên các mẫu đã có trên đĩa). Bộ ước lượng ONNX (~20 MB, tải về khi dùng lần đầu từ CDN vào `/root/local/models/squimm_stoi.onnx` — xem `audio_processors/model_store.py`, cùng quy ước với model pose/faceid — onnxruntime CPU với mem-arena tắt) nạp một lần dạng lazy singleton cùng silero VAD và chỉ chạy sau khi VAD đạt — tối đa một lần mỗi phát ngôn. Nếu không phân giải được weight (CDN không truy cập được / tên file lạ) thì bỏ qua cổng kèm cảnh báo (không crash).
+- **Chuỗi mặc định**: `MonoConverter → Resampler(16k) → VoiceActivityFilter(TEN-VAD) → SpeechIntelligibilityFilter(0.70) → RMSNormalizer(0.1)`. `HighPassFilter` và `NoiseReducer` có sẵn nhưng **tắt mặc định** (giống perception).
+- **Cổng VAD** (TEN-VAD qua package vendored `hal/drivers/voice/ten_vad_lite/`): cắt phần không có tiếng ở đầu/cuối và loại clip khi VAD xoá hết speech, phần còn lại `< 0.5s`, hoặc tỉ lệ tiếng nói `< 0.25`. Clip bị loại sẽ raise `PreprocessRejected` → HAL trả "không xác định" khi recognize và bỏ qua mẫu khi enroll — đúng như hành vi khi perception trả HTTP 400 trước đây.
+- **Vì sao TEN-VAD chứ không phải silero**: stage này chạy package torch `silero-vad` cho tới khi được thay bằng model ONNX FP32 ~300 KB của TEN-VAD, chạy trên numpy + onnxruntime (cả hai đều đã là dependency của HAL — chỉ dùng model gốc, không ship bản lượng tử hoá). Cùng tên class, cùng chữ ký constructor, cùng các lý do reject, nên phần còn lại của pipeline không đổi. Điểm được là **bỏ torch khỏi nhánh này**: import + nạp model tốn +43 MB thay vì +170 MB, khởi động nguội nhanh hơn ~27 lần, và onnxruntime có wheel aarch64 trong khi `libten_vad` dựng sẵn của TEN-VAD upstream không có bản Linux-arm64 nào. TEN-VAD chỉ hỗ trợ 16 kHz — điều mà `Resampler` phía trước đã bảo đảm.
+- **Cổng chống dương tính giả** (silero không có): cổng **speaker-band** chỉ giữ các frame VAD nằm trong dải cao độ của chính clip, còn cổng **mức** loại các frame thấp hơn 20 dB so với mức tiếng nói của chính clip. Chúng quan trọng vì bộ lọc giữ *từ mẫu speech đầu tiên tới mẫu cuối cùng*, nên một dương tính giả muộn (tiếng cửa, tiếng gõ) sẽ kéo toàn bộ khoảng lặng phía trước vào clip. Cùng nhau, chúng nâng tỉ lệ phần được giữ thực sự là tiếng nói từ ~0.67 lên ~0.79, đổi lại recall giảm thật (0.98 → 0.76) — đánh đổi đúng cho bài toán nhận diện, nơi 2 giây sạch hơn 6 giây bẩn. Chúng giả định **mỗi clip chỉ có một người nói chính**: người nói nền bị loại (thường là điều mong muốn, vì sẽ làm nhiễu embedding), nhưng một người nói thứ hai thật sự mà nói nhỏ hơn cũng bị loại theo. Vì chúng cũng cắt phần không phải tiếng nói ở *bên trong* đoạn giữ lại, tỉ lệ tiếng nói giảm một cách máy móc — nên ngưỡng tỉ lệ tối thiểu đổi từ `0.4` xuống `0.25`. Đặt `HAL_SPEAKER_PROC_VAD_SPEAKER_BAND=false` và `HAL_SPEAKER_PROC_VAD_MAX_LEVEL_DROP_DB=` (rỗng) để chạy TEN-VAD thuần.
+- **Cổng STOI** (`SpeechIntelligibilityFilter`, STOI SQUIM-OBJECTIVE không cần tham chiếu): chạy **sau VAD, trước RMS**. Chấm điểm clip đã cắt theo từng chunk 5 giây rồi lấy **trung bình**, sau đó loại khi STOI trung bình `< 0.70` (chunk NaN do im lặng cũng bị loại), raise `PreprocessRejected(reason="low_intelligibility")` → cùng đường audio-level reject như VAD (recognize → "không xác định", enroll → bỏ qua mẫu, giữ nguyên các mẫu đã có trên đĩa). Bộ ước lượng ONNX (~20 MB, tải về khi dùng lần đầu từ CDN vào `/root/local/models/squimm_stoi.onnx` — xem `audio_processors/model_store.py`, cùng quy ước với model pose/faceid — onnxruntime CPU với mem-arena tắt) nạp một lần dạng lazy singleton cùng TEN-VAD và chỉ chạy sau khi VAD đạt — tối đa một lần mỗi phát ngôn. Nếu không phân giải được weight (CDN không truy cập được / tên file lạ) thì bỏ qua cổng kèm cảnh báo (không crash).
 - **Cờ server**: HAL gửi `preprocess=false`; `/embed` của perception chỉ để embed và nay cũng mặc định `preprocess=false` (HAL là caller duy nhất). Caller nào upload audio thô có thể truyền `preprocess=true` để server tự làm sạch.
 - **Nhất quán**: enroll và recognize dùng chung một pipeline này, nên các đăng ký sau khi chuyển vẫn tự nhất quán. Giọng đã đăng ký dưới pipeline **server cũ** nên đăng ký lại nếu chất lượng khớp giảm.
 
@@ -117,7 +119,7 @@ Mọi giọng lạ được gom cụm local để server biết "đây là cùng
 
 1. Sau khi embedding audio, recognizer tổng hợp embedding theo chunk thành 1 vector chuẩn hoá L2.
 2. So với các centroid cụm stranger đã lưu (cosine similarity).
-3. Match ≥ `SPEAKER_MATCH_THRESHOLD` (mặc định `0.75` — **cùng** ngưỡng với khớp known-speaker; không có ngưỡng riêng cho người lạ) → dùng lại label `voice_N`.
+3. Match ≥ `SPEAKER_MATCH_COS` (mặc định `0.5` raw — **cùng** ngưỡng với khớp known-speaker; không có ngưỡng riêng cho người lạ) → dùng lại label `voice_N`, và nếu câu nói bổ sung điều gì mới thì thêm nó thành một hàng nữa. Một cụm giữ **nhiều hàng**, không phải một centroid trung bình, giới hạn bởi `SPEAKER_MAX_CLUSTER_SAMPLES` (mặc định `3`).
 4. Không match → tạo label mới `voice_{counter}`, thêm centroid vào state trên đĩa.
 5. Giới hạn `HAL_MAX_VOICE_STRANGERS` (mặc định `50`) — evict oldest khi vượt.
 6. Hash được:
@@ -131,15 +133,19 @@ Mọi giọng lạ được gom cụm local để server biết "đây là cùng
 
 | Tham số | Mặc định | Biến môi trường | Mô tả |
 |---------|----------|-----------------|-------|
-| Ngưỡng khớp | 0.75 | `SPEAKER_MATCH_THRESHOLD` | Confidence tối thiểu để khớp |
-| Ngưỡng consistency khi đăng ký | 0.75 | `SPEAKER_ENROLL_CONSISTENCY_THRESHOLD` | Cosine similarity tối thiểu giữa các mẫu |
+| Ngưỡng khớp | 0.5 | `SPEAKER_MATCH_COS` | Cosine **gốc** tối thiểu để khớp; cũng dùng để ghép cặp clip trong lô enroll nhiều mẫu (trước là `SPEAKER_MATCH_THRESHOLD` = 0.75 scaled; `raw = 2 × scaled − 1`) |
+| Độ đa dạng | 0.7 | `SPEAKER_DIVERSITY_COS` | Trên mức này lượt nói trùng với mẫu đã lưu → không giữ. Đo độ dư thừa, không phải danh tính — phải nằm trên ngưỡng khớp |
+| Số mẫu extended tối đa | 3 | `SPEAKER_MAX_EXTENDED_SAMPLES` | Mẫu tự thu cho mỗi user. Cap an toàn: truy hồi là max-over-rows nên thêm hàng sẽ nâng điểm của mọi speaker |
+| Số mẫu cụm tối đa | 3 | `SPEAKER_MAX_CLUSTER_SAMPLES` | Số hàng giữ cho mỗi cụm giọng lạ |
+| Thời lượng tối thiểu để mở rộng | 2.0s | `SPEAKER_EXTEND_MIN_DURATION_SEC` | Lượt nói phải dài tối thiểu bằng này mới được một suất extended |
+| Biên tối thiểu để mở rộng | 0.05 | `SPEAKER_EXTEND_MIN_MARGIN_COS` | ...và phải dẫn trước người á quân ít nhất bằng này |
 | Timeout API | 15s | `SPEAKER_EMBEDDING_API_TIMEOUT_S` | Timeout HTTP cho embedding API |
 | Audio tối thiểu cho nhận diện | 0.8s | `HAL_SPEAKER_MIN_AUDIO_S` | Bỏ qua nhận diện dưới ngưỡng này |
-| Số từ tối thiểu cho nudge đăng ký | 15 | Hardcoded trong `_should_request_enroll()` | Cổng số từ transcript |
-| Thời lượng tối thiểu cho nudge đăng ký | 2.0s | Hardcoded trong `_should_request_enroll()` | Cổng thời lượng audio |
+| Số từ tối thiểu cho nudge đăng ký | 10 | Hardcoded trong `_should_request_speaker_enroll()` | Cổng số từ transcript |
+| Thời lượng tối thiểu cho nudge đăng ký | 2.0s | Hardcoded trong `_should_request_speaker_enroll()` | Cổng thời lượng audio |
 | Cooldown nhắc nhở phía Lamp | 5 phút | Hardcoded trong `domain/voice.go` | Không inject SKILL instruction toàn cục quá 1 lần/5 phút |
 | Cooldown nhắc nhở theo voiceprint | 30 phút | `HAL_ENROLL_NUDGE_COOLDOWN_S` | Không hỏi lại tên cho cùng cluster voiceprint |
-| Ngưỡng match voice stranger | _(dùng chung)_ | `SPEAKER_MATCH_THRESHOLD` | Dùng lại ngưỡng khớp known-speaker để gom giọng lạ vào `voice_N` đã có — không có knob riêng |
+| Ngưỡng match voice stranger | _(dùng chung)_ | `SPEAKER_MATCH_COS` | Dùng lại ngưỡng khớp known-speaker để gom giọng lạ vào `voice_N` đã có — không có knob riêng |
 | Số voice stranger tối đa | 50 | `HAL_MAX_VOICE_STRANGERS` | Giới hạn cluster; evict oldest khi vượt |
 | Thư mục voice strangers | `/root/local/voice_strangers` | `HAL_VOICE_STRANGERS_DIR` | Persist embedding cluster (tồn tại qua reboot) |
 | Bật/tắt nhận diện giọng nói | true | `HAL_SPEAKER_RECOGNITION_ENABLED` | Công tắc tổng (mặc định bật; gate theo capability `audio`) |
@@ -155,13 +161,15 @@ Khớp giá trị mặc định của `AudioProcessorSetting` bên perception; o
 | Resample | bật | `HAL_SPEAKER_PROC_ENABLE_RESAMPLE` | Resample về SR đích |
 | High-pass | tắt | `HAL_SPEAKER_PROC_ENABLE_HIGH_PASS` / `..._HIGH_PASS_CUTOFF_HZ` (80.0) | Lọc cao tần Butterworth |
 | Noise reduce | tắt | `HAL_SPEAKER_PROC_ENABLE_NOISE_REDUCE` / `..._NOISE_STATIONARY` | `noisereduce` (import lazy) |
-| VAD | bật | `HAL_SPEAKER_PROC_ENABLE_VAD` | Cổng silero-vad |
+| VAD | bật | `HAL_SPEAKER_PROC_ENABLE_VAD` | Cổng TEN-VAD |
 | VAD min duration | 0.5s | `HAL_SPEAKER_PROC_VAD_MIN_DURATION_SEC` | Loại nếu audio sau strip ngắn hơn |
-| VAD min voice ratio | 0.4 | `HAL_SPEAKER_PROC_VAD_MIN_VOICE_RATIO` | Loại nếu tỉ lệ tiếng nói thấp hơn |
-| VAD ngưỡng xác suất tiếng nói | 0.6 | `HAL_SPEAKER_PROC_VAD_SPEECH_PROB_THRESHOLD` | Ngưỡng onset Silero (offset = −0.15); cao hơn thì cắt khoảng lặng đầu/cuối mạnh hơn (mặc định silero 0.5) |
+| VAD min voice ratio | 0.25 | `HAL_SPEAKER_PROC_VAD_MIN_VOICE_RATIO` | Loại nếu tỉ lệ tiếng nói thấp hơn. Trước đây là 0.4 với silero — các cổng chống dương tính giả chia nhỏ segment nên làm tỉ lệ này giảm |
+| VAD ngưỡng xác suất tiếng nói | 0.5 | `HAL_SPEAKER_PROC_VAD_SPEECH_PROB_THRESHOLD` | Ngưỡng onset TEN-VAD (offset = −0.15); cao hơn thì cắt khoảng lặng đầu/cuối mạnh hơn. Trước đây là 0.6 với silero; điểm vận hành đo được của TEN-VAD là 0.45–0.5, và các cổng bên dưới nay đã đảm nhận việc cắt đó |
+| VAD speaker band | bật | `HAL_SPEAKER_PROC_VAD_SPEAKER_BAND` | Chỉ giữ frame VAD nằm trong dải cao độ của chính clip |
+| VAD mức giảm tối đa | 20.0 dB | `HAL_SPEAKER_PROC_VAD_MAX_LEVEL_DROP_DB` | Loại frame VAD thấp hơn mức tiếng nói của chính clip quá ngần này; **chuỗi rỗng để tắt** |
 | Cổng STOI | bật | `HAL_SPEAKER_PROC_ENABLE_STOI` | Cổng chất lượng SQUIM-OBJECTIVE (sau VAD, trước RMS) |
 | Đường dẫn model STOI | `/root/local/models/squimm_stoi.onnx` | `HAL_SPEAKER_PROC_STOI_MODEL_PATH` | Bộ ước lượng ONNX (~20 MB), tải từ CDN khi dùng lần đầu; bỏ qua cổng nếu không phân giải được |
-| Ngưỡng STOI | 0.75 | `HAL_SPEAKER_PROC_STOI_THRESHOLD` | Loại nếu STOI trung bình dưới ngưỡng này |
+| Ngưỡng STOI | 0.70 | `HAL_SPEAKER_PROC_STOI_THRESHOLD` | Loại nếu STOI trung bình dưới ngưỡng này |
 | Chunk STOI | 5.0s | `HAL_SPEAKER_PROC_STOI_CHUNK_SEC` | Độ dài chunk chấm điểm, rồi lấy trung bình |
 | RMS normalize | bật | `HAL_SPEAKER_PROC_ENABLE_RMS_NORMALIZE` / `..._RMS_TARGET` (0.1) | Chuẩn hoá độ lớn cố định |
 
@@ -178,11 +186,53 @@ Mỗi lần gọi `recognize()` / `enroll()` sẽ ghi ra một thư mục:
 <root>/enroll/<ts>_FAIL-<reason>/
 ```
 
-chứa `input.wav` (audio thô) cùng `preprocessed.wav` (sau VAD/STOI/RMS — chính là audio đã upload) / `sample_new_NN.wav`, các embedding dạng `.npy`, và `result.json`. Mỗi lần recognize ghi thêm khối `preprocessing` (thời lượng/RMS sau khi làm sạch, điểm STOI mà clip đã đạt, và ngưỡng nó vượt qua) để phân biệt "audio kém" với "nhận nhầm người"; clip bị cổng loại sẽ tạo thư mục `FAIL-<reason>` với `preprocessing_reject` chứa lý do có cấu trúc kèm số đo. Với recognize, file JSON mang **toàn bộ** diễn giải quyết định — không chỉ top-3 `candidates` mà API trả về, mà còn `speaker_summary` (số vote + sim trung bình/lớn nhất cho *mọi* người đã đăng ký, kể cả người 0 vote) và `per_chunk_scores` (từng chunk so với mọi người, kèm người mà chunk đó vote). Cùng ma trận đó được lưu ở `chunk_scores.npy` (`[chunks × speakers]`, cột theo thứ tự `enrolled_speakers`). Giọng lạ còn ghi thêm điểm khớp cụm stranger và cụm nào gần nhất.
+chứa `input.wav` (audio thô) cùng `preprocessed.wav` (sau VAD/STOI/RMS — chính là audio đã upload) / `sample_new_NN.wav`, các embedding dạng `.npy`, `result.json`, và `profile.json` (chỉ gồm độ trễ + bộ nhớ — xem bên dưới). Mỗi lần recognize ghi thêm khối `preprocessing` (thời lượng/RMS sau khi làm sạch, điểm STOI mà clip đã đạt, và ngưỡng nó vượt qua) để phân biệt "audio kém" với "nhận nhầm người"; clip bị cổng loại sẽ tạo thư mục `FAIL-<reason>` với `preprocessing_reject` chứa lý do có cấu trúc kèm số đo.
+
+Khi bị cổng loại, trace còn ghi thêm **audio mà chuỗi xử lý đã tạo ra ngay tại thời điểm bị từ chối** — `after_<stage>.wav`, đặt tên theo stage cuối cùng chạy được, kèm khối `preprocessing_partial` (stage đó, stage đã từ chối, thời lượng/RMS/sample-rate). Đây chính là mục đích của nó: trước kia thư mục `FAIL-low-stoi` chỉ chứa `input.wav` thô, nên không có cách nào nghe được **đầu ra của TEN-VAD** mà cổng STOI thực sự chấm điểm — tức đúng cái clip mà quyết định loại nói về. Nay nó nằm ở `after_ten_vad.wav`. Tương tự, clip bị VAD loại sẽ có `after_resample.wav` (phần chạy trước đó). Thư mục `FAIL-no-valid-samples` của enroll cũng có tương ứng cho từng mẫu: `sample_NN_input.wav` + `sample_NN_after_<stage>.wav`, kèm lý do loại có cấu trúc của từng mẫu trong `per_sample_errors`.
+
+Với recognize, file JSON mang **toàn bộ** diễn giải quyết định — không chỉ top-3 `candidates` mà API trả về, mà còn `speaker_summary` (số vote + sim trung bình/lớn nhất cho *mọi* người đã đăng ký, kể cả người 0 vote) và `per_chunk_scores` (từng chunk so với mọi người, kèm người mà chunk đó vote). Cùng ma trận đó được lưu ở `chunk_scores.npy` (`[chunks × speakers]`, cột theo thứ tự `enrolled_speakers`). Giọng lạ còn ghi thêm điểm khớp cụm stranger và cụm nào gần nhất.
+
+#### Hồ sơ độ trễ, CPU + bộ nhớ
+
+Mỗi thư mục trace còn chứa **`profile.json`** — thời gian thực thi, CPU và bộ nhớ theo từng stage, để quy trách nhiệm một lượt chậm hoặc ngốn bộ nhớ về đúng một stage thay vì cả pipeline. Nó nằm ở file riêng thay vì trộn vào `result.json` — file đó vốn đã dày đặc thông tin quyết định nhận diện: hai loại dữ liệu này được đọc vì mục đích khác nhau, gộp chung thì cái nọ lấp cái kia. Ngoài ra nó vẫn đi kèm tracer sẵn có: cùng thư mục, cùng công tắc, không thêm env var, chỉ bật khi `HAL_SPEAKER_DEBUG=true`. Một dòng tóm tắt cũng được ghi ra log (`SPEAKER-DEBUG profile [recognize]: total=… preprocess.stoi_gate=…ms/…%cpu/+…MB …`).
+
+Các stage tạo thành **cây**: stage mở bên trong một stage khác trở thành con của nó, nên quan hệ bao hàm nằm ở cấu trúc chứ không phải ở quy ước đặt tên. Cộng cấp ngoài cùng sẽ ra tổng của cả lượt gọi mà không đếm trùng, và `self_ms` của mỗi node là thời gian riêng của nó trừ đi phần của các con — tức phần keo dán của cha, không phải công việc của con.
+
+```
+decode_input                đọc base64/file + chuẩn hoá WAV về 16 kHz mono
+preprocess                  toàn bộ chuỗi xử lý on-device
+├─ decode_wav / encode_wav    WAV bytes ↔ waveform float32, kèm bước bọc base64
+├─ processor_init             dựng/khởi động lazy — lần đầu nạp TEN-VAD + ONNX STOI
+├─ mono / resample / high_pass / noise_reduce / rms_normalize
+├─ ten_vad                  ← stage TEN-VAD (các trace trước lần thay đổi này ghi là `silero_vad`)
+└─ stoi_gate                ← cổng chất lượng STOI
+embed_api                   lời gọi embedding
+├─ request                  ← bản thân vòng gọi HTTP
+└─ decode                     parse phản hồi + chuẩn hoá L2
+load_enrolled / match_vote / stranger_cluster / save_input_wav
+```
+
+**Bộ nhớ.** RSS được lấy mẫu bằng một thread nền (~20 ms) suốt vòng đời lượt gọi, và mỗi stage báo cáo **đỉnh trong đúng cửa sổ của nó**. Chỉ đo hai đầu mút — đọc RSS lúc vào, đọc lại lúc ra — là sai với pipeline này: RSS chỉ thay đổi khi allocator xin thêm trang từ OS hoặc trả lại, nên stage nào cấp phát rồi giải phóng ngay trong cửa sổ của mình sẽ báo `0.00`, còn stage chạy đúng lúc một vùng cấp phát trước đó được giải phóng lại báo chi phí *âm*. Vì vậy mỗi stage giữ ba số:
+
+| Trường | Ý nghĩa |
+|--------|---------|
+| **`rss_peak_delta_mb`** | đỉnh trong stage trừ RSS lúc vào — **đây là số về bộ nhớ cần đọc**. Không bị mất khi cấp phát rồi giải phóng. Với stage lặp lại, đây là lần tệ nhất chứ không phải tổng |
+| `rss_end_delta_mb` | lúc ra trừ lúc vào — phần stage *giữ lại*. Âm là hợp lệ khi trang được trả về OS |
+| `rss_peak_mb` / `rss_after_mb` | RSS đỉnh / RSS cuối trong stage |
+
+**CPU.** `cpu_ms` là thời gian CPU của tiến trình, nhờ đó bắt được các thread pool intra-op của ONNX/torch — chính phần khiến `stoi_gate` đắt. `cpu_pct` là `cpu_ms/ms×100`, nên **>100% nghĩa là dùng nhiều hơn một core** và **~0% nghĩa là đang bị chặn chứ không phải đang làm việc** (`embed_api.request` nên gần bằng 0 — nó đang chờ mạng). `thread_cpu_ms` chỉ tính riêng thread gọi, nên chênh lệch giữa nó và `cpu_ms` xấp xỉ phần các pool đã làm. Cấp ngoài cùng có thêm `cpu_count` để diễn giải được con số >100%.
+
+Vài điểm khác cần biết:
+
+- **Stage bị loại vẫn được đo.** Clip bị VAD hay STOI loại sẽ tạo thư mục `FAIL-…` mà `profile.json` cho thấy hai cổng đó tốn bao nhiêu trước khi từ chối — một lần loại vẫn phải trả đúng chi phí suy luận như một lần cho qua.
+- **Enroll cộng dồn.** Nó chạy preprocess + embed một lần cho mỗi mẫu, nên `ms` của các stage dùng chung được cộng lại, kèm `calls` và `ms_max` (cả hai được bỏ qua khi stage chỉ chạy đúng một lần).
+- **RSS và CPU đều tính theo tiến trình.** Một thread HAL khác cấp phát hoặc ngốn CPU trong lúc stage đang chạy sẽ rơi vào số liệu của stage đó — không cách đo dựa trên RSS nào tránh được điều này. Hãy đọc bộ nhớ của một stage như một cận trên, và ưu tiên nhìn xu hướng qua nhiều lượt gọi.
+- **`rss_source` quyết định ý nghĩa các con số.** `psutil` / `statm` (Linux trên thiết bị) là RSS hiện tại — trường hợp chính xác. `rusage` — phương án dự phòng trên macOS không có psutil — là mức đỉnh không thể giảm, nên `rss_end_delta_mb` ở đó sẽ bị thổi phồng.
+- Bộ nhớ đo là RSS của tiến trình, không phải Python heap: các phiên ONNX của TEN-VAD và STOI cấp phát ngoài heap, nơi `tracemalloc` không thấy gì.
 
 | Tham số | Mặc định | Env var | Mô tả |
 |---------|----------|---------|-------|
-| Debug tracing | **tắt** | `HAL_SPEAKER_DEBUG` | Đặt `true` để bật. Chỉ đọc một lần lúc khởi tạo — đổi xong phải restart HAL |
+| Debug tracing | **tắt** | `HAL_SPEAKER_DEBUG` | Đặt `true` để bật (áp dụng cho **cả** trace lẫn profile). Chỉ đọc một lần lúc khởi tạo — đổi xong phải restart HAL |
 | Thư mục output | `speaker_logs/` cạnh `speaker_recognizer.py` | `HAL_SPEAKER_DEBUG_DIR` | Tự chuyển sang thư mục temp nếu source tree chỉ đọc (khi deploy lên thiết bị) |
 | Số entry tối đa | 1000 | `HAL_SPEAKER_DEBUG_MAX_ENTRIES` | Giới hạn thư mục theo từng loại, xoá cũ nhất; `0` = không giới hạn |
 
@@ -242,9 +292,9 @@ Bất kỳ đường nào khác khởi động pipeline trong lúc bản thu đa
 
 | Thành phần | File | Hàm/Struct |
 |------------|------|------------|
-| STT → nhận diện người nói | `hal/drivers/voice/voice_service.py` | `_identify_and_decorate()` |
-| Cổng đăng ký | `hal/drivers/voice/voice_service.py` | `_should_request_enroll()` |
-| Định dạng message | `hal/drivers/voice/voice_service.py` | `_format_unknown_speaker()` |
+| STT → nhận diện người nói | `hal/drivers/voice/_internal/speaker_decorate.py` | `identify_and_decorate()` |
+| Cổng đăng ký | `hal/drivers/voice/_internal/speaker_decorate.py` | `_should_request_speaker_enroll()` |
+| Định dạng message | `hal/drivers/voice/_internal/speaker_decorate.py` | `_format_unknown_speaker_message()` |
 | Bộ nhận diện giọng nói | `hal/drivers/voice/speaker_recognizer/speaker_recognizer.py` | `SpeakerRecognizer` |
 | Gate sở hữu mic | `hal/app_state.py` | `start_voice_service()` |
 | Route thu + đăng ký | `hal/routes/speaker.py` | `speaker_record_enroll()` |
@@ -268,7 +318,7 @@ User nói: "hey" (2 từ, 0.9s audio)
 ### Câu trung bình (nhận diện nhưng không nudge đăng ký)
 ```
 User nói: "bật đèn lên đi" (4 từ, 3s audio)
-→ HAL: nhận diện → unknown, _should_request_enroll(4 từ, 3s) = false
+→ HAL: nhận diện → unknown, _should_request_speaker_enroll(4 từ, 3s) = false
 → Message: "Unknown Speaker: bật đèn lên đi"
 → Lamp: không có "audio save at" → AppendEnrollNudge giữ nguyên
 → Agent: phản hồi bình thường, không hỏi user là ai
@@ -294,7 +344,7 @@ Turn 2: "I'm Alex." (2 từ)
 ### Câu dài (luồng đăng ký đầy đủ)
 ```
 User nói: "Xin chào mình là Leo, mình vừa đi làm về..." (30 từ, 8s audio)
-→ HAL: nhận diện → unknown, _should_request_enroll(30 từ, 8s) = true
+→ HAL: nhận diện → unknown, _should_request_speaker_enroll(30 từ, 8s) = true
 → Message: "Unknown Speaker: Xin chào mình là Leo... (audio save at /tmp/hal-unknown-voice/incoming_xxx.wav, auto enroll...)"
 → Lamp: AppendEnrollNudge → cooldown OK → chèn "[REQUIRED: Follow speaker-recognizer/SKILL.md...]"
 → Agent: phát hiện "mình là Leo" → POST /speaker/enroll → "Rất vui được biết bạn, Leo!"
@@ -303,7 +353,7 @@ User nói: "Xin chào mình là Leo, mình vừa đi làm về..." (30 từ, 8s 
 ### Cooldown (bị chặn)
 ```
 Cùng unknown speaker, 2 phút sau:
-→ HAL: _should_request_enroll = true (đủ dài)
+→ HAL: _should_request_speaker_enroll = true (đủ dài)
 → Message có "audio save at"
 → Lamp: AppendEnrollNudge → cooldown CHƯA hết (< 5 phút) → bỏ qua instruction
 → Agent: thấy "Unknown Speaker: ..." không có SKILL instruction → phản hồi bình thường

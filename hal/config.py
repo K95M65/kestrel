@@ -132,6 +132,15 @@ FACE_STRANGER_ENTER_FLOOR_S = float(os.environ.get("HAL_FACE_STRANGER_ENTER_FLOO
 FACE_STRANGER_FLUSH_S = float(os.environ.get("HAL_FACE_STRANGER_FLUSH_S", "10.0"))
 FACE_AREA_RATIO_THRESHOLD = float(os.environ.get("HAL_FACE_AREA_RATIO_THRESHOLD", "0.05"))
 
+# --- Sensing: Voice identity (speaker-ID as a presence signal) ---
+# How long a confidently matched speaker stays the "current voice user" after
+# they last spoke. Deliberately far shorter than FACE_OWNER_FORGET_S (3600s):
+# a face keeps proving presence every frame, while a voice proves only that
+# someone spoke ONCE at that instant, so the same window would leave a speaker
+# "present" long after they left. Only consulted when face has nobody (face
+# always wins — see app_state.resolve_current_user).
+VOICE_USER_FORGET_S = float(os.environ.get("HAL_VOICE_USER_FORGET_S", "300.0"))
+
 # --- DL backend connection ---
 OS_CONFIG_PATH = os.environ.get("OS_CONFIG_PATH", "/root/config/config.json")
 
@@ -356,12 +365,74 @@ SPEAKER_RECOGNITION_ENABLED: bool = (
     os.environ.get("HAL_SPEAKER_RECOGNITION_ENABLED", "true").lower() == "true"
 )
 SPEAKER_MIN_AUDIO_S: float = float(os.environ.get("HAL_SPEAKER_MIN_AUDIO_S", "0.8")) # seconds
-SPEAKER_MATCH_THRESHOLD: float = float(os.environ.get("SPEAKER_MATCH_THRESHOLD", "0.75")) # 0.0 - 1.0
-SPEAKER_ENROLL_CONSISTENCY_THRESHOLD: float = float(
-    os.environ.get("SPEAKER_ENROLL_CONSISTENCY_THRESHOLD", "0.75")
+# Identity thresholds are RAW cosine in [-1, 1] — the same unit the face
+# pipeline uses (see faceid/recognizer.py). They were previously SCALED cosine
+# in [0, 1] under the names SPEAKER_MATCH_THRESHOLD /
+# SPEAKER_ENROLL_CONSISTENCY_THRESHOLD; the names changed WITH the unit so a
+# stale 0.75 in a device .env can never be silently reread as raw (which would
+# stop matching dead). Conversion: raw = 2 * scaled - 1, so the old 0.75
+# scaled default is exactly 0.5 raw.
+SPEAKER_MATCH_COS: float = float(os.environ.get("SPEAKER_MATCH_COS", "0.5"))
+# The same bar also gates a multi-sample enroll batch: each clip must clear it
+# against at least one OTHER clip, so outliers are ejected without electing any
+# clip as a reference. Single-sample enrolls skip the check.
+# A confidently-matched utterance only joins a user's extended set when its max
+# cosine to their existing samples is BELOW this — anything above is a
+# near-duplicate of a sample we already hold. Must stay ABOVE
+# SPEAKER_MATCH_COS: both gates measure the same quantity, so the admission
+# band is (SPEAKER_MATCH_COS, SPEAKER_DIVERSITY_COS].
+SPEAKER_DIVERSITY_COS: float = float(os.environ.get("SPEAKER_DIVERSITY_COS", "0.7"))
+# Auto-captured extended samples kept per user, on top of their untouched
+# enrollment samples. This is a SAFETY cap, not a disk-space one: retrieval is
+# max-over-rows, so every extra row raises every speaker's score and with it
+# the false-accept rate.
+SPEAKER_MAX_EXTENDED_SAMPLES: int = int(
+    os.environ.get("SPEAKER_MAX_EXTENDED_SAMPLES", "3")
+)
+# Same cap, applied per unknown-voice cluster.
+SPEAKER_MAX_CLUSTER_SAMPLES: int = int(
+    os.environ.get("SPEAKER_MAX_CLUSTER_SAMPLES", "3")
+)
+# WAVs kept in a voice_<N>/ cluster dir, oldest evicted first. Distinct from
+# SPEAKER_MAX_CLUSTER_SAMPLES, which caps a cluster's *embeddings*: every
+# unknown turn's audio is filed here, so without a file cap a recurring
+# stranger's directory grows forever (cluster eviction only fires past 50
+# DISTINCT voices, which a household never reaches).
+#
+# Sized for two jobs at once. These files are the material an agent enrols a
+# stranger from, so too low weakens deferred enrollment; but each claimed clip
+# that survives the enroll gate becomes a PERMANENT anchor row, so this is also
+# the only bound on how many rows one deferred enrollment can add. Ten clips is
+# roughly 10-30 s of speech at typical turn lengths.
+SPEAKER_MAX_CLUSTER_FILES: int = int(
+    os.environ.get("HAL_MAX_CLUSTER_FILES", "10")
+)
+# Extra bars an utterance must clear to extend a user's set, on top of matching.
+# A turn's audio can carry the TV, a second speaker, or the device's own TTS
+# tail, so extending demands more than recognizing does.
+SPEAKER_EXTEND_MIN_DURATION_SEC: float = float(
+    os.environ.get("SPEAKER_EXTEND_MIN_DURATION_SEC", "2.0")
+)
+SPEAKER_EXTEND_MIN_MARGIN_COS: float = float(
+    os.environ.get("SPEAKER_EXTEND_MIN_MARGIN_COS", "0.05")
 )
 SPEAKER_EMBEDDING_API_TIMEOUT_S: float = float(
     os.environ.get("SPEAKER_EMBEDDING_API_TIMEOUT_S", "15")
+)
+# Every recognize() logs its utterance to the root of SPEAKER_UNKNOWN_AUDIO_DIR
+# — on a match too, deliberately, so there is always a recent record of what the
+# device heard and a stable path a skill can reuse for a follow-up enroll.
+#
+# Despite the directory's name this cap is mostly about KNOWN speakers: an
+# unrecognized turn is moved out into a voice_<N>/ sub-dir, so what accumulates
+# in the root is recognized-user audio plus gate-reject/error clips. It counts
+# incoming_*.wav in the root only, hence the name.
+#
+# Rolling log: keep the newest N, evict oldest-first. ~32 KB per audio-second,
+# so a 4 s turn is ~128 KB and 100 files ≈ 13 MB.
+# 0 disables the cap (unbounded growth — not recommended on a device).
+SPEAKER_MAX_INCOMING_FILES: int = int(
+    os.environ.get("HAL_MAX_INCOMING_FILES", "100")
 )
 SPEAKER_UNKNOWN_AUDIO_DIR: str = os.environ.get(
     "HAL_UNKNOWN_AUDIO_DIR",
@@ -391,23 +462,53 @@ SPEAKER_PROC_ENABLE_NOISE_REDUCE: bool = (
 SPEAKER_PROC_NOISE_STATIONARY: bool = (
     os.environ.get("HAL_SPEAKER_PROC_NOISE_STATIONARY", "false").lower() == "true"
 )
+# VAD stage. Backed by TEN-VAD (`hal/drivers/voice/ten_vad_lite`, numpy +
+# onnxruntime, original FP32 model) — it replaced torch silero-vad here.
 SPEAKER_PROC_ENABLE_VAD: bool = (
     os.environ.get("HAL_SPEAKER_PROC_ENABLE_VAD", "true").lower() == "true"
 )
 SPEAKER_PROC_VAD_MIN_DURATION_SEC: float = float(
     os.environ.get("HAL_SPEAKER_PROC_VAD_MIN_DURATION_SEC", "0.5")
 )
+# 0.25, down from the silero-era 0.4. The speaker-band / level gates below remove
+# non-speech from INSIDE the kept span, which splits segments and mechanically
+# lowers this ratio — at 0.4 the TEN-VAD stage rejected clips holding plenty of
+# speech. Raise it only together with disabling those gates.
 SPEAKER_PROC_VAD_MIN_VOICE_RATIO: float = float(
-    os.environ.get("HAL_SPEAKER_PROC_VAD_MIN_VOICE_RATIO", "0.4")
+    os.environ.get("HAL_SPEAKER_PROC_VAD_MIN_VOICE_RATIO", "0.25")
 )
-# Silero speech-probability threshold used to detect (and trim to) speech. Onset
-# triggers at this value, offset at (threshold - 0.15). Higher = segments close
-# sooner = more aggressive trailing/leading silence trimming. Silero's own
-# default is 0.5; we default to 0.6 to cut soft trailing tails (breath, room
-# tone) that a 0.5/0.35-offset would otherwise keep. Raise toward 0.7 for very
-# noisy rooms; lower to 0.5 if quiet talkers get clipped.
+# TEN-VAD speech-probability threshold used to detect (and trim to) speech. Onset
+# triggers at this value, offset at (threshold - 0.15) — the same hysteresis
+# silero used, so this knob keeps its meaning across the swap. Higher = segments
+# close sooner = more aggressive trailing/leading silence trimming. 0.5 is
+# TEN-VAD's measured operating point (a sweep put best F1 at 0.45-0.5), and the
+# false-positive gates below now do the tail-trimming that the silero-era 0.6
+# was raised for. Raise toward 0.6-0.7 for very noisy rooms; lower to 0.45 if
+# quiet talkers get clipped.
 SPEAKER_PROC_VAD_SPEECH_PROB_THRESHOLD: float = float(
-    os.environ.get("HAL_SPEAKER_PROC_VAD_SPEECH_PROB_THRESHOLD", "0.6")
+    os.environ.get("HAL_SPEAKER_PROC_VAD_SPEECH_PROB_THRESHOLD", "0.5")
+)
+# TEN-VAD false-positive suppression (no silero equivalent). Both gates zero out
+# VAD frames that are not the clip's dominant speaker before segmentation: the
+# band gate keeps only frames inside the clip's own pitch band, the level gate
+# drops frames far below the clip's own speech level. They are a pair — the band
+# gate cannot reject uniformly loud noise, the level gate cannot reject a loud
+# transient. Together they raise the share of the kept span that is really speech
+# from ~0.67 to ~0.79 at the cost of recall (0.98 -> 0.76), which is the right
+# trade for a recogniser: a clean 2 s beats a dirty 6 s.
+#
+# They assume ONE dominant speaker per clip — true for recognition, wrong for
+# long-form multi-speaker audio. Set SPEAKER_BAND=false and MAX_LEVEL_DROP_DB
+# empty for plain TEN-VAD (and then raise MIN_VOICE_RATIO back toward 0.4).
+SPEAKER_PROC_VAD_SPEAKER_BAND: bool = (
+    os.environ.get("HAL_SPEAKER_PROC_VAD_SPEAKER_BAND", "true").lower() == "true"
+)
+# Empty string disables the level gate (the library's `None`).
+_vad_max_level_drop_db_raw: str = os.environ.get(
+    "HAL_SPEAKER_PROC_VAD_MAX_LEVEL_DROP_DB", "20.0"
+).strip()
+SPEAKER_PROC_VAD_MAX_LEVEL_DROP_DB: Optional[float] = (
+    float(_vad_max_level_drop_db_raw) if _vad_max_level_drop_db_raw else None
 )
 SPEAKER_PROC_ENABLE_RMS_NORMALIZE: bool = (
     os.environ.get("HAL_SPEAKER_PROC_ENABLE_RMS_NORMALIZE", "true").lower() == "true"
@@ -429,7 +530,7 @@ SPEAKER_PROC_STOI_MODEL_PATH: str = os.environ.get(
     "/root/local/models/squimm_stoi.onnx",
 )
 SPEAKER_PROC_STOI_THRESHOLD: float = float(
-    os.environ.get("HAL_SPEAKER_PROC_STOI_THRESHOLD", "0.75")
+    os.environ.get("HAL_SPEAKER_PROC_STOI_THRESHOLD", "0.70")
 )
 SPEAKER_PROC_STOI_CHUNK_SEC: float = float(
     os.environ.get("HAL_SPEAKER_PROC_STOI_CHUNK_SEC", "5.0")
@@ -664,8 +765,14 @@ REALTIME_GEMINI_BASE_URL: str = (
     or _RT.get("base_url", "")
     or ((_os_cfg_get("llm_base_url", "").rstrip("/") + "/ws/gemini") if _os_cfg_get("llm_base_url", "") else "")
 )
-# Default to 2.5 native-audio: same per-turn token usage as 3.1 (measured on
-# device) but ~33% cheaper text tokens ($0.50 vs $0.75 /M in). Requires the
+# Default to 3.1-flash-live. 2.5 native-audio is ~33% cheaper on text tokens
+# ($0.50 vs $0.75 /M in, same per-turn usage measured on device), but through the
+# campaign-api proxy it returns WS 1011 on a turn that follows an idle pause, so
+# it needs the whole idle-workaround set — including the suppressed
+# mid-activity [TURN CONTEXT], which silently drops the per-turn speaker identity
+# and language reminder (see gemini_needs_idle_workaround() in realtime/config.py).
+# 3.1 has neither problem, so every workaround stays off. Switching back to a
+# *native-audio* model re-enables them automatically, and also requires the
 # language_code-omit fix in gemini_live.py (native-audio rejects an explicit
 # language_code). Override via realtime.gemini.model or HAL_GEMINI_LIVE_MODEL.
 REALTIME_GEMINI_MODEL: str = _rt_str("HAL_GEMINI_LIVE_MODEL", _RT_GEMINI.get("model"), "gemini-3.1-flash-live-preview")
