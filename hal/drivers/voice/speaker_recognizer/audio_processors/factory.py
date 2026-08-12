@@ -46,7 +46,7 @@ class AudioProcessorFactory:
         rms_target: float = 0.1,
         enable_stoi: bool = False,
         stoi_model_path: str = "",
-        stoi_threshold: float = 0.75,
+        stoi_threshold: float = 0.70,
         stoi_chunk_sec: float = 5.0,
     ) -> None:
         self._target_sample_rate = target_sample_rate

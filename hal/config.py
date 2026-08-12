@@ -530,7 +530,7 @@ SPEAKER_PROC_STOI_MODEL_PATH: str = os.environ.get(
     "/root/local/models/squimm_stoi.onnx",
 )
 SPEAKER_PROC_STOI_THRESHOLD: float = float(
-    os.environ.get("HAL_SPEAKER_PROC_STOI_THRESHOLD", "0.75")
+    os.environ.get("HAL_SPEAKER_PROC_STOI_THRESHOLD", "0.70")
 )
 SPEAKER_PROC_STOI_CHUNK_SEC: float = float(
     os.environ.get("HAL_SPEAKER_PROC_STOI_CHUNK_SEC", "5.0")
