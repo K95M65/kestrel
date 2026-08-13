@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { login, safeSearch } from "@/lib/api";
+import { login } from "@/lib/api";
 import { useTheme } from "@/lib/useTheme";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { C, PasswordField } from "@/components/setup/shared";
@@ -36,8 +36,9 @@ export default function Login() {
     setBusy(true);
     try {
       await login(value);
-      // Cookie is now set. Strip any secret query params before navigating.
-      navigate(`${nextSafe}${safeSearch()}`, { replace: true });
+      // The app-level secret scrubber removes the query parameter. `next`
+      // already includes the intended clean target URL and hash.
+      navigate(nextSafe, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {

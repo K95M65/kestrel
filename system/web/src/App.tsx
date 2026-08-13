@@ -146,8 +146,14 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     return <Navigate to={`/setup${safeSearch()}`} replace />;
   }
   if (state === "login") {
-    const next = encodeURIComponent(location.pathname + location.search);
-    return <Navigate to={`/login?next=${next}`} replace />;
+    // Carry a password link through the auth redirect while keeping it out of
+    // `next`. This lets /setting?password=…#voice resume at Voice after the
+    // automatic login, without nesting a credential in the return URL.
+    const password = new URLSearchParams(location.search).get("password");
+    const next = location.pathname + safeSearch(location.search) + location.hash;
+    const params = new URLSearchParams({ next });
+    if (password) params.set("password", password);
+    return <Navigate to={`/login?${params.toString()}`} replace />;
   }
   return <>{children}</>;
 }

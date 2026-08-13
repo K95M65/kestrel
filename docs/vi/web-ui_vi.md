@@ -29,10 +29,14 @@ Tiêu đề tab trình duyệt (`document.title`) hiển thị đúng theo page/
 ### 1.2 Link đăng nhập kèm mật khẩu
 
 Trang đăng nhập nhận mật khẩu từ URL query để truy cập trực tiếp có kiểm soát:
-`/login?password=<mật-khẩu-đã-URL-encode>`. Khi có query này, trang tự điền
-trường Admin Password và gửi form đăng nhập ngay. Sau lần thử đăng nhập, query
-parameter `password` được xoá bằng `safeSearch`, nên secret không còn trong URL
-hiển thị hoặc history entry của trình duyệt.
+`/login?password=<mật-khẩu-đã-URL-encode>`. Tham số này cũng dùng được với deep
+link cần đăng nhập, ví dụ `/setting?password=<mật-khẩu-đã-URL-encode>#voice`.
+Khi có query này, trang tự điền trường Admin Password và gửi form đăng nhập
+ngay. Auth gate chuyển tham số tới Login, rồi sau khi thành công quay lại path
+và hash đích đã được làm sạch. Parameter `password` được xoá bằng `safeSearch`,
+nên secret không còn trong URL hiển thị hoặc history entry của trình duyệt.
+Query phải đứng trước `#`; phần sau `#` là fragment phía client, không phải
+query string.
 
 Chỉ dùng với link tin cậy và tồn tại ngắn: mật khẩu trong URL vẫn có thể lộ qua
 link được sao chép, lịch sử trình duyệt, hoặc log server/proxy trước khi trang

@@ -29,10 +29,14 @@ The static `<title>Lamp Setup</title>` in `index.html` is the pre-mount fallback
 ### 1.2 Login password link
 
 The login page accepts a password in the URL query for controlled direct access:
-`/login?password=<URL-encoded-password>`. When present, the page fills the
-Admin Password field and immediately submits the login form. After the login
-attempt, the `password` query parameter is removed with `safeSearch`, so the
-secret is not left in the displayed URL or browser history entry.
+`/login?password=<URL-encoded-password>`. The same parameter works on a
+protected deep link, for example `/setting?password=<URL-encoded-password>#voice`.
+When present, the page fills the Admin Password field and immediately submits
+the login form. The auth gate carries it to Login, then returns to the clean
+target path and hash after a successful login. The `password` query parameter
+is removed with `safeSearch`, so the secret is not left in the displayed URL or
+browser history entry. The query must come before `#`; text after `#` is a
+client-side fragment, not a query string.
 
 Use this only with trusted, short-lived links: a password carried in a URL can
 be exposed through copied links, browser history, and server/proxy logs before
