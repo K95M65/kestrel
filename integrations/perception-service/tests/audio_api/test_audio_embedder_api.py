@@ -48,8 +48,8 @@ def _wav_to_b64(path: Path) -> str:
     return base64.b64encode(path.read_bytes()).decode("ascii")
 
 
-def _post_embed(audios_b64: list[str], return_chunks: bool = False) -> httpx.Response:
-    payload = {"audios_b64": audios_b64, "return_chunks": return_chunks}
+def _post_embed(audios_b64: list[str], use_sliding_window: bool = True) -> httpx.Response:
+    payload = {"audios_b64": audios_b64, "use_sliding_window": use_sliding_window}
     return httpx.post(
         _url("/hal/api/dl/audio-recognizer/embed"),
         json=payload,
@@ -58,8 +58,8 @@ def _post_embed(audios_b64: list[str], return_chunks: bool = False) -> httpx.Res
     )
 
 
-def _embed_file(path: Path, return_chunks: bool = False) -> dict:
-    resp = _post_embed([_wav_to_b64(path)], return_chunks=return_chunks)
+def _embed_file(path: Path, use_sliding_window: bool = True) -> dict:
+    resp = _post_embed([_wav_to_b64(path)], use_sliding_window=use_sliding_window)
     assert resp.status_code == 200, f"status={resp.status_code} body={resp.text}"
     return resp.json()
 
@@ -100,18 +100,32 @@ class TestBasicResponse:
         emb = np.array(data["embedding"], dtype=np.float32)
         assert abs(np.linalg.norm(emb) - 1.0) < 1e-3
 
-    def test_return_chunks_false_by_default(self):
+    def test_single_shot_returns_no_chunks(self):
+        # Enroll path: whole utterance in one shot, no per-chunk matrix.
         wav = next((FIXTURES_DIR / "speaker_a").glob("*.wav"))
-        data = _embed_file(wav, return_chunks=False)
+        data = _embed_file(wav, use_sliding_window=False)
         assert data.get("chunk_embeddings") is None
 
-    def test_return_chunks_true(self):
+    def test_sliding_window_returns_chunks(self):
+        # Recognize path: windowed, per-chunk matrix returned for voting.
         wav = next((FIXTURES_DIR / "speaker_a").glob("*.wav"))
-        data = _embed_file(wav, return_chunks=True)
+        data = _embed_file(wav, use_sliding_window=True)
         assert data["chunk_embeddings"] is not None
         assert len(data["chunk_embeddings"]) >= 1
         for chunk in data["chunk_embeddings"]:
             assert len(chunk) == data["embedding_dim"]
+
+    def test_sliding_window_defaults_true(self):
+        # A request that omits the flag defaults to windowed (recognize) mode.
+        wav = next((FIXTURES_DIR / "speaker_a").glob("*.wav"))
+        resp = httpx.post(
+            _url("/hal/api/dl/audio-recognizer/embed"),
+            json={"audios_b64": [_wav_to_b64(wav)]},
+            headers=_headers(),
+            timeout=30.0,
+        )
+        assert resp.status_code == 200
+        assert resp.json().get("chunk_embeddings") is not None
 
 
 class TestSpeakerDiscrimination:

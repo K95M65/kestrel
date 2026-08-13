@@ -87,11 +87,13 @@ Four layers prevent the agent from repeatedly asking "who are you?":
 ### Recognition Algorithm
 
 1. Audio → **on-device** preprocess on HAL (`Mono → Resample → [HighPass] → [NoiseReduce] → VAD → [STOI] → RMS`). Clips that fail the VAD/STOI/quality gate are rejected locally (treated as "unknown") and **never uploaded**.
-2. Cleaned WAV → `POST /audio-recognizer/embed` with `preprocess=false`; the server skips its own preprocessing and only extracts per-chunk embeddings `[M, 256]` (it still windows/chunks the waveform itself)
+2. Cleaned WAV → `POST /audio-recognizer/embed` with `preprocess=false` **and `use_sliding_window=true`**; the server skips its own preprocessing and slides overlapping windows to return per-chunk embeddings `[M, 256]` (a clip ≤ ~10 s stays a single window)
 3. Cosine similarity against all enrolled speaker embeddings
 4. Per-chunk voting: each chunk votes for its closest match
 5. Winner = most votes (tiebreak by average confidence)
 6. `confidence ≥ 0.7` → match; else unknown
+
+> **Enroll differs:** enrollment calls the same endpoint with **`use_sliding_window=false`**, so the server embeds the **whole** reference utterance in a single shot (one `[256]` vector, no windowing/mean) — stored as one row per WAV in the speaker bank. Recognition then votes its windowed query chunks against those single-shot enrollment vectors (both live in the same L2-normalized space).
 
 ### Audio preprocessing (on-device)
 
@@ -120,7 +122,7 @@ A stored embedding is only comparable to a query embedding produced by the **sam
 
 ### Enrollment Quality
 
-1. Each WAV sample → on-device preprocess (as above) → embedding via perception-service (`preprocess=false`)
+1. Each WAV sample → on-device preprocess (as above) → embedding via perception-service (`preprocess=false`, `use_sliding_window=false` → one whole-utterance vector per sample)
 2. Filter by consistency threshold `0.7` (cosine similarity between samples)
 3. Aggregate remaining embeddings via weighted average
 4. Store L2-normalized vector at `/root/local/users/{name}/voice/embedding.npy`

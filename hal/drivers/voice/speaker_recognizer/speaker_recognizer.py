@@ -13,9 +13,14 @@ compute the embedding.
 External API contract:
     POST {SPEAKER_EMBEDDING_API_URL}
     Headers: X-API-Key: {SPEAKER_EMBEDDING_API_KEY} (optional)
-    Body:    {"audios_b64": ["<base64 WAV>", ...], "preprocess": false}
-    Response: {"embedding": [float, float, ...]}  (single 1-D vector
-              aggregated from all inputs, any dimension)
+    Body:    {"audios_b64": ["<base64 WAV>", ...], "preprocess": false,
+              "use_sliding_window": <bool>}
+      ``use_sliding_window`` picks the chunking policy: false (enroll) embeds the
+      whole utterance in a single shot; true (recognize) slides overlapping
+      windows and returns the per-chunk matrix for voting.
+    Response: {"embedding": [float, ...],            # 1-D aggregate, any dim
+               "chunk_embeddings": [[float, ...]]}   # [M, D], only when
+                                                     # use_sliding_window=true
 
 A speaker is stored as a BANK of per-sample embeddings — one row per WAV, never
 averaged together. Retrieval takes the max over a speaker's rows, mirroring the
@@ -1312,14 +1317,18 @@ class SpeakerRecognizer:
     # -------------------------------------------------------------- external
 
     def _call_embedding_api(
-        self, audios_b64: list[str], *, return_chunks: bool = False
+        self, audios_b64: list[str], *, use_sliding_window: bool = False
     ) -> np.ndarray:
         """POST audios to the embedding API.
 
-        Returns the L2-normalized aggregated vector ``[D]`` by default. When
-        ``return_chunks=True`` returns the matrix of per-chunk embeddings
-        ``[M, D]`` instead — used by ``recognize()`` to do per-chunk voting
-        against stored speakers (mirroring perception-service's /recognize logic).
+        ``use_sliding_window=False`` (default, enroll path): the server embeds
+        the WHOLE utterance as a single chunk — no windowing/mean — and this
+        returns the L2-normalized aggregated vector ``[D]``.
+
+        ``use_sliding_window=True`` (recognize path): the server slides
+        overlapping windows and this returns the matrix of per-chunk embeddings
+        ``[M, D]`` for per-chunk voting against stored speakers (mirroring
+        perception-service's /recognize logic).
         """
         if not self._api_url:
             raise SpeakerRecognizerError(
@@ -1329,8 +1338,8 @@ class SpeakerRecognizer:
             raise SpeakerRecognizerError("no audio to embed")
 
         logger.info(
-            "Calling embedding API with %d audios at %s (return_chunks=%s)",
-            len(audios_b64), self._api_url, return_chunks,
+            "Calling embedding API with %d audios at %s (use_sliding_window=%s)",
+            len(audios_b64), self._api_url, use_sliding_window,
         )
         headers = {"Content-Type": "application/json"}
         if self._api_key:
@@ -1339,9 +1348,8 @@ class SpeakerRecognizer:
         body: dict[str, Any] = {
             "audios_b64": audios_b64,
             "preprocess": False,
+            "use_sliding_window": use_sliding_window,
         }
-        if return_chunks:
-            body["return_chunks"] = True
 
         # SPEAKER-DEBUG: `embed_api` = the whole call, `embed_api.request` = the
         # network round-trip alone, `embed_api.decode` = parse + L2 normalize.
@@ -1401,7 +1409,7 @@ class SpeakerRecognizer:
                 if server_ver:
                     self._server_model_version = str(server_ver)
 
-                if return_chunks:
+                if use_sliding_window:
                     chunks = payload.get("chunk_embeddings")
                     if not chunks:
                         raise EmbeddingAPIUnavailableError(
@@ -3150,7 +3158,7 @@ class SpeakerRecognizer:
             # perception-service's /recognize uses internally, so per-chunk voting
             # below produces apples-to-apples confidence.
             query_chunks = self._call_embedding_api(
-                payload, return_chunks=True
+                payload, use_sliding_window=True
             )  # [M, D]
         except SpeakerRecognizerError as e:
             logger.warning(

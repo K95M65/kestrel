@@ -47,14 +47,17 @@ async def embed_audio(req: EmbedAudioRequest):
 
     try:
         results = await asyncio.to_thread(
-            embedder.predict, audios, preprocess=req.preprocess
+            embedder.predict,
+            audios,
+            preprocess=req.preprocess,
+            use_sliding_window=req.use_sliding_window,
         )
     except PreprocessRejected as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as exc:
         logger.exception(
-            "Audio embedding inference failed (num_audios=%d, durations_s=%s, return_chunks=%s)",
-            len(audios), audio_durations_s, req.return_chunks,
+            "Audio embedding inference failed (num_audios=%d, durations_s=%s, use_sliding_window=%s)",
+            len(audios), audio_durations_s, req.use_sliding_window,
         )
         raise HTTPException(
             status_code=500,
@@ -64,13 +67,13 @@ async def embed_audio(req: EmbedAudioRequest):
     try:
         return EmbedAudioResponse.from_raw_embedding(
             results[0],
-            return_chunks=req.return_chunks,
+            use_sliding_window=req.use_sliding_window,
             embed_model_version=embedder.model_version,
         )
     except Exception as exc:
         logger.exception(
-            "Failed to build audio embedding response (num_audios=%d, durations_s=%s, return_chunks=%s)",
-            len(audios), audio_durations_s, req.return_chunks,
+            "Failed to build audio embedding response (num_audios=%d, durations_s=%s, use_sliding_window=%s)",
+            len(audios), audio_durations_s, req.use_sliding_window,
         )
         raise HTTPException(
             status_code=500,

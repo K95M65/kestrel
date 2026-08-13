@@ -88,11 +88,13 @@ Bốn lớp ngăn agent hỏi "bạn là ai?" liên tục:
 ### Thuật toán nhận diện
 
 1. Audio → tiền xử lý **tại thiết bị** trên HAL (`Mono → Resample → [HighPass] → [NoiseReduce] → VAD → [STOI] → RMS`). Clip không qua được cổng VAD/STOI/chất lượng sẽ bị loại ngay tại chỗ (coi như "không xác định") và **không gửi lên server**.
-2. WAV đã làm sạch → `POST /audio-recognizer/embed` với `preprocess=false`; server bỏ qua tiền xử lý của nó và chỉ trích xuất embedding theo từng chunk `[M, 256]` (server vẫn tự chia cửa sổ/chunk waveform)
+2. WAV đã làm sạch → `POST /audio-recognizer/embed` với `preprocess=false` **và `use_sliding_window=true`**; server bỏ qua tiền xử lý của nó và trượt các cửa sổ chồng lấn để trả embedding theo từng chunk `[M, 256]` (clip ≤ ~10 giây vẫn là một cửa sổ duy nhất)
 3. Cosine similarity với tất cả embedding người nói đã đăng ký
 4. Bình chọn theo chunk: mỗi chunk vote cho người khớp nhất
 5. Người thắng = nhiều vote nhất (hoà thì so trung bình confidence)
 6. `confidence ≥ 0.7` → khớp; ngược lại → không xác định
+
+> **Enroll khác biệt:** bước đăng ký gọi cùng endpoint nhưng với **`use_sliding_window=false`**, nên server nhồi **nguyên** câu tham chiếu vào model một lần (một vector `[256]`, không chia cửa sổ/mean) — lưu thành một dòng mỗi WAV trong bank giọng nói. Khi recognize, các chunk truy vấn (đã chia cửa sổ) bỏ phiếu so với các vector enroll single-shot này (cả hai cùng không gian chuẩn hoá L2).
 
 ### Tiền xử lý audio (tại thiết bị)
 
@@ -121,7 +123,7 @@ Một embedding đã lưu chỉ so sánh được với embedding truy vấn do 
 
 ### Chất lượng đăng ký
 
-1. Mỗi file WAV → tiền xử lý tại thiết bị (như trên) → embedding qua perception-service (`preprocess=false`)
+1. Mỗi file WAV → tiền xử lý tại thiết bị (như trên) → embedding qua perception-service (`preprocess=false`, `use_sliding_window=false` → một vector nguyên câu mỗi mẫu)
 2. Lọc theo ngưỡng consistency `0.7` (cosine similarity giữa các mẫu)
 3. Tổng hợp embedding còn lại qua trung bình có trọng số
 4. Lưu vector chuẩn hoá L2 tại `/root/local/users/{tên}/voice/embedding.npy`

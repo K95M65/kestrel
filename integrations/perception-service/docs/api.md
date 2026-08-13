@@ -133,14 +133,24 @@ caller (HAL). Disabled by default (`AUDIO_EMBEDDER__ENABLED=false`).
 
 ```json
 // request  (EmbedAudioRequest)
-{"audios_b64": ["<base64 WAV>", "..."], "return_chunks": false, "preprocess": false}
+{"audios_b64": ["<base64 WAV>", "..."], "use_sliding_window": true, "preprocess": false}
 // response (EmbedAudioResponse)
 {"embedding": [0.01, -0.02, ...], "embedding_dim": 256,
  "embed_model_version": "resnet293:1a2b3c4d5e6f", "chunk_embeddings": null}
 ```
 
-`embedding` is L2-normalized. When `return_chunks` is true, `chunk_embeddings`
-holds the per-window vectors before aggregation.
+`embedding` is L2-normalized. `use_sliding_window` selects the chunking policy
+(**defaults to `true`**):
+
+- `true` (recognize): the utterance is split into overlapping windows
+  (`window_frames` stride `hop_frames`; a clip at or below `chunk_threshold_frames`
+  ≈ 10 s stays a single window), each embedded, and `chunk_embeddings` holds the
+  per-window matrix `[M, D]` for per-chunk voting. `embedding` is their
+  L2-normalized mean.
+- `false` (enroll): the **whole** utterance is fed to the model as a single
+  chunk regardless of length — one embedding, no windowing/mean, and
+  `chunk_embeddings` is `null`. HAL uses this to store one clean vector per
+  enrolled reference.
 
 `embed_model_version` identifies the weights that produced the embedding:
 `<model-name>:<sha256(weights)[:12]>`, where `<model-name>` is the
@@ -156,10 +166,11 @@ started.
 `preprocess` **defaults to `false`** — this endpoint is embed-only. HAL (the only
 caller) runs the audio processor (Mono/Resample/HighPass/NoiseReduce/VAD/RMS)
 **on-device** and uploads already-cleaned audio (VAD gating happens on the
-device; a rejected clip never reaches this endpoint). Even with
-`preprocess=false` the server still windows/chunks the waveform and extracts
-embeddings — it only skips filtering/VAD/normalize. Pass `preprocess=true` only
-if you upload raw, un-preprocessed audio and want the server to clean it.
+device; a rejected clip never reaches this endpoint). `preprocess` is
+independent of `use_sliding_window`: even with `preprocess=false` the server
+still runs fbank + embedding (and windowing when `use_sliding_window=true`) — it
+only skips filtering/VAD/normalize. Pass `preprocess=true` only if you upload
+raw, un-preprocessed audio and want the server to clean it.
 
 ---
 

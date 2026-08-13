@@ -201,12 +201,15 @@ class AudioEmbedder(PredictorBase[Audio, RawAudioEmbedding]):
         return feat
 
     def _sliding_windows(
-        self, feat: npt.NDArray[np.float32]
+        self, feat: npt.NDArray[np.float32], *, use_sliding_window: bool = True
     ) -> npt.NDArray[np.float32]:
         """Split fbank features into chunks for per-chunk embedding.
 
         Net speech length is T (post-VAD fbank frames, ~100 per second):
 
+        * ``use_sliding_window`` False (enroll): return the whole utterance as
+          ONE chunk of shape (1, T, M) regardless of length — the model embeds
+          the entire reference in a single shot, no windowing/mean.
         * ``T <= chunk_threshold_frames`` (default 10 s): return the whole
           utterance as ONE chunk of shape (1, T, M).
         * ``T > chunk_threshold_frames``: slide ``window_frames`` with
@@ -216,6 +219,8 @@ class AudioEmbedder(PredictorBase[Audio, RawAudioEmbedding]):
 
         Args:
             feat: Shape (T, num_mel_bins).
+            use_sliding_window: When False, never split — embed the whole
+                utterance as a single chunk (used by the enroll path).
 
         Returns:
             Array of shape (N, W, num_mel_bins) — W == T in the single-chunk case,
@@ -226,7 +231,7 @@ class AudioEmbedder(PredictorBase[Audio, RawAudioEmbedding]):
         if T == 0:
             return np.zeros((1, self._window_frames, self._num_mel_bins), dtype=np.float32)
 
-        if T <= self._chunk_threshold_frames:
+        if not use_sliding_window or T <= self._chunk_threshold_frames:
             return feat[np.newaxis]  # (1, T, M)
 
         windows: list[npt.NDArray[np.float32]] = []
@@ -290,11 +295,15 @@ class AudioEmbedder(PredictorBase[Audio, RawAudioEmbedding]):
         input: list[Audio],
         *,
         preprocess: bool = True,
+        use_sliding_window: bool = True,
         **kwargs: Any,
     ) -> list[RawAudioEmbedding]:
         """Run audio embedding on a batch of audio inputs.
 
         Per audio: preprocess → fbank → sliding windows → ONNX → aggregate.
+
+        ``use_sliding_window`` False embeds each whole utterance as a single
+        chunk (enroll path); the aggregate then equals that single vector.
         """
         if preprocess:
             input = self.preprocess(input)
@@ -303,7 +312,9 @@ class AudioEmbedder(PredictorBase[Audio, RawAudioEmbedding]):
 
         for audio in input:
             feat = self._compute_fbank(audio)
-            windows = self._sliding_windows(feat)
+            windows = self._sliding_windows(
+                feat, use_sliding_window=use_sliding_window
+            )
             chunk_embeddings = self._infer_batch(windows)
             embedding = self._mean_aggregate(chunk_embeddings)
 
