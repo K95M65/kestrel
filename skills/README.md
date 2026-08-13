@@ -25,6 +25,7 @@ System-only skills may be hidden from the default storefront or shown with a
 | `servo-tracking` | Camera & Vision | vision-tracking, object-tracking, motion |
 | `sensing` | Home | presence, sound, light, fire-safety, events |
 | `sensing-track` | Home | history, logs, motion, presence |
+| `skill-creator` | Work | create, test, evaluate, package, publish |
 | `guard` | Safety | monitoring, presence, alerts, smart-home |
 | `wellbeing` | Health | posture, hydration, breaks, coaching |
 | `habit` | Health | routines, behavior, personalization |
