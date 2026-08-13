@@ -1119,6 +1119,21 @@ class SpeakerRecognizer:
         )
         self._mu = threading.Lock()
 
+        # --- Embedding-model identity tracking ------------------------------
+        # Every stored embedding is only comparable to a query embedding from
+        # the SAME server model. We stamp each enrollment with the server's
+        # model version and re-embed (migrate) stored WAVs when the server model
+        # changes. `_server_model_version` is refreshed as a side effect of every
+        # /embed call (see _call_embedding_api). Migration runs in a single
+        # background thread guarded by these fields.
+        self._server_model_version: Optional[str] = None
+        self._migration_lock = threading.Lock()
+        self._migrating_version: Optional[str] = None
+        # Per-user locks serialize the on-disk commit (samples + sidecars +
+        # metadata.json) between enroll() and the migration re-embed, so the two
+        # never interleave writes to the same profile. Created lazily under _mu.
+        self._user_locks: dict[str, threading.Lock] = {}
+
         # Bank cache + the lock guarding it and every extended-set mutation.
         # RLock because the extend path takes it for two short critical sections
         # around an unlocked disk write, and prune runs nested inside the
@@ -1273,7 +1288,6 @@ class SpeakerRecognizer:
                 "num_extended": meta.get("num_extended", 0),
                 "embedding_dim": meta.get("embedding_dim", 0),
                 "embed_model_version": meta.get("embed_model_version", ""),
-                "needs_reenroll": meta.get("needs_reenroll", False),
             }
             self._save_registry(reg)
 
@@ -1382,6 +1396,10 @@ class SpeakerRecognizer:
                     raise EmbeddingAPIUnavailableError(
                         f"embedding API returned non-JSON: {e}"
                     ) from e
+
+                server_ver = payload.get("embed_model_version")
+                if server_ver:
+                    self._server_model_version = str(server_ver)
 
                 if return_chunks:
                     chunks = payload.get("chunk_embeddings")
@@ -1648,6 +1666,10 @@ class SpeakerRecognizer:
                 pass
         return {}
 
+    def _stored_model_version(self, norm: str) -> str:
+        """Embed-model version a profile was last computed under ("" if none)."""
+        return self._read_metadata(norm).get("embed_model_version") or ""
+
     def _read_shared_metadata(self, norm: str) -> dict[str, Any]:
         """Read the top-level ``/root/local/users/<norm>/metadata.json``.
 
@@ -1663,6 +1685,13 @@ class SpeakerRecognizer:
 
     def _write_metadata(self, norm: str, meta: dict[str, Any]) -> None:
         self._metadata_path(norm).write_text(json.dumps(meta, indent=2))
+
+    @staticmethod
+    def _now_iso() -> str:
+        """ISO-8601 timestamp with tz offset (naive fallback if unavailable)."""
+        return time.strftime("%Y-%m-%dT%H:%M:%S%z") or time.strftime(
+            "%Y-%m-%dT%H:%M:%S"
+        )
 
     # ------------------------------------------------------------- bank (disk)
 
@@ -1686,6 +1715,20 @@ class SpeakerRecognizer:
         if vec.size == 0 or float(np.linalg.norm(vec)) < 1e-12:
             return None
         return _l2(vec)
+
+    @staticmethod
+    def _write_sidecar(wav_path: Path, embedding: np.ndarray) -> None:
+        """Atomically (over)write the embedding sidecar beside a sample WAV.
+
+        temp + os.replace so a concurrent bank read never sees a torn file and a
+        crash mid-migration leaves whole sidecars, never a corrupt one. Passing a
+        file object to np.save stops it appending a second .npy to the temp name.
+        """
+        p = _sidecar_path(wav_path)
+        tmp = p.with_name(p.name + ".tmp")
+        with open(tmp, "wb") as f:
+            np.save(f, _l2(embedding))
+        os.replace(tmp, p)
 
     def _read_tier(self, wav_paths: list[Path]) -> tuple[list[np.ndarray], list[Path]]:
         """Sidecar embeddings for a list of sample WAVs, skipping any without one."""
@@ -2046,14 +2089,14 @@ class SpeakerRecognizer:
     # Only users whose WAVs are all gone need a physical re-enroll.
 
     def _iter_enrolled_users(self) -> list[str]:
-        """Normalized names of every user that has a stored embedding."""
+        """Normalized names of every user that has a usable voice bank."""
         out: list[str] = []
         if not self._users_dir.is_dir():
             return out
         for entry in sorted(self._users_dir.iterdir()):
             if not entry.is_dir() or entry.name.startswith("."):
                 continue
-            if (self._voice_dir(entry.name) / _EMBEDDING_FILE).is_file():
+            if self._has_profile(entry.name):
                 out.append(entry.name)
         return out
 
@@ -2177,7 +2220,7 @@ class SpeakerRecognizer:
 
     def _reconcile_embeddings(self, server_version: str) -> None:
         """Re-embed every stale profile from its retained WAVs under the new model."""
-        migrated = fresh = flagged = failed = 0
+        migrated = fresh = unmigrated = failed = 0
         for norm in self._iter_enrolled_users():
             # Cheap pre-check to skip already-fresh profiles without taking the
             # per-user lock; _reembed_user re-reads + re-checks under the lock.
@@ -2199,93 +2242,136 @@ class SpeakerRecognizer:
                 continue
             if result is True:
                 migrated += 1
-            else:  # None → could not be re-embedded (flagged needs_reenroll)
-                flagged += 1
+            else:  # None → not migrated (removed if all rejected, else left stale)
+                unmigrated += 1
         logger.info(
             "Embedding migration to %s done: migrated=%d fresh=%d "
-            "needs_reenroll=%d failed=%d",
-            server_version, migrated, fresh, flagged, failed,
+            "unmigrated=%d failed=%d",
+            server_version, migrated, fresh, unmigrated, failed,
         )
 
     def _reembed_user(self, norm: str, server_version: str) -> Optional[bool]:
-        """Re-embed one user's retained WAVs. True=migrated, None=needs re-enroll.
+        """Re-embed one user's retained WAVs. True=migrated; None=not migrated.
 
-        Holds the per-user lock across the whole read→embed→write so it can't
-        interleave with a concurrent enroll() of the same profile. Reproduces
-        enroll's aggregation (``_weighted_aggregate`` of per-sample embeddings)
-        over the SAME on-disk samples — which already passed enroll's consistency
-        filter, so no re-filtering is needed. Raises ``EmbeddingAPIUnavailableError``
-        on outage so the caller can halt.
+        On None the profile is either REMOVED (samples all present but rejected by
+        the gate — genuinely bad audio) or LEFT STALE (no source WAVs at all, e.g.
+        a legacy embedding.npy-only profile — never deleted, since that file may
+        be the only copy of the enrollment).
+
+        Rewrites each sample's embedding SIDECAR in place — both the anchor
+        (``sample_*.wav``) and extended (``extended_*.wav``) tiers — so the bank
+        loader picks up the new-model vectors on its next read. Nothing is
+        aggregated: the store is one row per sample, exactly as enroll writes it.
+
+        Takes the per-user lock, which serializes this against another
+        ``_reembed_user`` of the same profile — already guaranteed by migration
+        single-flight, so it is belt-and-suspenders — AND against a concurrent
+        ``enroll()`` of the same user, whose disk-commit now holds the same lock.
+        That mutual exclusion matters because the "all samples rejected" branch
+        below ``rmtree``s the whole voice dir: without the lock an enroll writing
+        fresh samples could be silently wiped by that delete, or write into a dir
+        mid-deletion. With both sides serialized, either enroll fully commits
+        then this pass re-reads and re-embeds those new samples, or this pass
+        finishes (re-embed or remove) before enroll's commit begins. The only
+        shared file otherwise is ``metadata.json`` (atomic write); its sample
+        counts/lists are re-derived from disk on read, and both writers stamp the
+        same ``embed_model_version``.
+
+        Raises ``EmbeddingAPIUnavailableError`` on outage so the caller can halt
+        — the commit runs only after EVERY sample embedded, so a halt leaves the
+        profile fully on the old model, never half-migrated.
         """
         with self._user_lock(norm):
-            # Re-check under the lock: a concurrent enroll (or another migration
-            # pass) may have already brought this profile to the target version.
+            # Re-read fresh: a concurrent enroll (which does not take this lock)
+            # or an earlier migration pass may have already stamped this profile
+            # to the target version — short-circuit if so.
             meta = self._read_metadata(norm)
             if (meta.get("embed_model_version") or "") == server_version:
                 return True
 
-            voice_dir = self._voice_dir(norm)
-            # Trust the recorded list, but fall back to a glob so a stale metadata
-            # list can't strand on-disk audio.
-            wav_paths = [
-                voice_dir / n for n in (meta.get("sample_files") or [])
-                if (voice_dir / n).is_file()
-            ]
+            # Both tiers migrate. A profile with no per-sample WAVs (legacy with
+            # only the aggregate embedding.npy, or WAVs deleted) has no audio to
+            # re-embed — but is NOT deleted: that embedding.npy may be the only
+            # copy of the enrollment, and destroying it on a version bump would be
+            # surprising. It is left stale (excluded from matching) until the
+            # person re-enrolls. Only genuinely-bad audio — samples that ARE
+            # present but all fail the gate — is removed (see below).
+            wav_paths = self._anchor_wavs(norm) + self._extended_wavs(norm)
             if not wav_paths:
-                wav_paths = sorted(voice_dir.glob("sample_*.wav"))
-            if not wav_paths:
-                self._flag_needs_reenroll(norm, meta, "no retained WAV samples")
+                logger.warning(
+                    "Migration: %r has no retained WAV samples — cannot re-embed; "
+                    "left stale (excluded from matching) until re-enrolled.", norm,
+                )
                 return None
 
-            embs: list[np.ndarray] = []
+            migrated: list[tuple[Path, np.ndarray]] = []
+            rejected: list[Path] = []
+            dim = 0
             for wf in wav_paths:
                 raw = _read_bytes(str(wf))
                 if not raw:
                     continue
                 wb = _ensure_wav_16k_mono(raw)
                 try:
-                    payload = self._prepare_wav_for_embedding(wb)
-                    embs.append(self._call_embedding_api(payload))
+                    emb = self._call_embedding_api(self._prepare_wav_for_embedding(wb))
                 except EmbeddingAPIUnavailableError:
                     raise  # outage → bubble up so migration halts, not a bad sample
                 except SpeakerRecognizerError as e:
                     logger.info(
                         "Migration: %r sample %s rejected by gate — %s", norm, wf.name, e,
                     )
-            if not embs:
-                self._flag_needs_reenroll(
-                    norm, meta, "all retained samples rejected by the gate",
+                    rejected.append(wf)
+                    continue
+                migrated.append((wf, emb))
+                dim = int(emb.shape[0])
+
+            if not migrated:
+                self._remove_voice_profile(
+                    norm, "all retained samples rejected by the gate",
                 )
                 return None
 
-            new_embedding = _weighted_aggregate(embs)
-            self._write_embedding(norm, new_embedding)
+            # Commit only now that every sample embedded cleanly. Overwrite each
+            # migrated sample's sidecar, and drop the sidecar of any sample the
+            # gate rejected so no old-model vector survives — matters for a
+            # same-dimension checkpoint swap, where the bank's mixed-dim guard
+            # cannot tell an old row from a new one.
+            for wf, emb in migrated:
+                self._write_sidecar(wf, emb)
+            for wf in rejected:
+                _sidecar_path(wf).unlink(missing_ok=True)
 
-            now_iso = self._now_iso()
-            meta["embedding_dim"] = int(new_embedding.shape[0])
+            meta["embedding_dim"] = dim
             meta["embed_model_version"] = server_version
-            meta["updated_at"] = now_iso
-            meta.pop("needs_reenroll", None)  # fresh again
+            meta["updated_at"] = self._now_iso()
             self._write_metadata(norm, meta)
             self._update_registry(norm, meta)
+            self._invalidate_bank()  # force recognize to reload the new vectors
             logger.info(
                 "Migration: re-embedded %r from %d sample(s) → %s",
-                norm, len(embs), server_version,
+                norm, len(migrated), server_version,
             )
             return True
 
-    def _flag_needs_reenroll(
-        self, norm: str, meta: dict[str, Any], reason: str
-    ) -> None:
-        """Mark a profile that cannot be auto-migrated (no usable WAVs)."""
+    def _remove_voice_profile(self, norm: str, reason: str) -> None:
+        """Delete a user's VOICE profile that cannot be migrated.
+
+        Removes only ``<norm>/voice/`` (WAV + sidecars + voice metadata) and the
+        registry row. The SHARED identity (``<norm>/metadata.json``, face,
+        telegram) is left untouched, so the person still exists to every other
+        skill — they simply have no voice enrollment until they re-enroll. An
+        un-re-embeddable profile can never match anyway, so removing it declutters
+        the owner list and stops the migration gate from retrying it every turn.
+        Caller holds the per-user lock.
+        """
         logger.warning(
-            "Migration: %r cannot be re-embedded (%s) — flagged needs_reenroll; "
-            "the voice must be re-enrolled to be recognized under the new model.",
+            "Migration: %r cannot be re-embedded (%s) — removing its voice "
+            "profile; identity kept, voice must be re-enrolled.",
             norm, reason,
         )
-        meta["needs_reenroll"] = True
-        self._write_metadata(norm, meta)
-        self._update_registry(norm, meta)
+        shutil.rmtree(self._voice_dir(norm), ignore_errors=True)
+        self._remove_from_registry(norm)
+        self._invalidate_bank()
 
     # --------------------------------------------------------- public: enroll
 
@@ -2646,91 +2732,103 @@ class SpeakerRecognizer:
         # stays chronological (the old code recomputed time.time() per file
         # with a comment claiming a sleep kept them unique — there was no
         # sleep, and same-batch samples routinely shared a timestamp).
-        written_new_paths: list[Path] = []
-        stamp = int(time.time() * 1000)
-        for i, (wb, emb) in enumerate(anchors):
-            fname = f"sample_{origin}_{stamp + i}_{uuid.uuid4().hex[:8]}.wav"
-            fpath = voice_dir / fname
-            try:
-                fpath.write_bytes(wb)
-                np.save(_sidecar_path(fpath), _l2(emb))
-            except OSError as e:
-                logger.warning("Enroll: failed to write %s: %s", fpath, e)
-                continue
-            written_new_paths.append(fpath)
+        # Steps 6–8 mutate this user's on-disk voice profile. Hold the per-user
+        # lock across the WHOLE commit so it cannot interleave with a background
+        # migration of the SAME user: _reembed_user may rmtree this voice dir
+        # (its "all samples rejected by the gate" removal path) or rewrite its
+        # sidecars, and a half-applied enroll racing that delete would silently
+        # lose the freshly recorded samples. Only the disk commit is guarded —
+        # the embedding network calls above (Steps 2/4/5) ran lock-free, so a
+        # normal enroll blocks on this lock only when this exact user is being
+        # re-embedded right now, and only for that one profile's re-embed, never
+        # the whole migration batch.
+        with self._user_lock(norm):
+            written_new_paths: list[Path] = []
+            stamp = int(time.time() * 1000)
+            for i, (wb, emb) in enumerate(anchors):
+                fname = f"sample_{origin}_{stamp + i}_{uuid.uuid4().hex[:8]}.wav"
+                fpath = voice_dir / fname
+                try:
+                    fpath.write_bytes(wb)
+                    np.save(_sidecar_path(fpath), _l2(emb))
+                except OSError as e:
+                    logger.warning("Enroll: failed to write %s: %s", fpath, e)
+                    continue
+                written_new_paths.append(fpath)
 
-        if not written_new_paths and not self._has_profile(norm):
-            raise SpeakerRecognizerError("failed to write any enrollment sample")
+            if not written_new_paths and not self._has_profile(norm):
+                raise SpeakerRecognizerError("failed to write any enrollment sample")
 
-        # Step 7 — Commit claimed cluster audio to the EXTENDED tier, then
-        # prune that tier back to its cap by diversity. Written first and
-        # pruned after (rather than admission-tested up front like the face
-        # pipeline does) because enroll is not a hot path and the churn is
-        # bounded by one cluster's worth of files.
-        for wb, emb in claimed:
-            self._write_extended_sample(norm, wb, emb)
-        if claimed:
-            self._prune_extended(norm)
+            # Step 7 — Commit claimed cluster audio to the EXTENDED tier, then
+            # prune that tier back to its cap by diversity. Written first and
+            # pruned after (rather than admission-tested up front like the face
+            # pipeline does) because enroll is not a hot path and the churn is
+            # bounded by one cluster's worth of files.
+            for wb, emb in claimed:
+                self._write_extended_sample(norm, wb, emb)
+            if claimed:
+                self._prune_extended(norm)
 
-        self._invalidate_bank()
+            self._invalidate_bank()
 
-        # Re-read from disk so metadata reflects exactly what is stored.
-        anchor_paths = self._anchor_wavs(norm)
-        extended_paths = self._extended_wavs(norm)
-        anchor_embs, _ = self._read_tier(anchor_paths)
-        extended_embs, _ = self._read_tier(extended_paths)
-        dim = int(anchor_embs[0].shape[0]) if anchor_embs else 0
+            # Re-read from disk so metadata reflects exactly what is stored.
+            anchor_paths = self._anchor_wavs(norm)
+            extended_paths = self._extended_wavs(norm)
+            anchor_embs, _ = self._read_tier(anchor_paths)
+            extended_embs, _ = self._read_tier(extended_paths)
+            dim = int(anchor_embs[0].shape[0]) if anchor_embs else 0
 
-        logger.info(
-            "Enroll committed: anchors_written=%d anchors_rejected=%d "
-            "batch_dropped=%d claimed_to_extended=%d "
-            "total_anchors=%d total_extended=%d dim=%d",
-            len(written_new_paths), len(per_sample_errors), dropped_new,
-            len(claimed), len(anchor_paths), len(extended_paths), dim,
-        )
+            logger.info(
+                "Enroll committed: anchors_written=%d anchors_rejected=%d "
+                "batch_dropped=%d claimed_to_extended=%d "
+                "total_anchors=%d total_extended=%d dim=%d",
+                len(written_new_paths), len(per_sample_errors), dropped_new,
+                len(claimed), len(anchor_paths), len(extended_paths), dim,
+            )
 
-        # Update voice metadata + registry.
-        existing = self._read_metadata(norm)
-        now_iso = time.strftime("%Y-%m-%dT%H:%M:%S%z") or time.strftime(
-            "%Y-%m-%dT%H:%M:%S"
-        )
-        enrollment_sources = sorted(
-            {_sample_origin(p.name) for p in anchor_paths} | {origin}
-        )
-        meta: dict[str, Any] = {
-            "name": norm,
-            "display_name": shared_identity.get("display_name")
-                or existing.get("display_name")
-                or name.strip()
-                or norm,
-            "telegram_username": shared_identity.get("telegram_username", ""),
-            "telegram_id": shared_identity.get("telegram_id", ""),
-            "has_telegram_identity": bool(
-                shared_identity.get("telegram_id")
-                or shared_identity.get("telegram_username")
-            ),
-            "enrollment_sources": enrollment_sources,
-            "last_enrollment_source": origin,
-            "enrolled_at": existing.get("enrolled_at", now_iso),
-            "updated_at": now_iso,
-            # num_samples keeps its meaning: samples the user enrolled.
-            # Auto-collected audio is counted separately so the two can never
-            # be confused in the UI or by a skill.
-            "num_samples": len(anchor_paths),
-            "sample_files": [p.name for p in anchor_paths],
-            "sample_origins": {p.name: _sample_origin(p.name) for p in anchor_paths},
-            "num_extended": len(extended_paths),
-            "extended_files": [p.name for p in extended_paths],
-            "embedding_dim": dim,
-        }
-        self._write_metadata(norm, meta)
-        self._update_registry(norm, meta)
+            # Update voice metadata + registry.
+            existing = self._read_metadata(norm)
+            now_iso = time.strftime("%Y-%m-%dT%H:%M:%S%z") or time.strftime(
+                "%Y-%m-%dT%H:%M:%S"
+            )
+            enrollment_sources = sorted(
+                {_sample_origin(p.name) for p in anchor_paths} | {origin}
+            )
+            meta: dict[str, Any] = {
+                "name": norm,
+                "display_name": shared_identity.get("display_name")
+                    or existing.get("display_name")
+                    or name.strip()
+                    or norm,
+                "telegram_username": shared_identity.get("telegram_username", ""),
+                "telegram_id": shared_identity.get("telegram_id", ""),
+                "has_telegram_identity": bool(
+                    shared_identity.get("telegram_id")
+                    or shared_identity.get("telegram_username")
+                ),
+                "enrollment_sources": enrollment_sources,
+                "last_enrollment_source": origin,
+                "enrolled_at": existing.get("enrolled_at", now_iso),
+                "updated_at": now_iso,
+                # num_samples keeps its meaning: samples the user enrolled.
+                # Auto-collected audio is counted separately so the two can never
+                # be confused in the UI or by a skill.
+                "num_samples": len(anchor_paths),
+                "sample_files": [p.name for p in anchor_paths],
+                "sample_origins": {p.name: _sample_origin(p.name) for p in anchor_paths},
+                "num_extended": len(extended_paths),
+                "extended_files": [p.name for p in extended_paths],
+                "embedding_dim": dim,
+                "embed_model_version": self._server_model_version or "",
+            }
+            self._write_metadata(norm, meta)
+            self._update_registry(norm, meta)
 
-        # Drop any stranger clusters whose WAVs were just claimed. Keeping them
-        # would leave stale rows that re-label the now-known speaker as
-        # voice_<N> on any recognition below the match threshold.
-        if source_type == "filepath":
-            self._drop_consumed_clusters(sources)
+            # Drop any stranger clusters whose WAVs were just claimed. Keeping
+            # them would leave stale rows that re-label the now-known speaker as
+            # voice_<N> on any recognition below the match threshold.
+            if source_type == "filepath":
+                self._drop_consumed_clusters(sources)
 
         logger.info(
             "Enrolled speaker '%s' — %d anchor + %d extended sample(s), dim=%d",
@@ -3104,6 +3202,47 @@ class SpeakerRecognizer:
         with self._debug_stage("load_enrolled"):
             bank_rows, bank_labels, bank_tiers = self._load_bank()
             known = sorted(set(bank_labels))
+
+        # Per-turn model-identity gate. A stored row is only comparable to this
+        # query when it came from the SAME server model — the /embed above just
+        # refreshed _server_model_version. Any profile whose stamped version
+        # differs is EXCLUDED from this turn's match (so a model swap can't
+        # wrong-match, or crash the matmul on a dim change; it reads as unknown
+        # until re-embedded), and a one-shot background re-embed is kicked to
+        # bring stale profiles current. That migration is single-flight and runs
+        # in a daemon thread — the main flow pays only this cheap in-memory
+        # filter, never the re-embed itself.
+        if bank_rows is not None and known:
+            server_ver = self._server_model_version
+            if server_ver:
+                stale = {
+                    n for n in known if self._stored_model_version(n) != server_ver
+                }
+                if stale:
+                    logger.warning(
+                        "Recognize: server model %s but %d stale profile(s) %s — "
+                        "excluded this turn; starting background re-embed migration.",
+                        server_ver, len(stale), sorted(stale),
+                    )
+                    self._start_migration(server_ver)
+                    keep = [i for i, lb in enumerate(bank_labels) if lb not in stale]
+                    bank_rows = bank_rows[keep] if keep else None
+                    bank_labels = [bank_labels[i] for i in keep]
+                    bank_tiers = [bank_tiers[i] for i in keep]
+                    known = sorted(set(bank_labels))
+            # Defensive dim guard for when the server reports no version (gate
+            # above skipped): _load_bank makes every row one uniform width, so a
+            # bank whose width != the query's is wholly incomparable and would
+            # crash the matmul below — drop it and fall through to unknown.
+            if bank_rows is not None and int(bank_rows.shape[1]) != int(
+                query_chunks.shape[1]
+            ):
+                logger.warning(
+                    "Recognize: bank dim %d != query dim %d — excluded (model likely changed).",
+                    int(bank_rows.shape[1]), int(query_chunks.shape[1]),
+                )
+                bank_rows, bank_labels, bank_tiers, known = None, [], [], []
+
         if bank_rows is None or not known:
             # No enrolled users — every voice is unknown. Still assign a
             # stable cluster hash so repeat speakers can be tracked before
@@ -3512,8 +3651,8 @@ class SpeakerRecognizer:
         )
         # Refresh mirrored fields in voice metadata + registry. Hold the per-user
         # lock across read-modify-write so this can't clobber a concurrent enroll
-        # or migration commit (which would otherwise revert embed_model_version /
-        # needs_reenroll to this stale snapshot). Re-read inside the lock.
+        # or migration commit (which would otherwise revert embed_model_version
+        # to this stale snapshot). Re-read inside the lock.
         with self._user_lock(norm):
             voice_meta = self._read_metadata(norm)
             voice_meta["telegram_username"] = shared.get("telegram_username", "")
@@ -4023,9 +4162,35 @@ class SpeakerRecognizer:
                 lbl for lbl in labels_in_order if cluster_sims[lbl] >= threshold
             ]
 
-    def _save_strangers(self) -> None:
-        """Persist stranger state to disk. Caller must hold _stranger_lock."""
-        if self._stranger_embeds is None or self._stranger_labels is None:
+    def _ensure_stranger_store_compatible(self, query_dim: int) -> None:
+        """Wipe the stranger store unless it is PROVEN to match the current model.
+
+        Caller must hold ``_stranger_lock``. The verdict is deliberately
+        conservative — the store is kept ONLY when we can prove it came from the
+        model in use right now:
+
+        * ``_server_model_version`` (the live model, refreshed by every /embed
+          call) is known, the store's stamp **equals** it, AND the stored
+          embedding dim equals the query dim → **keep**.
+        * Anything else — a **missing** stamp, a **different** stamp, or a
+          **different** dim — cannot prove same-model provenance, so the store
+          is **wiped**. We never ASSUME an unstamped store is current: a
+          same-dim checkpoint swap under a different model would otherwise slip
+          through (exactly the case a dim check alone misses).
+
+        When the server reports **no** version at all we have no version signal,
+        so we fall back to a dim-only guard (a same-dim swap is undetectable
+        without a version). Strangers are anonymous / ephemeral, so a mismatch
+        WIPES the table (never re-embeds); ``_stranger_counter`` stays monotonic
+        so a fresh ``voice_<N>`` never collides with a leftover cluster dir.
+        """
+        cur = self._server_model_version
+        if self._stranger_embeds is None or len(self._stranger_embeds) == 0:
+            # Empty store — nothing to invalidate; adopt the current stamp so a
+            # fresh store is labelled with the model it will be built under.
+            if cur and self._stranger_model_version != cur:
+                self._stranger_model_version = cur
+                self._save_strangers()
             return
 
         dim_ok = int(self._stranger_embeds.shape[1]) == int(query_dim)

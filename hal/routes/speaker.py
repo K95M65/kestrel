@@ -162,7 +162,6 @@ class SpeakerMeta(BaseModel):
     sample_files: list[str] = []
     sample_origins: dict[str, str] = {}
     embed_model_version: Optional[str] = None
-    needs_reenroll: bool = False
     extended_files: list[str] = []
 
 
