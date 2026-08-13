@@ -91,11 +91,22 @@ class _StripSPI:
 
     Encodes WS2812 bit timing via SPI at 6.4 MHz:
       bit 0 = 0xC0 (11000000)  ~312ns high, ~937ns low
-      bit 1 = 0xF8 (11111000)  ~781ns high, ~468ns low
+      bit 1 = 0xFC (11111100)  ~937ns high, ~312ns low
+
+    _BIT1 was 0xF8 (~781ns) and lost 1-bits on individual pixels: at low values
+    a dropped bit swings the hue, so the setup cue (solid [16,16,16]) showed one
+    pixel blue or yellow while every other pixel was right -- the dropped bit was
+    whichever channel that pixel misread. Repeatable on the same pixel, so it was
+    marginal timing, not line noise (rewriting the same frame reproduced it).
+    Datasheet T1H is 580-1000ns; 781ns is inside that on paper, but the strip runs
+    at 5V off a 3.3V data line, and the slow rise time eats into the effective
+    high, leaving the weakest pixel in the chain below its threshold. 937ns keeps
+    the full 1.25us period and stays under the 1000ns ceiling.
+    Device-verified 12/08/2026 on lamp-ac82.
     """
 
     _BIT0 = 0xC0
-    _BIT1 = 0xF8
+    _BIT1 = 0xFC
     _PRIMER_BYTES = 10  # ~12.5us MOSI-low before first encoded bit, so pixel 0 cannot latch a stray HIGH
     _RESET_BYTES = 250  # ~312us reset at 6.4 MHz (>= WS2812B-V5 280us latch threshold)
 
@@ -186,6 +197,22 @@ class RGBService(ServiceBase):
 
         # Expose .strip.getPixelColor() for server.py compatibility
         self.strip = self
+
+        # Blank the strip before anyone can paint it. WS2812 pixels hold their
+        # last latched colour with no data on the wire, and the SPI pins are
+        # re-muxed during kernel boot -- that transition puts stray edges on the
+        # data line, so a few pixels come up latched to a garbage colour (green
+        # first: G is the leading byte of every WS2812 frame). Without this the
+        # garbage stays lit until the first LED command lands, which can be
+        # minutes after boot -- and looks exactly like the lamp painting a random
+        # green dot on its own. Device-verified 12/08/2026 on lamp-ac82: strip
+        # showed a green arc while GET /led/color reported [0,0,0], and a single
+        # clear() wiped it.
+        if self._driver:
+            try:
+                self.clear()
+            except Exception as e:
+                self.logger.warning("Initial LED clear failed: %s", e)
 
     def getPixelColor(self, index: int) -> int:
         """Return packed 0xRRGGBB int for server.py compatibility."""

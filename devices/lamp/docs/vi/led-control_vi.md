@@ -6,6 +6,24 @@
 - Driver: `rpi_ws281x` (Python, HAL owns)
 - FastAPI endpoints trên `:5001`
 
+### Thời lượng xung SPI
+
+Driver SPI mã hoá bit WS2812 ở 6.4 MHz: `_BIT0 = 0xC0` (~312ns mức cao),
+`_BIT1 = 0xFC` (~937ns). Trước đây `_BIT1` là `0xF8` (~781ns) và vài pixel rớt
+bit 1 — màu tĩnh mờ như cue setup `[16,16,16]` hiện ra một pixel xanh dương hoặc
+vàng, tuỳ kênh nào bị pixel đó đọc nhầm. 781ns vẫn nằm trong dải 580-1000ns theo
+datasheet, nhưng dải LED chạy 5V trong khi dây data chỉ 3.3V, sườn lên chậm ăn
+mất phần mức cao hiệu dụng.
+
+### Xoá dải LED lúc khởi động
+
+`RGBService.__init__` xoá sạch dải LED ngay khi driver sẵn sàng, trước khi bất kỳ
+route hay effect nào kịp vẽ. WS2812 giữ nguyên màu đã chốt khi không có dữ liệu
+trên dây, và chân SPI bị cấu hình lại trong lúc kernel boot — xung nhiễu trên dây
+data làm vài pixel chốt nhầm một màu rác (hay gặp nhất là xanh lá, vì G là byte
+đầu tiên của mỗi frame WS2812). Không có bước xoá này thì màu rác đó sáng cho tới
+lệnh LED đầu tiên, có thể vài phút sau khi boot.
+
 ## Endpoints
 
 | Method | Endpoint | Mô tả |
