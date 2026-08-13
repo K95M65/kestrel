@@ -49,7 +49,8 @@ hal/
 
 devices/                          — Per-device configs and overlays
   contract/                       — Shared API contracts (+ cts/ compliance suite)
-skills/                           — SKILL.md files cho agent runtime
+skills/                           — Built-in SKILL.md cho agent runtime, gồm cả
+                                    skill-creator để chủ thiết bị tự tạo skill
 integrations/                     — Off-device: companions/, chat-bridges/, perception-service/
 ```
 
@@ -60,6 +61,8 @@ integrations/                     — Off-device: companions/, chat-bridges/, pe
 - **Code là source of truth** — docs phản ánh code
 - **HAL là hardware driver** — không chứa logic AI
 - **SKILL.md native** — không dùng MCP, LLM tự đọc skill và gọi curl
+- **Chủ thiết bị có thể tạo skill** — `skill-creator` built-in hướng dẫn soạn,
+  kiểm thử và đóng gói skill để đưa lên Autonomous Skill Store.
 
 ## Voice Pipeline
 

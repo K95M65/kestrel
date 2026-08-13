@@ -7,8 +7,8 @@ depends only on the one below, so any layer can be replaced without touching the
 
 ## Layers
 
-**Skills** — what the device does: 24 skills, each a `SKILL.md` the runtime invokes — apps
-like `guard`, `mood`, `scene`, `habit`, `wellbeing`, plus capability wrappers
+**Skills** — what the device does: 25 skills, each a `SKILL.md` the runtime invokes — apps
+like `guard`, `mood`, `scene`, `habit`, `wellbeing`, `skill-creator`, plus capability wrappers
 (`led-control`, `servo-control`, `camera`, `music`, …). A skill is an *ability*; the device's
 *character* is its `SOUL.md`. First-party skills use the same public contract a third party
 gets. *(`skills/`)*
