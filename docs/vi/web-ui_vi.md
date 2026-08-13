@@ -1,6 +1,6 @@
 # Web UI — Monitor Dashboard
 
-## Ngày cập nhật: 2026-06-24
+## Ngày cập nhật: 2026-08-13
 
 ---
 
@@ -25,6 +25,24 @@ Tiêu đề tab trình duyệt (`document.title`) hiển thị đúng theo page/
 | `/gw-config` | `Lamp · GW Config` |
 
 `<title>Lamp Setup</title>` tĩnh trong `index.html` chỉ là fallback trước khi React mount; hook sẽ ghi đè khi mount và khôi phục title cũ khi unmount.
+
+### 1.2 Link đăng nhập kèm mật khẩu
+
+Trang đăng nhập nhận mật khẩu từ URL query để truy cập trực tiếp có kiểm soát:
+`/login?password=<mật-khẩu-đã-URL-encode>`. Tham số này cũng dùng được với mọi
+route cần đăng nhập và alias cũ của chúng (`/`, `/monitor`, `/setting`, `/edit`,
+`/gw-config`, và `/dashboard`), ví dụ
+`/setting?password=<mật-khẩu-đã-URL-encode>#voice`.
+Khi có query này, trang tự điền trường Admin Password và gửi form đăng nhập
+ngay. Auth gate chuyển tham số tới Login, rồi sau khi thành công quay lại path
+và hash đích đã được làm sạch. Parameter `password` được xoá bằng `safeSearch`,
+nên secret không còn trong URL hiển thị hoặc history entry của trình duyệt.
+Query phải đứng trước `#`; phần sau `#` là fragment phía client, không phải
+query string.
+
+Chỉ dùng với link tin cậy và tồn tại ngắn: mật khẩu trong URL vẫn có thể lộ qua
+link được sao chép, lịch sử trình duyệt, hoặc log server/proxy trước khi trang
+xóa nó.
 
 ---
 

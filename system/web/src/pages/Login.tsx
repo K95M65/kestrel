@@ -1,23 +1,26 @@
-import { useState, useCallback, type FormEvent } from "react";
+import { useState, useCallback, useEffect, useRef, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { login, safeSearch } from "@/lib/api";
+import { login } from "@/lib/api";
 import { useTheme } from "@/lib/useTheme";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { C, PasswordField } from "@/components/setup/shared";
 
-// Login page — single password field that POSTs /api/login. On success the
-// server sets the os_session cookie (httpOnly + SameSite=Strict), and we
-// navigate back to the page the user originally tried to reach (?next=…) or
-// fall back to /monitor.
+// Login page — single password field that POSTs /api/login. A password query
+// parameter supports one-click local-device links: it pre-fills the field and
+// submits automatically. On success the server sets the os_session cookie
+// (httpOnly + SameSite=Strict), and we navigate back to the page the user
+// originally tried to reach (?next=…) or fall back to /monitor.
 export default function Login() {
   const [theme, toggleTheme, themeClass] = useTheme();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   useDocumentTitle("Sign in");
 
-  const [password, setPassword] = useState("");
+  const passwordFromQuery = searchParams.get("password") ?? "";
+  const [password, setPassword] = useState(passwordFromQuery);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const autoLoginAttempted = useRef(false);
 
   // `next` is captured from the URL so a bookmarked /edit lands the operator
   // back on /edit after login instead of always dumping them at /monitor.
@@ -27,21 +30,32 @@ export default function Login() {
   const nextSafe =
     nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "/monitor";
 
-  const submit = useCallback(async (e: FormEvent) => {
-    e.preventDefault();
-    if (!password) return;
+  const submitPassword = useCallback(async (value: string) => {
+    if (!value) return;
     setError(null);
     setBusy(true);
     try {
-      await login(password);
-      // Cookie is now set. Strip any secret query params before navigating.
-      navigate(`${nextSafe}${safeSearch()}`, { replace: true });
+      await login(value);
+      // The app-level secret scrubber removes the query parameter. `next`
+      // already includes the intended clean target URL and hash.
+      navigate(nextSafe, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
       setBusy(false);
     }
-  }, [password, nextSafe, navigate]);
+  }, [nextSafe, navigate]);
+
+  const submit = useCallback((e: FormEvent) => {
+    e.preventDefault();
+    void submitPassword(password);
+  }, [password, submitPassword]);
+
+  useEffect(() => {
+    if (!passwordFromQuery || autoLoginAttempted.current) return;
+    autoLoginAttempted.current = true;
+    void submitPassword(passwordFromQuery);
+  }, [passwordFromQuery, submitPassword]);
 
   return (
     <div className={`lm-root ${themeClass}`} style={{

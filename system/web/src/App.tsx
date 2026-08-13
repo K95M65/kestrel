@@ -146,8 +146,14 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     return <Navigate to={`/setup${safeSearch()}`} replace />;
   }
   if (state === "login") {
-    const next = encodeURIComponent(location.pathname + location.search);
-    return <Navigate to={`/login?next=${next}`} replace />;
+    // Carry a password link through the auth redirect while keeping it out of
+    // `next`. This lets /setting?password=…#voice resume at Voice after the
+    // automatic login, without nesting a credential in the return URL.
+    const password = new URLSearchParams(location.search).get("password");
+    const next = location.pathname + safeSearch(location.search) + location.hash;
+    const params = new URLSearchParams({ next });
+    if (password) params.set("password", password);
+    return <Navigate to={`/login?${params.toString()}`} replace />;
   }
   return <>{children}</>;
 }
@@ -171,6 +177,13 @@ function RootRedirect() {
 function EditRedirect() {
   const location = useLocation();
   return <Navigate to={`/setting${location.search}${location.hash}`} replace />;
+}
+
+// Keep one-click password links and any selected monitor fragment intact when
+// resolving the legacy dashboard path to its canonical route.
+function DashboardRedirect() {
+  const location = useLocation();
+  return <Navigate to={`/monitor${location.search}${location.hash}`} replace />;
 }
 
 // On every mount, scrub secret query params from the URL so they don't
@@ -232,7 +245,7 @@ function App() {
             query string (e.g. ?debug=true). */}
         <Route path="/edit" element={<EditRedirect />} />
         <Route path="/gw-config" element={<AuthGate><GwConfig /></AuthGate>} />
-        <Route path="/dashboard" element={<Navigate to="/monitor" replace />} />
+        <Route path="/dashboard" element={<DashboardRedirect />} />
       </Routes>
       <Toaster richColors position="top-center" />
       <SourceFooter />

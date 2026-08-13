@@ -128,7 +128,7 @@ const SETUP_URL_SEARCH_STORE_KEY = "autonomous.setup_url_search.v1";
  *  the AP→STA origin change: 192.168.100.1 → the device's LAN IP). This is an
  *  accepted trade-off: secrets stay visible in Setup's history / address bar.
  *
- *  F5-reload survival (all OTHER routes): persist the raw pre-scrub search to
+ *  F5-reload survival (all OTHER routes except Login): persist the raw pre-scrub search to
  *  sessionStorage BEFORE wiping the URL. That way a reload (which reloads the
  *  scrubbed URL, losing everything the module-load snapshot in useSetupUrlParams
  *  would have captured) can still rehydrate the operator's secrets.
@@ -146,7 +146,11 @@ export function scrubLocationSecrets(): void {
   const cleaned = safeSearch(raw);
   if (cleaned === raw) return;
   try {
-    if (raw) sessionStorage.setItem(SETUP_URL_SEARCH_STORE_KEY, raw);
+    // /login reads ?password during its first render and submits it straight
+    // away. Do not retain that credential in sessionStorage after scrubbing.
+    if (raw && window.location.pathname !== "/login") {
+      sessionStorage.setItem(SETUP_URL_SEARCH_STORE_KEY, raw);
+    }
   } catch {
     /* private-mode / storage disabled — URL scrub still proceeds */
   }
