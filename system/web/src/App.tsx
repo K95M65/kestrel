@@ -179,6 +179,13 @@ function EditRedirect() {
   return <Navigate to={`/setting${location.search}${location.hash}`} replace />;
 }
 
+// Keep one-click password links and any selected monitor fragment intact when
+// resolving the legacy dashboard path to its canonical route.
+function DashboardRedirect() {
+  const location = useLocation();
+  return <Navigate to={`/monitor${location.search}${location.hash}`} replace />;
+}
+
 // On every mount, scrub secret query params from the URL so they don't
 // survive in browser history or address bar after the page reads them.
 function useScrubSecrets() {
@@ -238,7 +245,7 @@ function App() {
             query string (e.g. ?debug=true). */}
         <Route path="/edit" element={<EditRedirect />} />
         <Route path="/gw-config" element={<AuthGate><GwConfig /></AuthGate>} />
-        <Route path="/dashboard" element={<Navigate to="/monitor" replace />} />
+        <Route path="/dashboard" element={<DashboardRedirect />} />
       </Routes>
       <Toaster richColors position="top-center" />
       <SourceFooter />
