@@ -181,18 +181,6 @@ class EmbeddingAPIUnavailableError(SpeakerRecognizerError):
     """
 
 
-class AudioGateRejectedError(SpeakerRecognizerError):
-    """Raised when the on-device preprocessing gate (VAD/quality) rejects audio.
-
-    Still a ``SpeakerRecognizerError`` so recognize() degrades to "unknown" and
-    the enroll new-sample loop skips the clip — same as when perception used to
-    return HTTP 400. Kept DISTINCT from a plain decode/corrupt failure so the
-    enroll path does NOT delete a previously-accepted on-disk sample just
-    because the gate got stricter (the gate is a moving target; a stored WAV is
-    not "corrupt" merely because today's VAD trims it below threshold).
-    """
-
-
 # ---------------------------------------------------------------------------
 # On-device audio preprocessing (moved from perception-service).
 #
@@ -1492,10 +1480,13 @@ class SpeakerRecognizer:
                 else:
                     cleaned = processor.process(audio_in)
             except PreprocessRejected as e:
-                # AudioGateRejectedError (not a plain SpeakerRecognizerError) so the
-                # enroll path keeps previously-accepted on-disk samples instead of
-                # deleting them when the gate gets stricter.
-                err = AudioGateRejectedError(
+                # Audio-level rejection (a bad recording), NOT a server outage —
+                # map to SpeakerRecognizerError so recognize() reads "unknown" and
+                # every batch caller (enroll, migration) SKIPS this clip without
+                # deleting any previously-accepted on-disk sample. The gate is a
+                # moving target; a stored WAV is not "corrupt" merely because
+                # today's VAD/STOI trims it below threshold.
+                err = SpeakerRecognizerError(
                     f"audio rejected by preprocessing gate [{e.reason}]: {e}"
                 )
                 err.gate_detail = e.to_dict()  # SPEAKER-DEBUG: reason + VAD/STOI metrics
@@ -2261,10 +2252,13 @@ class SpeakerRecognizer:
     def _reembed_user(self, norm: str, server_version: str) -> Optional[bool]:
         """Re-embed one user's retained WAVs. True=migrated; None=not migrated.
 
-        On None the profile is either REMOVED (samples all present but rejected by
-        the gate — genuinely bad audio) or LEFT STALE (no source WAVs at all, e.g.
-        a legacy embedding.npy-only profile — never deleted, since that file may
-        be the only copy of the enrollment).
+        On None the profile is LEFT STALE (excluded from matching) — never
+        deleted. This covers both a profile with no source WAVs (legacy
+        embedding.npy-only, or WAVs gone) and one whose every retained WAV fails
+        the preprocessing gate: a stale profile is harmless (filtered out of
+        matching) and its WAVs may be the only copy of the enrollment, so a
+        version bump must not destroy it. It re-migrates automatically once a
+        sample passes the gate again.
 
         Rewrites each sample's embedding SIDECAR in place — both the anchor
         (``sample_*.wav``) and extended (``extended_*.wav``) tiers — so the bank
@@ -2274,14 +2268,9 @@ class SpeakerRecognizer:
         Takes the per-user lock, which serializes this against another
         ``_reembed_user`` of the same profile — already guaranteed by migration
         single-flight, so it is belt-and-suspenders — AND against a concurrent
-        ``enroll()`` of the same user, whose disk-commit now holds the same lock.
-        That mutual exclusion matters because the "all samples rejected" branch
-        below ``rmtree``s the whole voice dir: without the lock an enroll writing
-        fresh samples could be silently wiped by that delete, or write into a dir
-        mid-deletion. With both sides serialized, either enroll fully commits
-        then this pass re-reads and re-embeds those new samples, or this pass
-        finishes (re-embed or remove) before enroll's commit begins. The only
-        shared file otherwise is ``metadata.json`` (atomic write); its sample
+        ``enroll()`` of the same user, whose disk-commit holds the same lock, so
+        the two never interleave writes to the same profile (sidecars +
+        ``metadata.json``). ``metadata.json`` is an atomic write; its sample
         counts/lists are re-derived from disk on read, and both writers stamp the
         same ``embed_model_version``.
 
@@ -2299,11 +2288,11 @@ class SpeakerRecognizer:
 
             # Both tiers migrate. A profile with no per-sample WAVs (legacy with
             # only the aggregate embedding.npy, or WAVs deleted) has no audio to
-            # re-embed — but is NOT deleted: that embedding.npy may be the only
-            # copy of the enrollment, and destroying it on a version bump would be
-            # surprising. It is left stale (excluded from matching) until the
-            # person re-enrolls. Only genuinely-bad audio — samples that ARE
-            # present but all fail the gate — is removed (see below).
+            # re-embed. It is left stale (excluded from matching) until the person
+            # re-enrolls — never deleted, since a stale profile is harmless (it is
+            # filtered out of matching) and its WAVs may be the only copy of the
+            # enrollment. The "all samples fail the gate" case below is handled the
+            # same way: left stale, not removed.
             wav_paths = self._anchor_wavs(norm) + self._extended_wavs(norm)
             if not wav_paths:
                 logger.warning(
@@ -2334,8 +2323,17 @@ class SpeakerRecognizer:
                 dim = int(emb.shape[0])
 
             if not migrated:
-                self._remove_voice_profile(
-                    norm, "all retained samples rejected by the gate",
+                # No retained sample produced an embedding — almost always the
+                # gate config tightening (these WAVs passed it at enroll under the
+                # old config), a reversible change, or a transient unreadable file.
+                # Either way leave the profile STALE rather than deleting its only
+                # copy of the audio; it re-migrates automatically once a sample
+                # embeds cleanly again.
+                logger.warning(
+                    "Migration: %r — no retained sample produced an embedding "
+                    "(%d gate-rejected of %d); left stale (excluded from "
+                    "matching), not deleted.",
+                    norm, len(rejected), len(wav_paths),
                 )
                 return None
 
@@ -2360,26 +2358,6 @@ class SpeakerRecognizer:
                 norm, len(migrated), server_version,
             )
             return True
-
-    def _remove_voice_profile(self, norm: str, reason: str) -> None:
-        """Delete a user's VOICE profile that cannot be migrated.
-
-        Removes only ``<norm>/voice/`` (WAV + sidecars + voice metadata) and the
-        registry row. The SHARED identity (``<norm>/metadata.json``, face,
-        telegram) is left untouched, so the person still exists to every other
-        skill — they simply have no voice enrollment until they re-enroll. An
-        un-re-embeddable profile can never match anyway, so removing it declutters
-        the owner list and stops the migration gate from retrying it every turn.
-        Caller holds the per-user lock.
-        """
-        logger.warning(
-            "Migration: %r cannot be re-embedded (%s) — removing its voice "
-            "profile; identity kept, voice must be re-enrolled.",
-            norm, reason,
-        )
-        shutil.rmtree(self._voice_dir(norm), ignore_errors=True)
-        self._remove_from_registry(norm)
-        self._invalidate_bank()
 
     # --------------------------------------------------------- public: enroll
 
