@@ -698,6 +698,10 @@ việc tên nào là hợp lệ.
 `"a skills install is in progress; try again later"` thay vì chặn vòng dispatch
 MQTT suốt thời gian tải từ CDN.
 
+Sau response `success`, device lập tức publish uplink MQTT `info` thông thường
+với inventory `skills` đã cập nhật. Nếu uplink best-effort này lỗi thì chỉ log,
+không biến kết quả save thành thất bại.
+
 Không restart gateway: mọi backend có thư mục skill đều nhặt file mới theo từng
 session.
 
@@ -750,6 +754,10 @@ trong các giá trị:
 Đồng thời: dùng chung skills mutex với `skills.install`, `skills.install_store`,
 `skills.save`, và `skills.uninstall`; command đến cùng lúc fail ngay thay vì xen
 ghi vào cây skills của runtime.
+
+Sau response `success`, device lập tức publish uplink MQTT `info` thông thường
+với inventory `skills` đã cập nhật. Nếu uplink best-effort này lỗi thì chỉ log,
+không biến kết quả upload thành thất bại.
 
 #### `chat.send` + `chat.event`
 

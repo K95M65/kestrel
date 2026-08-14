@@ -51,11 +51,15 @@ func (h *DeviceMQTTHandler) handleSkillsSave(env domain.MQTTDataCommand) error {
 
 	slog.Info("skills.save: success", "component", "mqtt",
 		"skill", draft.Name, "runtime", runtimeName, "path", path)
-	return h.publishDataResult(env.Kind, "success", "", map[string]interface{}{
+	if err := h.publishDataResult(env.Kind, "success", "", map[string]interface{}{
 		"name":    draft.Name,
 		"runtime": runtimeName,
 		"path":    path,
-	})
+	}); err != nil {
+		return err
+	}
+	h.publishInfoAfterSkillsMutation()
+	return nil
 }
 
 // parseSkillsSaveData decodes + normalises a skills.save payload into the draft

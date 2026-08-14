@@ -61,3 +61,13 @@ func (h *DeviceMQTTHandler) handleInfo(_ domain.MQTTMessage) error {
 	)
 	return h.publish(msg)
 }
+
+// publishInfoAfterSkillsMutation refreshes the server's cached skill inventory
+// immediately after a successful MQTT skills write. The command response has
+// already confirmed the mutation; an info uplink failure is therefore logged
+// but must not turn that successful mutation into a failed command.
+func (h *DeviceMQTTHandler) publishInfoAfterSkillsMutation() {
+	if err := h.handleInfo(domain.MQTTMessage{Cmd: domain.CommandInfo}); err != nil {
+		slog.Warn("skills: immediate info uplink failed", "component", "mqtt", "error", err)
+	}
+}

@@ -55,11 +55,15 @@ func (h *DeviceMQTTHandler) handleSkillsUpload(env domain.MQTTDataCommand) error
 	name := filepath.Base(dir)
 	slog.Info("skills.upload: success", "component", "mqtt",
 		"skill", name, "runtime", runtimeName, "path", dir)
-	return h.publishDataResult(env.Kind, "success", "", map[string]interface{}{
+	if err := h.publishDataResult(env.Kind, "success", "", map[string]interface{}{
 		"name":    name,
 		"runtime": runtimeName,
 		"path":    dir,
-	})
+	}); err != nil {
+		return err
+	}
+	h.publishInfoAfterSkillsMutation()
+	return nil
 }
 
 func (h *DeviceMQTTHandler) installUploadedSkillArchive(content []byte, base string) (string, error) {

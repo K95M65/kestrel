@@ -721,6 +721,10 @@ mid-install fails fast with
 `"a skills install is in progress; try again later"` rather than stalling the MQTT
 dispatch loop for the length of a CDN download.
 
+After its `success` response, the device immediately publishes its normal MQTT
+`info` uplink with the refreshed `skills` inventory. A failure to publish that
+best-effort follow-up is logged, but does not change the successful save result.
+
 No gateway restart: every backend with a skills dir picks new files up per
 session.
 
@@ -773,6 +777,10 @@ Installing replaces an existing skill of the same name atomically. On failure
 Concurrency: shares the skills mutex with `skills.install`, `skills.install_store`,
 `skills.save`, and `skills.uninstall`; a concurrent command fails fast rather
 than interleaving writes into the runtime's skills tree.
+
+After its `success` response, the device immediately publishes its normal MQTT
+`info` uplink with the refreshed `skills` inventory. A failure to publish that
+best-effort follow-up is logged, but does not change the successful upload result.
 
 #### `chat.send` + `chat.event`
 
