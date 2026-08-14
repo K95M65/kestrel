@@ -338,6 +338,7 @@ optional `error`, and an optional `data` payload.
 | `skills.files` | Read one installed skill's files — list, or one file's contents (synchronous) | `name`, optional `path` |
 | `skills.uninstall` | Remove one installed skill from the active runtime (synchronous) | `name` |
 | `skills.save` | Write one authored skill into the active runtime's skills dir (synchronous) | `name`, `description`, `instructions` |
+| `skills.upload` | Install one `.md`, `.zip`, or `.skill` file on the active runtime (synchronous) | `filename`, `content_base64` |
 | `chat.file.get` | Fetch one device-local file a turn named (synchronous) | `path` (required), optional `session_id`/`run_id` |
 | `chat.send` | Start an agent turn from the backend and stream it back (acks a run id, then emits `chat.event`) | `message` (required), optional `image`/`file`/`session_id`/`speak` |
 | `system.info` | Aggregate snapshot: versions + network + host | _(none)_ |
@@ -725,26 +726,28 @@ session.
 
 #### `skills.upload`
 
-Installs one complete `SKILL.md` supplied directly in the MQTT command. This is
-the MQTT counterpart of uploading a bare `.md` file to
-`POST /api/agent/skills/upload`: both call `AgentGateway.InstallSkillMarkdown`.
-Unlike `skills.save`, the sender owns the complete Markdown and YAML
-front-matter instead of sending separate authoring fields.
+Installs a `.md`, `.zip`, or `.skill` file supplied directly in the MQTT
+command. This is the MQTT counterpart of `POST /api/agent/skills/upload`: it
+uses `AgentGateway.InstallSkillMarkdown` for `.md` and
+`AgentGateway.InstallSkillArchive` for `.zip`/`.skill`.
 
 **Receive:**
 ```json
 {"cmd": "data", "kind": "skills.upload", "data": {
-  "content": "---\\nname: daily-note\\ndescription: Capture a daily note.\\n---\\n\\n# Daily note"
+  "filename": "daily-note.md",
+  "content_base64": "LS0tCm5hbWU6IGRhaWx5LW5vdGUKZGVzY3JpcHRpb246IENhcHR1cmUgYSBkYWlseSBub3RlLgotLS0KCiMgRGFpbHkgbm90ZQ=="
 }}
 ```
 
-`content` is required and must be at most 16 MiB. It must be a valid bare
-`SKILL.md`: YAML front-matter must contain a legal `name` and a `description`.
-This command deliberately accepts Markdown only — a normal skill document is
-small enough for MQTT; `.zip`/`.skill` archives remain the HTTP upload flow.
+`filename` is required and its extension must be `.md`, `.zip`, or `.skill`.
+`content_base64` carries the exact file bytes; the decoded file must be at most
+16 MiB (so a broker must allow the approximately 21.4 MiB JSON/base64 payload
+at the limit). A `.md` must be a valid bare `SKILL.md` with `name` and
+`description` in YAML front-matter. Archives follow the same validation and
+atomic replace semantics as the HTTP upload flow.
 
-**Synchronous** — the device writes one local file, so there is no `starting`
-ack.
+**Synchronous** — decoding and installation run in the MQTT dispatch path, so
+there is no `starting` ack.
 
 ```json
 {
@@ -756,13 +759,14 @@ ack.
 }
 ```
 
-Installing replaces an existing skill of the same name atomically, just like a
-web `.md` upload. On failure `data.failed_step` is one of:
+Installing replaces an existing skill of the same name atomically. On failure
+`data.failed_step` is one of:
 
 | `failed_step` | Meaning |
 |---------------|---------|
 | `validate_front_matter` | content has no usable SKILL.md YAML front-matter |
 | `validate_name` | front-matter name is not a legal slug |
+| `archive` | archive is empty or lacks a root SKILL.md |
 | `unsupported_runtime` | the active runtime has no device-writable skills dir |
 | `install` | filesystem failure |
 

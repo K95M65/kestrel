@@ -330,6 +330,7 @@ metadata device/version chuẩn cộng với `kind`, `status` (`success|failure`
 | `chat.file.get` | Lấy một file trên device mà turn đã gọi tên (đồng bộ) | `path` (bắt buộc), tuỳ chọn `session_id`/`run_id` |
 | `chat.send` | Mở một turn của agent từ backend rồi stream ngược về (ack một run id, sau đó bắn `chat.event`) | `message` (bắt buộc), tuỳ chọn `image`/`file`/`session_id`/`speak` |
 | `skills.save` | Ghi một skill soạn sẵn vào thư mục skill của runtime đang chạy (đồng bộ) | `name`, `description`, `instructions` |
+| `skills.upload` | Cài một file `.md`, `.zip`, hoặc `.skill` vào runtime đang chạy (đồng bộ) | `filename`, `content_base64` |
 | `system.info` | Snapshot tổng hợp: versions + network + host | _(không)_ |
 | `system.version` | Chỉ versions các thành phần (rẻ hơn `system.info`) | _(không)_ |
 | `system.network` | Chỉ thông tin mạng của interface đang giữ default route | _(không)_ |
@@ -702,24 +703,28 @@ session.
 
 #### `skills.upload`
 
-Cài một `SKILL.md` hoàn chỉnh được đưa thẳng trong MQTT command. Đây là bản MQTT
-của việc upload file `.md` trơn tới `POST /api/agent/skills/upload`: cả hai đều
-gọi `AgentGateway.InstallSkillMarkdown`. Khác `skills.save`, bên gửi sở hữu toàn
-bộ Markdown và YAML front-matter, thay vì gửi ba field để device tự soạn.
+Cài file `.md`, `.zip`, hoặc `.skill` được đưa thẳng trong MQTT command. Đây là
+bản MQTT của `POST /api/agent/skills/upload`: `.md` gọi
+`AgentGateway.InstallSkillMarkdown`, còn `.zip`/`.skill` gọi
+`AgentGateway.InstallSkillArchive`.
 
 **Nhận:**
 ```json
 {"cmd": "data", "kind": "skills.upload", "data": {
-  "content": "---\\nname: daily-note\\ndescription: Capture a daily note.\\n---\\n\\n# Daily note"
+  "filename": "daily-note.md",
+  "content_base64": "LS0tCm5hbWU6IGRhaWx5LW5vdGUKZGVzY3JpcHRpb246IENhcHR1cmUgYSBkYWlseSBub3RlLgotLS0KCiMgRGFpbHkgbm90ZQ=="
 }}
 ```
 
-`content` là bắt buộc và tối đa 16 MiB. Nó phải là `SKILL.md` trơn hợp lệ: YAML
-front-matter phải có `name` hợp lệ và `description`. Command này cố ý chỉ nhận
-Markdown — một skill document thông thường đủ nhỏ cho MQTT; archive `.zip`/
-`.skill` vẫn là luồng HTTP upload.
+`filename` là bắt buộc và extension phải là `.md`, `.zip`, hoặc `.skill`.
+`content_base64` mang chính xác bytes của file; file sau giải mã tối đa 16 MiB
+(vì vậy broker phải cho phép payload JSON/base64 khoảng 21.4 MiB ở ngưỡng này).
+File `.md` phải là `SKILL.md` trơn hợp lệ, có `name` và `description` trong YAML
+front-matter. Archive dùng cùng validation và cơ chế thay thế atomically như
+luồng HTTP upload.
 
-**Đồng bộ** — device chỉ ghi một file local, nên không có ack `starting`.
+**Đồng bộ** — giải mã và cài đặt chạy trong MQTT dispatch path, nên không có ack
+`starting`.
 
 ```json
 {
@@ -731,13 +736,14 @@ Markdown — một skill document thông thường đủ nhỏ cho MQTT; archive
 }
 ```
 
-Install thay thế atomically skill trùng tên, giống web upload `.md`. Khi lỗi,
-`data.failed_step` là một trong các giá trị:
+Install thay thế atomically skill trùng tên. Khi lỗi, `data.failed_step` là một
+trong các giá trị:
 
 | `failed_step` | Nghĩa |
 |---------------|-------|
 | `validate_front_matter` | content không có YAML front-matter SKILL.md dùng được |
 | `validate_name` | name trong front-matter không phải slug hợp lệ |
+| `archive` | archive rỗng hoặc không có SKILL.md ở root |
 | `unsupported_runtime` | runtime đang chạy không có thư mục skill ghi được |
 | `install` | lỗi filesystem |
 

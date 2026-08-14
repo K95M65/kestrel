@@ -383,9 +383,8 @@ const (
 	// honour the same no-overwrite rule.
 	KindSkillsSave = "skills.save"
 
-	// KindSkillsUpload installs one complete SKILL.md supplied inline by the
-	// backend. Data: MQTTSkillsUploadData. Unlike skills.save, the caller owns
-	// the Markdown and YAML front-matter; this mirrors the .md branch of
+	// KindSkillsUpload installs a .md, .zip, or .skill supplied inline by the
+	// backend. Data: MQTTSkillsUploadData. This mirrors
 	// POST /api/agent/skills/upload.
 	KindSkillsUpload = "skills.upload"
 
@@ -888,12 +887,12 @@ type MQTTSkillsSaveData struct {
 	Instructions string `json:"instructions"`
 }
 
-// MQTTSkillsUploadData is the Data payload for kind:"skills.upload". Content
-// is one complete SKILL.md, including YAML front-matter with name and
-// description. MQTT carries the small Markdown document directly; archives
-// remain an HTTP upload concern.
+// MQTTSkillsUploadData is the Data payload for kind:"skills.upload". Filename
+// selects the accepted .md, .zip, or .skill path; ContentBase64 is the exact
+// file bytes. The decoded file is capped at skills.StoreMaxBytes.
 type MQTTSkillsUploadData struct {
-	Content string `json:"content"`
+	Filename      string `json:"filename"`
+	ContentBase64 string `json:"content_base64"`
 }
 
 // MQTTSkillsFilesData is the Data payload for kind:"skills.files".
