@@ -642,6 +642,10 @@ vào giữa lúc đang giải nén vào cùng cây thư mục.
 Trên Hermes, các root được thử theo thứ tự device-owned trước, khớp với thứ tự của
 listing — nên uninstall xoá đúng skill mà uplink `skills` đã báo có.
 
+Sau response `success`, device lập tức publish uplink MQTT `info` thông thường
+với inventory `skills` đã cập nhật. Nếu uplink best-effort này lỗi thì chỉ log,
+không biến kết quả uninstall thành thất bại.
+
 #### `skills.save`
 
 Ghi MỘT skill soạn sẵn vào thư mục skill mà agentic runtime **đang chạy** sở hữu.

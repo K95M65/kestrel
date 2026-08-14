@@ -50,11 +50,15 @@ func (h *DeviceMQTTHandler) handleSkillsUninstall(env domain.MQTTDataCommand) er
 	slog.Info("skills.uninstall: success", "component", "mqtt",
 		"skill", req.Name, "runtime", runtimeName, "path", path)
 	h.alertOps("🗑 skills.uninstall "+req.Name+" — OK", "runtime="+runtimeName)
-	return h.publishDataResult(env.Kind, "success", "", map[string]interface{}{
+	if err := h.publishDataResult(env.Kind, "success", "", map[string]interface{}{
 		"name":    req.Name,
 		"runtime": runtimeName,
 		"path":    path,
-	})
+	}); err != nil {
+		return err
+	}
+	h.publishInfoAfterSkillsMutation()
+	return nil
 }
 
 // classifySkillsUninstallError maps a DeleteSkill failure to the `failed_step`

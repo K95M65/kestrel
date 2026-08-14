@@ -664,6 +664,10 @@ On Hermes the roots are tried device-owned first, matching the listing's
 precedence — so an uninstall removes the skill the `skills` uplink actually
 advertised.
 
+After its `success` response, the device immediately publishes its normal MQTT
+`info` uplink with the refreshed `skills` inventory. A failure to publish that
+best-effort follow-up is logged, but does not change the successful uninstall result.
+
 #### `skills.save`
 
 Writes ONE authored skill into whichever skills dir the **active** agentic runtime
