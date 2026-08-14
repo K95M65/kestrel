@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from core.enums.audio import AudioEmbedderEnum
 from core.enums.files import ModelEnum
 from core.perception.audio.predictors.base import AudioEmbedder
 from core.utils.files import get_default_cdn_url, get_default_model_path
@@ -9,6 +10,7 @@ from core.utils.files import get_default_cdn_url, get_default_model_path
 
 class ResNet34Embedder(AudioEmbedder):
     """WeSpeaker ResNet34-LM speaker embedder (256-dim)."""
+    MODEL_NAME: AudioEmbedderEnum | None = AudioEmbedderEnum.RESNET34
     ONNX_INPUT_NAME: str = "input_features"
     DEFAULT_MODEL_PATH: Path | None = get_default_model_path(ModelEnum.WESPEAKER_RESNET34)
     DEFAULT_REMOTE_URL: str | None = get_default_cdn_url(ModelEnum.WESPEAKER_RESNET34)

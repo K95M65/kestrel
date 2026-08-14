@@ -36,4 +36,7 @@ async def health():
                 name: model.is_ready() for name, model in object_models.items()
             },
         },
+        "audio_embedder_version": (
+            audio_embedder.model_version if audio_embedder is not None else None
+        ),
     }

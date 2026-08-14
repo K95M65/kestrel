@@ -40,6 +40,7 @@ from hal.drivers.voice.speaker_recognizer import (
     EmbeddingAPIUnavailableError,
     SpeakerRecognizer,
     SpeakerRecognizerError,
+    get_shared_recognizer,
 )
 
 _STRANGER_HASH_RE = re.compile(r"^voice_\d+$")
@@ -49,27 +50,22 @@ logger = logging.getLogger("hal.speaker_router")
 
 router = APIRouter(tags=["Speaker"])
 
-# Module-level singleton. Built lazily so import of this module never fails
-# (e.g. when SPEAKER_EMBEDDING_API_URL is unset at import time).
-_recognizer: Optional[SpeakerRecognizer] = None
-
-
 def get_speaker_recognizer() -> SpeakerRecognizer:
     """Lazy accessor — raises 503 if unusable.
 
-    Exposed so other routers / services can share the same instance.
+    Returns the ONE process-wide instance shared with the voice pipeline (see
+    ``get_shared_recognizer``), so commit locks / migration state / stranger
+    clusters stay unified against the single on-disk store. The HTTP layer maps
+    an unavailable recognizer to a 503 here (the shared accessor itself returns
+    None so non-HTTP callers can degrade instead).
     """
-    global _recognizer
-    if _recognizer is None:
-        try:
-            _recognizer = SpeakerRecognizer()
-        except Exception as exc:
-            logger.warning("SpeakerRecognizer unavailable: %s", exc)
-            raise HTTPException(
-                status_code=503,
-                detail=f"Speaker recognizer unavailable: {exc}",
-            ) from exc
-    return _recognizer
+    sr = get_shared_recognizer()
+    if sr is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Speaker recognizer unavailable",
+        )
+    return sr
 
 
 # ----------------------------------------------------------------- Pydantic
@@ -165,6 +161,7 @@ class SpeakerMeta(BaseModel):
     updated_at: Optional[str] = None
     sample_files: list[str] = []
     sample_origins: dict[str, str] = {}
+    embed_model_version: Optional[str] = None
     extended_files: list[str] = []
 
 

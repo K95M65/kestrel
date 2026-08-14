@@ -60,7 +60,14 @@ speaker-embedding path, HAL runs the audio filter/VAD/normalize pipeline
 **on-device** and calls `/audio-recognizer/embed` with `preprocess=false`, so
 the server only computes the embedding (the endpoint is embed-only and defaults
 to `preprocess=false`; pass `true` only to upload raw audio for server-side
-cleaning). Exact endpoints
+cleaning). HAL also sets `use_sliding_window`: enroll sends `false` so the whole
+reference is embedded in a single shot (one clean vector), while recognize sends
+`true` to slide overlapping windows and vote per chunk. The embed response (and
+`/health`) also report an
+`embed_model_version` fingerprint of the loaded weights, so HAL can tell when the
+server model changed and re-embed its stored voice profiles instead of matching
+against stale vectors (see
+[`devices/lamp/docs/speaker-enrollment.md`](../devices/lamp/docs/speaker-enrollment.md)). Exact endpoints
 and payloads are in [`integrations/perception-service/docs/api.md`](../integrations/perception-service/docs/api.md); every
 config knob is in
 [`integrations/perception-service/docs/configuration.md`](../integrations/perception-service/docs/configuration.md).

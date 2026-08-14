@@ -88,11 +88,13 @@ Bốn lớp ngăn agent hỏi "bạn là ai?" liên tục:
 ### Thuật toán nhận diện
 
 1. Audio → tiền xử lý **tại thiết bị** trên HAL (`Mono → Resample → [HighPass] → [NoiseReduce] → VAD → [STOI] → RMS`). Clip không qua được cổng VAD/STOI/chất lượng sẽ bị loại ngay tại chỗ (coi như "không xác định") và **không gửi lên server**.
-2. WAV đã làm sạch → `POST /audio-recognizer/embed` với `preprocess=false`; server bỏ qua tiền xử lý của nó và chỉ trích xuất embedding theo từng chunk `[M, 256]` (server vẫn tự chia cửa sổ/chunk waveform)
+2. WAV đã làm sạch → `POST /audio-recognizer/embed` với `preprocess=false` **và `use_sliding_window=true`**; server bỏ qua tiền xử lý của nó và trượt các cửa sổ chồng lấn để trả embedding theo từng chunk `[M, 256]` (clip ≤ ~10 giây vẫn là một cửa sổ duy nhất)
 3. Cosine similarity với tất cả embedding người nói đã đăng ký
 4. Bình chọn theo chunk: mỗi chunk vote cho người khớp nhất
 5. Người thắng = nhiều vote nhất (hoà thì so trung bình confidence)
 6. `confidence ≥ 0.7` → khớp; ngược lại → không xác định
+
+> **Enroll khác biệt:** bước đăng ký gọi cùng endpoint nhưng với **`use_sliding_window=false`**, nên server nhồi **nguyên** câu tham chiếu vào model một lần (một vector `[256]`, không chia cửa sổ/mean) — lưu thành một dòng mỗi WAV trong bank giọng nói. Khi recognize, các chunk truy vấn (đã chia cửa sổ) bỏ phiếu so với các vector enroll single-shot này (cả hai cùng không gian chuẩn hoá L2).
 
 ### Tiền xử lý audio (tại thiết bị)
 
@@ -106,9 +108,20 @@ Pipeline lọc/VAD/chuẩn hoá trước đây chạy trong perception-service n
 - **Cờ server**: HAL gửi `preprocess=false`; `/embed` của perception chỉ để embed và nay cũng mặc định `preprocess=false` (HAL là caller duy nhất). Caller nào upload audio thô có thể truyền `preprocess=true` để server tự làm sạch.
 - **Nhất quán**: enroll và recognize dùng chung một pipeline này, nên các đăng ký sau khi chuyển vẫn tự nhất quán. Giọng đã đăng ký dưới pipeline **server cũ** nên đăng ký lại nếu chất lượng khớp giảm.
 
+### Theo dõi phiên bản model embedding & migration
+
+Một embedding đã lưu chỉ so sánh được với embedding truy vấn do **cùng một** model server tạo ra. Nếu model embedding của perception-service bị đổi, mọi vector đã lưu trước đó âm thầm trở nên vô nghĩa khi so sánh — cosine vẫn ra một con số, nên lỗi biểu hiện là **khớp sai người**, không phải báo lỗi. HAL chặn việc này bằng cách đóng dấu định danh model lên từng hồ sơ và tính lại embedding khi định danh đổi. Vì mọi WAV đăng ký đều được giữ trên đĩa, đây là một tác vụ nền tự động — không ai phải thu âm lại.
+
+- **Định danh model**: response `/audio-recognizer/embed` (và `/health`) trả `embed_model_version` — `<tên-model>:<sha256(trọng_số)[:12]>`, tính một lần khi model nạp. `<tên-model>` là giá trị config `AUDIO_EMBEDDER__MODEL` (`resnet293` / `resnet34` / `campplus` / `ecapa-tdnn1024`), ví dụ `resnet293:1a2b3c4d5e6f`. Hash file trọng số bắt được cả trường hợp **đổi checkpoint cùng số chiều** mà phép kiểm `embedding_dim` bỏ sót. Chỉ model được lấy vân tay; config tiền xử lý tại thiết bị **cố ý không** nằm trong đó.
+- **Khi enroll**: HAL luôn lấy phiên bản mới nhất thấy được từ các lần gọi `/embed` của lần enroll đó và ghi vào `metadata.json` của giọng dưới khoá `embed_model_version` (đồng bộ vào registry).
+- **Khi recognize**: sau khi embed truy vấn (làm mới phiên bản server đang biết), HAL so từng hồ sơ đã đăng ký với phiên bản đó. Hồ sơ có phiên bản **khác** bị **loại khỏi so khớp trong lượt đó** (nên trả về **"unknown"** thay vì match sai với vector model cũ, và đổi dim cũng không làm crash phép match), đồng thời châm một lần migration re-embed chạy **nền** — single-flight, trên daemon thread, nên bản thân lượt recognize **không chờ** re-embed. Hồ sơ còn khớp phiên bản vẫn nhận diện bình thường trong cùng lượt; hồ sơ bị loại tự trở lại bình thường sau khi migration nền re-embed xong.
+- **Khi HAL khởi động lại**: một thread nền poll `/health` lấy `audio_embedder_version` hiện tại (thử lại vài lần để chờ server boot), quét metadata hồ sơ để tìm cái lỗi thời **trước khi** nạp model tiền xử lý nặng, rồi migrate các hồ sơ lỗi thời — để nhận diện đúng ngay từ turn đầu thay vì chờ một lần recognize phát hiện.
+- **Migration (re-embed)**: với mỗi hồ sơ lỗi thời, HAL tính lại embedding cho **mọi** sample đã giữ — cả tầng anchor (`sample_*.wav`) lẫn extended (`extended_*.wav`) — dưới model mới (cùng đường `_prepare_wav_for_embedding` → `/embed` như enroll) và **ghi đè nguyên tử** file **sidecar** `.npy` của từng sample (file tạm + đổi tên); sample nào bị gate hôm nay từ chối thì xoá sidecar để không còn vector model cũ sót lại qua một lần đổi checkpoint cùng số chiều. Sau đó cập nhật `embed_model_version` / `embedding_dim` / `updated_at` và vô hiệu cache bank. Có khoá để mỗi lần chỉ chạy một migration, và một lần enroll cùng hồ sơ chạy song song giờ được **tuần tự hoá** với migration — đoạn commit ghi đĩa của enroll lấy chung khoá per-user đó. Khoá này quan trọng vì migration ghi đè sidecar (và `metadata.json`) của hồ sơ trong khi một lần enroll cùng người có thể đang ghi chính các file đó — không có khoá thì hai đoạn commit đĩa có thể xen kẽ và để lại tập mẫu không nhất quán; còn `metadata.json` — file chung duy nhất giữa hai bên ghi — có các số đếm được suy lại từ đĩa khi đọc. Chỉ đoạn ghi đĩa bị khoá — các lời gọi mạng embedding ở cả hai phía chạy ngoài khoá — nên tệ nhất enroll chỉ chờ đúng lần re-embed của một hồ sơ đó, không phải cả mẻ migration. Commit chỉ chạy **sau khi** mọi sample đã embed xong, nên nếu server mất giữa chừng (`EmbeddingAPIUnavailableError`) thì **dừng** sạch sẽ với hồ sơ còn nguyên trên model cũ và thử lại ở lần recognize hoặc restart sau.
+- **Hồ sơ không migrate được thì để nguyên trạng thái stale, KHÔNG bao giờ xoá.** Một hồ sơ HAL không re-embed được — vì **không còn WAV nguồn** (hồ sơ legacy chỉ có `embedding.npy`, hoặc WAV bị xoá), hoặc vì **mọi WAV đã giữ đều bị gate hôm nay từ chối** — sẽ được để **stale** (loại khỏi match) cho tới khi người đó đăng ký lại, chứ không xoá. Trường hợp bị từ chối hết gần như luôn là do gate siết chặt hơn (các WAV này đã pass gate lúc enroll dưới config cũ) — một thay đổi có thể đảo ngược — nên hồ sơ tự re-migrate lại ngay khi có một sample pass gate; còn `embedding.npy`/WAV đã lưu có thể là bản sao duy nhất của lần đăng ký, nên chỉ đổi version thì tuyệt đối không được huỷ nó. Hồ sơ stale là vô hại — nó bị lọc khỏi match và chỉ tốn một phép kiểm tra rẻ mỗi lượt.
+
 ### Chất lượng đăng ký
 
-1. Mỗi file WAV → tiền xử lý tại thiết bị (như trên) → embedding qua perception-service (`preprocess=false`)
+1. Mỗi file WAV → tiền xử lý tại thiết bị (như trên) → embedding qua perception-service (`preprocess=false`, `use_sliding_window=false` → một vector nguyên câu mỗi mẫu)
 2. Lọc theo ngưỡng consistency `0.7` (cosine similarity giữa các mẫu)
 3. Tổng hợp embedding còn lại qua trung bình có trọng số
 4. Lưu vector chuẩn hoá L2 tại `/root/local/users/{tên}/voice/embedding.npy`
@@ -121,11 +134,13 @@ Mọi giọng lạ được gom cụm local để server biết "đây là cùng
 2. So với các centroid cụm stranger đã lưu (cosine similarity).
 3. Match ≥ `SPEAKER_MATCH_COS` (mặc định `0.5` raw — **cùng** ngưỡng với khớp known-speaker; không có ngưỡng riêng cho người lạ) → dùng lại label `voice_N`, và nếu câu nói bổ sung điều gì mới thì thêm nó thành một hàng nữa. Một cụm giữ **nhiều hàng**, không phải một centroid trung bình, giới hạn bởi `SPEAKER_MAX_CLUSTER_SAMPLES` (mặc định `3`).
 4. Không match → tạo label mới `voice_{counter}`, thêm centroid vào state trên đĩa.
-5. Giới hạn `HAL_MAX_VOICE_STRANGERS` (mặc định `50`) — evict oldest khi vượt.
+5. Giới hạn `HAL_MAX_VOICE_STRANGERS` (mặc định `50`) — evict oldest khi vượt; eviction xoá **cả** hàng centroid **lẫn** thư mục WAV `voice_N/` của cụm đó trên đĩa (cụm bị evict không bao giờ match lại được nữa nên giữ folder là rác đĩa).
 6. Hash được:
    - trả trong response recognize dưới field `voiceprint_hash: "voice_N"` (null cho known speaker)
    - gắn vào message nudge dạng tag `[voice:voice_N]` để skill đối chiếu qua các turn
    - dùng để group WAV vào subdir (xem Lưu trữ)
+
+**Đổi model thì xoá sạch cluster stranger.** Centroid stranger chỉ so được với query của **cùng** model embedding — nên khác với profile đã enroll (được *re-embed* từ WAV giữ lại), toàn bộ store stranger bị **xoá** khi model đổi. Store được dán nhãn version model đã dựng nó (`voice_strangers/version.txt`); trước mỗi lần so, HAL **chỉ giữ store khi chứng minh được cùng model** — biết version server hiện tại, stamp của store **bằng** nó, **và** dim lưu bằng dim query. Còn lại — **thiếu** stamp, **khác** stamp, hoặc **khác** dim — đều không chứng minh được centroid do model hiện tại tạo, nên HAL bỏ centroid in-memory, xoá `embeds.npy`/`labels.npy` và mọi thư mục WAV `voice_N/` trên đĩa, rồi dán nhãn lại. (Store chưa stamp **không bao giờ được mặc định** là hiện tại: swap checkpoint cùng chiều dưới model khác sẽ lọt.) Khi server **không** báo version, HAL lùi về guard chỉ theo dim. `_stranger_counter` **giữ đơn điệu** để `voice_N` mới không đụng thư mục cũ còn sót. Chọn xoá (không re-embed) là có chủ đích: stranger ẩn danh và ngắn hạn, re-embed cụm vứt đi không đáng chi phí network.
 
 **Trim silence cuối**: trước khi WAV đi qua embedding API, buffer speaker-ID được cắt tại frame speech cuối cùng + 200ms tail. Nếu không, câu 3s sẽ thành ~5.5s với ~45% silence, làm loãng embedding. Chỉ ảnh hưởng path speaker-ID — STT vẫn nhận đủ stream.
 
@@ -245,7 +260,8 @@ Thư mục output mặc định đã được git-ignore — tuyệt đối khô
   metadata.json                      # Danh tính chung (telegram, display_name)
   voice/
     embedding.npy                    # Vector chuẩn hoá L2 [256]
-    metadata.json                    # num_samples, dim, timestamps
+    metadata.json                    # num_samples, dim, timestamps,
+                                     #   embed_model_version
     sample_{origin}_{ts}_{uuid}.wav  # Các mẫu đăng ký (16kHz mono)
 
 /tmp/hal-unknown-voice/
@@ -254,9 +270,10 @@ Thư mục output mặc định đã được git-ignore — tuyệt đối khô
     incoming_{ts}_{uuid}.wav         # Audio unknown — gom theo cụm voiceprint
 
 /root/local/voice_strangers/
-  embeds.npy                         # Centroid các cluster stranger [N, 256]
-  labels.npy                         # Label cluster ["voice_1", "voice_2", ...]
-  counter.npy                        # Counter tăng cho label mới
+  embeds.npy                         # Centroid các cluster stranger [N, 256] (bị xoá khi store bị wipe)
+  labels.npy                         # Label cluster ["voice_1", "voice_2", ...] (bị xoá khi store bị wipe)
+  counter.npy                        # Counter tăng cho label mới (giữ qua wipe)
+  version.txt                        # Version model embedding đã dựng centroid; lệch → wipe
 ```
 
 ## API Endpoints (HAL, port 5001)

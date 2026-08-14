@@ -87,11 +87,13 @@ Four layers prevent the agent from repeatedly asking "who are you?":
 ### Recognition Algorithm
 
 1. Audio → **on-device** preprocess on HAL (`Mono → Resample → [HighPass] → [NoiseReduce] → VAD → [STOI] → RMS`). Clips that fail the VAD/STOI/quality gate are rejected locally (treated as "unknown") and **never uploaded**.
-2. Cleaned WAV → `POST /audio-recognizer/embed` with `preprocess=false`; the server skips its own preprocessing and only extracts per-chunk embeddings `[M, 256]` (it still windows/chunks the waveform itself)
+2. Cleaned WAV → `POST /audio-recognizer/embed` with `preprocess=false` **and `use_sliding_window=true`**; the server skips its own preprocessing and slides overlapping windows to return per-chunk embeddings `[M, 256]` (a clip ≤ ~10 s stays a single window)
 3. Cosine similarity against all enrolled speaker embeddings
 4. Per-chunk voting: each chunk votes for its closest match
 5. Winner = most votes (tiebreak by average confidence)
 6. `confidence ≥ 0.7` → match; else unknown
+
+> **Enroll differs:** enrollment calls the same endpoint with **`use_sliding_window=false`**, so the server embeds the **whole** reference utterance in a single shot (one `[256]` vector, no windowing/mean) — stored as one row per WAV in the speaker bank. Recognition then votes its windowed query chunks against those single-shot enrollment vectors (both live in the same L2-normalized space).
 
 ### Audio preprocessing (on-device)
 
@@ -105,9 +107,20 @@ The filter/VAD/normalize pipeline that used to run inside perception-service now
 - **Server flag**: HAL sends `preprocess=false`; perception's `/embed` is embed-only and now defaults to `preprocess=false` too (HAL is the only caller). A caller that uploads raw audio can pass `preprocess=true` to have the server clean it.
 - **Consistency**: enroll and recognize share this one pipeline, so enrollments made after the move stay self-consistent. Voices enrolled under the **old server-side** pipeline should be re-enrolled if match quality drops.
 
+### Embedding-model version tracking & migration
+
+A stored embedding is only comparable to a query embedding produced by the **same** server model. If the perception-service embedding model is swapped, every previously-stored vector silently becomes meaningless to compare against — cosine similarity still returns a number, so the failure is a **wrong match**, not an error. HAL guards against this by stamping each profile with the model identity and re-embedding when it changes. Because every enrollment WAV is retained on disk, this is an automatic background job — no user has to re-record.
+
+- **Model identity**: perception's `/audio-recognizer/embed` response (and `/health`) return `embed_model_version` — `<model-name>:<sha256(weights)[:12]>`, computed once when the model loads. `<model-name>` is the `AUDIO_EMBEDDER__MODEL` config value (`resnet293` / `resnet34` / `campplus` / `ecapa-tdnn1024`), e.g. `resnet293:1a2b3c4d5e6f`. Hashing the weights file catches even a **same-dimension checkpoint swap** that the `embedding_dim` check would miss. Only the model is fingerprinted; the on-device preprocessing config is deliberately **not** part of it.
+- **On enroll**: HAL always takes the freshest version seen from that enroll's `/embed` calls and writes it to the voice `metadata.json` as `embed_model_version` (mirrored into the registry).
+- **On recognize**: after embedding the query (which refreshes the known server version), HAL compares each enrolled profile's stored version against it. Profiles whose version **differs** are **excluded from matching this turn** (so they read as **"unknown"** rather than wrong-matching against old-model vectors, and a dim change can't crash the match), and a one-shot **background** re-embed migration is kicked — single-flight, on a daemon thread, so the recognize turn itself never waits for the re-embed. Fresh profiles match normally in the same call; excluded ones return to normal automatically once the background migration re-embeds them.
+- **On HAL restart**: a background thread polls `/health` for the current `audio_embedder_version` (a few retries to cover server boot), cheaply scans profile metadata for staleness **before** loading the heavy preprocessing model, and migrates any stale profiles — so recognition is correct from the first turn.
+- **Migration (re-embed)**: for each stale profile, HAL re-embeds **every** retained sample — both the anchor (`sample_*.wav`) and extended (`extended_*.wav`) tiers — under the new model (same `_prepare_wav_for_embedding` → `/embed` path as enroll) and **atomically** overwrites each sample's embedding **sidecar** (`.npy`, temp file + rename); a sample the gate now rejects has its sidecar dropped so no old-model vector survives a same-dimension checkpoint swap. It then updates `embed_model_version` / `embedding_dim` / `updated_at` and invalidates the bank cache. Guarded so only one migration runs at a time, and a concurrent enroll of the **same** profile is now **serialized** against it — enroll's disk-commit takes the same per-user lock. That lock matters because migration rewrites this profile's sidecars (and `metadata.json`) while a concurrent enroll of the same user may be writing the same files — without it the two disk-commits could interleave and leave an inconsistent sample set; `metadata.json`, the only cross-writer file, has its sample counts re-derived from disk on read. Only the disk commit is guarded — the embedding network calls on both sides run lock-free — so at worst an enroll waits for that one profile's re-embed, never the whole migration batch. The commit runs only **after** every sample embedded, so a mid-migration server outage (`EmbeddingAPIUnavailableError`) **halts** cleanly with the profile fully on the old model and is retried on the next recognize or restart.
+- **Un-migratable profiles are left stale, never deleted.** A profile HAL cannot re-embed — because it has **no source WAVs** (a legacy `embedding.npy`-only enrollment, or WAVs deleted), or because **every retained WAV is rejected by today's gate** — is left **stale** (excluded from matching) until the person re-enrolls, not removed. An all-rejected profile is almost always the gate config tightening (the WAVs passed it at enroll under the old config), which is reversible, so the profile re-migrates automatically once a sample passes the gate again; and a stored `embedding.npy`/WAV may be the only copy of the enrollment, so a version bump must never destroy it. A stale profile is harmless — it is filtered out of matching and costs only a cheap per-turn check.
+
 ### Enrollment Quality
 
-1. Each WAV sample → on-device preprocess (as above) → embedding via perception-service (`preprocess=false`)
+1. Each WAV sample → on-device preprocess (as above) → embedding via perception-service (`preprocess=false`, `use_sliding_window=false` → one whole-utterance vector per sample)
 2. Filter by consistency threshold `0.7` (cosine similarity between samples)
 3. Aggregate remaining embeddings via weighted average
 4. Store L2-normalized vector at `/root/local/users/{name}/voice/embedding.npy`
@@ -125,6 +138,8 @@ Every unknown voice is locally clustered so the server can say "this is the same
    - returned on the recognize response as `voiceprint_hash: "voice_N"` (null for known speakers)
    - surfaced in the nudge message as `[voice:voice_N]` tag so the skill can correlate turns
    - used to subdir-group the saved WAV (see Storage)
+
+**Model change wipes the cluster store.** Stranger centroids are only comparable to a query from the **same** embedding model — so unlike enrolled profiles (which are *re-embedded* from retained WAVs), the whole stranger store is **wiped** when the model changes. The store is stamped with the model version it was built under (`voice_strangers/version.txt`); before any compare, HAL keeps the store **only when it can prove same-model provenance** — the live server version is known, the store's stamp **equals** it, **and** the stored dim equals the query dim. Anything else — a **missing** stamp, a **different** stamp, or a **different** dim — cannot prove the centroids came from the current model, so HAL drops the in-memory centroids, deletes the `embeds.npy`/`labels.npy` and every on-disk `voice_N/` WAV dir, and re-stamps. (An unstamped store is **never assumed** current: a same-dim checkpoint swap under a different model would otherwise slip through.) When the server reports **no** version at all, HAL falls back to a dim-only guard. `_stranger_counter` is kept **monotonic** so a freshly minted `voice_N` never collides with a leftover dir. Wiping (not re-embedding) is deliberate: strangers are anonymous and short-lived, so re-embedding throwaway clusters isn't worth the network cost.
 
 **Trailing-silence trim**: before the WAV goes to the embedding API, the speaker-ID buffer is truncated at the last speech frame + 200 ms tail. Without this a 3-second utterance ends up as ~5.5 s with ~45% silence, diluting the embedding. Only affects the speaker-ID path — STT still receives the full stream.
 
@@ -244,7 +259,8 @@ The default output dir is git-ignored — never commit trace output. The tracer 
   metadata.json                      # Shared identity (telegram, display_name)
   voice/
     embedding.npy                    # L2-normalized aggregated vector [256]
-    metadata.json                    # num_samples, dim, timestamps
+    metadata.json                    # num_samples, dim, timestamps,
+                                     #   embed_model_version
     sample_{origin}_{ts}_{uuid}.wav  # Individual enrollment samples (16kHz mono)
 
 /tmp/hal-unknown-voice/
@@ -253,9 +269,10 @@ The default output dir is git-ignored — never commit trace output. The tracer 
     incoming_{ts}_{uuid}.wav         # Unknown audio — grouped by voiceprint cluster
 
 /root/local/voice_strangers/
-  embeds.npy                         # Stranger cluster centroids [N, 256]
-  labels.npy                         # Cluster labels ["voice_1", "voice_2", ...]
-  counter.npy                        # Monotonic counter for next new label
+  embeds.npy                         # Stranger cluster centroids [N, 256] (deleted while store is wiped)
+  labels.npy                         # Cluster labels ["voice_1", "voice_2", ...] (deleted while store is wiped)
+  counter.npy                        # Monotonic counter for next new label (survives a wipe)
+  version.txt                        # Embed-model version the centroids were built under; mismatch → wipe
 ```
 
 ## API Endpoints (HAL, port 5001)

@@ -61,7 +61,13 @@ nói tới endpoint cảm xúc giọng nói. Với đường embedding người 
 lọc/VAD/chuẩn hoá audio **tại thiết bị** và gọi `/audio-recognizer/embed` với
 `preprocess=false`, nên server chỉ tính embedding (endpoint chỉ để embed và mặc
 định `preprocess=false`; chỉ truyền `true` nếu upload audio thô để server tự làm
-sạch). Endpoint và payload chính xác nằm trong
+sạch). HAL cũng đặt `use_sliding_window`: bước enroll gửi `false` để nhồi nguyên
+câu vào model một lần (một vector sạch), còn bước recognize gửi `true` để trượt
+cửa sổ chồng lấn và bỏ phiếu theo từng chunk. Response embed (và `/health`) còn
+trả `embed_model_version` — vân tay của
+trọng số model đang nạp, để HAL biết khi model server đổi và **tự tính lại
+embedding** cho các hồ sơ giọng đã lưu thay vì so khớp với vector đã lỗi thời
+(xem [`devices/lamp/docs/speaker-enrollment.md`](../../devices/lamp/docs/speaker-enrollment.md)). Endpoint và payload chính xác nằm trong
 [`integrations/perception-service/docs/api.md`](../../integrations/perception-service/docs/api.md); mọi tham số cấu hình nằm trong
 [`integrations/perception-service/docs/configuration.md`](../../integrations/perception-service/docs/configuration.md).
 
