@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import {
   FolderTree, Folder, FileText, Loader2, RefreshCw, AlertCircle, ChevronDown,
-  Search, Trash2, Plus, PenLine, Upload,
+  Search, Trash2, Plus, PenLine, Sparkles, Upload,
 } from "lucide-react";
 import { listInstalledSkills, readSkillFiles, deleteSkill } from "@/lib/api";
 import type { InstalledSkill, SkillBundleFile } from "@/lib/api";
@@ -28,7 +28,13 @@ import { inputStyle, btnStyle, menuPanel, applyCardHover } from "./styles";
 // same tree. A runtime that can't list skills answers 501 and the message is
 // shown inline — an empty list means "provisioned but empty", not "unsupported".
 
-export function ManageSkillsModal({ onClose }: { onClose: () => void }) {
+export function ManageSkillsModal({
+  onClose,
+  onCreateWithAgent,
+}: {
+  onClose: () => void;
+  onCreateWithAgent: () => void;
+}) {
   const [selected, setSelected] = useState<InstalledSkill | null>(null);
   // Bumped when a skill is uninstalled, so returning to the list refetches
   // instead of showing the one that was just removed.
@@ -44,16 +50,22 @@ export function ManageSkillsModal({ onClose }: { onClose: () => void }) {
         onUninstalled={() => { setListEpoch((n) => n + 1); setSelected(null); }}
         onClose={onClose}
       />
-    : <SkillList key={listEpoch} onOpen={setSelected} onClose={onClose} />;
+    : <SkillList
+        key={listEpoch}
+        onOpen={setSelected}
+        onClose={onClose}
+        onCreateWithAgent={onCreateWithAgent}
+      />;
 }
 
 // ─── List view ───────────────────────────────────────────────────────────────
 
 function SkillList({
-  onOpen, onClose,
+  onOpen, onClose, onCreateWithAgent,
 }: {
   onOpen: (s: InstalledSkill) => void;
   onClose: () => void;
+  onCreateWithAgent: () => void;
 }) {
   const [skills, setSkills] = useState<InstalledSkill[]>([]);
   const [loading, setLoading] = useState(true);
@@ -108,7 +120,13 @@ function SkillList({
       subtitle={subtitle}
       width={640}
       onClose={onClose}
-      headerActions={<NewSkillMenu onPick={setAdding} />}
+      headerActions={<NewSkillMenu onPick={(action) => {
+        if (action === "agent") {
+          onCreateWithAgent();
+          return;
+        }
+        setAdding(action);
+      }} />}
     >
       <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
         <div style={{ position: "relative", flex: 1 }}>
@@ -173,7 +191,7 @@ function SkillList({
 // The same Write/Upload pair the composer's "+" menu offers, repeated in this
 // header so an operator already looking at the installed list doesn't have to
 // close the modal to add one.
-function NewSkillMenu({ onPick }: { onPick: (a: "write" | "upload") => void }) {
+function NewSkillMenu({ onPick }: { onPick: (a: "write" | "upload" | "agent") => void }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
 
@@ -197,7 +215,7 @@ function NewSkillMenu({ onPick }: { onPick: (a: "write" | "upload") => void }) {
     };
   }, [open]);
 
-  const run = (a: "write" | "upload") => { setOpen(false); onPick(a); };
+  const run = (a: "write" | "upload" | "agent") => { setOpen(false); onPick(a); };
 
   return (
     <div ref={wrapRef} style={{ position: "relative", flexShrink: 0 }}>
@@ -223,6 +241,7 @@ function NewSkillMenu({ onPick }: { onPick: (a: "write" | "upload") => void }) {
           anchored in the header would be cut off. */}
       {open && (
         <div role="menu" className="lm-pop" style={{ ...menuPanel, top: "calc(100% + 6px)", right: 0, minWidth: 208 }}>
+          <MenuItem icon={Sparkles} label="Create with Agent" hint="plan it together in chat" onClick={() => run("agent")} />
           <MenuItem icon={PenLine} label="Write skill" hint="author a new SKILL.md" onClick={() => run("write")} />
           <MenuItem icon={Upload} label="Upload a skill" hint=".skill / .zip / .md from this computer" onClick={() => run("upload")} />
         </div>

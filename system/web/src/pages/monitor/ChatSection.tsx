@@ -18,6 +18,9 @@ import { BrowseSkillsModal } from "./chat/BrowseSkillsModal";
 import { ManageSkillsModal } from "./chat/ManageSkillsModal";
 import { AgentFiles } from "./chat/AgentFiles";
 
+const CREATE_SKILL_WITH_AGENT_PROMPT =
+  "Let's create a skill together using your skill-creator skill. First ask me what the skill should do.";
+
 // ─── Markdown ───────────────────────────────────────────────────────────────
 
 // normalizeHref accepts http/https URLs as-is and repairs mangled schemes
@@ -2231,6 +2234,10 @@ export function ChatSection({ events, isActive }: Props) {
                 disabled={sending}
                 onAttachFile={() => fileInputRef.current?.click()}
                 onSkillsAction={setSkillsView}
+                onCreateWithAgent={() => {
+                  setInput(CREATE_SKILL_WITH_AGENT_PROMPT);
+                  requestAnimationFrame(() => textareaRef.current?.focus());
+                }}
               />
               <textarea
                 id="CHAT_TEXTAREA"
@@ -2291,7 +2298,14 @@ export function ChatSection({ events, isActive }: Props) {
       {skillsView === "write" && <WriteSkillModal onClose={() => setSkillsView(null)} />}
       {skillsView === "upload" && <UploadSkillModal onClose={() => setSkillsView(null)} />}
       {skillsView === "browse" && <BrowseSkillsModal onClose={() => setSkillsView(null)} />}
-      {skillsView === "manage" && <ManageSkillsModal onClose={() => setSkillsView(null)} />}
+      {skillsView === "manage" && <ManageSkillsModal
+        onClose={() => setSkillsView(null)}
+        onCreateWithAgent={() => {
+          setSkillsView(null);
+          setInput(CREATE_SKILL_WITH_AGENT_PROMPT);
+          requestAnimationFrame(() => textareaRef.current?.focus());
+        }}
+      />}
     </div>
   );
 }

@@ -16,11 +16,12 @@ import { menuPanel } from "./styles";
 export type SkillsAction = "write" | "upload" | "browse" | "manage";
 
 export function PlusMenu({
-  disabled, onAttachFile, onSkillsAction,
+  disabled, onAttachFile, onSkillsAction, onCreateWithAgent,
 }: {
   disabled: boolean;
   onAttachFile: () => void;
   onSkillsAction: (action: SkillsAction) => void;
+  onCreateWithAgent: () => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [skillsOpen, setSkillsOpen] = useState(false);
@@ -93,6 +94,7 @@ export function PlusMenu({
             />
             {skillsOpen && (
               <div role="menu" className="lm-pop" style={{ ...menuPanel, bottom: -6, left: "calc(100% + 6px)", minWidth: 208 }}>
+                <MenuItem icon={Sparkles} label="Create with Agent" hint="plan it together in chat" onClick={() => run(onCreateWithAgent)} />
                 <MenuItem icon={PenLine} label="Write skill" hint="author a new SKILL.md" onClick={() => run(() => onSkillsAction("write"))} />
                 <MenuItem icon={Upload} label="Upload a skill" hint=".skill / .zip / .md from this computer" onClick={() => run(() => onSkillsAction("upload"))} />
                 {/* Splits "add one of your own" from "work with what's out there
@@ -108,4 +110,3 @@ export function PlusMenu({
     </div>
   );
 }
-
