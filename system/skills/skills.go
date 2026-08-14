@@ -24,6 +24,7 @@ var Catalog = []string{
 	"scene",
 	"sensing",
 	"sensing-track",
+	"skill-creator",
 	"servo-control",
 	"servo-tracking",
 	"voice",
