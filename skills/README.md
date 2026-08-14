@@ -33,7 +33,7 @@ System-only skills may be hidden from the default storefront or shown with a
 | `computer-use` | Productivity | macos, browser, desktop, companion | Lamp, Intern v2, Reachy Mini |
 | `claude-buddy` | Productivity | claude-code, approvals, companion, agent | Lamp, Intern v2, Reachy Mini |
 | `connectors` | Productivity | gmail, calendar, drive, notion, github | Lamp, Intern v2, Reachy Mini |
-| `input-branching` | System | routing, realtime, internal | Lamp, Intern v2, Reachy Mini |
+| `input-branching` | Not published | routing, realtime, internal | Lamp, Intern v2, Reachy Mini |
 
 Compatibility is the automatic built-in installation gate from
 `system/skills.Capability`: a skill with no entry is platform logic and runs on
@@ -46,7 +46,7 @@ every current device. It does not describe optional integrations; for example,
 Home
 Health
 Entertainment
-Work
+Productivity
 Safety
 Camera & Vision
 Communication
@@ -54,5 +54,6 @@ Utilities
 ```
 
 `input-branching` is routing infrastructure rather than a user-installable
-feature. Keep it out of the default storefront, or render it with a `System`
-badge when it must be visible.
+feature, so it has no Store category and must stay out of the storefront.
+`claude-buddy` cannot be published under the current Store contract because its
+slug contains the reserved word `claude`.
