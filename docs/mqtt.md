@@ -567,8 +567,9 @@ authoring is not. The extract is staged in `<skill>.new` and swapped in only on
 full success (previous version kept at `<skill>.old` until then), so a corrupt
 download can never leave a half-installed skill or destroy a working one.
 
-Concurrency: shares one mutex with `skills.install` and `skills.save` — all three
-write into the same skills dir. A second one arriving mid-flight fails fast with
+Concurrency: shares one mutex with `skills.install`, `skills.save`,
+`skills.upload`, and `skills.uninstall` — all five mutate the same skills tree.
+A second one arriving mid-flight fails fast with
 `"another skills install is already in progress; try again later"`.
 
 No gateway restart: every backend with a skills dir picks new files up per
@@ -655,7 +656,7 @@ happened.
 | `unsupported_runtime` | the active runtime has no device-writable skills dir |
 | `remove` | filesystem failure |
 
-Concurrency: shares one mutex with the install/save kinds, so an uninstall can't
+Concurrency: shares one mutex with the install/save/upload kinds, so an uninstall can't
 interleave with an extract into the same tree.
 
 On Hermes the roots are tried device-owned first, matching the listing's
@@ -713,13 +714,61 @@ The name shape is validated inside `SaveSkill` (via `skills.ValidateSkillName`),
 not at the MQTT layer, so this path and the HTTP one can never disagree on what a
 legal skill name is.
 
-Concurrency: `skills.save` shares its mutex with `skills.install` — both write
-into the same skills dir. A save arriving mid-install fails fast with
+Concurrency: `skills.save` shares its mutex with `skills.install`,
+`skills.upload`, `skills.install_store`, and `skills.uninstall`. A save arriving
+mid-install fails fast with
 `"a skills install is in progress; try again later"` rather than stalling the MQTT
 dispatch loop for the length of a CDN download.
 
 No gateway restart: every backend with a skills dir picks new files up per
 session.
+
+#### `skills.upload`
+
+Installs one complete `SKILL.md` supplied directly in the MQTT command. This is
+the MQTT counterpart of uploading a bare `.md` file to
+`POST /api/agent/skills/upload`: both call `AgentGateway.InstallSkillMarkdown`.
+Unlike `skills.save`, the sender owns the complete Markdown and YAML
+front-matter instead of sending separate authoring fields.
+
+**Receive:**
+```json
+{"cmd": "data", "kind": "skills.upload", "data": {
+  "content": "---\\nname: daily-note\\ndescription: Capture a daily note.\\n---\\n\\n# Daily note"
+}}
+```
+
+`content` is required and must be at most 16 MiB. It must be a valid bare
+`SKILL.md`: YAML front-matter must contain a legal `name` and a `description`.
+This command deliberately accepts Markdown only — a normal skill document is
+small enough for MQTT; `.zip`/`.skill` archives remain the HTTP upload flow.
+
+**Synchronous** — the device writes one local file, so there is no `starting`
+ack.
+
+```json
+{
+  "device": "lamp", "type": "data", "kind": "skills.upload",
+  "status": "success | failure",
+  "error": "<step>: <message>",
+  "data": { "name": "daily-note", "runtime": "OpenClaw",
+            "path": "/root/.openclaw/workspace/skills/daily-note" }
+}
+```
+
+Installing replaces an existing skill of the same name atomically, just like a
+web `.md` upload. On failure `data.failed_step` is one of:
+
+| `failed_step` | Meaning |
+|---------------|---------|
+| `validate_front_matter` | content has no usable SKILL.md YAML front-matter |
+| `validate_name` | front-matter name is not a legal slug |
+| `unsupported_runtime` | the active runtime has no device-writable skills dir |
+| `install` | filesystem failure |
+
+Concurrency: shares the skills mutex with `skills.install`, `skills.install_store`,
+`skills.save`, and `skills.uninstall`; a concurrent command fails fast rather
+than interleaving writes into the runtime's skills tree.
 
 #### `chat.send` + `chat.event`
 
@@ -916,6 +965,7 @@ Handled by bootstrap worker, not through MQTT handler directly.
 | `system/server/device/delivery/mqtt/slack_event_handler.go` | Handle `slack_event` / `slack_command` (runtime-aware: forwards Slack HTTP-mode events/slash commands to the local OpenClaw gateway, or drives a hermes turn when the runtime is a `SlackBridge`) |
 | `system/server/device/delivery/mqtt/data_handler.go` | Handle `data` command kinds `oauth.set`/`oauth.remove` (+ access-token store) |
 | `system/server/device/delivery/mqtt/skills_install_store_handler.go` | Handle `skills.install_store` (async catalog download → `AgentGateway.InstallSkillArchive`) |
+| `system/server/device/delivery/mqtt/skills_upload_handler.go` | Handle `skills.upload` (inline SKILL.md → `AgentGateway.InstallSkillMarkdown`) |
 | `system/server/device/delivery/mqtt/skills_files_handler.go` | Handle `skills.files` (read one installed skill's files: list, or one file's contents) |
 | `system/server/device/delivery/mqtt/skills_uninstall_handler.go` | Handle `skills.uninstall` |
 | `system/server/device/delivery/mqtt/chat_send_handler.go` | Handle `chat.send` — forwards the turn over loopback to the sensing endpoint |

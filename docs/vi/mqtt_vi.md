@@ -547,8 +547,9 @@ là chỉ thị chủ động, soạn thảo thì không. Giải nén được s
 chỉ swap khi thành công trọn vẹn (bản cũ giữ ở `<skill>.old` cho tới lúc đó), nên
 bản tải hỏng không bao giờ để lại skill cài dở hay phá skill đang chạy.
 
-Đồng thời: dùng chung một mutex với `skills.install` và `skills.save` — cả ba ghi
-vào cùng thư mục skill. Cái thứ hai đến giữa lúc đang chạy sẽ fail ngay với
+Đồng thời: dùng chung một mutex với `skills.install`, `skills.save`,
+`skills.upload`, và `skills.uninstall` — cả năm cùng thay đổi một cây skills.
+Cái thứ hai đến giữa lúc đang chạy sẽ fail ngay với
 `"another skills install is already in progress; try again later"`.
 
 Không restart gateway: mọi backend có thư mục skill đều nhặt file mới theo từng
@@ -634,7 +635,7 @@ không phải success — để view cũ phía backend hoặc lệnh gửi trùn
 | `unsupported_runtime` | runtime đang chạy không có thư mục skill ghi được |
 | `remove` | lỗi filesystem |
 
-Đồng thời: dùng chung một mutex với các kind install/save, nên uninstall không xen
+Đồng thời: dùng chung một mutex với các kind install/save/upload, nên uninstall không xen
 vào giữa lúc đang giải nén vào cùng cây thư mục.
 
 Trên Hermes, các root được thử theo thứ tự device-owned trước, khớp với thứ tự của
@@ -690,13 +691,59 @@ Hình dạng tên được validate bên trong `SaveSkill` (qua `skills.Validate
 chứ không ở tầng MQTT, nên đường này và đường HTTP không bao giờ lệch nhau về
 việc tên nào là hợp lệ.
 
-Đồng thời: `skills.save` dùng chung mutex với `skills.install` — cả hai ghi vào
-cùng thư mục skill. Một lệnh save đến giữa lúc đang install sẽ fail ngay với
+Đồng thời: `skills.save` dùng chung mutex với `skills.install`,
+`skills.upload`, `skills.install_store`, và `skills.uninstall`. Một lệnh save
+đến giữa lúc đang install sẽ fail ngay với
 `"a skills install is in progress; try again later"` thay vì chặn vòng dispatch
 MQTT suốt thời gian tải từ CDN.
 
 Không restart gateway: mọi backend có thư mục skill đều nhặt file mới theo từng
 session.
+
+#### `skills.upload`
+
+Cài một `SKILL.md` hoàn chỉnh được đưa thẳng trong MQTT command. Đây là bản MQTT
+của việc upload file `.md` trơn tới `POST /api/agent/skills/upload`: cả hai đều
+gọi `AgentGateway.InstallSkillMarkdown`. Khác `skills.save`, bên gửi sở hữu toàn
+bộ Markdown và YAML front-matter, thay vì gửi ba field để device tự soạn.
+
+**Nhận:**
+```json
+{"cmd": "data", "kind": "skills.upload", "data": {
+  "content": "---\\nname: daily-note\\ndescription: Capture a daily note.\\n---\\n\\n# Daily note"
+}}
+```
+
+`content` là bắt buộc và tối đa 16 MiB. Nó phải là `SKILL.md` trơn hợp lệ: YAML
+front-matter phải có `name` hợp lệ và `description`. Command này cố ý chỉ nhận
+Markdown — một skill document thông thường đủ nhỏ cho MQTT; archive `.zip`/
+`.skill` vẫn là luồng HTTP upload.
+
+**Đồng bộ** — device chỉ ghi một file local, nên không có ack `starting`.
+
+```json
+{
+  "device": "lamp", "type": "data", "kind": "skills.upload",
+  "status": "success | failure",
+  "error": "<step>: <message>",
+  "data": { "name": "daily-note", "runtime": "OpenClaw",
+            "path": "/root/.openclaw/workspace/skills/daily-note" }
+}
+```
+
+Install thay thế atomically skill trùng tên, giống web upload `.md`. Khi lỗi,
+`data.failed_step` là một trong các giá trị:
+
+| `failed_step` | Nghĩa |
+|---------------|-------|
+| `validate_front_matter` | content không có YAML front-matter SKILL.md dùng được |
+| `validate_name` | name trong front-matter không phải slug hợp lệ |
+| `unsupported_runtime` | runtime đang chạy không có thư mục skill ghi được |
+| `install` | lỗi filesystem |
+
+Đồng thời: dùng chung skills mutex với `skills.install`, `skills.install_store`,
+`skills.save`, và `skills.uninstall`; command đến cùng lúc fail ngay thay vì xen
+ghi vào cây skills của runtime.
 
 #### `chat.send` + `chat.event`
 
@@ -886,6 +933,7 @@ Xử lý bởi bootstrap worker, không qua MQTT handler trực tiếp.
 | `system/server/device/delivery/mqtt/slack_event_handler.go` | Handle `slack_event` / `slack_command` (runtime-aware: forward Slack HTTP-mode events tới gateway OpenClaw local, hoặc drive hermes turn nếu runtime là `SlackBridge`) |
 | `system/server/device/delivery/mqtt/data_handler.go` | Handle `data` command kinds `oauth.set`/`oauth.remove` (+ access-token store) |
 | `system/server/device/delivery/mqtt/skills_install_store_handler.go` | Handle `skills.install_store` (async catalog download → `AgentGateway.InstallSkillArchive`) |
+| `system/server/device/delivery/mqtt/skills_upload_handler.go` | Handle `skills.upload` (SKILL.md inline → `AgentGateway.InstallSkillMarkdown`) |
 | `system/server/device/delivery/mqtt/skills_files_handler.go` | Handle `skills.files` (đọc file của một skill đã cài: danh sách, hoặc nội dung một file) |
 | `system/server/device/delivery/mqtt/skills_uninstall_handler.go` | Handle `skills.uninstall` |
 | `system/server/device/delivery/mqtt/chat_send_handler.go` | Handle `chat.send` — forward turn qua loopback tới sensing endpoint |
