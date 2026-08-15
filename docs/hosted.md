@@ -2,7 +2,12 @@
 
 Autonomous OS phones home to three things and nothing else.
 
-- **Skill store** — the catalog behind one-tap install. Plugins are not on this
+- **Skill store** — the catalog behind one-tap install. It carries more than
+  this repo does: 70 skills as of 2026-08-16, of which the 25 in `skills/` are
+  the robot skills that ship with the OS. The other 45 are first-party and
+  user-published *workflow* skills (code review, standups, campaign plans) that
+  need no hardware; they live only in the store, and between them they have
+  been installed 14 times. Nothing in the store is paid — every entry is free. Plugins are not on this
   list: the plugin store on every robot is the Hugging Face Hub — push a Space,
   tag it `autonomous-os-plugin`, it shows up under Settings → Plugins → Browse.
 - **AI gateway** — the default OpenClaw brain and the voice, face and mood
