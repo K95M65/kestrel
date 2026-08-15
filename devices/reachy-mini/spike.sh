@@ -144,7 +144,8 @@ IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
 cat >&2 <<EOF
 
 ========================================
-  Open http://${IP:-<robot-ip>}/ in a browser to finish setup.
+  Open http://${IP:-<robot-ip>}/setup?debug=true&device_id=reachy-1 in a browser to finish setup
+  (debug=true shows the AI-key and chat steps the phone app would otherwise fill in).
 
   logs   : journalctl -u hal -u os-server -u openclaw -u bootstrap -f
   stop   : sudo bash spike.sh --stop

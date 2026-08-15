@@ -3,7 +3,7 @@
 Autonomous is a layered stack. Each layer exposes an interface to the layer above and
 depends only on the one below, so any layer can be replaced without touching the others.
 
-![Autonomous architecture](autonomous-stack.svg)
+![Autonomous OS stack, top down: 25 skills, six swappable agent runtimes, 14 Go system packages, the realtime voice agent, 13 HAL capabilities, a deterministic safety gate below them (brightness, quiet hours, explicit-move speed, thermal today), in-tree drivers and board profiles, the vendor Linux kernel, and the bodies — each row labelled with its repo folder.](autonomous-stack.png)
 
 ## Layers
 
@@ -26,8 +26,8 @@ character) lives. Its **tools** — how it reaches beyond the device — are **M
 directly; skills are the device's own abilities through the HAL, tools are external.
 *(`runtimes/{openclaw,hermes,picoclaw,codex,claudecode,opencode}`)*
 
-**HAL — Capabilities** — the frozen, versioned interface, 12 capabilities: `audio`, `vision`,
-`sensing`, `presence`, `motion`, `light`, `display`, `expression`, `media`, `connectivity`,
+**HAL — Capabilities** — the frozen, versioned interface, 13 capabilities: `audio`, `vision`,
+`sensing`, `presence`, `motion`, `light`, `display`, `expression`, `lifelike`, `media`, `connectivity`,
 `companion`, `system`. Skills call capabilities (`motion.move`), never hardware models, so one
 skill runs on any supported body that implements the capability — for example, Lamp's servo
 arm serves `motion`; Unitree Go2-W remains a declaration-only reference until its port exists.

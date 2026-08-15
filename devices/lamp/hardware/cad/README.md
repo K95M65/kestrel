@@ -7,9 +7,12 @@ via **Git LFS**. See the repo-root `.gitattributes` for the filter rules.
 
 ## Files
 
-| File | Format | Added |
-|------|--------|-------|
-| `lamp-v3.stp` | STEP AP214 | 2026-05-20 |
+| Folder | Contents |
+|--------|----------|
+| `step/` | 17 STEP parts — `base`, `base-cap`, `neck`, `arm-1-part1/2`, `arm-2-part1/2`, `swivel-part-part1/2/3`, `head-part1/2/3`, `light-cover`, `cap-servo`, `button`, and `lamp` (the full assembly, ~93 MB) |
+| `stl/` | the same 17 parts as STL |
+
+The servo carriers are CNC aluminium; the wood trim is decorative CNC; everything else prints.
 
 ## Uploading a new revision
 
@@ -18,8 +21,8 @@ via **Git LFS**. See the repo-root `.gitattributes` for the filter rules.
 3. Commit and push as normal:
 
    ```bash
-   git add hardware/cad/lamp-v3.stp
-   git commit -m "cad: bump lamp-v3"
+   git add hardware/cad/step/<part>.stp hardware/cad/stl/<part>.stl
+   git commit -m "cad: bump <part>"
    git push
    ```
 
@@ -40,4 +43,4 @@ stubs instead of the real files).
 
 ## Changelog
 
-- **v3** (2026-05-20) — initial STEP export.
+- **v3** (2026-05-20) — initial STEP export (`lamp-v3.stp`, since replaced by the per-part files above; see `../cad-archive-v0/`).

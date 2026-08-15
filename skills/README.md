@@ -40,6 +40,26 @@ Compatibility is the automatic built-in installation gate from
 every current device. It does not describe optional integrations; for example,
 `computer-use` additionally requires an owner-paired Mac before it can act.
 
+## Per-body notes
+
+Why some cells in the README's capability table are blank or ○ (declared in
+`DEVICE.md`, driver not landed):
+
+- **Intern** — no camera, so Sense is sound-only, Mood is voice-only, and
+  Look-after-you is breaks and habits, not posture. Glow is colors and effects,
+  not the six scenes: its `light` declares `led`, not `scene`.
+- **Reachy Mini** — the tracker (`servo-tracking`) still speaks Lamp's joint
+  names, so it installs but does not track yet. Emotion moves are verified on
+  hardware; `aim` directions are still being tuned. HAL plays moves through the
+  SDK's `no_media` client while it owns the speaker, so each move's sound clip
+  is dropped for now.
+- **Go2-W** — no board entry yet, so HAL will not boot on it until the port
+  lands. Its `motion` routes are `locomotion`, not `servo`, so `servo-control`
+  and `servo-tracking` would install and have nothing to call — blank in the
+  table; the `motion.drive` sub-capability under Not built yet keeps them off
+  rolling bodies. `claude-buddy` would install (it only needs `audio`);
+  `computer-use` needs `companion`, which Go2-W does not declare.
+
 ## Categories
 
 ```text

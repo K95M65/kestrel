@@ -27,7 +27,7 @@ something is relevant. The articulated arm physically turns to look at you.
 | Size | 7.87" × 7.87" × 18.43" · 7 kg |
 | Motion | 5 servo motors with position feedback |
 | Sensing | low-light camera · microphone · speaker |
-| Power | USB-C, single cable |
+| Power | 12 V / 5 A barrel-jack adaptor, one cable (see [`hardware/power.md`](hardware/power.md)) |
 | Compute | Raspberry Pi / OrangePi (ARM64) |
 | Colors | Meteor Grey · Pearl White · Stone Beige · Onyx Black |
 | Warranty | 2 years |
@@ -44,7 +44,7 @@ never stored or used for training. Bring your own AI provider. Open-source firmw
 
 ## Status
 
-Coming 2026 — [join the waitlist](https://www.autonomous.ai/lamp).
+Shipping — [$499 at autonomous.ai/lamp](https://www.autonomous.ai/lamp). Building one from parts: [`BUILD.md`](BUILD.md).
 
 ## For developers
 

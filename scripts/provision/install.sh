@@ -10,7 +10,7 @@ OTA_METADATA_URL="${OTA_METADATA_URL:-https://storage.googleapis.com/s3-autonomo
 # Device class for this install — picks devices/<type>/{DEVICE,SOUL}.md at
 # runtime and drives the network identity (<type>-XXXX SSID + mDNS hostname).
 # REQUIRED, no default: a device-agnostic OS has no universal device class, so the
-# operator must declare it. E.g. DEVICE_TYPE=lamp curl -fsSL …/install.sh | sudo bash
+# operator must declare it. E.g. curl -fsSL …/install.sh | sudo DEVICE_TYPE=lamp bash (sudo drops a leading env, so set it after sudo)
 DEVICE_TYPE="${DEVICE_TYPE:?DEVICE_TYPE must be set (e.g. DEVICE_TYPE=lamp) — no default}"
 
 curl -fsSL -H "Cache-Control: no-cache" -H "Pragma: no-cache" \

@@ -3,6 +3,7 @@ name = "hal-runtime"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
+license = "GPL-3.0-only"
 requires-python = ">=3.12"
 dependencies = [
     "deepgram-sdk>=6.0.0",

@@ -24,13 +24,14 @@ KNOWN_CAPABILITIES = {
 }
 # Capabilities that can move, heat, or emit — they require a SAFETY.md.
 SAFETY_CLASS = {"motion", "light"}
-# Non-device folders under devices/.
-NOT_DEVICES = {"_base", "examples"}
+# Non-device folders under devices/: anything underscore-prefixed (`_base`,
+# `_template`) is a profile or scaffold, not a body.
+NOT_DEVICES = {"examples"}
 
 
 def real_devices():
     for name in sorted(os.listdir(DEVICES_DIR)):
-        if name in NOT_DEVICES:
+        if name in NOT_DEVICES or name.startswith("_"):
             continue
         if os.path.isfile(os.path.join(DEVICES_DIR, name, "DEVICE.md")):
             yield name

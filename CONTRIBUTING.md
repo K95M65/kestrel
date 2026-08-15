@@ -20,6 +20,7 @@ open an issue and let's fix it.
 
 - Keep PRs focused; green CI helps us merge faster.
 - `devices/contract/` is the stable interface everyone builds on — open an issue before changing it.
+- Two licenses: everything outside `hal/` is Apache-2.0; `hal/` is GPL-3.0 (see the [License](README.md#license) section). A driver under `hal/` ships GPL-3.0.
 - Be kind.
 
-Questions? [Open an issue](https://github.com/autonomous-ai/autonomous-os/issues).
+Questions, half-built ports and show-and-tell go in [Discussions](https://github.com/autonomous-ai/autonomous-os/discussions); bugs and claims in [Issues](https://github.com/autonomous-ai/autonomous-os/issues). Open gaps are labelled [`claim-me`](https://github.com/autonomous-ai/autonomous-os/issues?q=is%3Aissue+is%3Aopen+label%3Aclaim-me) — comment to take one.

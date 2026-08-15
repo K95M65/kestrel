@@ -6,7 +6,8 @@ sensing, a web UI, an agent runtime and over-the-air updates, driving the body
 through Pollen's own SDK.
 
 <p align="center">
-  <img src="images/reachy-icon.svg" alt="Reachy Mini" width="480">
+  <img src="images/reachy-icon.svg" alt="Reachy Mini" width="480"><br>
+  <sub><code>images/reachy-icon.svg</code> is Pollen Robotics' artwork, used with attribution; not covered by this repo's license.</sub>
 </p>
 
 ## Install
@@ -23,8 +24,10 @@ the released OTA feed and puts each one behind a systemd unit, so the stack
 comes back on its own after a reboot.
 
 Takes ~10–15 minutes on a first run, most of it building HAL's Python
-environment. When it finishes, open `http://<robot-ip>/` in a browser to
-complete setup.
+environment. When it finishes, open
+`http://<robot-ip>/setup?debug=true&device_id=reachy-1` in a browser to complete
+setup (`debug=true` shows the AI-key and chat steps the phone app would otherwise
+fill in; `device_id` is any unique name).
 
 **It installs alongside Pollen's software — it does not replace it.** Never
 flash a golden image onto a Reachy Mini: that would wipe the Pollen daemon that
@@ -40,7 +43,7 @@ sudo bash /opt/devices/reachy-mini/spike.sh --uninstall   # remove it
 
 ### Requirements
 
-- A Reachy Mini (Wireless verified; the Lite's Pi should work but is untested)
+- A wireless Reachy Mini — the one with the Pi inside (verified). The Lite has no onboard computer (its daemon runs on your laptop), so this path does not apply to it yet
   that is already set up and on your network
 - SSH access to it — on the shipped Pollen OS that is the `pollen` user, which
   has passwordless sudo. Root cannot SSH in directly.
@@ -56,6 +59,33 @@ curl -fsSL …/install.sh | sudo OTA_METADATA_URL=https://…/metadata.json bash
 # skip a step, e.g. bring the body up without the agent runtime
 curl -fsSL …/install.sh | sudo bash -s -- --skip agent
 ```
+
+## What changes on your Reachy while it runs
+
+- **Camera and mic are ours** — taken through the daemon's own `/api/media`
+  handover, so Pollen apps that need them wait until you `--stop`.
+- **Torque stays on** — HAL calls `enable_motors` + `wake_up` at every start,
+  where a stock Wireless boots asleep and hand-posable: expect the wake move on
+  every boot, a shorter battery day and warmer motors. Thermal bounds for
+  Reachy are still open in `SAFETY.md`, so `--stop` it when you leave the desk
+  for the day.
+- **One head, one writer** — a Pollen app moving the head at the same time will
+  fight it (the daemon takes targets from both, last writer wins each cycle).
+  Run one or the other.
+- **Sound clips are dropped** — HAL plays moves through the SDK's `no_media`
+  client while it owns the speaker, so each move's `.ogg` sidecar is not played
+  (a small wanted PR).
+- **Expression layer** — the 22 emotions map onto Pollen's
+  [emotion library](https://huggingface.co/datasets/pollen-robotics/reachy-mini-emotions-library)
+  through a 28-line table in `hal/drivers/motors/reachy_service.py`: 20 emotion
+  moves (`curious1`, `welcoming1`, `yes1`…) plus 8 dance styles spread over
+  Pollen's `dance1`–`dance3`. Any of the library's ~85 moves plays by name:
+  `[HW:/servo/play:{"recording":"dance1"}]`.
+
+`--stop` puts it back to sleep and hands everything straight back. What lands:
+four systemd units, nginx, Node 22, one `/etc/asound.conf`, ~1.8 GB left on a
+stock unit. Web UI: `http://reachy-mini.local/monitor`, login = last 4
+characters of the Pi's serial (`grep Serial /proc/cpuinfo | tail -c 5`).
 
 ## Files
 
@@ -178,7 +208,11 @@ See [docs/runtime.md](docs/runtime.md) for architecture details and bring-up che
 
 ## Status
 
-Code complete (pre-hardware):
+Runs on the Wireless unit — recon 2026-07-29, media handover, `rpicam` camera and
+emotion moves verified on hardware. Still open: the head-tracking port
+(`/servo/track` speaks Lamp's joint names), aim sign conventions, thermal bounds.
+
+Built before the first unit arrived:
 
 - device declaration and safety profile
 - Reachy persona

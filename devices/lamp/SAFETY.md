@@ -42,11 +42,15 @@ That is the template for everything here.
 
 ## motion
 
-- **`motion.stop` is immediate, deterministic, and always available.** It does not queue
-  behind the gateway, the network, or any in-flight skill. A spoken "stop" maps to a
-  local intent that halts servos in the runtime, then informs the agent.
-- Motion is **conservative by default** — bounded speed and acceleration, set in
-  `hal/board/board.py`, not chosen by the agent.
+- **`motion.stop` is deterministic and always available.** `POST /servo/track/stop`
+  halts the vision-driven servo loop at once and `POST /servo/release` parks the arm and
+  cuts torque; neither queues behind the gateway, the network, or any in-flight skill.
+  A spoken "stop tracking" maps to a local intent (`system/intent`) that calls the first,
+  then informs the agent. Neither interrupts a move already in flight — a real
+  `POST /servo/stop` is still open work (`docs/safety.md`).
+- Motion is **conservative by default** — speed is capped by `motion.max_speed` in the
+  front matter above and enforced in the request path (`hal/safety/policy.py`);
+  an acceleration bound is reserved, not yet modelled.
 - The agent **does not drive raw servo loops.** It requests poses and tracking targets;
   the runtime clamps to mechanical limits.
 - No motion during a declared privacy-sensitive moment, during setup failure, or when

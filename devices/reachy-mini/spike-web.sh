@@ -172,7 +172,7 @@ cat <<EOF
 ========================================
   Web UI served by nginx
     version : $(ota_field web version)
-    browser : http://<robot-ip>/   (or http://reachy-mini.local/)
+    browser : http://<robot-ip>/setup?debug=true&device_id=reachy-1   (or http://reachy-mini.local/setup?debug=true&device_id=reachy-1)
     vhost   : /etc/nginx/sites-available/$VHOST  (spike-only, NOT production)
     bundle  : $WEB_ROOT
     stop    : sudo bash spike-web.sh --stop
