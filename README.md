@@ -50,16 +50,16 @@ We've installed Autonomous OS on three robots so far — Lamp, Intern and Pollen
 
 ## A robot is four files
 
-| File | It says | Read by |
+| FILE | WHAT IT SAYS | WHO READS IT |
 |---|---|---|
-| `DEVICE.md` | **the body** — what hardware this robot has | the OS, at boot |
-| `SKILL.md` | **the hands** — one thing the robot can do | the agent |
-| `SOUL.md` | **the self** — who the robot is | the agent |
-| `SAFETY.md` | **the bounds** — brightness, quiet hours and explicit-move speed, clamped in the request path. Numeric clamps only: no e-stop, and nothing aborts a move already in flight | the OS, below the brain |
+| [DEVICE.md](devices/lamp/DEVICE.md) | **The body** — what hardware this robot has | the OS, at boot |
+| [SKILL.md](skills/guard/SKILL.md) | **The hands** — one thing the robot can do | the agent |
+| [SOUL.md](devices/lamp/SOUL.md) | **The self** — who the robot is | the agent |
+| [SAFETY.md](devices/lamp/SAFETY.md) | **The bounds** — how fast, how bright, how late | the OS, below the agent |
 
-Three of them live in `devices/<id>/`; `SKILL.md`s live in `skills/` and install onto every body that declares what they need.
+Three of them live in [`devices/<id>/`](devices/), one per robot. Skills live in [`skills/`](skills/) and install on every robot that declares the hardware they need.
 
-The bet is simple. Every robot that passes the compatibility test gets every skill whose capabilities it declares; every skill written against the contract runs on every robot that declares them. Skills × bodies is why Android won, and it is the only reason to build this in the open.
+That is the whole bet: write a skill once and every robot runs it, port a robot once and it gets every skill.
 
 ## Get started
 
