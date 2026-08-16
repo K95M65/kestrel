@@ -1,6 +1,6 @@
-<h1 align="center">Autonomous OS — the Android for robots</h1>
+<h1 align="center">Autonomous OS — the "Android" for robots</h1>
 
-<p align="center">Install it on a robot and the robot gets a mind: it sees, hears, thinks, acts, and learns a new job from one page of text — and its skills folder <i>is</i> OpenClaw's, so a skill you already wrote drops in unchanged.</p>
+<p align="center">Install it on a robot and the robot gets a mind: it sees, hears, thinks, acts, and learns a new job from one page of text — a plain markdown skill, the same kind any agent engine already reads, so the ones you have drop in unchanged.</p>
 
 <p align="center">
   <a href="#license"><img src="https://img.shields.io/badge/license-Apache--2.0-green?style=flat-square" alt="Apache-2.0, GPL-3.0 inside hal/"></a>
@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="#robots-that-really-do-things-and-grow-with-you">Why</a> ·
+  <a href="#robots-that-really-do-things">Why</a> ·
   <a href="#meet-the-first-robots-running-autonomous-os">Robots</a> ·
   <a href="#get-started">Get started</a> ·
   <a href="#skills-are-how-it-grows">Skills</a> ·
@@ -22,28 +22,38 @@
 
 <p align="center"><img src="docs/media/hero.gif" alt="Reachy Mini and Autonomous Lamp on one OS — antennas rise, the ring lights, both turn to look" width="720"><br><sub>One OS, one skill file, two bodies: Pollen's Reachy Mini and Autonomous Lamp both hear you and turn to look.</sub></p>
 
-## Robots that really do things, and grow with you
+## Robots that really do things
 
-Say "watch the house" and a Lamp — or Pollen's Reachy Mini — turns to the door, watches it while you are out, and messages you when someone walks in. It greets you by name, follows your mug, and approves a Claude Code prompt when you say "yes" from across the room. Not a chat window bolted to a shell: the brain writes `[HW:/emotion:…]`, the OS fires it at the body, and the words are spoken while the arm is already moving.
+Robots have had bodies for years and done almost nothing with them — a scripted demo, a remote control, a face that blinks. Install Autonomous OS and the body starts doing real work.
 
-Then it grows. A new job is one page of markdown — tap a skill in the store, type what you want in the app, or drop a folder on the robot; it is live on the next conversation, no reboot, no firmware. It remembers faces, voices and last week's conversation, and that memory belongs to the *body*, not the brain: swap OpenClaw for [Hermes](https://github.com/NousResearch/hermes-agent), Codex or Claude Code and the persona comes with it. When a smarter brain ships, every robot on this OS gets smarter the same day, on the hardware you already own.
+Say "watch the house" and a Lamp — or Pollen's Reachy Mini — turns to the door, watches it while you are out, and messages you when someone walks in. It greets you by name, follows your mug across the desk, and approves a Claude Code prompt when you say "yes" from across the room. Nothing is scripted: the brain decides, writes `[HW:/emotion:…]` in its reply, and the OS fires it at the body — the words are spoken while the arm is already moving.
 
-[OpenClaw](https://github.com/openclaw/openclaw) did this for personal agents — one open runtime, one folder per skill, any model, any chat app. **Autonomous OS does it for robots: one OS, one `SKILL.md` per behavior, any body that declares itself in a `DEVICE.md`.**
+## It grows with you
+
+A new job is one page of markdown. Tap a skill in the store, type what you want in the app, or drop a folder on the robot — live on the next conversation, no reboot, no firmware, no new hardware.
+
+It remembers faces, voices and last week's conversation, and that memory belongs to the *body*, not the brain. The robot you have in a year is the one you have today, with more in it.
+
+## Built like Lego
+
+Every part is a part you can swap. The agent engine — OpenClaw, [Hermes](https://github.com/NousResearch/hermes-agent), PicoClaw, Codex, Claude Code, OpenCode — switches live from the web UI, and the persona, memory and connectors come with it. Behind it, any model. Voice, face and mood are their own engines, swapped the same way. Skills go in and out as folders. Under all of it, the board is one JSON entry, so the same OS runs on a Pi, an OrangePi, or whatever you bring.
+
+Your robot declares what it has in a `DEVICE.md`, and the OS mounts exactly that — nothing more. When a smarter brain ships, every robot on this OS gets smarter the same day.
 
 ## Meet the first robots running Autonomous OS
+
+Four bodies, one OS — two ours, one Pollen Robotics', one Unitree's. The same skills, the same brains, the same safety gate on all of them.
 
 <table>
   <tr>
     <td width="25%" align="center"><a href="devices/lamp"><img src="devices/lamp/images/lamp-white.webp" alt="Autonomous Lamp — 5-DOF desk robot running Autonomous OS" width="100%"></a><br><b><a href="devices/lamp">Autonomous Lamp</a></b></td>
-    <td width="25%" align="center"><a href="devices/reachy-mini"><img src="devices/reachy-mini/images/reachy-mini.webp" alt="Reachy Mini by Pollen Robotics running Autonomous OS" width="100%"></a><br><b><a href="devices/reachy-mini">Reachy Mini</a></b><br><sub>Pollen Robotics</sub></td>
+    <td width="25%" align="center"><a href="devices/reachy-mini"><img src="devices/reachy-mini/images/reachy-mini.webp" alt="Reachy Mini by Pollen Robotics running Autonomous OS" width="100%"></a><br><b><a href="devices/reachy-mini">Reachy Mini</a></b></td>
     <td width="25%" align="center"><a href="devices/intern-v2"><img src="devices/intern-v2/images/intern-tile.webp" alt="Autonomous Intern — matte black pyramid desk agent" width="100%"></a><br><b><a href="devices/intern-v2">Autonomous Intern</a></b></td>
-    <td width="25%" align="center"><a href="devices/unitree-go2w"><img src="devices/unitree-go2w/images/go2-w-tile.webp" alt="Unitree Go2-W wheeled quadruped" width="100%"></a><br><b><a href="devices/unitree-go2w">Unitree Go2-W</a></b><br><sub>Unitree · in progress</sub></td>
+    <td width="25%" align="center"><a href="devices/unitree-go2w"><img src="devices/unitree-go2w/images/go2-w-tile.webp" alt="Unitree Go2-W wheeled quadruped" width="100%"></a><br><b><a href="devices/unitree-go2w">Unitree Go2-W</a></b></td>
   </tr>
 </table>
 
-Four bodies, one OS — two ours, one Pollen Robotics', one Unitree's. The same skills, the same brains, the same safety gate on all of them. Today they see, hear, speak and move a head; next is a base that moves ([#205](https://github.com/autonomous-ai/autonomous-os/issues/205)) and a hand that works ([#206](https://github.com/autonomous-ai/autonomous-os/issues/206)).
-
-✅ runs · ○ declared, driver landing · ○* installs, route not mounted yet. A skill installs on every body whose `DEVICE.md` declares what it needs, so the grid fills itself in as bodies arrive.
+✅ runs today · ○ on the way.
 
 | Skill | Lamp | Intern | Reachy Mini | Go2-W |
 |---|:---:|:---:|:---:|:---:|
@@ -54,7 +64,7 @@ Four bodies, one OS — two ours, one Pollen Robotics', one Unitree's. The same 
 | `servo-control` — Move: aim, nudge, 30 recorded moves | ✅ |  | ✅ | ○ |
 | `emotion` — Show emotion, 22 of them | ✅ |  | ✅ |  |
 | `led-control` — Glow: colors and effects | ✅ | ✅ |  |  |
-| `scene` — Six lighting scenes | ✅ | ○* |  |  |
+| `scene` — Six lighting scenes | ✅ |  |  |  |
 | `sensing` `sensing-track` — Sense the room: presence, sound, light | ✅ | ✅ | ✅ | ○ |
 | `guard` — Guard the house | ✅ |  | ✅ |  |
 | `music` `music-suggestion` — Play music, suggest a song | ✅ | ✅ | ✅ |  |
