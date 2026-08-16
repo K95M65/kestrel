@@ -1,7 +1,6 @@
-<h1 align="center">Autonomous OS — the open-source operating system for robots</h1>
+<h1 align="center">Autonomous OS — the Android for robots</h1>
 
-<p align="center">Install it on a robot and the robot gets a mind: it sees, hears, thinks, acts — and learns a new job from one page of text.<br>
-Its skills folder <i>is</i> OpenClaw's, so a skill you already wrote drops in unchanged.</p>
+<p align="center">Install it on a robot and the robot gets a mind: it sees, hears, thinks, acts, and learns a new job from one page of text — and its skills folder <i>is</i> OpenClaw's, so a skill you already wrote drops in unchanged.</p>
 
 <p align="center">
   <a href="#license"><img src="https://img.shields.io/badge/license-Apache--2.0-green?style=flat-square" alt="Apache-2.0, GPL-3.0 inside hal/"></a>
@@ -12,9 +11,9 @@ Its skills folder <i>is</i> OpenClaw's, so a skill you already wrote drops in un
 </p>
 
 <p align="center">
-  <a href="#the-robots">Robots</a> ·
+  <a href="#robots-that-really-do-things-and-grow-with-you">Why</a> ·
+  <a href="#meet-the-first-robots-running-autonomous-os">Robots</a> ·
   <a href="#get-started">Get started</a> ·
-  <a href="#robots-that-really-do-things">Why</a> ·
   <a href="#skills-are-how-it-grows">Skills</a> ·
   <a href="#port-a-robot-three-files-and-one-driver">Port a robot</a> ·
   <a href="#contribute">Contribute</a> ·
@@ -23,43 +22,62 @@ Its skills folder <i>is</i> OpenClaw's, so a skill you already wrote drops in un
 
 <p align="center"><img src="docs/media/hero.gif" alt="Reachy Mini and Autonomous Lamp on one OS — antennas rise, the ring lights, both turn to look" width="720"><br><sub>One OS, one skill file, two bodies: Pollen's Reachy Mini and Autonomous Lamp both hear you and turn to look.</sub></p>
 
-## The robots
+## Robots that really do things, and grow with you
+
+Say "watch the house" and a Lamp — or Pollen's Reachy Mini — turns to the door, watches it while you are out, and messages you when someone walks in. It greets you by name, follows your mug, and approves a Claude Code prompt when you say "yes" from across the room. Not a chat window bolted to a shell: the brain writes `[HW:/emotion:…]`, the OS fires it at the body, and the words are spoken while the arm is already moving.
+
+Then it grows. A new job is one page of markdown — tap a skill in the store, type what you want in the app, or drop a folder on the robot; it is live on the next conversation, no reboot, no firmware. It remembers faces, voices and last week's conversation, and that memory belongs to the *body*, not the brain: swap OpenClaw for [Hermes](https://github.com/NousResearch/hermes-agent), Codex or Claude Code and the persona comes with it. When a smarter brain ships, every robot on this OS gets smarter the same day, on the hardware you already own.
+
+[OpenClaw](https://github.com/openclaw/openclaw) did this for personal agents — one open runtime, one folder per skill, any model, any chat app. **Autonomous OS does it for robots: one OS, one `SKILL.md` per behavior, any body that declares itself in a `DEVICE.md`.**
+
+## Meet the first robots running Autonomous OS
 
 <table>
   <tr>
-    <td width="50%" align="center"><a href="devices/lamp"><img src="devices/lamp/images/lamp-white.webp" alt="Autonomous Lamp — 5-DOF desk robot, camera and LED ring in the head, running Autonomous OS" width="100%"></a><br><b><a href="devices/lamp">Autonomous Lamp</a></b><br>5-DOF desk robot. Camera, mic, speaker, 64-LED ring, 5 bus servos. Open hardware — BOM, wiring and CAD in the repo. $499.</td>
-    <td width="50%" align="center"><a href="devices/reachy-mini"><img src="devices/reachy-mini/images/reachy-mini.webp" alt="Reachy Mini by Pollen Robotics running Autonomous OS" width="100%"></a><br><b><a href="devices/reachy-mini">Reachy Mini</a></b> · Pollen Robotics<br>6-DOF Stewart-platform head, 360° body, antenna ears, 4-mic array. Another company's robot, running our OS. One command, nothing flashed.</td>
-  </tr>
-  <tr>
-    <td width="50%" align="center"><a href="devices/intern-v2"><img src="devices/intern-v2/images/intern-tile.webp" alt="Autonomous Intern — matte black pyramid desk agent" width="100%"></a><br><b><a href="devices/intern-v2">Autonomous Intern</a></b><br>Always-on desk agent. Mic, speaker, LED ring. Same OS image as Lamp, fewer capabilities declared.</td>
-    <td width="50%" align="center"><a href="devices/unitree-go2w"><img src="devices/unitree-go2w/images/go2-w-tile.webp" alt="Unitree Go2-W wheeled quadruped" width="100%"></a><br><b><a href="devices/unitree-go2w">Unitree Go2-W</a></b> · Unitree · <i>in progress</i><br>Wheeled quadruped — the first body that rolls. Declared, and the locomotion interface is being designed on it now: <a href="https://github.com/autonomous-ai/autonomous-os/issues/205">#205</a>, open to build with us.</td>
+    <td width="25%" align="center"><a href="devices/lamp"><img src="devices/lamp/images/lamp-white.webp" alt="Autonomous Lamp — 5-DOF desk robot running Autonomous OS" width="100%"></a><br><b><a href="devices/lamp">Autonomous Lamp</a></b></td>
+    <td width="25%" align="center"><a href="devices/reachy-mini"><img src="devices/reachy-mini/images/reachy-mini.webp" alt="Reachy Mini by Pollen Robotics running Autonomous OS" width="100%"></a><br><b><a href="devices/reachy-mini">Reachy Mini</a></b><br><sub>Pollen Robotics</sub></td>
+    <td width="25%" align="center"><a href="devices/intern-v2"><img src="devices/intern-v2/images/intern-tile.webp" alt="Autonomous Intern — matte black pyramid desk agent" width="100%"></a><br><b><a href="devices/intern-v2">Autonomous Intern</a></b></td>
+    <td width="25%" align="center"><a href="devices/unitree-go2w"><img src="devices/unitree-go2w/images/go2-w-tile.webp" alt="Unitree Go2-W wheeled quadruped" width="100%"></a><br><b><a href="devices/unitree-go2w">Unitree Go2-W</a></b><br><sub>Unitree · in progress</sub></td>
   </tr>
 </table>
 
-Four bodies, one OS. Lamp and Intern are ours, Reachy Mini is Pollen Robotics', Go2-W is Unitree's — the same skills, the same brains, the same safety gate on all of them. Today they see, hear, speak and move a head; next is a base that moves ([#205](https://github.com/autonomous-ai/autonomous-os/issues/205)) and a hand that works ([#206](https://github.com/autonomous-ai/autonomous-os/issues/206)), designed on whatever hardware shows up first.
+Four bodies, one OS — two ours, one Pollen Robotics', one Unitree's. The same skills, the same brains, the same safety gate on all of them. Today they see, hear, speak and move a head; next is a base that moves ([#205](https://github.com/autonomous-ai/autonomous-os/issues/205)) and a hand that works ([#206](https://github.com/autonomous-ai/autonomous-os/issues/206)).
 
-What each body can do today. ✅ runs · ○ declared, driver landing · ○* installs, route not mounted yet. A skill installs on every body whose `DEVICE.md` declares what it needs, so the grid fills itself in as bodies arrive.
+✅ runs · ○ declared, driver landing · ○* installs, route not mounted yet. A skill installs on every body whose `DEVICE.md` declares what it needs, so the grid fills itself in as bodies arrive.
 
-| What it can do | Skill folders | Lamp | Intern | Reachy Mini | Go2-W |
-|---|---|:---:|:---:|:---:|:---:|
-| See — snapshot, stream, describe the room | `camera` | ✅ | | ✅ | ○ |
-| Track an object by vision, head follows it | `servo-tracking` | ✅ | | ○ | ○ |
-| Know your face, greet you by name | `face-enroll` | ✅ | | ✅ | |
-| Hear you, talk back, know your voice | `voice` `audio` `speaker-recognizer` | ✅ | ✅ | ✅ | ○ |
-| Move — aim, nudge, recorded moves (30 on Lamp, ~85 in Pollen's emotion library on Reachy) | `servo-control` | ✅ | | ✅ | ○ |
-| Show emotion — 22 of them, through whatever the body has | `emotion` | ✅ | | ✅ | |
-| Glow — colors and effects | `led-control` | ✅ | ✅ | | |
-| Six lighting scenes — reading, focus, relax, movie, night, energize | `scene` | ✅ | ○* | | |
-| Sense the room — presence, sound, light | `sensing` `sensing-track` | ✅ | ✅ | ✅ | ○ |
-| Guard the house, alert you when someone's there | `guard` | ✅ | | ✅ | |
-| Play music, suggest a song for your mood | `music` `music-suggestion` | ✅ | ✅ | ✅ | |
-| Read your mood from face and voice | `user-emotion-detection` `mood` | ✅ | ✅ | ✅ | ○ |
-| Look after you — posture, breaks, habits | `wellbeing` `habit` | ✅ | ✅ | ✅ | ○ |
-| Drive your Mac, approve Claude Code by voice | `computer-use` `claude-buddy` | ✅ | ✅ | ✅ | |
-| Reach Gmail, Calendar, Notion, GitHub | `connectors` | ✅ | ✅ | ✅ | ○ |
-| Write and test new skills | `skill-creator` | ✅ | ✅ | ✅ | ○ |
+| Skill | Lamp | Intern | Reachy Mini | Go2-W |
+|---|:---:|:---:|:---:|:---:|
+| `camera` — See the room: snapshot, stream, describe | ✅ |  | ✅ | ○ |
+| `servo-tracking` — Track an object, head follows it | ✅ |  | ○ | ○ |
+| `face-enroll` — Know your face, greet you by name | ✅ |  | ✅ |  |
+| `voice` `audio` `speaker-recognizer` — Hear you, talk back, know your voice | ✅ | ✅ | ✅ | ○ |
+| `servo-control` — Move: aim, nudge, 30 recorded moves | ✅ |  | ✅ | ○ |
+| `emotion` — Show emotion, 22 of them | ✅ |  | ✅ |  |
+| `led-control` — Glow: colors and effects | ✅ | ✅ |  |  |
+| `scene` — Six lighting scenes | ✅ | ○* |  |  |
+| `sensing` `sensing-track` — Sense the room: presence, sound, light | ✅ | ✅ | ✅ | ○ |
+| `guard` — Guard the house | ✅ |  | ✅ |  |
+| `music` `music-suggestion` — Play music, suggest a song | ✅ | ✅ | ✅ |  |
+| `user-emotion-detection` `mood` — Read your mood | ✅ | ✅ | ✅ | ○ |
+| `wellbeing` `habit` — Look after you: posture, breaks, habits | ✅ | ✅ | ✅ | ○ |
+| `computer-use` `claude-buddy` — Drive your Mac, approve Claude Code by voice | ✅ | ✅ | ✅ |  |
+| `connectors` — Reach Gmail, Calendar, Notion, GitHub | ✅ | ✅ | ✅ | ○ |
+| `skill-creator` — Write and test new skills | ✅ | ✅ | ✅ | ○ |
 
 Per-body notes and the full catalog: [`skills/README.md`](skills/README.md).
+
+## A robot is four files
+
+| File | It says | Read by |
+|---|---|---|
+| `DEVICE.md` | **the body** — what hardware this robot has | the OS, at boot |
+| `SKILL.md` | **the hands** — one thing the robot can do | the agent |
+| `SOUL.md` | **the self** — who the robot is | the agent |
+| `SAFETY.md` | **the bounds** — brightness, quiet hours and explicit-move speed, clamped in the request path. Numeric clamps only: no e-stop, and nothing aborts a move already in flight | the OS, below the brain |
+
+Three of them live in `devices/<id>/`; `SKILL.md`s live in `skills/` and install onto every body that declares what they need.
+
+The bet is simple. Every robot that passes the compatibility test gets every skill whose capabilities it declares; every skill written against the contract runs on every robot that declares them. Skills × bodies is why Android won, and it is the only reason to build this in the open.
 
 ## Get started
 
@@ -138,31 +156,6 @@ go test ./system/server/agent/delivery/http/ -run ExtractHWCalls -v   # needs Go
 ```
 
 [`skill-creator`](skills/skill-creator/) grades whether a skill *triggers* for the right requests, on your laptop. What the marker *does* still needs a body — or the [mock body](https://github.com/autonomous-ai/autonomous-os/issues/200).
-
-## Robots that really do things
-
-Say "watch the house" and a Lamp — or Pollen's Reachy Mini — turns to the door, watches it while you are out, and messages you when someone walks in. It greets you by name, follows your mug, and approves a Claude Code prompt when you say "yes" from across the room. Not a chat window bolted to a shell: the brain writes `[HW:/emotion:…]`, the OS fires it at the body, and the words are spoken while the arm is already moving.
-
-[OpenClaw](https://github.com/openclaw/openclaw) did this for personal agents — one open runtime, one folder per skill, any model, any chat app. **Autonomous OS does it for robots: one OS, one `SKILL.md` per behavior, any body that declares itself in a `DEVICE.md`.**
-
-## The robot that grows with you
-
-A new job is one page of markdown: tap a skill in the store, type what you want in the app, or drop a folder on the robot — live on the next conversation, no reboot, no firmware.
-
-It remembers faces, voices and last week's conversation, and that memory belongs to the *body*, not the brain. Swap OpenClaw for [Hermes](https://github.com/NousResearch/hermes-agent), Codex or Claude Code and the persona comes with it. When a smarter brain ships, every robot on this OS gets smarter the same day — no new hardware.
-
-A robot, to this OS, is four files:
-
-| File | It says | Read by |
-|---|---|---|
-| `DEVICE.md` | **the body** — what hardware this robot has | the OS, at boot |
-| `SKILL.md` | **the hands** — one thing the robot can do | the agent |
-| `SOUL.md` | **the self** — who the robot is | the agent |
-| `SAFETY.md` | **the bounds** — brightness, quiet hours and explicit-move speed, clamped in the request path. Numeric clamps only: no e-stop, and nothing aborts a move already in flight | the OS, below the brain |
-
-Three of them live in `devices/<id>/`; `SKILL.md`s live in `skills/` and install onto every body that declares what they need.
-
-The bet is simple. Every robot that passes the compatibility test gets every skill whose capabilities it declares; every skill written against the contract runs on every robot that declares them. Skills × bodies is why Android won, and it is the only reason to build this in the open.
 
 ## Skills are how it grows
 
