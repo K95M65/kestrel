@@ -46,7 +46,7 @@ We've installed Autonomous OS on three robots so far — Lamp, Intern and Pollen
 | [Claude Buddy](skills/claude-buddy/)<br>Approve prompts by voice | ✅ | ✅ | ✅ | ○ |
 | [Skill Creator](skills/skill-creator/)<br>Write its own skills | ✅ | ✅ | ✅ | ○ |
 
-✅ runs today · ○ on the way.
+✅ runs today · ○ on the way
 
 ## A robot is four files
 
