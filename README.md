@@ -8,44 +8,49 @@ Robots have been around for years but have never been autonomous — someone has
 - **Your robot acts.** It [guards the house](skills/guard/), [knows your face](skills/face-enroll/), [follows you as you move](skills/servo-tracking/), [reads the mood on your face](skills/user-emotion-detection/), [sets the light](skills/scene/) — and does the desk work too: [Gmail, GitHub](skills/connectors/), [your Mac](skills/computer-use/). Each one is a [skill](skills/) — install more from the Skill Store, or write your own.
 - **Your robot grows.** It has a built-in learning loop. It creates skills from experience, sharpens them as it uses them, keeps what it learns, searches its own past conversations, and builds a deeper picture of you with every session.
 
-Autonomous OS is a fully customizable operating system for robots. Every component is swappable — engine, model, voice, skills, board. Your robot declares what it has in a `DEVICE.md`, and the OS mounts exactly that. When a better one ships, your robot gets it the same day — and gets better without new hardware.
+Autonomous OS is a fully customizable operating system for robots. Every component is swappable — [engine](runtimes/), [model](docs/hosted.md), [voice](hal/drivers/voice/), [skills](skills/), [board](hal/board/boards.json). Your robot declares what it has in a `DEVICE.md`, and the OS mounts exactly that. When a better one ships, your robot gets it the same day — and gets better without new hardware.
 
 ## Meet the first robots running Autonomous OS
 
 Autonomous Lamp and Autonomous Intern are the first two robots running Autonomous OS. We put it on Pollen Robotics' Reachy Mini as well, and Unitree's Go2-W is next — same OS, same skills, same safety gate, and each one thinks, acts and grows on its own.
 
-| Skill | <a href="devices/lamp"><img src="devices/lamp/images/lamp-white.webp" width="150" alt="Autonomous Lamp"><br>Lamp</a> | <a href="devices/intern-v2"><img src="devices/intern-v2/images/intern-tile.webp" width="150" alt="Autonomous Intern"><br>Intern</a> | <a href="devices/reachy-mini"><img src="devices/reachy-mini/images/reachy-mini.webp" width="150" alt="Reachy Mini"><br>Reachy Mini</a> | <a href="devices/unitree-go2w"><img src="devices/unitree-go2w/images/go2-w-tile.webp" width="150" alt="Unitree Go2-W"><br>Go2-W</a> |
-|---|:---:|:---:|:---:|:---:|
-| **Physical skills** | | | | |
-| [`camera`](skills/camera/)<br>See the room | ✅ |  | ✅ | ○ |
-| [`servo-tracking`](skills/servo-tracking/)<br>Track an object | ✅ |  | ○ | ○ |
-| [`face-enroll`](skills/face-enroll/)<br>Know your face | ✅ |  | ✅ |  |
-| [`speaker-recognizer`](skills/speaker-recognizer/)<br>Know who is speaking | ✅ | ✅ | ✅ | ○ |
-| [`voice`](skills/voice/)<br>Talk back | ✅ | ✅ | ✅ | ○ |
-| [`audio`](skills/audio/)<br>Sound and volume | ✅ | ✅ | ✅ | ○ |
-| [`servo-control`](skills/servo-control/)<br>Move and gesture | ✅ |  | ✅ | ○ |
-| [`emotion`](skills/emotion/)<br>Show emotion | ✅ |  | ✅ |  |
-| [`led-control`](skills/led-control/)<br>Colors and effects | ✅ | ✅ |  |  |
-| [`scene`](skills/scene/)<br>Six lighting scenes | ✅ |  |  |  |
-| [`sensing`](skills/sensing/)<br>Sense the room | ✅ | ✅ | ✅ | ○ |
-| [`sensing-track`](skills/sensing-track/)<br>Remember what it sensed | ✅ | ✅ | ✅ | ○ |
-| [`guard`](skills/guard/)<br>Guard the house | ✅ |  | ✅ |  |
-| [`music`](skills/music/)<br>Play music | ✅ | ✅ | ✅ |  |
-| [`music-suggestion`](skills/music-suggestion/)<br>Suggest a song | ✅ | ✅ | ✅ |  |
-| [`user-emotion-detection`](skills/user-emotion-detection/)<br>Read your mood | ✅ | ✅ | ✅ | ○ |
-| [`mood`](skills/mood/)<br>Track how you feel | ✅ | ✅ | ✅ | ○ |
-| [`wellbeing`](skills/wellbeing/)<br>Posture and breaks | ✅ | ✅ | ✅ | ○ |
-| [`habit`](skills/habit/)<br>Learn your routines | ✅ | ✅ | ✅ | ○ |
-| **Digital skills** | | | | |
-| [`connectors`](skills/connectors/)<br>Gmail | ✅ | ✅ | ✅ | ○ |
-| [`connectors`](skills/connectors/)<br>Calendar | ✅ | ✅ | ✅ | ○ |
-| [`connectors`](skills/connectors/)<br>Notion | ✅ | ✅ | ✅ | ○ |
-| [`connectors`](skills/connectors/)<br>GitHub | ✅ | ✅ | ✅ | ○ |
-| [`computer-use`](skills/computer-use/)<br>Your Mac | ✅ | ✅ | ✅ |  |
-| [`claude-buddy`](skills/claude-buddy/)<br>Approve Claude Code by voice | ✅ | ✅ | ✅ | ○ |
-| [`skill-creator`](skills/skill-creator/)<br>Write new skills | ✅ | ✅ | ✅ | ○ |
+**PHYSICAL SKILLS**
 
-✅ runs today · ○ on the way. Full catalog: [`skills/README.md`](skills/README.md).
+| SKILLS | <a href="devices/lamp"><img src="devices/lamp/images/lamp-white.webp" width="150" alt="Lamp"><br>Lamp</a> | <a href="devices/intern-v2"><img src="devices/intern-v2/images/intern-tile.webp" width="150" alt="Intern"><br>Intern</a> | <a href="devices/reachy-mini"><img src="devices/reachy-mini/images/reachy-mini.webp" width="150" alt="Reachy Mini"><br>Reachy Mini</a> | <a href="devices/unitree-go2w"><img src="devices/unitree-go2w/images/go2-w-tile.webp" width="150" alt="Go2-W"><br>Go2-W</a> |
+|---|:---:|:---:|:---:|:---:|
+| [camera](skills/camera/)<br>See the room | ✅ |  | ✅ | ○ |
+| [servo-tracking](skills/servo-tracking/)<br>Track an object | ✅ |  | ○ | ○ |
+| [face-enroll](skills/face-enroll/)<br>Know your face | ✅ |  | ✅ |  |
+| [speaker-recognizer](skills/speaker-recognizer/)<br>Know who is speaking | ✅ | ✅ | ✅ | ○ |
+| [voice](skills/voice/)<br>Talk back | ✅ | ✅ | ✅ | ○ |
+| [audio](skills/audio/)<br>Sound and volume | ✅ | ✅ | ✅ | ○ |
+| [servo-control](skills/servo-control/)<br>Move and gesture | ✅ |  | ✅ | ○ |
+| [emotion](skills/emotion/)<br>Show emotion | ✅ |  | ✅ |  |
+| [led-control](skills/led-control/)<br>Colors and effects | ✅ | ✅ |  |  |
+| [scene](skills/scene/)<br>Six lighting scenes | ✅ |  |  |  |
+| [sensing](skills/sensing/)<br>Sense the room | ✅ | ✅ | ✅ | ○ |
+| [sensing-track](skills/sensing-track/)<br>Remember what it sensed | ✅ | ✅ | ✅ | ○ |
+| [guard](skills/guard/)<br>Guard the house | ✅ |  | ✅ |  |
+| [music](skills/music/)<br>Play music | ✅ | ✅ | ✅ |  |
+| [music-suggestion](skills/music-suggestion/)<br>Suggest a song | ✅ | ✅ | ✅ |  |
+| [user-emotion-detection](skills/user-emotion-detection/)<br>Read your mood | ✅ | ✅ | ✅ | ○ |
+| [mood](skills/mood/)<br>Track how you feel | ✅ | ✅ | ✅ | ○ |
+| [wellbeing](skills/wellbeing/)<br>Posture and breaks | ✅ | ✅ | ✅ | ○ |
+| [habit](skills/habit/)<br>Learn your routines | ✅ | ✅ | ✅ | ○ |
+
+**DIGITAL SKILLS**
+
+| SKILLS | [Lamp](devices/lamp) | [Intern](devices/intern-v2) | [Reachy Mini](devices/reachy-mini) | [Go2-W](devices/unitree-go2w) |
+|---|:---:|:---:|:---:|:---:|
+| [connectors](skills/connectors/)<br>Gmail | ✅ | ✅ | ✅ | ○ |
+| [connectors](skills/connectors/)<br>Calendar | ✅ | ✅ | ✅ | ○ |
+| [connectors](skills/connectors/)<br>Notion | ✅ | ✅ | ✅ | ○ |
+| [connectors](skills/connectors/)<br>GitHub | ✅ | ✅ | ✅ | ○ |
+| [computer-use](skills/computer-use/)<br>Your Mac | ✅ | ✅ | ✅ |  |
+| [claude-buddy](skills/claude-buddy/)<br>Approve Claude Code by voice | ✅ | ✅ | ✅ | ○ |
+| [skill-creator](skills/skill-creator/)<br>Write new skills | ✅ | ✅ | ✅ | ○ |
+
+✅ runs today · ○ on the way.
 
 ## A robot is four files
 
