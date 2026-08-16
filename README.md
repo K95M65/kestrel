@@ -50,7 +50,7 @@ We've installed Autonomous OS on three robots so far — Lamp, Intern and Pollen
 
 ## Quick start
 
-The simplest way in is a robot we have already tested it on. You can also install it on your own — that path is at the bottom.
+The simplest way in is a robot we have already tested it on. You can also install it on your own.
 
 <img src="devices/lamp/images/lamp-hero.webp" alt="Autonomous Lamp on a desk, ring lit" width="720">
 
