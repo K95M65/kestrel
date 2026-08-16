@@ -31,7 +31,7 @@ We've installed Autonomous OS on three robots so far — Lamp, Intern and Pollen
 | [guard](skills/guard/)<br>Guard the house | ✅ |  | ✅ |  |
 | [music](skills/music/)<br>Play music | ✅ | ✅ | ✅ |  |
 | [music-suggestion](skills/music-suggestion/)<br>Suggest a song | ✅ | ✅ | ✅ |  |
-| [user-emotion-detection](skills/user-emotion-detection/)<br>Read your mood | ✅ | ✅ | ✅ | ○ |
+| [emotion-detection](skills/user-emotion-detection/)<br>Read your mood | ✅ | ✅ | ✅ | ○ |
 | [mood](skills/mood/)<br>Track how you feel | ✅ | ✅ | ✅ | ○ |
 | [wellbeing](skills/wellbeing/)<br>Posture and breaks | ✅ | ✅ | ✅ | ○ |
 | [habit](skills/habit/)<br>Learn your routines | ✅ | ✅ | ✅ | ○ |
