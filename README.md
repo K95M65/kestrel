@@ -38,14 +38,18 @@ The simplest way in is a robot we have already tested it on. You can also instal
 4. **Interact with it.** Say something — the head tilts, the antennas lift, and it answers.
 5. **Install a skill** from the Skill Store, or type what you want it to do and it writes one.
 6. **Give it a character.** Edit `/opt/devices/reachy-mini/SOUL.md`. Everything else, including how to undo the install: [`devices/reachy-mini/README.md`](devices/reachy-mini/README.md).
+7. **Put it next to a Lamp.** Each one hears the other's answer as its next input, so the two of them will hold a conversation until you stop them.
 
 <img src="devices/intern-v2/images/intern-hero.webp" alt="Autonomous Intern on a desk beside a laptop, tip glowing blue" width="720">
 
 **[Autonomous Intern](devices/intern-v2/)** — the always-on desk agent: mic, speaker, LED ring.
 
-1. **Open the app** and **Add robot → Intern**.
-2. **Talk to it.** Same image as Lamp, fewer capabilities declared, so it does everything that needs no camera or servos.
-3. **Give it a job** from the Skill Store — see the ✅ Intern column above for what lands.
+1. **Add it.** In the app, tap **Add robot → Intern**.
+2. **Set up Wi-Fi.** Same flow as Lamp: pick your network and it handles the keys and pairing.
+3. **Interact with it.** Say something and it answers; the ring shows what it is doing.
+4. **Install a skill** from the Skill Store — everything that needs no camera or servos runs here.
+5. **Build your own skill.** Type what you want in the app; it is live on the next conversation.
+6. **Give it a character.** Edit `/opt/devices/intern-v2/SOUL.md` — Intern runs the same image as Lamp with fewer capabilities declared, so everything else works the same way.
 
 <img src="docs/media/build-your-own.webp" alt="Printed robot parts laid out on a bench" width="720">
 
