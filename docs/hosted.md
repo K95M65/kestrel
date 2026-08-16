@@ -2,7 +2,7 @@
 
 Autonomous OS phones home to three things and nothing else.
 
-- **Skill store** — our own catalog, behind one-tap install in the app. It
+- **Skill Store** — our own catalog, behind one-tap install in the app. It
   carries more than this repo does: 70 skills as of 2026-08-16, of which the 25 in `skills/` are
   the robot skills that ship with the OS. The other 45 are first-party and
   user-published *workflow* skills (code review, standups, campaign plans) that
