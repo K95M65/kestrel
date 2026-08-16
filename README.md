@@ -48,18 +48,18 @@ We've installed Autonomous OS on three robots so far — Lamp, Intern and Pollen
 
 ✅ runs today · ○ on the way
 
-## A robot is four files
+## Robot specifications
 
-| FILE | WHAT IT SAYS | WHO READS IT |
-|---|---|---|
-| [DEVICE.md](devices/lamp/DEVICE.md) | **The body** — what hardware this robot has | the OS, at boot |
-| [SKILL.md](skills/guard/SKILL.md) | **The hands** — one thing the robot can do | the agent |
-| [SOUL.md](devices/lamp/SOUL.md) | **The self** — who the robot is | the agent |
-| [SAFETY.md](devices/lamp/SAFETY.md) | **The bounds** — how fast, how bright, how late | the OS, below the agent |
+Personalizing Autonomous OS for your robot is four markdown files:
 
-Three of them live in [`devices/<id>/`](devices/), one per robot. Skills live in [`skills/`](skills/) and install on every robot that declares the hardware they need.
+- **[DEVICE.md](devices/lamp/DEVICE.md)** — the body: what hardware this robot has
+- **[SOUL.md](devices/lamp/SOUL.md)** — the self: who it is and how it talks
+- **[SAFETY.md](devices/lamp/SAFETY.md)** — the bounds: how fast, how bright, how late
+- **[SKILL.md](skills/guard/SKILL.md)** — the hands: one thing it can do
 
-That is the whole bet: write a skill once and every robot runs it, port a robot once and it gets every skill.
+The first three live in your robot's folder. Skills live in [`skills/`](skills/) and install on every robot that declares the hardware they need.
+
+Ours, filled in: [Lamp](devices/lamp/), [Intern](devices/intern-v2/), [Reachy Mini](devices/reachy-mini/), [Go2-W](devices/unitree-go2w/).
 
 ## Get started
 
