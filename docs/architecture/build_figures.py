@@ -20,9 +20,9 @@ from figs import (Fig, H, PAD, ARROW, LABEL_TEXT, PURPLE_TEXT, GREEN_TEXT, CORAL
 HERE = pathlib.Path(__file__).parent
 
 # ---- layout ---------------------------------------------------------------
-LEFT = 96           # left caption column starts here (the act arrow runs at x=40)
-COL = 620           # x where the first node begins (must clear the widest left caption)
-RIGHT_PAD = 125     # gap between the last node and the right caption column
+LEFT = 40           # left caption column starts here
+COL = 360           # x where the first node begins (must clear the widest left caption)
+RIGHT_PAD = 40      # gap after the last node
 GAP = 18            # gap between sibling nodes in a row
 ROW = 112           # centre-to-centre distance between rows
 SUB = 84            # centre-to-centre distance between the two lines of one row
@@ -77,34 +77,21 @@ class Stack(Fig):
             x += w + GAP
         return x - GAP  # right edge of the row
 
-    def vlabel(self, x, y1, y2, text, up=False):
-        """A vertical arrow along a margin with its caption rotated to run beside it."""
-        if up:
-            self.arrow(x, y2, x, y1)
-        else:
-            self.arrow(x, y1, x, y2)
-        cy = (y1 + y2) / 2
-        tx = x - 34 if not up else x + 34
-        rot = 90 if not up else -90
-        self.parts.append(
-            f'<text x="{tx:.0f}" y="{cy:.0f}" fill="{LABEL_TEXT}" font-size="{NODE_FS}" '
-            f'text-anchor="middle" transform="rotate({rot} {tx:.0f} {cy:.0f})">{text}</text>')
-
 
 # ---- one hue per layer, the way Android's platform diagram reads ------------
 # A reader should be able to tell two layers apart without reading a word.
 # Same shape everywhere; only the hue changes, and it changes per layer.
-APPS    = ("#fbf0ed", "#f0c5b6", "#ad5130")   # coral — people
-SKILL   = ("#eff5ea", "#b8d7a6", "#5a912f")   # green
-BRAIN   = ("#f3f2f9", "#a9a3c9", "#5d579d")   # purple
-SYSTEM  = ("#eef4fa", "#a5c3e2", "#2f6193")   # blue
-VOICE   = ("#eaf5f3", "#9ecfc6", "#23786c")   # teal
-CAPS    = ("#fdf4e6", "#e6c489", "#96660f")   # amber
-SAFETY  = ("#fceded", "#e7adad", "#a33b3b")   # rose — the one gate
-DRIVER  = ("#f1f3f7", "#b4bfcf", "#46566d")   # slate
-BOARD   = ("#f4f4ea", "#c8c99e", "#67691f")   # olive
-KERNEL  = ("#f3f3f3", "#c6c6c6", "#565656")   # grey — not ours
-BODY    = ("#fbf0ed", "#f0c5b6", "#ad5130")   # coral — the robot
+APPS   = ("#fbf0ed", "#f0c5b6", "#ad5130")   # coral — people
+SKILL  = ("#eff5ea", "#b8d7a6", "#5a912f")   # green
+BRAIN  = ("#f3f2f9", "#a9a3c9", "#5d579d")   # purple
+SYSTEM = ("#eef4fa", "#a5c3e2", "#2f6193")   # blue
+VOICE  = ("#eaf5f3", "#9ecfc6", "#23786c")   # teal
+CAPS   = ("#fdf4e6", "#e6c489", "#96660f")   # amber
+SAFETY = ("#fceded", "#e7adad", "#a33b3b")   # rose — the one gate
+DRIVER = ("#f1f3f7", "#b4bfcf", "#46566d")   # slate
+BOARD  = ("#f4f4ea", "#c8c99e", "#67691f")   # olive
+KERNEL = ("#f3f3f3", "#c6c6c6", "#565656")   # grey — not ours
+BODY   = ("#fbf0ed", "#f0c5b6", "#ad5130")   # coral — the robot
 
 
 def stack():
@@ -122,7 +109,6 @@ def stack():
 
     # 1 — Skills
     y += ROW
-    skills_y = y
     labels = ["guard", "emotion", "face-enroll", "servo-tracking", "music", "+ 20 more", "your skill"]
     f.caption_left(y, "Skills")
     r = f.row(y, labels, SKILL, dashed=("your skill",)); widest = max(widest, r)
@@ -177,17 +163,11 @@ def stack():
     labels = ["Lamp", "Intern", "Reachy Mini", "Go2-W", "your robot"]
     f.caption_left(y, "Bodies")
     r = f.row(y, labels, BODY, term=True, dashed=("Go2-W", "your robot")); widest = max(widest, r)
-    body_y = y
 
     # bands span the widest row
     f.band(COL, widest, band_y, "brightness · quiet hours · explicit-move speed · thermal",
            kind=SAFETY)
     f.band(COL, widest, linux_y, "Raspberry Pi OS · OrangePi Debian · the robot's own image", kind=KERNEL)
-
-    # margin arrows: act down the left, sense up the right
-    top_y = skills_y - H / 2 - 4
-    f.vlabel(54, top_y, body_y + H / 2, "act — a skill writes [HW:/servo/aim]")
-    f.vlabel(widest + 34, top_y, body_y + H / 2, "sense — events → intent → agent", up=True)
 
     return f.write(HERE / "autonomous-stack.svg")
 
