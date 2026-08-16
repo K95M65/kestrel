@@ -50,8 +50,6 @@ We've installed Autonomous OS on three robots so far — Lamp, Intern and Pollen
 
 ## Quick start
 
-The fastest way in is a robot that already runs it.
-
 **[Autonomous Lamp](https://www.autonomous.ai/lamp)** — our 5-DOF desk robot, $499, Autonomous OS on it out of the box.
 
 1. **Open the app** — [iOS](https://apps.apple.com/app/id6744885683) · [Android](https://play.google.com/store/apps/details?id=ai.autonomous.connect.wifi).
@@ -60,23 +58,28 @@ The fastest way in is a robot that already runs it.
 4. **Give it a job.** Tap a skill in the Skill Store, or type what you want it to do.
 5. **Make it yours.** Edit [`SOUL.md`](devices/lamp/SOUL.md) and it is someone else on the next turn.
 
-**[Reachy Mini](https://huggingface.co/docs/reachy_mini)** — Pollen Robotics' desk robot. SSH in and run one command; it installs beside Pollen's stack and nothing is flashed.
+**[Reachy Mini](https://huggingface.co/docs/reachy_mini)** — Pollen Robotics' desk robot, running our OS beside theirs.
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/autonomous-ai/autonomous-os/main/devices/reachy-mini/install.sh | sudo bash
-```
+1. **SSH in** — `ssh pollen@reachy-mini.local`.
+2. **Run one command.** Nothing is flashed; Pollen's daemon keeps the motors.
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/autonomous-ai/autonomous-os/main/devices/reachy-mini/install.sh | sudo bash
+   ```
+3. **Tap Add robot → Reachy Mini** and give it `reachy-mini.local`. From here it is Lamp's steps 3–5. Details and how to undo it: [`devices/reachy-mini/README.md`](devices/reachy-mini/README.md).
 
-Then **Add robot → Reachy Mini** in the app and it is the same five steps.
+**[Autonomous Intern](devices/intern-v2/)** — the always-on desk agent: mic, speaker, LED ring.
 
-### Other robots
+1. **Open the app** and **Add robot → Intern**.
+2. **Talk to it.** Same image as Lamp, fewer capabilities declared, so it does everything that needs no camera or servos.
+3. **Give it a job** from the Skill Store — see the ✅ Intern column above for what lands.
 
-| | |
-|---|---|
-| **[Autonomous Intern](devices/intern-v2/)** | Same image as Lamp, fewer capabilities declared |
-| **[Your own robot](docs/porting-a-robot.md)** | Three markdown files and a driver — including a Raspberry Pi build of your own ([BUILD.md](devices/lamp/BUILD.md)) |
-| **Simulation** | Not yet — the mock body is [#200](https://github.com/autonomous-ai/autonomous-os/issues/200) |
+**Your own robot** — three markdown files and a driver.
 
-What we host and what stays on your network: [`docs/hosted.md`](docs/hosted.md).
+1. **Scaffold it** — `make new-device NAME=<id>` writes `devices/<id>/`.
+2. **Declare what it has** in `DEVICE.md`, ship its bounds in `SAFETY.md`, give it a `SOUL.md`.
+3. **Run the compatibility test** — `make cts`, then `make cts-runtime TARGET=<ip>` on the robot. Every step: [`docs/porting-a-robot.md`](docs/porting-a-robot.md). Building the Lamp hardware yourself instead? [`BUILD.md`](devices/lamp/BUILD.md).
+
+No robot yet? A simulator is [#200](https://github.com/autonomous-ai/autonomous-os/issues/200) — the highest-value open issue here. What we host and what stays on your network: [`docs/hosted.md`](docs/hosted.md).
 
 ## Robot specifications
 
