@@ -46,7 +46,7 @@ The simplest way in is a robot we have already tested it on. You can also instal
 
 <img src="devices/intern-v2/images/intern-hero.webp" alt="Autonomous Intern on a desk beside a laptop, tip glowing blue" width="720">
 
-**[Autonomous Intern](devices/intern-v2/)** — the always-on desk agent: mic, speaker, LED ring.
+**[Autonomous Intern](https://www.autonomous.ai/intern)** — the always-on desk agent: mic, speaker, LED ring.
 
 1. **Add it.** In the app, tap **Add robot → Intern**.
 2. **Set up Wi-Fi.** Same flow as Lamp: pick your network and it handles the keys and pairing.
