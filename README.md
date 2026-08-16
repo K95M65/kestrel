@@ -12,16 +12,17 @@ Autonomous OS is a fully customizable operating system for robots. Every compone
 
 ## Meet the first robots running Autonomous OS
 
-Four bodies, one OS — two ours, one Pollen Robotics', one Unitree's. The same skills, the same brains, the same safety gate on all of them.
+Autonomous Lamp and Autonomous Intern are the first two robots running Autonomous OS. We put it on Pollen Robotics' Reachy Mini as well, and Unitree's Go2-W is next — same OS, same skills, same safety gate, and each one thinks, acts and grows on its own.
 
-| Skill | <a href="devices/lamp"><img src="devices/lamp/images/lamp-white.webp" width="150" alt="Autonomous Lamp"><br>Autonomous Lamp</a> | <a href="devices/intern-v2"><img src="devices/intern-v2/images/intern-tile.webp" width="150" alt="Autonomous Intern"><br>Autonomous Intern</a> | <a href="devices/reachy-mini"><img src="devices/reachy-mini/images/reachy-mini.webp" width="150" alt="Reachy Mini"><br>Reachy Mini</a> | <a href="devices/unitree-go2w"><img src="devices/unitree-go2w/images/go2-w-tile.webp" width="150" alt="Unitree Go2-W"><br>Unitree Go2-W</a> |
+| Skill | <a href="devices/lamp"><img src="devices/lamp/images/lamp-white.webp" width="150" alt="Autonomous Lamp"><br>Lamp</a> | <a href="devices/intern-v2"><img src="devices/intern-v2/images/intern-tile.webp" width="150" alt="Autonomous Intern"><br>Intern</a> | <a href="devices/reachy-mini"><img src="devices/reachy-mini/images/reachy-mini.webp" width="150" alt="Reachy Mini"><br>Reachy Mini</a> | <a href="devices/unitree-go2w"><img src="devices/unitree-go2w/images/go2-w-tile.webp" width="150" alt="Unitree Go2-W"><br>Go2-W</a> |
 |---|:---:|:---:|:---:|:---:|
+| **Physical skills** | | | | |
 | [`camera`](skills/camera/)<br>See the room | ✅ |  | ✅ | ○ |
 | [`servo-tracking`](skills/servo-tracking/)<br>Track an object | ✅ |  | ○ | ○ |
 | [`face-enroll`](skills/face-enroll/)<br>Know your face | ✅ |  | ✅ |  |
+| [`speaker-recognizer`](skills/speaker-recognizer/)<br>Know who is speaking | ✅ | ✅ | ✅ | ○ |
 | [`voice`](skills/voice/)<br>Talk back | ✅ | ✅ | ✅ | ○ |
 | [`audio`](skills/audio/)<br>Sound and volume | ✅ | ✅ | ✅ | ○ |
-| [`speaker-recognizer`](skills/speaker-recognizer/)<br>Know who is speaking | ✅ | ✅ | ✅ | ○ |
 | [`servo-control`](skills/servo-control/)<br>Move and gesture | ✅ |  | ✅ | ○ |
 | [`emotion`](skills/emotion/)<br>Show emotion | ✅ |  | ✅ |  |
 | [`led-control`](skills/led-control/)<br>Colors and effects | ✅ | ✅ |  |  |
@@ -32,12 +33,16 @@ Four bodies, one OS — two ours, one Pollen Robotics', one Unitree's. The same 
 | [`music`](skills/music/)<br>Play music | ✅ | ✅ | ✅ |  |
 | [`music-suggestion`](skills/music-suggestion/)<br>Suggest a song | ✅ | ✅ | ✅ |  |
 | [`user-emotion-detection`](skills/user-emotion-detection/)<br>Read your mood | ✅ | ✅ | ✅ | ○ |
-| [`mood`](skills/mood/)<br>Track mood over time | ✅ | ✅ | ✅ | ○ |
+| [`mood`](skills/mood/)<br>Track how you feel | ✅ | ✅ | ✅ | ○ |
 | [`wellbeing`](skills/wellbeing/)<br>Posture and breaks | ✅ | ✅ | ✅ | ○ |
 | [`habit`](skills/habit/)<br>Learn your routines | ✅ | ✅ | ✅ | ○ |
-| [`computer-use`](skills/computer-use/)<br>Drive your Mac | ✅ | ✅ | ✅ |  |
+| **Digital skills** | | | | |
+| [`connectors`](skills/connectors/)<br>Gmail | ✅ | ✅ | ✅ | ○ |
+| [`connectors`](skills/connectors/)<br>Calendar | ✅ | ✅ | ✅ | ○ |
+| [`connectors`](skills/connectors/)<br>Notion | ✅ | ✅ | ✅ | ○ |
+| [`connectors`](skills/connectors/)<br>GitHub | ✅ | ✅ | ✅ | ○ |
+| [`computer-use`](skills/computer-use/)<br>Your Mac | ✅ | ✅ | ✅ |  |
 | [`claude-buddy`](skills/claude-buddy/)<br>Approve Claude Code by voice | ✅ | ✅ | ✅ | ○ |
-| [`connectors`](skills/connectors/)<br>Gmail, Calendar, Notion, GitHub | ✅ | ✅ | ✅ | ○ |
 | [`skill-creator`](skills/skill-creator/)<br>Write new skills | ✅ | ✅ | ✅ | ○ |
 
 ✅ runs today · ○ on the way. Full catalog: [`skills/README.md`](skills/README.md).
