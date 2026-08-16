@@ -43,7 +43,6 @@ We've installed Autonomous OS on three robots so far — Lamp, Intern and Pollen
 | [Notion](skills/connectors/)<br>Search and write your notes | ✅ | ✅ | ✅ | ○ |
 | [GitHub](skills/connectors/)<br>Open issues, check pull requests | ✅ | ✅ | ✅ | ○ |
 | [Your Mac](skills/computer-use/)<br>Drive apps and the browser | ✅ | ✅ | ✅ |  |
-| [Claude Code](skills/claude-buddy/)<br>Approve prompts by voice | ✅ | ✅ | ✅ | ○ |
 | [New skills](skills/skill-creator/)<br>Write and test its own | ✅ | ✅ | ✅ | ○ |
 
 ✅ runs today · ○ on the way.
