@@ -10,7 +10,7 @@ Autonomous OS is a fully customizable operating system for robots. Every compone
 
 ## Quick start
 
-The simplest way in is a robot we have already tested it on. You can also install it on your own. What each of them can do: [robot comparison](docs/robot-comparison.md).
+The simplest way in is a robot we have already tested it on. What each of them can do: [robot comparison](docs/robot-comparison.md). Bringing your own? [Skip to it](#your-own-robot).
 
 <img src="devices/lamp/images/lamp-hero.webp" alt="Autonomous Lamp on a desk, ring lit" width="720">
 
@@ -53,11 +53,11 @@ The simplest way in is a robot we have already tested it on. You can also instal
 5. **Build your own skill.** Type what you want in the app; it is live on the next conversation.
 6. **Give it a character.** Edit `/opt/devices/intern-v2/SOUL.md` — Intern runs the same image as Lamp with fewer capabilities declared, so everything else works the same way.
 
-<br><br>
+## Your own robot
 
 <img src="docs/media/build-your-own.webp" alt="Printed robot parts laid out on a bench" width="720">
 
-**Your own robot** — personalizing Autonomous OS is four markdown files:
+Autonomous OS runs on any robot you can declare. Personalizing it is four markdown files:
 
 - **[DEVICE.md](devices/lamp/DEVICE.md)** — the body: what hardware this robot has
 - **[SOUL.md](devices/lamp/SOUL.md)** — the self: who it is and how it talks
