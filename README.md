@@ -82,6 +82,8 @@ The simplest way in is a robot we have already tested it on. You can also instal
 2. **Talk to it.** Same image as Lamp, fewer capabilities declared, so it does everything that needs no camera or servos.
 3. **Give it a job** from the Skill Store — see the ✅ Intern column above for what lands.
 
+<img src="docs/media/build-your-own.webp" alt="Printed robot parts laid out on a bench" width="720">
+
 **Your own robot** — three markdown files and a driver.
 
 1. **Scaffold it** — `make new-device NAME=<id>` writes `devices/<id>/`.
