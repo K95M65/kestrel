@@ -64,7 +64,7 @@ Autonomous OS runs on any robot you can describe in four markdown files.
 - **`SAFETY.md`** — the bounds: how fast, how bright, how late.
 - **`SKILL.md`** — the hands: one thing it can do.
 
-**[Follow the full guide](docs/bring-your-own-robot.md).**
+Follow **[the full guide](docs/bring-your-own-robot.md)**.
 
 ## Platform architecture
 
