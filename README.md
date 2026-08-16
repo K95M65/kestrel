@@ -53,28 +53,26 @@ Four bodies, one OS — two ours, one Pollen Robotics', one Unitree's. The same 
   </tr>
 </table>
 
-✅ runs today · ○ on the way.
-
 | Skill | Lamp | Intern | Reachy Mini | Go2-W |
 |---|:---:|:---:|:---:|:---:|
-| `camera` — See the room: snapshot, stream, describe | ✅ |  | ✅ | ○ |
-| `servo-tracking` — Track an object, head follows it | ✅ |  | ○ | ○ |
-| `face-enroll` — Know your face, greet you by name | ✅ |  | ✅ |  |
-| `voice` `audio` `speaker-recognizer` — Hear you, talk back, know your voice | ✅ | ✅ | ✅ | ○ |
-| `servo-control` — Move: aim, nudge, 30 recorded moves | ✅ |  | ✅ | ○ |
-| `emotion` — Show emotion, 22 of them | ✅ |  | ✅ |  |
-| `led-control` — Glow: colors and effects | ✅ | ✅ |  |  |
-| `scene` — Six lighting scenes | ✅ |  |  |  |
-| `sensing` `sensing-track` — Sense the room: presence, sound, light | ✅ | ✅ | ✅ | ○ |
-| `guard` — Guard the house | ✅ |  | ✅ |  |
-| `music` `music-suggestion` — Play music, suggest a song | ✅ | ✅ | ✅ |  |
-| `user-emotion-detection` `mood` — Read your mood | ✅ | ✅ | ✅ | ○ |
-| `wellbeing` `habit` — Look after you: posture, breaks, habits | ✅ | ✅ | ✅ | ○ |
-| `computer-use` `claude-buddy` — Drive your Mac, approve Claude Code by voice | ✅ | ✅ | ✅ |  |
-| `connectors` — Reach Gmail, Calendar, Notion, GitHub | ✅ | ✅ | ✅ | ○ |
-| `skill-creator` — Write and test new skills | ✅ | ✅ | ✅ | ○ |
+| [`camera`](skills/camera/)<br>See the room | ✅ |  | ✅ | ○ |
+| [`servo-tracking`](skills/servo-tracking/)<br>Track an object | ✅ |  | ○ | ○ |
+| [`face-enroll`](skills/face-enroll/)<br>Know your face | ✅ |  | ✅ |  |
+| [`voice`](skills/voice/) [`audio`](skills/audio/) [`speaker-recognizer`](skills/speaker-recognizer/)<br>Hear you and talk back | ✅ | ✅ | ✅ | ○ |
+| [`servo-control`](skills/servo-control/)<br>Move and gesture | ✅ |  | ✅ | ○ |
+| [`emotion`](skills/emotion/)<br>Show emotion | ✅ |  | ✅ |  |
+| [`led-control`](skills/led-control/)<br>Colors and effects | ✅ | ✅ |  |  |
+| [`scene`](skills/scene/)<br>Six lighting scenes | ✅ |  |  |  |
+| [`sensing`](skills/sensing/) [`sensing-track`](skills/sensing-track/)<br>Sense the room | ✅ | ✅ | ✅ | ○ |
+| [`guard`](skills/guard/)<br>Guard the house | ✅ |  | ✅ |  |
+| [`music`](skills/music/) [`music-suggestion`](skills/music-suggestion/)<br>Play music | ✅ | ✅ | ✅ |  |
+| [`user-emotion-detection`](skills/user-emotion-detection/) [`mood`](skills/mood/)<br>Read your mood | ✅ | ✅ | ✅ | ○ |
+| [`wellbeing`](skills/wellbeing/) [`habit`](skills/habit/)<br>Look after you | ✅ | ✅ | ✅ | ○ |
+| [`computer-use`](skills/computer-use/) [`claude-buddy`](skills/claude-buddy/)<br>Drive your Mac | ✅ | ✅ | ✅ |  |
+| [`connectors`](skills/connectors/)<br>Gmail, Calendar, Notion, GitHub | ✅ | ✅ | ✅ | ○ |
+| [`skill-creator`](skills/skill-creator/)<br>Write new skills | ✅ | ✅ | ✅ | ○ |
 
-Per-body notes and the full catalog: [`skills/README.md`](skills/README.md).
+✅ runs today · ○ on the way. Full catalog: [`skills/README.md`](skills/README.md).
 
 ## A robot is four files
 
