@@ -57,7 +57,7 @@ Personalizing Autonomous OS for your robot is simple. It's just four markdown fi
 - **[SAFETY.md](devices/lamp/SAFETY.md)** — the bounds: how fast, how bright, how late
 - **[SKILL.md](skills/guard/SKILL.md)** — the hands: one thing it can do
 
-Ours, filled in: [Lamp](devices/lamp/), [Intern](devices/intern-v2/), [Reachy Mini](devices/reachy-mini/), [Go2-W](devices/unitree-go2w/).
+Check out the specifications of the first robots: [Lamp](devices/lamp/), [Intern](devices/intern-v2/), [Reachy Mini](devices/reachy-mini/), [Go2-W](devices/unitree-go2w/).
 
 ## Get started
 
