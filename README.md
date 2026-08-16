@@ -2,9 +2,7 @@
 
 ## Autonomous OS: The "Android" for Robots
 
-Robots have had bodies for years and no brain. They stopped at gimmick demos.
-
-Autonomous OS brings the brain. Install it on your robot and the robot starts doing real work.
+Robots have had bodies for years and no brain. They stopped at gimmick demos. Autonomous OS brings the brain: install it on your robot and the robot starts doing real work.
 
 **Your robot thinks.** Everything it sees and hears goes to a reasoning agent that decides what to do next — no script, no state machine.
 
@@ -12,7 +10,7 @@ Autonomous OS brings the brain. Install it on your robot and the robot starts do
 
 **Your robot grows.** A new job is one page of markdown — tap it in the store, type it in the app, or drop a folder on the robot. Live on the next conversation. It remembers faces, voices and last week, and that memory belongs to the body, not the brain.
 
-**Every piece swaps.** Engine, model, voice, skills, board — live, nothing to rebuild. Your robot declares what it has in a `DEVICE.md`, and the OS mounts exactly that. When a smarter brain ships, every robot on this OS gets smarter the same day.
+Autonomous OS is fully customizable. Engine, model, voice, skills, board — every piece swaps, live, nothing to rebuild. Your robot declares what it has in a `DEVICE.md`, and the OS mounts exactly that. When a smarter brain ships, every robot on this OS gets smarter the same day.
 
 ## Meet the first robots running Autonomous OS
 
