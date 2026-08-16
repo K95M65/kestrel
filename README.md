@@ -12,9 +12,11 @@ Autonomous OS is a fully customizable operating system for robots. Every compone
 
 The simplest way in is a robot we have already tested it on. What each of them can do: [robot comparison](docs/robot-comparison.md). Want it on your own robot? [Follow this guide](docs/bring-your-own-robot.md).
 
+### Autonomous Lamp
+
 <img src="devices/lamp/images/lamp-hero.webp" alt="Autonomous Lamp on a desk, ring lit" width="720">
 
-**[Autonomous Lamp](https://www.autonomous.ai/lamp)** is the robot that shows the whole OS — it sees, hears, speaks, moves, and ships with Autonomous OS on it.
+[Lamp](https://www.autonomous.ai/lamp) is the robot that shows the whole OS — it sees, hears, speaks, moves, and ships with Autonomous OS on it.
 
 1. **Add it.** In the Autonomous app ([iOS](https://apps.apple.com/app/id6744885683) | [Android](https://play.google.com/store/apps/details?id=ai.autonomous.connect.wifi)), tap **Add robot → Lamp**.
 2. **Set up Wi-Fi.** Pick your network in the app; it joins the robot's hotspot and hands over the keys and pairing.
@@ -23,11 +25,11 @@ The simplest way in is a robot we have already tested it on. What each of them c
 5. **Build your own skill.** Type what you want it to do in the app and it writes the skill.
 6. **Give it a character.** Edit [`SOUL.md`](devices/lamp/SOUL.md) and it is someone else on the next turn.
 
-<br><br>
+### Reachy Mini
 
 <img src="devices/reachy-mini/images/reachy-lamp-hero.webp" alt="Reachy Mini and Autonomous Lamp side by side on a desk" width="720">
 
-**[Reachy Mini](https://huggingface.co/docs/reachy_mini)** — Hugging Face's desk robot, running our OS beside its own stack.
+[Reachy Mini](https://huggingface.co/docs/reachy_mini) is Hugging Face's desk robot, running our OS beside its own stack.
 
 1. **SSH in** — `ssh pollen@reachy-mini.local`.
 2. **Run one command.** Nothing is flashed; the Reachy daemon keeps the motors.
@@ -40,11 +42,11 @@ The simplest way in is a robot we have already tested it on. What each of them c
 6. **Give it a character.** Edit `/opt/devices/reachy-mini/SOUL.md`. Everything else, including how to undo the install: [`devices/reachy-mini/README.md`](devices/reachy-mini/README.md).
 7. **Put it next to a Lamp.** Each one hears the other's answer as its next input, so the two of them will hold a conversation until you stop them.
 
-<br><br>
+### Autonomous Intern
 
 <img src="devices/intern-v2/images/intern-hero.webp" alt="Autonomous Intern on a desk beside a laptop, tip glowing blue" width="720">
 
-**[Autonomous Intern](https://www.autonomous.ai/intern)** — the always-on desk agent: mic, speaker, LED ring.
+[Intern](https://www.autonomous.ai/intern) is the always-on desk agent: mic, speaker, LED ring.
 
 1. **Add it.** In the app, tap **Add robot → Intern**.
 2. **Set up Wi-Fi.** Same flow as Lamp: pick your network and it handles the keys and pairing.
