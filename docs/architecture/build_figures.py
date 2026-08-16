@@ -91,6 +91,22 @@ class Stack(Fig):
             f'text-anchor="middle" transform="rotate({rot} {tx:.0f} {cy:.0f})">{text}</text>')
 
 
+# ---- one hue per layer, the way Android's platform diagram reads ------------
+# A reader should be able to tell two layers apart without reading a word.
+# Same shape everywhere; only the hue changes, and it changes per layer.
+APPS    = ("#fbf0ed", "#f0c5b6", "#ad5130")   # coral — people
+SKILL   = ("#eff5ea", "#b8d7a6", "#5a912f")   # green
+BRAIN   = ("#f3f2f9", "#a9a3c9", "#5d579d")   # purple
+SYSTEM  = ("#eef4fa", "#a5c3e2", "#2f6193")   # blue
+VOICE   = ("#eaf5f3", "#9ecfc6", "#23786c")   # teal
+CAPS    = ("#fdf4e6", "#e6c489", "#96660f")   # amber
+SAFETY  = ("#fceded", "#e7adad", "#a33b3b")   # rose — the one gate
+DRIVER  = ("#f1f3f7", "#b4bfcf", "#46566d")   # slate
+BOARD   = ("#f4f4ea", "#c8c99e", "#67691f")   # olive
+KERNEL  = ("#f3f3f3", "#c6c6c6", "#565656")   # grey — not ours
+BODY    = ("#fbf0ed", "#f0c5b6", "#ad5130")   # coral — the robot
+
+
 def stack():
     f = Stack(1600, 1300)
     y = 30
@@ -101,74 +117,72 @@ def stack():
     # ours is the app that adds a robot, installs skills and switches brains.
     y += 60
     labels = ["Autonomous app", "web setup", "live monitor"]
-    f.caption_left(y, "Apps", "system/web/", note="add a robot · install skills · switch brains")
-    r = f.row(y, labels, None, term=True); widest = max(widest, r)
+    f.caption_left(y, "Apps")
+    r = f.row(y, labels, APPS); widest = max(widest, r)
 
     # 1 — Skills
     y += ROW
     skills_y = y
     labels = ["guard", "emotion", "face-enroll", "servo-tracking", "music", "+ 20 more", "your skill"]
-    f.caption_left(y, "Skills", "skills/", "SKILL.md")
-    r = f.row(y, labels, "green", dashed=("your skill",)); widest = max(widest, r)
+    f.caption_left(y, "Skills")
+    r = f.row(y, labels, SKILL, dashed=("your skill",)); widest = max(widest, r)
 
     # 2 — Agentic Runtime
     y += ROW
     labels = ["OpenClaw", "Hermes", "PicoClaw", "OpenCode", "Codex", "Claude Code", "your brain"]
-    f.caption_left(y, "Agentic runtime", "runtimes/", "SOUL.md")
-    r = f.row(y, labels, "purple", dashed=("your brain",)); widest = max(widest, r)
+    f.caption_left(y, "Agentic runtime")
+    r = f.row(y, labels, BRAIN, dashed=("your brain",)); widest = max(widest, r)
 
     # 3 — System managers
     y += ROW
     labels = ["server", "intent", "agent", "skills", "device", "bootstrap", "+ 8 more"]
-    f.caption_left(y, "System services", "system/")
-    r = f.row(y, labels, "purple"); widest = max(widest, r)
+    f.caption_left(y, "System services")
+    r = f.row(y, labels, SYSTEM); widest = max(widest, r)
 
     # 3b — Realtime voice: hosted in HAL, answers small talk or hands the turn to the brain
     y += ROW
     labels = ["Gemini Live", "OpenAI Realtime", "Qwen"]
-    f.caption_left(y, "Realtime voice", "hal/realtime/",
-                   note="a voice turn lands here first — answer, or hand it up")
-    r = f.row(y, labels, "purple"); widest = max(widest, r)
+    f.caption_left(y, "Realtime voice")
+    r = f.row(y, labels, VOICE); widest = max(widest, r)
 
     # 4 — HAL capabilities, two lines
     y += ROW
     labels = ["audio", "vision", "motion", "light", "sensing", "display", "+ 7 more"]
-    f.caption_left(y, "Capabilities", "devices/contract/", "DEVICE.md",
-                   note="the 13 a robot may declare — served by hal/routes/ on :5001")
-    r = f.row(y, labels, "green"); widest = max(widest, r)
+    f.caption_left(y, "Capabilities")
+    r = f.row(y, labels, CAPS); widest = max(widest, r)
 
     # 5 — Safety gate (band)
     y += ROW
-    f.caption_left(y, "Safety gate", "hal/safety/", "SAFETY.md")
+    f.caption_left(y, "Safety gate")
     band_y = y
 
     # 6 — Drivers + boards
     y += ROW
     labels = ["motors", "camera", "voice", "sensing", "display", "+ 3 more", "your driver"]
-    f.caption_left(y, "Drivers", "hal/drivers/")
-    r = f.row(y, labels, "green", dashed=("your driver",)); widest = max(widest, r)
+    f.caption_left(y, "Drivers")
+    r = f.row(y, labels, DRIVER, dashed=("your driver",)); widest = max(widest, r)
 
     y += SUB
     labels = ["Raspberry Pi 5", "Raspberry Pi CM4", "OrangePi 4 Pro", "your board"]
-    f.caption_left(y, "Boards", "hal/board/boards.json")
-    r = f.row(y, labels, "green", dashed=("your board",)); widest = max(widest, r)
+    f.caption_left(y, "Boards")
+    r = f.row(y, labels, BOARD, dashed=("your board",)); widest = max(widest, r)
 
     # 7 — Linux (band)
     y += ROW
-    f.caption_left(y, "Linux", note="vendor kernel, not ours")
+    f.caption_left(y, "Linux")
     linux_y = y
 
     # 8 — Bodies (terminals)
     y += ROW
     labels = ["Lamp", "Intern", "Reachy Mini", "Go2-W", "your robot"]
-    f.caption_left(y, "Bodies", "devices/")
-    r = f.row(y, labels, None, term=True, dashed=("Go2-W", "your robot")); widest = max(widest, r)
+    f.caption_left(y, "Bodies")
+    r = f.row(y, labels, BODY, term=True, dashed=("Go2-W", "your robot")); widest = max(widest, r)
     body_y = y
 
     # bands span the widest row
     f.band(COL, widest, band_y, "brightness · quiet hours · explicit-move speed · thermal",
-           kind="purple")
-    f.band(COL, widest, linux_y, "Raspberry Pi OS · OrangePi Debian · the robot's own image", kind="green")
+           kind=SAFETY)
+    f.band(COL, widest, linux_y, "Raspberry Pi OS · OrangePi Debian · the robot's own image", kind=KERNEL)
 
     # margin arrows: act down the left, sense up the right
     top_y = skills_y - H / 2 - 4

@@ -33,16 +33,13 @@
   </defs>
   <rect width="2089" height="1300" fill="#fff"/>
   <text x="96" y="92" fill="#2b2b29" font-size="28" font-weight="600">Apps</text>
-  <text x="96" y="124" font-size="26" font-family="SF Mono, Menlo, Consolas, monospace"><tspan fill="#2b2b29">system/web/</tspan></text>
-  <text x="96" y="156" fill="#a1a099" font-size="24">add a robot · install skills · switch brains</text>
-  <rect x="620" y="57" width="272" height="66" rx="33" fill="#fbf0ed" stroke="#f0c5b6" stroke-width="2"/>
-  <text x="756" y="99" text-anchor="middle" fill="#ad5130" font-size="28" font-weight="600">Autonomous app</text>
-  <rect x="910" y="57" width="185" height="66" rx="33" fill="#fbf0ed" stroke="#f0c5b6" stroke-width="2"/>
-  <text x="1002" y="99" text-anchor="middle" fill="#ad5130" font-size="28" font-weight="600">web setup</text>
-  <rect x="1113" y="57" width="203" height="66" rx="33" fill="#fbf0ed" stroke="#f0c5b6" stroke-width="2"/>
-  <text x="1214" y="99" text-anchor="middle" fill="#ad5130" font-size="28" font-weight="600">live monitor</text>
+  <rect x="620" y="57" width="280" height="66" fill="#fbf0ed" stroke="#f0c5b6" stroke-width="2"/>
+  <text x="760" y="99" text-anchor="middle" fill="#ad5130" font-size="28" font-weight="600">Autonomous app</text>
+  <rect x="918" y="57" width="193" height="66" fill="#fbf0ed" stroke="#f0c5b6" stroke-width="2"/>
+  <text x="1014" y="99" text-anchor="middle" fill="#ad5130" font-size="28" font-weight="600">web setup</text>
+  <rect x="1129" y="57" width="211" height="66" fill="#fbf0ed" stroke="#f0c5b6" stroke-width="2"/>
+  <text x="1234" y="99" text-anchor="middle" fill="#ad5130" font-size="28" font-weight="600">live monitor</text>
   <text x="96" y="204" fill="#2b2b29" font-size="28" font-weight="600">Skills</text>
-  <text x="96" y="236" font-size="26" font-family="SF Mono, Menlo, Consolas, monospace"><tspan fill="#2b2b29">skills/</tspan><tspan fill="#5d579d"> · SKILL.md</tspan></text>
   <rect x="620" y="169" width="122" height="66" fill="#eff5ea" stroke="#b8d7a6" stroke-width="2"/>
   <text x="681" y="211" text-anchor="middle" fill="#5a912f" font-size="28" font-weight="600">guard</text>
   <rect x="760" y="169" width="158" height="66" fill="#eff5ea" stroke="#b8d7a6" stroke-width="2"/>
@@ -58,7 +55,6 @@
   <rect x="1779" y="169" width="176" height="66" fill="#eff5ea" stroke="#b8d7a6" stroke-width="2" stroke-dasharray="7 7"/>
   <text x="1867" y="211" text-anchor="middle" fill="#5a912f" font-size="28" font-weight="600">your skill</text>
   <text x="96" y="316" fill="#2b2b29" font-size="28" font-weight="600">Agentic runtime</text>
-  <text x="96" y="348" font-size="26" font-family="SF Mono, Menlo, Consolas, monospace"><tspan fill="#2b2b29">runtimes/</tspan><tspan fill="#5d579d"> · SOUL.md</tspan></text>
   <rect x="620" y="281" width="184" height="66" fill="#f3f2f9" stroke="#a9a3c9" stroke-width="2"/>
   <text x="712" y="323" text-anchor="middle" fill="#5d579d" font-size="28" font-weight="600">OpenClaw</text>
   <rect x="822" y="281" width="149" height="66" fill="#f3f2f9" stroke="#a9a3c9" stroke-width="2"/>
@@ -74,79 +70,69 @@
   <rect x="1769" y="281" width="184" height="66" fill="#f3f2f9" stroke="#a9a3c9" stroke-width="2" stroke-dasharray="7 7"/>
   <text x="1861" y="323" text-anchor="middle" fill="#5d579d" font-size="28" font-weight="600">your brain</text>
   <text x="96" y="428" fill="#2b2b29" font-size="28" font-weight="600">System services</text>
-  <text x="96" y="460" font-size="26" font-family="SF Mono, Menlo, Consolas, monospace"><tspan fill="#2b2b29">system/</tspan></text>
-  <rect x="620" y="393" width="131" height="66" fill="#f3f2f9" stroke="#a9a3c9" stroke-width="2"/>
-  <text x="686" y="435" text-anchor="middle" fill="#5d579d" font-size="28" font-weight="600">server</text>
-  <rect x="769" y="393" width="123" height="66" fill="#f3f2f9" stroke="#a9a3c9" stroke-width="2"/>
-  <text x="830" y="435" text-anchor="middle" fill="#5d579d" font-size="28" font-weight="600">intent</text>
-  <rect x="910" y="393" width="122" height="66" fill="#f3f2f9" stroke="#a9a3c9" stroke-width="2"/>
-  <text x="971" y="435" text-anchor="middle" fill="#5d579d" font-size="28" font-weight="600">agent</text>
-  <rect x="1050" y="393" width="123" height="66" fill="#f3f2f9" stroke="#a9a3c9" stroke-width="2"/>
-  <text x="1112" y="435" text-anchor="middle" fill="#5d579d" font-size="28" font-weight="600">skills</text>
-  <rect x="1191" y="393" width="140" height="66" fill="#f3f2f9" stroke="#a9a3c9" stroke-width="2"/>
-  <text x="1261" y="435" text-anchor="middle" fill="#5d579d" font-size="28" font-weight="600">device</text>
-  <rect x="1349" y="393" width="175" height="66" fill="#f3f2f9" stroke="#a9a3c9" stroke-width="2"/>
-  <text x="1436" y="435" text-anchor="middle" fill="#5d579d" font-size="28" font-weight="600">bootstrap</text>
-  <rect x="1542" y="393" width="167" height="66" fill="#f3f2f9" stroke="#a9a3c9" stroke-width="2"/>
-  <text x="1626" y="435" text-anchor="middle" fill="#5d579d" font-size="28" font-weight="600">+ 8 more</text>
+  <rect x="620" y="393" width="131" height="66" fill="#eef4fa" stroke="#a5c3e2" stroke-width="2"/>
+  <text x="686" y="435" text-anchor="middle" fill="#2f6193" font-size="28" font-weight="600">server</text>
+  <rect x="769" y="393" width="123" height="66" fill="#eef4fa" stroke="#a5c3e2" stroke-width="2"/>
+  <text x="830" y="435" text-anchor="middle" fill="#2f6193" font-size="28" font-weight="600">intent</text>
+  <rect x="910" y="393" width="122" height="66" fill="#eef4fa" stroke="#a5c3e2" stroke-width="2"/>
+  <text x="971" y="435" text-anchor="middle" fill="#2f6193" font-size="28" font-weight="600">agent</text>
+  <rect x="1050" y="393" width="123" height="66" fill="#eef4fa" stroke="#a5c3e2" stroke-width="2"/>
+  <text x="1112" y="435" text-anchor="middle" fill="#2f6193" font-size="28" font-weight="600">skills</text>
+  <rect x="1191" y="393" width="140" height="66" fill="#eef4fa" stroke="#a5c3e2" stroke-width="2"/>
+  <text x="1261" y="435" text-anchor="middle" fill="#2f6193" font-size="28" font-weight="600">device</text>
+  <rect x="1349" y="393" width="175" height="66" fill="#eef4fa" stroke="#a5c3e2" stroke-width="2"/>
+  <text x="1436" y="435" text-anchor="middle" fill="#2f6193" font-size="28" font-weight="600">bootstrap</text>
+  <rect x="1542" y="393" width="167" height="66" fill="#eef4fa" stroke="#a5c3e2" stroke-width="2"/>
+  <text x="1626" y="435" text-anchor="middle" fill="#2f6193" font-size="28" font-weight="600">+ 8 more</text>
   <text x="96" y="540" fill="#2b2b29" font-size="28" font-weight="600">Realtime voice</text>
-  <text x="96" y="572" font-size="26" font-family="SF Mono, Menlo, Consolas, monospace"><tspan fill="#2b2b29">hal/realtime/</tspan></text>
-  <text x="96" y="604" fill="#a1a099" font-size="24">a voice turn lands here first — answer, or hand it up</text>
-  <rect x="620" y="505" width="211" height="66" fill="#f3f2f9" stroke="#a9a3c9" stroke-width="2"/>
-  <text x="726" y="547" text-anchor="middle" fill="#5d579d" font-size="28" font-weight="600">Gemini Live</text>
-  <rect x="849" y="505" width="280" height="66" fill="#f3f2f9" stroke="#a9a3c9" stroke-width="2"/>
-  <text x="989" y="547" text-anchor="middle" fill="#5d579d" font-size="28" font-weight="600">OpenAI Realtime</text>
-  <rect x="1147" y="505" width="123" height="66" fill="#f3f2f9" stroke="#a9a3c9" stroke-width="2"/>
-  <text x="1208" y="547" text-anchor="middle" fill="#5d579d" font-size="28" font-weight="600">Qwen</text>
+  <rect x="620" y="505" width="211" height="66" fill="#eaf5f3" stroke="#9ecfc6" stroke-width="2"/>
+  <text x="726" y="547" text-anchor="middle" fill="#23786c" font-size="28" font-weight="600">Gemini Live</text>
+  <rect x="849" y="505" width="280" height="66" fill="#eaf5f3" stroke="#9ecfc6" stroke-width="2"/>
+  <text x="989" y="547" text-anchor="middle" fill="#23786c" font-size="28" font-weight="600">OpenAI Realtime</text>
+  <rect x="1147" y="505" width="123" height="66" fill="#eaf5f3" stroke="#9ecfc6" stroke-width="2"/>
+  <text x="1208" y="547" text-anchor="middle" fill="#23786c" font-size="28" font-weight="600">Qwen</text>
   <text x="96" y="652" fill="#2b2b29" font-size="28" font-weight="600">Capabilities</text>
-  <text x="96" y="684" font-size="26" font-family="SF Mono, Menlo, Consolas, monospace"><tspan fill="#2b2b29">devices/contract/</tspan><tspan fill="#5d579d"> · DEVICE.md</tspan></text>
-  <text x="96" y="716" fill="#a1a099" font-size="24">the 13 a robot may declare — served by hal/routes/ on :5001</text>
-  <rect x="620" y="617" width="122" height="66" fill="#eff5ea" stroke="#b8d7a6" stroke-width="2"/>
-  <text x="681" y="659" text-anchor="middle" fill="#5a912f" font-size="28" font-weight="600">audio</text>
-  <rect x="760" y="617" width="131" height="66" fill="#eff5ea" stroke="#b8d7a6" stroke-width="2"/>
-  <text x="826" y="659" text-anchor="middle" fill="#5a912f" font-size="28" font-weight="600">vision</text>
-  <rect x="909" y="617" width="141" height="66" fill="#eff5ea" stroke="#b8d7a6" stroke-width="2"/>
-  <text x="980" y="659" text-anchor="middle" fill="#5a912f" font-size="28" font-weight="600">motion</text>
-  <rect x="1068" y="617" width="106" height="66" fill="#eff5ea" stroke="#b8d7a6" stroke-width="2"/>
-  <text x="1121" y="659" text-anchor="middle" fill="#5a912f" font-size="28" font-weight="600">light</text>
-  <rect x="1192" y="617" width="157" height="66" fill="#eff5ea" stroke="#b8d7a6" stroke-width="2"/>
-  <text x="1270" y="659" text-anchor="middle" fill="#5a912f" font-size="28" font-weight="600">sensing</text>
-  <rect x="1367" y="617" width="149" height="66" fill="#eff5ea" stroke="#b8d7a6" stroke-width="2"/>
-  <text x="1442" y="659" text-anchor="middle" fill="#5a912f" font-size="28" font-weight="600">display</text>
-  <rect x="1534" y="617" width="167" height="66" fill="#eff5ea" stroke="#b8d7a6" stroke-width="2"/>
-  <text x="1618" y="659" text-anchor="middle" fill="#5a912f" font-size="28" font-weight="600">+ 7 more</text>
+  <rect x="620" y="617" width="122" height="66" fill="#fdf4e6" stroke="#e6c489" stroke-width="2"/>
+  <text x="681" y="659" text-anchor="middle" fill="#96660f" font-size="28" font-weight="600">audio</text>
+  <rect x="760" y="617" width="131" height="66" fill="#fdf4e6" stroke="#e6c489" stroke-width="2"/>
+  <text x="826" y="659" text-anchor="middle" fill="#96660f" font-size="28" font-weight="600">vision</text>
+  <rect x="909" y="617" width="141" height="66" fill="#fdf4e6" stroke="#e6c489" stroke-width="2"/>
+  <text x="980" y="659" text-anchor="middle" fill="#96660f" font-size="28" font-weight="600">motion</text>
+  <rect x="1068" y="617" width="106" height="66" fill="#fdf4e6" stroke="#e6c489" stroke-width="2"/>
+  <text x="1121" y="659" text-anchor="middle" fill="#96660f" font-size="28" font-weight="600">light</text>
+  <rect x="1192" y="617" width="157" height="66" fill="#fdf4e6" stroke="#e6c489" stroke-width="2"/>
+  <text x="1270" y="659" text-anchor="middle" fill="#96660f" font-size="28" font-weight="600">sensing</text>
+  <rect x="1367" y="617" width="149" height="66" fill="#fdf4e6" stroke="#e6c489" stroke-width="2"/>
+  <text x="1442" y="659" text-anchor="middle" fill="#96660f" font-size="28" font-weight="600">display</text>
+  <rect x="1534" y="617" width="167" height="66" fill="#fdf4e6" stroke="#e6c489" stroke-width="2"/>
+  <text x="1618" y="659" text-anchor="middle" fill="#96660f" font-size="28" font-weight="600">+ 7 more</text>
   <text x="96" y="764" fill="#2b2b29" font-size="28" font-weight="600">Safety gate</text>
-  <text x="96" y="796" font-size="26" font-family="SF Mono, Menlo, Consolas, monospace"><tspan fill="#2b2b29">hal/safety/</tspan><tspan fill="#5d579d"> · SAFETY.md</tspan></text>
   <text x="96" y="876" fill="#2b2b29" font-size="28" font-weight="600">Drivers</text>
-  <text x="96" y="908" font-size="26" font-family="SF Mono, Menlo, Consolas, monospace"><tspan fill="#2b2b29">hal/drivers/</tspan></text>
-  <rect x="620" y="841" width="141" height="66" fill="#eff5ea" stroke="#b8d7a6" stroke-width="2"/>
-  <text x="690" y="883" text-anchor="middle" fill="#5a912f" font-size="28" font-weight="600">motors</text>
-  <rect x="779" y="841" width="149" height="66" fill="#eff5ea" stroke="#b8d7a6" stroke-width="2"/>
-  <text x="854" y="883" text-anchor="middle" fill="#5a912f" font-size="28" font-weight="600">camera</text>
-  <rect x="946" y="841" width="122" height="66" fill="#eff5ea" stroke="#b8d7a6" stroke-width="2"/>
-  <text x="1007" y="883" text-anchor="middle" fill="#5a912f" font-size="28" font-weight="600">voice</text>
-  <rect x="1086" y="841" width="157" height="66" fill="#eff5ea" stroke="#b8d7a6" stroke-width="2"/>
-  <text x="1164" y="883" text-anchor="middle" fill="#5a912f" font-size="28" font-weight="600">sensing</text>
-  <rect x="1261" y="841" width="149" height="66" fill="#eff5ea" stroke="#b8d7a6" stroke-width="2"/>
-  <text x="1336" y="883" text-anchor="middle" fill="#5a912f" font-size="28" font-weight="600">display</text>
-  <rect x="1428" y="841" width="167" height="66" fill="#eff5ea" stroke="#b8d7a6" stroke-width="2"/>
-  <text x="1512" y="883" text-anchor="middle" fill="#5a912f" font-size="28" font-weight="600">+ 3 more</text>
-  <rect x="1613" y="841" width="193" height="66" fill="#eff5ea" stroke="#b8d7a6" stroke-width="2" stroke-dasharray="7 7"/>
-  <text x="1710" y="883" text-anchor="middle" fill="#5a912f" font-size="28" font-weight="600">your driver</text>
+  <rect x="620" y="841" width="141" height="66" fill="#f1f3f7" stroke="#b4bfcf" stroke-width="2"/>
+  <text x="690" y="883" text-anchor="middle" fill="#46566d" font-size="28" font-weight="600">motors</text>
+  <rect x="779" y="841" width="149" height="66" fill="#f1f3f7" stroke="#b4bfcf" stroke-width="2"/>
+  <text x="854" y="883" text-anchor="middle" fill="#46566d" font-size="28" font-weight="600">camera</text>
+  <rect x="946" y="841" width="122" height="66" fill="#f1f3f7" stroke="#b4bfcf" stroke-width="2"/>
+  <text x="1007" y="883" text-anchor="middle" fill="#46566d" font-size="28" font-weight="600">voice</text>
+  <rect x="1086" y="841" width="157" height="66" fill="#f1f3f7" stroke="#b4bfcf" stroke-width="2"/>
+  <text x="1164" y="883" text-anchor="middle" fill="#46566d" font-size="28" font-weight="600">sensing</text>
+  <rect x="1261" y="841" width="149" height="66" fill="#f1f3f7" stroke="#b4bfcf" stroke-width="2"/>
+  <text x="1336" y="883" text-anchor="middle" fill="#46566d" font-size="28" font-weight="600">display</text>
+  <rect x="1428" y="841" width="167" height="66" fill="#f1f3f7" stroke="#b4bfcf" stroke-width="2"/>
+  <text x="1512" y="883" text-anchor="middle" fill="#46566d" font-size="28" font-weight="600">+ 3 more</text>
+  <rect x="1613" y="841" width="193" height="66" fill="#f1f3f7" stroke="#b4bfcf" stroke-width="2" stroke-dasharray="7 7"/>
+  <text x="1710" y="883" text-anchor="middle" fill="#46566d" font-size="28" font-weight="600">your driver</text>
   <text x="96" y="960" fill="#2b2b29" font-size="28" font-weight="600">Boards</text>
-  <text x="96" y="992" font-size="26" font-family="SF Mono, Menlo, Consolas, monospace"><tspan fill="#2b2b29">hal/board/boards.json</tspan></text>
-  <rect x="620" y="925" width="245" height="66" fill="#eff5ea" stroke="#b8d7a6" stroke-width="2"/>
-  <text x="742" y="967" text-anchor="middle" fill="#5a912f" font-size="28" font-weight="600">Raspberry Pi 5</text>
-  <rect x="883" y="925" width="289" height="66" fill="#eff5ea" stroke="#b8d7a6" stroke-width="2"/>
-  <text x="1028" y="967" text-anchor="middle" fill="#5a912f" font-size="28" font-weight="600">Raspberry Pi CM4</text>
-  <rect x="1190" y="925" width="245" height="66" fill="#eff5ea" stroke="#b8d7a6" stroke-width="2"/>
-  <text x="1312" y="967" text-anchor="middle" fill="#5a912f" font-size="28" font-weight="600">OrangePi 4 Pro</text>
-  <rect x="1453" y="925" width="192" height="66" fill="#eff5ea" stroke="#b8d7a6" stroke-width="2" stroke-dasharray="7 7"/>
-  <text x="1549" y="967" text-anchor="middle" fill="#5a912f" font-size="28" font-weight="600">your board</text>
+  <rect x="620" y="925" width="245" height="66" fill="#f4f4ea" stroke="#c8c99e" stroke-width="2"/>
+  <text x="742" y="967" text-anchor="middle" fill="#67691f" font-size="28" font-weight="600">Raspberry Pi 5</text>
+  <rect x="883" y="925" width="289" height="66" fill="#f4f4ea" stroke="#c8c99e" stroke-width="2"/>
+  <text x="1028" y="967" text-anchor="middle" fill="#67691f" font-size="28" font-weight="600">Raspberry Pi CM4</text>
+  <rect x="1190" y="925" width="245" height="66" fill="#f4f4ea" stroke="#c8c99e" stroke-width="2"/>
+  <text x="1312" y="967" text-anchor="middle" fill="#67691f" font-size="28" font-weight="600">OrangePi 4 Pro</text>
+  <rect x="1453" y="925" width="192" height="66" fill="#f4f4ea" stroke="#c8c99e" stroke-width="2" stroke-dasharray="7 7"/>
+  <text x="1549" y="967" text-anchor="middle" fill="#67691f" font-size="28" font-weight="600">your board</text>
   <text x="96" y="1072" fill="#2b2b29" font-size="28" font-weight="600">Linux</text>
-  <text x="96" y="1104" fill="#a1a099" font-size="24">vendor kernel, not ours</text>
   <text x="96" y="1184" fill="#2b2b29" font-size="28" font-weight="600">Bodies</text>
-  <text x="96" y="1216" font-size="26" font-family="SF Mono, Menlo, Consolas, monospace"><tspan fill="#2b2b29">devices/</tspan></text>
   <rect x="620" y="1149" width="115" height="66" rx="33" fill="#fbf0ed" stroke="#f0c5b6" stroke-width="2"/>
   <text x="678" y="1191" text-anchor="middle" fill="#ad5130" font-size="28" font-weight="600">Lamp</text>
   <rect x="753" y="1149" width="123" height="66" rx="33" fill="#fbf0ed" stroke="#f0c5b6" stroke-width="2"/>
@@ -157,10 +143,10 @@
   <text x="1189" y="1191" text-anchor="middle" fill="#ad5130" font-size="28" font-weight="600">Go2-W</text>
   <rect x="1273" y="1149" width="176" height="66" rx="33" fill="#fbf0ed" stroke="#f0c5b6" stroke-width="2" stroke-dasharray="7 7"/>
   <text x="1361" y="1191" text-anchor="middle" fill="#ad5130" font-size="28" font-weight="600">your robot</text>
-  <rect x="620" y="729" width="1335" height="66" fill="#f3f2f9" stroke="#a9a3c9" stroke-width="2"/>
-  <text x="1288" y="771" text-anchor="middle" fill="#5d579d" font-size="28" font-weight="600">brightness · quiet hours · explicit-move speed · thermal</text>
-  <rect x="620" y="1037" width="1335" height="66" fill="#eff5ea" stroke="#b8d7a6" stroke-width="2"/>
-  <text x="1288" y="1079" text-anchor="middle" fill="#5a912f" font-size="28" font-weight="600">Raspberry Pi OS · OrangePi Debian · the robot's own image</text>
+  <rect x="620" y="729" width="1335" height="66" fill="#fceded" stroke="#e7adad" stroke-width="2"/>
+  <text x="1288" y="771" text-anchor="middle" fill="#a33b3b" font-size="28" font-weight="600">brightness · quiet hours · explicit-move speed · thermal</text>
+  <rect x="620" y="1037" width="1335" height="66" fill="#f3f3f3" stroke="#c6c6c6" stroke-width="2"/>
+  <text x="1288" y="1079" text-anchor="middle" fill="#565656" font-size="28" font-weight="600">Raspberry Pi OS · OrangePi Debian · the robot's own image</text>
   <path d="M54 165 L54 1215" fill="none" stroke="#a1a099" stroke-width="2" marker-end="url(#ha)"/>
   <text x="20" y="690" fill="#2b2b29" font-size="28" text-anchor="middle" transform="rotate(90 20 690)">act — a skill writes [HW:/servo/aim]</text>
   <path d="M1989 1215 L1989 165" fill="none" stroke="#a1a099" stroke-width="2" marker-end="url(#ha)"/>

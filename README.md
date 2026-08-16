@@ -51,32 +51,32 @@ The simplest way in is a robot we have already tested it on. What each of them c
 1. **Add it.** In the app, tap **Add robot → Intern**.
 2. **Set up Wi-Fi.** Same flow as Lamp: pick your network and it handles the keys and pairing.
 3. **Interact with it.** Say something and it answers; the ring shows what it is doing.
-4. **Install a skill** from the Skill Store — everything that needs no camera or servos runs here.
+4. **Install a skill** from the Skill Store.
 5. **Build your own skill.** Type what you want in the app; it is live on the next conversation.
-6. **Give it a character.** Edit `/opt/devices/intern-v2/SOUL.md` — Intern runs the same image as Lamp with fewer capabilities declared, so everything else works the same way.
+6. **Give it a character.** Edit `/opt/devices/intern-v2/SOUL.md`.
 
 ## Bring your own robot
 
-Autonomous OS runs on any robot you can describe in four markdown files — no fork, no vendor deal.
+Autonomous OS runs on any robot you can describe in four markdown files.
 
-- **`DEVICE.md`** — the body: the board and the hardware it has. The OS mounts exactly this and refuses to boot on a board you didn't name.
+- **`DEVICE.md`** — the body: the board and the hardware it has.
 - **`SOUL.md`** — the self: who it is and how it talks.
 - **`SAFETY.md`** — the bounds: how fast, how bright, how late.
-- **`SKILL.md`** — the hands: one thing it can do, shared with every other robot.
+- **`SKILL.md`** — the hands: one thing it can do.
 
-Add a Python driver class if the hardware is new, run `make cts`, open the PR. Reachy Mini went from nothing to a shipping port in ~2,900 lines over two weeks, with no change to Pollen's own stack.
+Add a Python driver class if the hardware is new, run `make cts`, open the PR. Reachy Mini took ~2,900 lines over two weeks.
 
-**[The full guide — seven steps, laptop to merged](docs/bring-your-own-robot.md).**
+**[The full guide](docs/bring-your-own-robot.md).**
 
 ## Platform architecture
 
 Autonomous OS is a software stack. Each layer uses only the layer below it, so any layer can be replaced without touching the others. Every layer is a folder in this repo.
 
-![Autonomous OS stack, top down: the apps a person touches, the skills folder, six swappable agent runtimes, the Go system services, the realtime voice agent, the capabilities a robot declares, a deterministic safety gate below them, the drivers and board profiles, the vendor Linux kernel, and the bodies — each row labelled with its repo folder, and the rows you can extend yourself drawn dashed](docs/architecture/autonomous-stack.png)
+![Autonomous OS stack, top down: apps, skills, the agentic runtime, the Go system services, the realtime voice agent, the capabilities a robot declares, the safety gate, drivers, boards, the vendor Linux kernel, and the bodies — one colour per layer, and the rows you can extend yourself drawn dashed](docs/architecture/autonomous-stack.png)
 
 ### [Apps](system/web/)
 
-What a person touches. The Autonomous app adds a robot, sets up Wi-Fi, installs skills from the Skill Store and switches brains; the robot also serves its own setup and monitor UI from `system/web/`. Both talk to os-server on :5000 — the same API your own script can call.
+What a person touches. The Autonomous app adds a robot, sets up Wi-Fi, installs skills from the Skill Store and switches brains; the robot also serves its own setup and monitor UI from `system/web/`. Both talk to os-server on :5000.
 
 ### [Skills](skills/)
 
@@ -122,7 +122,7 @@ Long form: [architecture](docs/architecture/overview.md) · [HAL](docs/architect
 
 ## Contribute
 
-The easiest way in is a skill: one markdown file, no Go, no hardware, and it lands on every robot that has the parts. Everything else is small too — a driver is one class, a board is one JSON entry, a whole new robot is three files. PRs welcome, vibe-coded ones included. Questions, half-built ports and show-and-tell go in [Discussions](https://github.com/autonomous-ai/autonomous-os/discussions); gaps we would love help with are labelled [`claim-me`](https://github.com/autonomous-ai/autonomous-os/issues?q=is%3Aissue+is%3Aopen+label%3Aclaim-me) — comment to take one.
+The easiest way in is a skill: one markdown file, no Go, no hardware, and it lands on every robot that has the parts. PRs welcome, vibe-coded ones included. Questions, half-built ports and show-and-tell go in [Discussions](https://github.com/autonomous-ai/autonomous-os/discussions); gaps we would love help with are labelled [`claim-me`](https://github.com/autonomous-ai/autonomous-os/issues?q=is%3Aissue+is%3Aopen+label%3Aclaim-me) — comment to take one.
 
 | You want to… | You write… | Start from |
 |---|---|---|

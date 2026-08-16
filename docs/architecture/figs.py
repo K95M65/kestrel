@@ -64,7 +64,7 @@ class Fig:
 
     # ---- shapes -------------------------------------------------------
     def box(self, cx, cy, label, kind="green", w=None, dashed=False):
-        fill, line, text = {
+        fill, line, text = kind if isinstance(kind, tuple) else {
             "green": (GREEN_FILL, GREEN_LINE, GREEN_TEXT),
             "purple": (PURPLE_FILL, PURPLE_LINE, PURPLE_TEXT),
         }[kind]
@@ -156,7 +156,7 @@ class Fig:
         the figure's subject IS day against night, so the contrast does work no
         caption can. Nothing else may use it.
         """
-        fill, line, text = {
+        fill, line, text = kind if isinstance(kind, tuple) else {
             "green": (GREEN_FILL, GREEN_LINE, GREEN_TEXT),
             "purple": (PURPLE_FILL, PURPLE_LINE, PURPLE_TEXT),
             "night": (PURPLE_TEXT, PURPLE_TEXT, "#ffffff"),
