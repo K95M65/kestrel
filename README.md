@@ -74,6 +74,8 @@ The simplest way in is a robot we have already tested it on. You can also instal
    ```
 3. **Tap Add robot → Reachy Mini** and give it `reachy-mini.local`. From here it is Lamp's steps 3–5. Details and how to undo it: [`devices/reachy-mini/README.md`](devices/reachy-mini/README.md).
 
+<img src="devices/intern-v2/images/intern-hero.webp" alt="Autonomous Intern on a desk beside a laptop, tip glowing blue" width="720">
+
 **[Autonomous Intern](devices/intern-v2/)** — the always-on desk agent: mic, speaker, LED ring.
 
 1. **Open the app** and **Add robot → Intern**.
