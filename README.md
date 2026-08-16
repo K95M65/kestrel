@@ -10,7 +10,7 @@ Autonomous OS is a fully customizable operating system for robots. Every compone
 
 ## Quick start
 
-The simplest way in is a robot we have already tested it on. What each of them can do: [robot comparison](docs/robot-comparison.md). Bringing your own robot is three markdown files and one driver — [seven steps, laptop to merged](docs/bring-your-own-robot.md).
+The simplest way in is a robot we have already tested it on. What each of them can do: [robot comparison](docs/robot-comparison.md). Want it on your own robot? [Follow this guide](docs/bring-your-own-robot.md).
 
 <img src="devices/lamp/images/lamp-hero.webp" alt="Autonomous Lamp on a desk, ring lit" width="720">
 
