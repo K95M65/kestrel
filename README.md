@@ -10,7 +10,7 @@ Autonomous OS is a fully customizable operating system for robots. Every compone
 
 ## Quick start
 
-The simplest way in is a robot we have already tested it on. What each of them can do: [robot comparison](docs/robot-comparison.md). Bringing your own? [Skip to it](#your-own-robot).
+The simplest way in is a robot we have already tested it on. What each of them can do: [robot comparison](docs/robot-comparison.md). Bringing your own? [Skip to it](#bring-your-own-robot).
 
 <img src="devices/lamp/images/lamp-hero.webp" alt="Autonomous Lamp on a desk, ring lit" width="720">
 
@@ -53,24 +53,22 @@ The simplest way in is a robot we have already tested it on. What each of them c
 5. **Build your own skill.** Type what you want in the app; it is live on the next conversation.
 6. **Give it a character.** Edit `/opt/devices/intern-v2/SOUL.md` — Intern runs the same image as Lamp with fewer capabilities declared, so everything else works the same way.
 
-## Your own robot
+## Bring your own robot
 
 <img src="docs/media/build-your-own.webp" alt="Printed robot parts laid out on a bench" width="720">
 
-Autonomous OS runs on any robot you can declare. Personalizing it is four markdown files:
+Autonomous OS runs on any robot you can describe in four markdown files:
 
 - **[DEVICE.md](devices/lamp/DEVICE.md)** — the body: what hardware this robot has
 - **[SOUL.md](devices/lamp/SOUL.md)** — the self: who it is and how it talks
 - **[SAFETY.md](devices/lamp/SAFETY.md)** — the bounds: how fast, how bright, how late
 - **[SKILL.md](skills/guard/SKILL.md)** — the hands: one thing it can do
 
-1. **Scaffold it** — `make new-device NAME=<id>` writes `devices/<id>/`.
-2. **Fill in the files** above, plus one Python driver class if the hardware is new.
-3. **Run the compatibility test** — `make cts`, then `make cts-runtime TARGET=<ip>` on the robot. Every step: [`docs/porting-a-robot.md`](docs/porting-a-robot.md). Building the Lamp hardware yourself instead? [`BUILD.md`](devices/lamp/BUILD.md).
+1. `make new-device NAME=<id>` writes the folder.
+2. Fill in the files, and add a Python driver class if the hardware is new.
+3. `make cts`, then `make cts-runtime TARGET=<ip>` on the robot.
 
-Finished specifications to copy from: [Lamp](devices/lamp/), [Intern](devices/intern-v2/), [Reachy Mini](devices/reachy-mini/), [Go2-W](devices/unitree-go2w/).
-
-No robot yet? A simulator is [#200](https://github.com/autonomous-ai/autonomous-os/issues/200) — the highest-value open issue here. What we host and what stays on your network: [`docs/hosted.md`](docs/hosted.md).
+Copy from a finished one: [Lamp](devices/lamp/), [Intern](devices/intern-v2/), [Reachy Mini](devices/reachy-mini/), [Go2-W](devices/unitree-go2w/). Every step: [`docs/porting-a-robot.md`](docs/porting-a-robot.md).
 
 ## Platform architecture
 
