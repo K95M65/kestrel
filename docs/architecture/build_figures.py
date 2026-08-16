@@ -119,12 +119,9 @@ def stack():
 
     # 3 — System managers
     y += ROW
-    top = ["server", "intent", "network", "monitor", "healthwatch", "ambient"]
-    bot = ["device", "skills", "plugin", "statusled", "vision", "agent", "buddy", "bootstrap"]
-    f.caption_left(y + SUB / 2, "System services", "system/")
-    r1 = f.row(y, top, "purple"); r2 = f.row(y + SUB, bot, "purple")
-    widest = max(widest, r1, r2)
-    y += SUB
+    labels = ["server", "intent", "agent", "skills", "device", "bootstrap", "+ 8 more"]
+    f.caption_left(y, "System services", "system/")
+    r = f.row(y, labels, "purple"); widest = max(widest, r)
 
     # 3b — Realtime voice: hosted in HAL, answers small talk or hands the turn to the brain
     y += ROW
@@ -135,14 +132,10 @@ def stack():
 
     # 4 — HAL capabilities, two lines
     y += ROW
-    top = ["audio", "vision", "sensing", "presence", "motion", "light", "display"]
-    bot = ["expression", "lifelike", "media", "connectivity", "companion", "system"]
-    f.caption_left(y + SUB / 2, "Capabilities", "devices/contract/", "DEVICE.md",
-                   note="served by hal/routes/ on :5001")
-    r1 = f.row(y, top, "green")
-    r2 = f.row(y + SUB, bot, "green")
-    widest = max(widest, r1, r2)
-    y += SUB
+    labels = ["audio", "vision", "motion", "light", "sensing", "display", "+ 7 more"]
+    f.caption_left(y, "Capabilities", "devices/contract/", "DEVICE.md",
+                   note="the 13 a robot may declare — served by hal/routes/ on :5001")
+    r = f.row(y, labels, "green"); widest = max(widest, r)
 
     # 5 — Safety gate (band)
     y += ROW
@@ -151,12 +144,12 @@ def stack():
 
     # 6 — Drivers + boards
     y += ROW
-    labels = ["motors", "rgb", "camera", "voice", "display", "sensing", "tracking", "media_owner", "your driver"]
+    labels = ["motors", "camera", "voice", "sensing", "display", "+ 3 more", "your driver"]
     f.caption_left(y, "Drivers", "hal/drivers/")
     r = f.row(y, labels, "green", dashed=("your driver",)); widest = max(widest, r)
 
     y += SUB
-    labels = ["Raspberry Pi 4", "Raspberry Pi 5", "Raspberry Pi CM4", "OrangePi 4 Pro", "your board"]
+    labels = ["Raspberry Pi 5", "Raspberry Pi CM4", "OrangePi 4 Pro", "your board"]
     f.caption_left(y, "Boards", "hal/board/boards.json")
     r = f.row(y, labels, "green", dashed=("your board",)); widest = max(widest, r)
 
