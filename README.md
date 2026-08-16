@@ -50,7 +50,7 @@ We've installed Autonomous OS on three robots so far — Lamp, Intern and Pollen
 
 ## Robot specifications
 
-Personalizing Autonomous OS for your robot is four markdown files:
+Personalizing Autonomous OS for your robot is simple. It's just four markdown files:
 
 - **[DEVICE.md](devices/lamp/DEVICE.md)** — the body: what hardware this robot has
 - **[SOUL.md](devices/lamp/SOUL.md)** — the self: who it is and how it talks
