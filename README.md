@@ -12,7 +12,7 @@ Autonomous OS is a fully customizable operating system for robots. Every compone
 
 ## Meet the first robots running Autonomous OS
 
-Autonomous Lamp and Autonomous Intern are the first two robots running Autonomous OS. We put it on Pollen Robotics' Reachy Mini as well, and Unitree's Go2-W is next — same OS, same skills, same safety gate, and each one thinks, acts and grows on its own. You can install it on your own robot too: [Get started](#get-started).
+We've installed Autonomous OS on three robots so far — Lamp, Intern and Pollen Robotics' Reachy Mini — and they think, act and grow on their own. Unitree's Go2-W is next. Here are the skills they have, and you can [install it on your own robot](#get-started) too.
 
 | PHYSICAL SKILLS | <a href="devices/lamp"><img src="devices/lamp/images/lamp-white.webp" width="150" alt="Lamp"><br>Lamp</a> | <a href="devices/intern-v2"><img src="devices/intern-v2/images/intern-tile.webp" width="150" alt="Intern"><br>Intern</a> | <a href="devices/reachy-mini"><img src="devices/reachy-mini/images/reachy-mini.webp" width="150" alt="Reachy Mini"><br>Reachy Mini</a> | <a href="devices/unitree-go2w"><img src="devices/unitree-go2w/images/go2-w-tile.webp" width="150" alt="Go2-W"><br>Go2-W</a> |
 |---|:---:|:---:|:---:|:---:|
