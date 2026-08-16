@@ -41,10 +41,10 @@ We've installed Autonomous OS on three robots so far — Lamp, Intern and Pollen
 | [Gmail](skills/connectors/)<br>Manage your email | ✅ | ✅ | ✅ | ○ |
 | [Calendar](skills/connectors/)<br>Book and move meetings | ✅ | ✅ | ✅ | ○ |
 | [Notion](skills/connectors/)<br>Search and write your notes | ✅ | ✅ | ✅ | ○ |
-| [GitHub](skills/connectors/)<br>Open issues, check pull requests | ✅ | ✅ | ✅ | ○ |
+| [GitHub](skills/connectors/)<br>Issues and pull requests | ✅ | ✅ | ✅ | ○ |
 | [Your Mac](skills/computer-use/)<br>Drive apps and the browser | ✅ | ✅ | ✅ |  |
-| [Claude Buddy](skills/claude-buddy/)<br>Approve Claude Code prompts by voice | ✅ | ✅ | ✅ | ○ |
-| [Skill Creator](skills/skill-creator/)<br>Write and test its own skills | ✅ | ✅ | ✅ | ○ |
+| [Claude Buddy](skills/claude-buddy/)<br>Approve prompts by voice | ✅ | ✅ | ✅ | ○ |
+| [Skill Creator](skills/skill-creator/)<br>Write its own skills | ✅ | ✅ | ✅ | ○ |
 
 ✅ runs today · ○ on the way.
 
