@@ -24,21 +24,15 @@
 
 ## Robots that really do things
 
-Robots have had bodies for years and done almost nothing with them — a scripted demo, a remote control, a face that blinks. Install Autonomous OS and the body starts doing real work.
+Robots have had bodies for years and done almost nothing with them. Install Autonomous OS and the body goes to work.
 
-Say "watch the house" and a Lamp — or Pollen's Reachy Mini — turns to the door, watches it while you are out, and messages you when someone walks in. It greets you by name, follows your mug across the desk, and approves a Claude Code prompt when you say "yes" from across the room. Nothing is scripted: the brain decides, writes `[HW:/emotion:…]` in its reply, and the OS fires it at the body — the words are spoken while the arm is already moving.
+**It acts.** Say "watch the house" and a Lamp — or Pollen's Reachy Mini — turns to the door, watches it while you are out, and messages you when someone walks in. Nothing is scripted: the brain decides, and the words are spoken while the arm is already moving.
 
-## It grows with you
+**It grows.** A new job is one page of markdown — tap it in the store, type it in the app, or drop a folder on the robot. Live on the next conversation. It remembers faces, voices and last week, and that memory belongs to the body, not the brain.
 
-A new job is one page of markdown. Tap a skill in the store, type what you want in the app, or drop a folder on the robot — live on the next conversation, no reboot, no firmware, no new hardware.
+**It comes apart.** Engine, model, voice, skills, board — every piece swaps, live. Your robot declares what it has in a `DEVICE.md`, and the OS mounts exactly that.
 
-It remembers faces, voices and last week's conversation, and that memory belongs to the *body*, not the brain. The robot you have in a year is the one you have today, with more in it.
-
-## Built like Lego
-
-Every part is a part you can swap. The agent engine — OpenClaw, [Hermes](https://github.com/NousResearch/hermes-agent), PicoClaw, Codex, Claude Code, OpenCode — switches live from the web UI, and the persona, memory and connectors come with it. Behind it, any model. Voice, face and mood are their own engines, swapped the same way. Skills go in and out as folders. Under all of it, the board is one JSON entry, so the same OS runs on a Pi, an OrangePi, or whatever you bring.
-
-Your robot declares what it has in a `DEVICE.md`, and the OS mounts exactly that — nothing more. When a smarter brain ships, every robot on this OS gets smarter the same day.
+When a smarter brain ships, every robot on this OS gets smarter the same day.
 
 ## Meet the first robots running Autonomous OS
 
