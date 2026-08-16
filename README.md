@@ -63,6 +63,8 @@ The simplest way in is a robot we have already tested it on. You can also instal
 5. **Build your own skill.** Type what you want it to do in the app and it writes the skill.
 6. **Give it a character.** Edit [`SOUL.md`](devices/lamp/SOUL.md) and it is someone else on the next turn.
 
+<img src="devices/reachy-mini/images/reachy-lamp-hero.webp" alt="Reachy Mini and Autonomous Lamp side by side on a desk" width="720">
+
 **[Reachy Mini](https://huggingface.co/docs/reachy_mini)** — Pollen Robotics' desk robot, running our OS beside theirs.
 
 1. **SSH in** — `ssh pollen@reachy-mini.local`.
