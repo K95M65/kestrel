@@ -68,6 +68,19 @@ Autonomous OS runs on any robot you can describe in four markdown files:
 2. Fill in the files, and add a Python driver class if the hardware is new.
 3. `make cts`, then `make cts-runtime TARGET=<ip>` on the robot.
 
+Then teach it something. A skill is one folder with one `SKILL.md`, and it acts by writing markers the OS turns into motion:
+
+```markdown
+---
+name: morning-wave
+description: When someone says good morning, greet them by name and wave.
+---
+1. Reply with `[HW:/emotion:{"emotion":"greeting","intensity":0.9}]` — the arm waves, the ring warms up.
+2. Say good morning, using their name if you know their face. One sentence.
+```
+
+Drop it on the robot with `make push-skill SKILL=./my-skill TARGET=pi@<robot>.local` — live on the next conversation, no reboot. It is the same `SKILL.md` OpenClaw and Claude skills use, so the ones you have work as they are. How to write one, the marker grammar, and how to ship a skill to every robot: [`skills/README.md`](skills/README.md).
+
 Copy from a finished one: [Lamp](devices/lamp/), [Intern](devices/intern-v2/), [Reachy Mini](devices/reachy-mini/), [Go2-W](devices/unitree-go2w/). Every step: [`docs/porting-a-robot.md`](docs/porting-a-robot.md).
 
 ## Platform architecture
@@ -117,60 +130,6 @@ The vendor kernel — Raspberry Pi OS, OrangePi Debian, or the robot's own image
 Four markdown files and a driver per robot. Declarations, not forks — a body is a PR.
 
 Long form: [architecture](docs/architecture/overview.md) · [HAL](docs/architecture/hal.md) · [device spec](devices/contract/DEVICE-SPEC.md) · [capabilities](devices/contract/capabilities.md) · [safety](docs/safety.md) · [developer guide](docs/developer-guide.md).
-
-## Skills are how it grows
-
-Teaching it a new job is one file. Drop this on a Lamp or a Reachy Mini and both wave good morning:
-
-```markdown
----
-name: morning-wave
-description: When someone says good morning, greet them by name and wave.
----
-1. Reply with `[HW:/emotion:{"emotion":"greeting","intensity":0.9}]` — the arm plays its greeting move, the ring warms up.
-2. Say good morning, using their name if you know their face. One sentence.
-```
-
-```
-you    good morning
-lamp   [HW:/emotion:{"emotion":"greeting","intensity":0.9}]   ← stripped here, POSTed to HAL
-       head lifts, arm sweeps, ring warms
-lamp   "Morning, Dee."                                        ← spoken while the move runs
-```
-
-Text becomes motion. The brain writes the `[HW:/…]` marker in its reply; the OS strips it out and sends it to the body; the body moves; the words are spoken. Same file on any body that declares the capability — a body that doesn't just ignores it. ([One turn, top to bottom](#platform-architecture).)
-
-**Two levels.** On your own robot: one folder in `/root/.openclaw/workspace/skills/<name>/`, live on the next conversation — no PR, no reboot, no Go. To ship it to *every* robot: the same folder plus one line in a Go catalog and a PR, until [#199](https://github.com/autonomous-ai/autonomous-os/issues/199) makes `skills/` the catalog. Level one is the OpenClaw workflow unchanged; level two is the part we still owe you.
-
-A skill is one folder with one file: two front-matter keys, then markdown telling the agent what to do and when. It is the same `SKILL.md` OpenClaw and Claude skills use — a markdown skill folder drops in as-is (if it shells out to a CLI, that CLI has to be on the board too); a *robot* skill is one that also writes `[HW:/…]` markers or calls HAL. Here is the top of `guard`'s, trimmed:
-
-```markdown
----
-name: guard
-description: Guard mode for security monitoring. Toggle on/off when a friend says "guard mode", "watch the house", "I'm going out" ...
----
-# Guard Mode
-1. Reply with `[HW:/emotion:{"emotion":"acknowledge","intensity":0.7}]` — the device nods and flashes green.
-2. Enable guard mode: `curl -s -X POST http://127.0.0.1:5000/api/guard/enable`
-3. Confirm verbally: "Guard mode on. I'll keep watch."
-...
-```
-
-The `[HW:/path:{json}]` marker is the grammar: `{json}` is optional (`[HW:/led/off]` is fine), and the markdown-link mangling LLMs produce (`[Lights off](HW:/led/off)`) is rewritten to the canonical form — two regexes plus a normalizer in [`handler_hw.go`](system/server/agent/delivery/http/handler_hw.go). Each skill maps to the capabilities it needs ([`system/skills/skills.go`](system/skills/skills.go)), so the same file runs on any body that declares them.
-
-Add one to your robot — one folder, live on the next conversation:
-
-```bash
-make push-skill SKILL=./my-skill TARGET=pi@lamp-xxxx.local   # live on the next conversation, no reboot
-```
-
-Same folder OpenClaw already uses. No reboot, no PR, no Go. (Or type what you want in the app, or tap one in the Skill Store.) Ship it to every robot:
-
-1. `python skills/skill-creator/scripts/quick_validate.py skills/<name>` checks the format.
-2. One line in `Catalog` in [`system/skills/skills.go`](system/skills/skills.go), plus one in `Capability` if it touches hardware; `go test ./system/skills/`.
-3. Open the PR. After merge we push the skill feed (`make upload-skills` — a maintainer step for now, not CI); every body's skill watcher pulls it within 5 min and tells the agent to re-read.
-
-That Go line and the maintainer step are the gap between this and "one folder, one PR, every robot" — [item 2](#not-built-yet--claim-one) on the list. [`skill-creator`](skills/skill-creator/) also ships an eval loop — with-skill vs baseline runs, a grader, a description optimizer — so you can measure a skill before you publish it.
 
 ## Port a robot: three files and one driver
 

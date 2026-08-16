@@ -77,7 +77,7 @@ servo IDs — they all ship as ID 1 — and calibrate), then come back here.
    store, or drop a folder into `/root/.openclaw/workspace/skills/<name>/` — OpenClaw's own
    skills folder, so a skill you already wrote goes in unchanged. Live on the next
    conversation, no reboot. How a skill is written, and how to ship one to every robot:
-   [Skills](../../README.md#skills-are-how-it-grows).
+   [`skills/README.md`](../../skills/README.md).
 5. **Swap the brain.** `http://lamp-xxxx.local/setting?debug=true#runtime` — the Runtime tab
    is debug-only for now, and `?debug=true` is what reveals it. OpenClaw, Hermes, PicoClaw,
    Codex, Claude Code or OpenCode; Claude Code and Codex use your own key, and the persona,

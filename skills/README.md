@@ -1,4 +1,43 @@
-# Skills Catalog
+# Skills
+
+A skill is one folder with one `SKILL.md` inside. Two front-matter keys, then markdown telling the agent what to do and when — the same format OpenClaw and Claude skills use, so a markdown skill you already have drops in as-is (if it shells out to a CLI, that CLI has to be on the robot too). A *robot* skill is one that also writes `[HW:/…]` markers or calls HAL.
+
+## Writing one
+
+Here is the top of `guard`'s, trimmed:
+
+```markdown
+---
+name: guard
+description: Guard mode for security monitoring. Toggle on/off when a friend says "guard mode", "watch the house", "I'm going out" ...
+---
+# Guard Mode
+1. Reply with `[HW:/emotion:{"emotion":"acknowledge","intensity":0.7}]` — the device nods and flashes green.
+2. Enable guard mode: `curl -s -X POST http://127.0.0.1:5000/api/guard/enable`
+3. Confirm verbally: "Guard mode on. I'll keep watch."
+...
+```
+
+The `[HW:/path:{json}]` marker is the grammar: `{json}` is optional (`[HW:/led/off]` is fine), and the markdown-link mangling LLMs produce (`[Lights off](HW:/led/off)`) is rewritten to the canonical form — two regexes plus a normalizer in [`handler_hw.go`](../system/server/agent/delivery/http/handler_hw.go). Each skill maps to the capabilities it needs ([`system/skills/skills.go`](../system/skills/skills.go)), so the same file runs on any body that declares them.
+
+## Putting one on your robot
+
+```bash
+make push-skill SKILL=./my-skill TARGET=pi@lamp-xxxx.local   # live on the next conversation, no reboot
+```
+
+Or type what you want in the app, or tap one in the Skill Store. On the robot, skills live in `/root/.openclaw/workspace/skills/<name>/` — the same folder the agent engine already reads. No PR, no reboot, no Go.
+
+## Shipping one to every robot
+
+1. `python skills/skill-creator/scripts/quick_validate.py skills/<name>` checks the format.
+2. One line in `Catalog` in [`system/skills/skills.go`](../system/skills/skills.go), plus one in `Capability` if it touches hardware; `go test ./system/skills/`.
+3. Open the PR. After merge we push the skill feed (`make upload-skills` — a maintainer step for now, not CI); every body's skill watcher pulls it within 5 min and tells the agent to re-read.
+
+That Go line and the maintainer step are the gap between this and "one folder, one PR, every robot" — [#199](https://github.com/autonomous-ai/autonomous-os/issues/199). [`skill-creator`](skill-creator/) also ships an eval loop — with-skill vs baseline runs, a grader, a description optimizer — so you can measure a skill before you publish it.
+
+
+## Catalog
 
 This catalog assigns every platform skill one primary category and one or more
 search tags. Categories are intended for store navigation; tags let a skill be
