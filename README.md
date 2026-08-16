@@ -6,7 +6,7 @@ Robots have had bodies for years and no brain — waiting on a remote, a script,
 
 - **Your robot thinks.** Everything it sees and hears goes to an AI agent running on the robot itself — [Hermes](runtimes/hermes/), [Claude Code](runtimes/claudecode/), or [whichever you like](runtimes/) — that decides what to do next.
 - **Your robot acts.** It [guards the house](skills/guard/), [knows your face](skills/face-enroll/), [follows you as you move](skills/servo-tracking/), [reads the mood on your face](skills/user-emotion-detection/), [sets the light](skills/scene/) — and does the desk work too: [Gmail, GitHub](skills/connectors/), [your Mac](skills/computer-use/). Each one is a [skill](skills/): install it from the Skill Store, or write your own.
-- **Your robot grows.** Run [Hermes](runtimes/hermes/) and it closes the learning loop: it turns what it did into new abilities, sharpens them as it uses them, and builds a model of who you are across sessions. That model lives in the body, so swapping the brain never resets it.
+- **Your robot grows.** It learns from what it does — turning experience into new abilities and sharpening them each time it uses them.
 
 Autonomous OS is fully customizable. Engine, model, voice, skills, board — every piece swaps, live, nothing to rebuild. Your robot declares what it has in a `DEVICE.md`, and the OS mounts exactly that. When a smarter brain ships, every robot on this OS gets smarter the same day.
 
