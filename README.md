@@ -48,6 +48,36 @@ We've installed Autonomous OS on three robots so far — Lamp, Intern and Pollen
 
 ✅ runs today · ○ on the way
 
+## Quick start
+
+The fastest way in is a robot that already runs it.
+
+**[Autonomous Lamp](https://www.autonomous.ai/lamp)** — our 5-DOF desk robot, $499, Autonomous OS on it out of the box.
+
+1. **Open the app** — [iOS](https://apps.apple.com/app/id6744885683) · [Android](https://play.google.com/store/apps/details?id=ai.autonomous.connect.wifi).
+2. **Tap Add robot → Lamp.** It asks for your Wi-Fi and handles keys and pairing.
+3. **Say something.** It turns to look at you, the ring lights up, and it answers.
+4. **Give it a job.** Tap a skill in the Skill Store, or type what you want it to do.
+5. **Make it yours.** Edit [`SOUL.md`](devices/lamp/SOUL.md) and it is someone else on the next turn.
+
+**[Reachy Mini](https://huggingface.co/docs/reachy_mini)** — Pollen Robotics' desk robot. SSH in and run one command; it installs beside Pollen's stack and nothing is flashed.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/autonomous-ai/autonomous-os/main/devices/reachy-mini/install.sh | sudo bash
+```
+
+Then **Add robot → Reachy Mini** in the app and it is the same five steps.
+
+### Other robots
+
+| | |
+|---|---|
+| **[Autonomous Intern](devices/intern-v2/)** | Same image as Lamp, fewer capabilities declared |
+| **[Your own robot](docs/porting-a-robot.md)** | Three markdown files and a driver — including a Raspberry Pi build of your own ([BUILD.md](devices/lamp/BUILD.md)) |
+| **Simulation** | Not yet — the mock body is [#200](https://github.com/autonomous-ai/autonomous-os/issues/200) |
+
+What we host and what stays on your network: [`docs/hosted.md`](docs/hosted.md).
+
 ## Robot specifications
 
 Personalizing Autonomous OS for your robot is simple. It's just four markdown files:
@@ -58,30 +88,6 @@ Personalizing Autonomous OS for your robot is simple. It's just four markdown fi
 - **[SKILL.md](skills/guard/SKILL.md)** — the hands: one thing it can do
 
 Check out the specifications of the first robots: [Lamp](devices/lamp/), [Intern](devices/intern-v2/), [Reachy Mini](devices/reachy-mini/), [Go2-W](devices/unitree-go2w/).
-
-## Quick start
-
-The fastest way in is a [Lamp](https://www.autonomous.ai/lamp) — our 5-DOF desk robot, $499, Autonomous OS already on it.
-
-1. **Unbox it and open the app** — [iOS](https://apps.apple.com/app/id6744885683) · [Android](https://play.google.com/store/apps/details?id=ai.autonomous.connect.wifi).
-2. **Tap Add robot → Lamp.** It asks for your Wi-Fi and handles keys and pairing.
-3. **Say something.** It turns to look at you, the ring lights up, and it answers.
-4. **Give it a job.** Tap a skill in the Skill Store, or type what you want it to do.
-5. **Make it yours.** Edit [`SOUL.md`](devices/lamp/SOUL.md) and it is someone else on the next turn.
-
-Full walkthrough, including how to swap the engine: [`devices/lamp/README.md`](devices/lamp/README.md).
-
-### Other robots
-
-| | |
-|---|---|
-| **[Autonomous Intern](devices/intern-v2/)** | Same image as Lamp, fewer capabilities declared |
-| **[Reachy Mini](devices/reachy-mini/README.md)** | One command, installs beside Pollen's stack, nothing flashed |
-| **[Build a Lamp](devices/lamp/BUILD.md)** | Raspberry Pi 5 or OrangePi 4 Pro, parts, wiring, CAD |
-| **[Your own robot](docs/porting-a-robot.md)** | Three markdown files and a driver |
-| **Simulation** | Not yet — the mock body is [#200](https://github.com/autonomous-ai/autonomous-os/issues/200) |
-
-What we host and what stays on your network: [`docs/hosted.md`](docs/hosted.md).
 
 ## Skills are how it grows
 
