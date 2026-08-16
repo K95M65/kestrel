@@ -59,24 +59,20 @@ The simplest way in is a robot we have already tested it on. You can also instal
 
 <img src="docs/media/build-your-own.webp" alt="Printed robot parts laid out on a bench" width="720">
 
-**Your own robot** — three markdown files and a driver.
-
-1. **Scaffold it** — `make new-device NAME=<id>` writes `devices/<id>/`.
-2. **Declare what it has** in `DEVICE.md`, ship its bounds in `SAFETY.md`, give it a `SOUL.md`.
-3. **Run the compatibility test** — `make cts`, then `make cts-runtime TARGET=<ip>` on the robot. Every step: [`docs/porting-a-robot.md`](docs/porting-a-robot.md). Building the Lamp hardware yourself instead? [`BUILD.md`](devices/lamp/BUILD.md).
-
-No robot yet? A simulator is [#200](https://github.com/autonomous-ai/autonomous-os/issues/200) — the highest-value open issue here. What we host and what stays on your network: [`docs/hosted.md`](docs/hosted.md).
-
-## Robot specifications
-
-Personalizing Autonomous OS for your robot is simple. It's just four markdown files:
+**Your own robot** — personalizing Autonomous OS is four markdown files:
 
 - **[DEVICE.md](devices/lamp/DEVICE.md)** — the body: what hardware this robot has
 - **[SOUL.md](devices/lamp/SOUL.md)** — the self: who it is and how it talks
 - **[SAFETY.md](devices/lamp/SAFETY.md)** — the bounds: how fast, how bright, how late
 - **[SKILL.md](skills/guard/SKILL.md)** — the hands: one thing it can do
 
-Check out the specifications of the first robots: [Lamp](devices/lamp/), [Intern](devices/intern-v2/), [Reachy Mini](devices/reachy-mini/), [Go2-W](devices/unitree-go2w/).
+1. **Scaffold it** — `make new-device NAME=<id>` writes `devices/<id>/`.
+2. **Fill in the files** above, plus one Python driver class if the hardware is new.
+3. **Run the compatibility test** — `make cts`, then `make cts-runtime TARGET=<ip>` on the robot. Every step: [`docs/porting-a-robot.md`](docs/porting-a-robot.md). Building the Lamp hardware yourself instead? [`BUILD.md`](devices/lamp/BUILD.md).
+
+Finished specifications to copy from: [Lamp](devices/lamp/), [Intern](devices/intern-v2/), [Reachy Mini](devices/reachy-mini/), [Go2-W](devices/unitree-go2w/).
+
+No robot yet? A simulator is [#200](https://github.com/autonomous-ai/autonomous-os/issues/200) — the highest-value open issue here. What we host and what stays on your network: [`docs/hosted.md`](docs/hosted.md).
 
 ## Platform architecture
 
