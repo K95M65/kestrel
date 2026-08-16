@@ -10,7 +10,7 @@ Autonomous OS is a fully customizable operating system for robots. Every compone
 
 ## Quick start
 
-The simplest way in is a robot we have already tested it on. What each of them can do: [robot comparison](docs/robot-comparison.md). Want it on your own robot? [Follow this guide](docs/bring-your-own-robot.md).
+The simplest way in is a robot we have already tested it on. What each of them can do: [robot comparison](docs/robot-comparison.md). Bringing your own? [Skip down](#bring-your-own-robot).
 
 ### Autonomous Lamp
 
@@ -54,6 +54,19 @@ The simplest way in is a robot we have already tested it on. What each of them c
 4. **Install a skill** from the Skill Store — everything that needs no camera or servos runs here.
 5. **Build your own skill.** Type what you want in the app; it is live on the next conversation.
 6. **Give it a character.** Edit `/opt/devices/intern-v2/SOUL.md` — Intern runs the same image as Lamp with fewer capabilities declared, so everything else works the same way.
+
+## Bring your own robot
+
+Autonomous OS runs on any robot you can describe in four markdown files — no fork, no vendor deal.
+
+- **`DEVICE.md`** — the body: the board and the hardware it has. The OS mounts exactly this and refuses to boot on a board you didn't name.
+- **`SOUL.md`** — the self: who it is and how it talks.
+- **`SAFETY.md`** — the bounds: how fast, how bright, how late.
+- **`SKILL.md`** — the hands: one thing it can do, shared with every other robot.
+
+Add a Python driver class if the hardware is new, run `make cts`, open the PR. Reachy Mini went from nothing to a shipping port in ~2,900 lines over two weeks, with no change to Pollen's own stack.
+
+**[The full guide — seven steps, laptop to merged](docs/bring-your-own-robot.md).**
 
 ## Platform architecture
 
