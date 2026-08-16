@@ -8,7 +8,7 @@ Robots have had bodies for years but no brain. They've done almost nothing and s
 - **Your robot acts.** It [guards the house](skills/guard/), [knows your face](skills/face-enroll/), [follows you as you move](skills/servo-tracking/), [reads the mood on your face](skills/user-emotion-detection/), [sets the light](skills/scene/) — and does the desk work too: [Gmail, GitHub](skills/connectors/), [your Mac](skills/computer-use/). Each one is a [skill](skills/): install it from the Skill Store, or write your own.
 - **Your robot grows.** A built-in learning loop: it creates skills from experience, sharpens them as it uses them, keeps what it learns, searches its own past conversations, and builds a deeper picture of you with every session.
 
-Autonomous OS is a fully customizable operating system for robots. Every component is swappable — engine, model, voice, skills, board. Your robot declares what it has in a `DEVICE.md`, and the OS mounts exactly that. When a better component ships, every robot on this OS gets it the same day.
+Autonomous OS is a fully customizable operating system for robots. Every component is swappable — engine, model, voice, skills, board. Your robot declares what it has in a `DEVICE.md`, and the OS mounts exactly that. When a better one ships, your robot gets it the same day — and gets better without new hardware.
 
 ## Meet the first robots running Autonomous OS
 
