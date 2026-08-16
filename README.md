@@ -68,6 +68,28 @@ Autonomous OS runs on any robot you can describe in four markdown files:
 2. Fill in the files, and add a Python driver class if the hardware is new.
 3. `make cts`, then `make cts-runtime TARGET=<ip>` on the robot.
 
+`DEVICE.md` is the whole idea in one file — the OS mounts only what you declare and refuses to boot on a board you didn't list:
+
+```yaml
+---
+schema: autonomous.device.v1
+id: my-robot
+name: My Robot
+type: mobile_robot
+boards: [raspberry_pi_5]
+gateway: { default: openclaw }
+capabilities:
+  audio:  { routes: [audio, speaker, voice], required: true }
+  vision: { routes: [camera], driver: opencv, required: true }
+  motion: { routes: [servo], driver: my_sdk, required: true, safety: SAFETY.md#motion }
+  system: { routes: [system], required: true }
+soul_ref: SOUL.md
+safety_ref: SAFETY.md
+---
+```
+
+Your compute needs 64-bit arm64 Linux with systemd, ~4 GB free, and a `/proc/device-tree/model` string matching a [`boards.json`](hal/board/boards.json) entry.
+
 Then teach it something. A skill is one folder with one `SKILL.md`, and it acts by writing markers the OS turns into motion:
 
 ```markdown
@@ -81,7 +103,9 @@ description: When someone says good morning, greet them by name and wave.
 
 Drop it on the robot with `make push-skill SKILL=./my-skill TARGET=pi@<robot>.local` — live on the next conversation, no reboot. It is the same `SKILL.md` OpenClaw and Claude skills use, so the ones you have work as they are. How to write one, the marker grammar, and how to ship a skill to every robot: [`skills/README.md`](skills/README.md).
 
-Copy from a finished one: [Lamp](devices/lamp/), [Intern](devices/intern-v2/), [Reachy Mini](devices/reachy-mini/), [Go2-W](devices/unitree-go2w/). Every step: [`docs/porting-a-robot.md`](docs/porting-a-robot.md).
+Open the PR, and the day it merges your robot is a product: a one-line installer for your customers, every skill its hardware supports, six brains, the app's Add-robot flow, OTA and a live monitor — plus every skill written from then on. Reachy Mini got all of it for ~2,900 lines over two weeks, with no change to Pollen's stack. *Autonomous-compatible* is a written definition and a test, not our opinion: [`COMPATIBILITY.md`](devices/contract/COMPATIBILITY.md) is 16 numbered rules and `make cts` checks them. No fee, no contract, no sign-off from us — pass both halves and open the PR. Start an issue titled `port: <robot>` before you write code and we answer the interface questions there.
+
+Copy from a finished one: [Lamp](devices/lamp/), [Intern](devices/intern-v2/), [Reachy Mini](devices/reachy-mini/), [Go2-W](devices/unitree-go2w/). Every step, plus what is frozen and what still moves: [`docs/porting-a-robot.md`](docs/porting-a-robot.md).
 
 ## Platform architecture
 
@@ -130,38 +154,6 @@ The vendor kernel — Raspberry Pi OS, OrangePi Debian, or the robot's own image
 Four markdown files and a driver per robot. Declarations, not forks — a body is a PR.
 
 Long form: [architecture](docs/architecture/overview.md) · [HAL](docs/architecture/hal.md) · [device spec](devices/contract/DEVICE-SPEC.md) · [capabilities](devices/contract/capabilities.md) · [safety](docs/safety.md) · [developer guide](docs/developer-guide.md).
-
-## Port a robot: three files and one driver
-
-If you make a robot, porting it is three markdown files and one driver, and what you get back the day it merges is a product: a one-line installer for your customers, every skill your hardware supports, six brains, the app's Add-robot flow, OTA and a live monitor — and every skill written from then on. Reachy Mini got all of it for ~2,900 lines — an 868-line driver, 1,875 lines of installer and unit scripts, 189 lines of declarations — over two weeks of commits (2026-07-21 → 08-04), with no change to Pollen's stack.
-
-Skills are shared; a new body brings its own `DEVICE.md`, `SAFETY.md` and `SOUL.md` in `devices/<id>/`, plus one Python driver class if the hardware is new. `make new-device NAME=<id>` copies [`devices/_template/`](devices/_template/) to start you off. `DEVICE.md` is the whole idea in one file — the OS mounts only what you declare and refuses to boot on a board you didn't list:
-
-```yaml
----
-schema: autonomous.device.v1
-id: my-robot
-name: My Robot
-type: mobile_robot
-boards: [raspberry_pi_5]
-gateway: { default: openclaw }
-capabilities:
-  audio:  { routes: [audio, speaker, voice], required: true }
-  vision: { routes: [camera], driver: opencv, required: true }
-  motion: { routes: [servo], driver: my_sdk, required: true, safety: SAFETY.md#motion }
-  system: { routes: [system], required: true }
-soul_ref: SOUL.md
-safety_ref: SAFETY.md
----
-```
-
-Your compute needs 64-bit arm64 Linux with systemd, ~4 GB free (the installer brings its own Python 3.12), and a `/proc/device-tree/model` string matching a [`boards.json`](hal/board/boards.json) entry — one JSON entry per board; x86 is on the [list](docs/not-built-yet.md).
-
-**Frozen:** the `autonomous.device.v1` schema (fields only added) and the capability names in [`capabilities.md`](devices/contract/capabilities.md) (never removed). **Not frozen yet:** the driver protocols (`MotionService`, `MediaOwner`) and the HAL route paths skills call (`/servo/aim`, `/emotion`) — both can move between releases, which is why ports live in-tree; port against a tag (`v0.1.4`, 2026-08-12). The motion contract is joint-space, proven on a 5–6 DOF head; an arm is the same `MotionService` with more joints (untested in-tree); wheels and legs need `LocomotionService`. `hal/` is GPL-3.0 — wrapping a permissive vendor SDK is fine (`reachy_service.py` imports Pollen's Apache-2.0 `reachy_mini`, and that is the whole driver); a closed SDK goes out of process ([#204](https://github.com/autonomous-ai/autonomous-os/issues/204)).
-
-*Autonomous-compatible* is a written definition and a test, not our opinion: [`COMPATIBILITY.md`](devices/contract/COMPATIBILITY.md) is 16 numbered rules — 8 MUST, 4 SHOULD, 1 MAY, 3 MUST NOT — and [`devices/contract/cts/`](devices/contract/cts/) checks them in two halves — `make cts` reads every `DEVICE.md` on any laptop, `make cts-runtime TARGET=<ip>` probes a running body. No fee, no contract, no sign-off from us: pass both, open the PR. What the suite still can't check is listed by name in [`cts/README.md`](devices/contract/cts/README.md#not-covered-yet) — including rule 6, the immediate deterministic stop: no body in this repo has one yet (`/servo/release` travels to idle before cutting torque), so read that rule as where the contract is going, not as something we pass today. Fixing it is [#201](https://github.com/autonomous-ai/autonomous-os/issues/201).
-
-Open an issue titled `port: <robot>` before code — we answer the interface questions there (which `type`, which routes, whether you need `owner:` or `LocomotionService`) and review the PR when both CTS halves are pasted in. Every step: [`docs/porting-a-robot.md`](docs/porting-a-robot.md).
 
 ## Contribute
 

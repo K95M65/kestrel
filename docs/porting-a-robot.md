@@ -42,6 +42,16 @@ python3 -c "from hal.safety.policy import parse_safety, clamp_brightness; p = pa
 go test ./system/server/agent/delivery/http/ -run ExtractHWCalls -v   # needs Go 1.24
 ```
 
-[`skill-creator`](skills/skill-creator/) grades whether a skill *triggers* for the right requests, on your laptop. What the marker *does* still needs a body — or the [mock body](https://github.com/autonomous-ai/autonomous-os/issues/200).
+[`skill-creator`](../skills/skill-creator/) grades whether a skill *triggers* for the right requests, on your laptop. What the marker *does* still needs a body — or the [mock body](https://github.com/autonomous-ai/autonomous-os/issues/200).
 
+## What is frozen, what still moves
 
+**Frozen:** the `autonomous.device.v1` schema (fields are only added) and the capability names in [`capabilities.md`](../devices/contract/capabilities.md) (never removed). **Not frozen yet:** the driver protocols (`MotionService`, `MediaOwner`) and the HAL route paths skills call (`/servo/aim`, `/emotion`) — both can move between releases, which is why ports live in-tree; port against a tag (`v0.1.4`, 2026-08-12). The motion contract is joint-space, proven on a 5–6 DOF head; an arm is the same `MotionService` with more joints (untested in-tree); wheels and legs need `LocomotionService`.
+
+`hal/` is GPL-3.0 — wrapping a permissive vendor SDK is fine (`reachy_service.py` imports Pollen's Apache-2.0 `reachy_mini`, and that is the whole driver); a closed SDK goes out of process ([#204](https://github.com/autonomous-ai/autonomous-os/issues/204)).
+
+What CTS still can't check is listed by name in [`cts/README.md`](../devices/contract/cts/README.md#not-covered-yet) — including rule 6, the immediate deterministic stop: no body in this repo has one yet (`/servo/release` travels to idle before cutting torque), so read that rule as where the contract is going, not as something we pass today. Fixing it is [#201](https://github.com/autonomous-ai/autonomous-os/issues/201).
+
+## Before you write code
+
+Open an issue titled `port: <robot>`. We answer the interface questions there — which `type`, which routes, whether you need `owner:` or `LocomotionService` — and review the PR when both CTS halves are pasted in.
