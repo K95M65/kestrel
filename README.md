@@ -57,8 +57,6 @@ Personalizing Autonomous OS for your robot is simple. It's just four markdown fi
 - **[SAFETY.md](devices/lamp/SAFETY.md)** — the bounds: how fast, how bright, how late
 - **[SKILL.md](skills/guard/SKILL.md)** — the hands: one thing it can do
 
-The first three live in your robot's folder. Skills live in [`skills/`](skills/) and install on every robot that declares the hardware they need.
-
 Ours, filled in: [Lamp](devices/lamp/), [Intern](devices/intern-v2/), [Reachy Mini](devices/reachy-mini/), [Go2-W](devices/unitree-go2w/).
 
 ## Get started
