@@ -50,13 +50,17 @@ We've installed Autonomous OS on three robots so far — Lamp, Intern and Pollen
 
 ## Quick start
 
-**[Autonomous Lamp](https://www.autonomous.ai/lamp)** — our 5-DOF desk robot, $499, Autonomous OS on it out of the box.
+The simplest way in is a robot we have already tested it on. You can also install it on your own — that path is at the bottom.
 
-1. **Open the app** — [iOS](https://apps.apple.com/app/id6744885683) · [Android](https://play.google.com/store/apps/details?id=ai.autonomous.connect.wifi).
-2. **Tap Add robot → Lamp.** It asks for your Wi-Fi and handles keys and pairing.
-3. **Say something.** It turns to look at you, the ring lights up, and it answers.
-4. **Give it a job.** Tap a skill in the Skill Store, or type what you want it to do.
-5. **Make it yours.** Edit [`SOUL.md`](devices/lamp/SOUL.md) and it is someone else on the next turn.
+<img src="devices/lamp/images/lamp-hero.webp" alt="Autonomous Lamp on a desk, ring lit" width="720">
+
+**[Autonomous Lamp](https://www.autonomous.ai/lamp)** is the robot that shows the whole OS — it sees, hears, speaks, moves, and ships with Autonomous OS on it.
+
+1. **Add it.** In the Autonomous [app](https://apps.apple.com/app/id6744885683) ([Android](https://play.google.com/store/apps/details?id=ai.autonomous.connect.wifi)), tap **Add robot → Lamp**. It asks for your Wi-Fi and handles keys and pairing.
+2. **Say something.** It turns to look at you, the ring lights up, and it answers.
+3. **Install a skill** from the Skill Store — one tap, live on the next conversation.
+4. **Build your own skill.** Type what you want it to do in the app and it writes the skill.
+5. **Give it a character.** Edit [`SOUL.md`](devices/lamp/SOUL.md) and it is someone else on the next turn.
 
 **[Reachy Mini](https://huggingface.co/docs/reachy_mini)** — Pollen Robotics' desk robot, running our OS beside theirs.
 
