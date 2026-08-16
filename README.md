@@ -89,35 +89,35 @@ Autonomous OS is a software stack. Each layer uses only the layer below it, so a
 
 ![Autonomous OS stack, top down: 25 skills, six swappable agent runtimes, 14 Go system packages, the realtime voice agent, the 13 declared capabilities, a deterministic safety gate below them (brightness, quiet hours, explicit-move speed, thermal today), in-tree drivers and board profiles, the vendor Linux kernel, and the bodies — each row labelled with its repo folder.](docs/architecture/autonomous-stack.png)
 
-### Skills — [`skills/`](skills/)
+### [Skills](skills/)
 
 One folder per behavior, one `SKILL.md` inside: markdown the agent reads. A skill acts by writing `[HW:/path:{json}]` markers in its reply, so it never touches a servo bus or a GPIO pin. Each skill declares the capabilities it needs and installs on every robot that has them.
 
-### Agentic runtime — [`runtimes/`](runtimes/)
+### [Agentic runtime](runtimes/)
 
 The engine that thinks. Six of them — Hermes, OpenClaw, PicoClaw, Codex, Claude Code, OpenCode — behind one 76-method `AgentGateway`. It reads the robot's `SOUL.md` and its installed skills. Switch live from the web UI; persona, memory and connectors move with it.
 
-### System services — [`system/`](system/)
+### [System services](system/)
 
 The Go daemon `os-server` on :5000, one package per box in the figure. `intent` answers fixed commands from a local table with no model; `server` strips `[HW:…]` markers out of a reply and POSTs them to HAL before the words are spoken; `agent` switches engines; `bootstrap` is OTA, its own binary.
 
-### Realtime voice — [`hal/realtime/`](hal/realtime/)
+### [Realtime voice](hal/realtime/)
 
 Gemini Live, OpenAI Realtime or Qwen, hosted inside HAL and running beside the main path. A spoken turn lands here first: it answers directly, or hands the turn up to the engine.
 
-### Capabilities — [`devices/contract/`](devices/contract/capabilities.md) → [`hal/routes/`](hal/routes/)
+### [Capabilities](devices/contract/capabilities.md)
 
-The 13 names a robot may declare — audio, vision, sensing, presence, motion, light, display, expression, lifelike, media, connectivity, companion, system. Ten mount HTTP routes on :5001 (111 endpoints, live Swagger at `/api/hardware/docs`); `presence` and `lifelike` are loops with no route, `companion` lives in os-server. HAL mounts only what `DEVICE.md` declares and fails loud on a missing required driver.
+The 13 names a robot may declare — audio, vision, sensing, presence, motion, light, display, expression, lifelike, media, connectivity, companion, system. Ten mount [HTTP routes](hal/routes/) on :5001 (111 endpoints, live Swagger at `/api/hardware/docs`); `presence` and `lifelike` are loops with no route, `companion` lives in os-server. HAL mounts only what `DEVICE.md` declares and fails loud on a missing required driver.
 
-### Safety gate — [`hal/safety/`](hal/safety/)
+### [Safety gate](hal/safety/)
 
 A pure function of `SAFETY.md`, below the engine and in every request path: brightness, quiet hours, explicit-move speed. No model in the loop — the same clamp whoever asked. What it does not cover yet: [`docs/safety.md`](docs/safety.md).
 
-### Drivers — [`hal/drivers/`](hal/drivers/)
+### [Drivers](hal/drivers/)
 
 One folder per subsystem: motors, rgb, camera, voice, display, sensing, tracking, and the media handover a third-party daemon needs. New hardware is one class and one factory line.
 
-### Boards — [`hal/board/boards.json`](hal/board/boards.json)
+### [Boards](hal/board/boards.json)
 
 One JSON entry per board, matched against `/proc/device-tree/model`. Raspberry Pi 4, Pi 5, CM4 and OrangePi 4 Pro today. A new board is an entry, not a code change.
 
@@ -125,7 +125,7 @@ One JSON entry per board, matched against `/proc/device-tree/model`. Raspberry P
 
 The vendor kernel — Raspberry Pi OS, OrangePi Debian, or the robot's own image. We do not ship one, and nothing above the drivers has a real-time deadline: position control closes in the servo firmware, or in the robot's own daemon.
 
-### Bodies — [`devices/`](devices/)
+### [Bodies](devices/)
 
 Four markdown files and a driver per robot. Declarations, not forks — a body is a PR.
 
