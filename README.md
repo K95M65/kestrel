@@ -27,14 +27,17 @@ The simplest way in is a robot we have already tested it on. You can also instal
 
 <img src="devices/reachy-mini/images/reachy-lamp-hero.webp" alt="Reachy Mini and Autonomous Lamp side by side on a desk" width="720">
 
-**[Reachy Mini](https://huggingface.co/docs/reachy_mini)** — Pollen Robotics' desk robot, running our OS beside theirs.
+**[Reachy Mini](https://huggingface.co/docs/reachy_mini)** — Hugging Face's desk robot, running our OS beside its own stack.
 
 1. **SSH in** — `ssh pollen@reachy-mini.local`.
-2. **Run one command.** Nothing is flashed; Pollen's daemon keeps the motors.
+2. **Run one command.** Nothing is flashed; the Reachy daemon keeps the motors.
    ```bash
    curl -fsSL https://raw.githubusercontent.com/autonomous-ai/autonomous-os/main/devices/reachy-mini/install.sh | sudo bash
    ```
-3. **Tap Add robot → Reachy Mini** and give it `reachy-mini.local`. From here it is Lamp's steps 3–5. Details and how to undo it: [`devices/reachy-mini/README.md`](devices/reachy-mini/README.md).
+3. **Add it.** In the app, tap **Add robot → Reachy Mini** and give it `reachy-mini.local`.
+4. **Interact with it.** Say something — the head tilts, the antennas lift, and it answers.
+5. **Install a skill** from the Skill Store, or type what you want it to do and it writes one.
+6. **Give it a character.** Edit `/opt/devices/reachy-mini/SOUL.md`. Everything else, including how to undo the install: [`devices/reachy-mini/README.md`](devices/reachy-mini/README.md).
 
 <img src="devices/intern-v2/images/intern-hero.webp" alt="Autonomous Intern on a desk beside a laptop, tip glowing blue" width="720">
 
