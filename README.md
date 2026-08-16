@@ -5,8 +5,8 @@
 Robots have had bodies for years and no brain. They stopped at gimmick demos. Autonomous OS brings the brain: install it on your robot and the robot starts doing real work.
 
 - **Your robot thinks.** Everything it sees and hears goes to a reasoning agent — [Hermes](runtimes/hermes/), [Claude Code](runtimes/claudecode/), or [whichever you like](runtimes/) — that decides what to do next.
-- **Your robot acts.** Watches the door and pings you when someone walks in, greets you by name, follows you as you move, plays for the mood on your face, sets the light for focus — and gets your email and calendar done too.
-- **Your robot grows.** A new job is one page of markdown, live on the next conversation — and on [Hermes](runtimes/hermes/) it writes its own skills from what it has done. It gets to know you across sessions — faces, voices, last week — and that memory lives in the body, so swapping the brain never resets it.
+- **Your robot acts.** Skills are what it can do, and they are folders: [guard the house](skills/guard/), [know your face](skills/face-enroll/), [follow you as you move](skills/servo-tracking/), [read the mood on your face](skills/user-emotion-detection/), [set the light](skills/scene/) — and the desk work too, [Gmail, calendar, Notion, GitHub](skills/connectors/) and [your Mac](skills/computer-use/).
+- **Your robot grows.** A new skill is one page of markdown, live on the next conversation. Run [Hermes](runtimes/hermes/) and the robot writes its own: a closed learning loop that turns what it did into skills, sharpens them as it uses them, and builds a model of who you are across sessions. That memory lives in the body, so swapping the brain never resets it.
 
 Autonomous OS is fully customizable. Engine, model, voice, skills, board — every piece swaps, live, nothing to rebuild. Your robot declares what it has in a `DEVICE.md`, and the OS mounts exactly that. When a smarter brain ships, every robot on this OS gets smarter the same day.
 
