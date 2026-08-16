@@ -116,6 +116,53 @@ Personalizing Autonomous OS for your robot is simple. It's just four markdown fi
 
 Check out the specifications of the first robots: [Lamp](devices/lamp/), [Intern](devices/intern-v2/), [Reachy Mini](devices/reachy-mini/), [Go2-W](devices/unitree-go2w/).
 
+## Platform architecture
+
+Autonomous OS is a stack, and every layer is a folder in this repo. Skills sit on top, the agent that runs them below, the OS services below that, then the hardware layer, the vendor kernel, and the body itself. Each layer talks only to the one under it, so any of them can be swapped without touching the rest — a new brain, a new voice, a new board, a new robot.
+
+![Autonomous OS stack, top down: 25 skills, six swappable agent runtimes, 14 Go system packages, the realtime voice agent, the 13 declared capabilities, a deterministic safety gate below them (brightness, quiet hours, explicit-move speed, thermal today), in-tree drivers and board profiles, the vendor Linux kernel, and the bodies — each row labelled with its repo folder.](docs/architecture/autonomous-stack.png)
+
+Read it top down. Left margin is *act* — a skill writes `[HW:/servo/aim]`, os-server strips it and POSTs it down through HAL to the body. Right margin is *sense* — hardware events become an `intent`, then an agent turn. The purple file on a row is what governs it. Dashed boxes are the open slots: `your skill`, `your brain`, `your board`, `your robot`.
+
+| Row in the figure | Folder | Governed by |
+|---|---|---|
+| Skills | [`skills/`](skills/) | `SKILL.md` |
+| Agentic runtime | [`runtimes/`](runtimes/) | `SOUL.md` |
+| System managers | [`system/`](system/) | — |
+| Realtime voice | [`hal/realtime/`](hal/realtime/) | — |
+| Capabilities | [`devices/contract/capabilities.md`](devices/contract/capabilities.md) → [`hal/routes/`](hal/routes/) | `DEVICE.md` |
+| Safety gate | [`hal/safety/`](hal/safety/) | `SAFETY.md` |
+| Drivers | [`hal/drivers/`](hal/drivers/) | — |
+| Boards | [`hal/board/boards.json`](hal/board/boards.json) | — |
+| Linux | the vendor kernel, not ours | — |
+| Bodies | [`devices/`](devices/) | `DEVICE.md` |
+
+
+### One turn, top to bottom
+
+1. **Sense** — a mic or camera event arrives (`hal/`).
+2. **Route** — `intent` answers fixed commands from a local table, no model, no network (`system/intent/`); everything else goes to the brain and takes seconds. We have not put a stopwatch on either end to end — `make latency` is [wanted](docs/not-built-yet.md), and until it exists treat every timing here as an order of magnitude, not a spec.
+3. **Or answer straight away** — if the turn arrived as speech, a realtime voice model in `hal/realtime/` has it too and runs beside this path: it either replies in under a second or hands the turn up to the brain ([`docs/realtime-voice.md`](docs/realtime-voice.md)).
+4. **Think** — the brain reads its `SOUL.md` and the installed `SKILL.md`s and replies in plain text with `[HW:/path:{json}]` markers inside (`runtimes/`).
+5. **Strip** — `os-server` pulls each marker out (`system/server/agent/delivery/http/handler_hw.go`), drops any whose capability this `DEVICE.md` doesn't declare, and POSTs the rest to HAL (:5001) before the words are spoken.
+6. **Mount** — HAL serves a route only if `DEVICE.md` lists it under a declared capability (`hal/board/device.py`). Intern declares `light` but only the `led` route, so `/scene` never mounts on it.
+7. **Clamp** — the safety gate, a pure function of `SAFETY.md` (`hal/safety/policy.py`), bounds brightness, quiet hours and explicit-move speed. Recorded moves — the `[HW:/emotion:…]` path on Lamp — and the 15 fps vision tracker are not speed-gated yet.
+8. **Move** — the driver talks to the hardware (`hal/drivers/`), and the body acts.
+
+### What the figure can't hold
+
+Five of those rows carry detail the figure can't hold:
+
+- [`system/`](system/) — the Go daemon (`os-server`, :5000), one package per box in the figure: `server` strips markers and proxies HAL, `agent` switches brains, `intent` answers fixed commands, plus `network`, `monitor`, `healthwatch`, `ambient`, `device`, `skills`, `plugin`, `statusled`, `vision`, `buddy`; `bootstrap` is OTA, its own binary.
+- [`devices/contract/capabilities.md`](devices/contract/capabilities.md) → [`hal/routes/`](hal/routes/) — the 13 capability names a `DEVICE.md` declares. Ten mount HAL routes (111 endpoints, live Swagger at `/api/hardware/docs`); `presence` and `lifelike` are routeless loops, `companion` is os-server's `buddy`.
+- [`hal/safety/`](hal/safety/) — the clamp. SoC temperature polled every 10 s; over `max_temp_c` it stops the tracker — not moves, LEDs or audio. Stop is `POST /servo/release`: it moves to idle, then cuts torque — it does not abort a move in flight. No hardware e-stop; runtimes run as root. Confirmed on hardware vs unit-tested: [`docs/safety.md`](docs/safety.md).
+- [`hal/drivers/`](hal/drivers/) — one folder per subsystem. Lamp's five STS3215s speak through LeRobot's Feetech bus (pinned in `hal/pyproject.toml`), Reachy through Pollen's `reachy_mini` SDK, and Lamp's 30 move recordings are leader-arm teleop (`hal/record.py`); `skills/servo-control/SKILL.md` names 23 of them for the agent.
+
+If you run ROS 2, nothing here replaces your stack: no kernel, no bus, no planner, no real-time claims, and nothing above the drivers has a deadline — position control closes in the STS3215 firmware on Lamp and in Pollen's daemon on Reachy, never in HAL. What it adds is the part ROS never had a package for: a brain that reads markdown, a body file it can reason about, a safety clamp below the brain, a skill format shared with the agent world. A `MotionService` that publishes `JointTrajectory` makes your robot a driver here, not a rewrite ([wanted](docs/not-built-yet.md)).
+
+
+Off the device: [`integrations/`](integrations/) and [`scripts/`](scripts/). Long form: [architecture](docs/architecture/overview.md) · [HAL](docs/architecture/hal.md) · [device spec](devices/contract/DEVICE-SPEC.md) · [capabilities](devices/contract/capabilities.md) · [safety](docs/safety.md) · [developer guide](docs/developer-guide.md).
+
 ## Skills are how it grows
 
 Teaching it a new job is one file. Drop this on a Lamp or a Reachy Mini and both wave good morning:
@@ -136,7 +183,7 @@ lamp   [HW:/emotion:{"emotion":"greeting","intensity":0.9}]   ← stripped here,
 lamp   "Morning, Dee."                                        ← spoken while the move runs
 ```
 
-Text becomes motion. The brain writes the `[HW:/…]` marker in its reply; the OS strips it out and sends it to the body; the body moves; the words are spoken. Same file on any body that declares the capability — a body that doesn't just ignores it. ([One turn, top to bottom](#every-layer-is-a-folder).)
+Text becomes motion. The brain writes the `[HW:/…]` marker in its reply; the OS strips it out and sends it to the body; the body moves; the words are spoken. Same file on any body that declares the capability — a body that doesn't just ignores it. ([One turn, top to bottom](#platform-architecture).)
 
 **Two levels.** On your own robot: one folder in `/root/.openclaw/workspace/skills/<name>/`, live on the next conversation — no PR, no reboot, no Go. To ship it to *every* robot: the same folder plus one line in a Go catalog and a PR, until [#199](https://github.com/autonomous-ai/autonomous-os/issues/199) makes `skills/` the catalog. Level one is the OpenClaw workflow unchanged; level two is the part we still owe you.
 
@@ -245,47 +292,6 @@ make os-build && make os-test          # Go daemon, cross-compiled to linux/arm6
 make web-install && make web-dev       # setup + monitor UI
 make cts                               # is this a valid Autonomous device?
 ```
-
-## Every layer is a folder
-
-One turn, top to bottom:
-
-1. **Sense** — a mic or camera event arrives (`hal/`).
-2. **Route** — `intent` answers fixed commands from a local table, no model, no network (`system/intent/`); everything else goes to the brain and takes seconds. We have not put a stopwatch on either end to end — `make latency` is [wanted](docs/not-built-yet.md), and until it exists treat every timing here as an order of magnitude, not a spec.
-3. **Or answer straight away** — if the turn arrived as speech, a realtime voice model in `hal/realtime/` has it too and runs beside this path: it either replies in under a second or hands the turn up to the brain ([`docs/realtime-voice.md`](docs/realtime-voice.md)).
-4. **Think** — the brain reads its `SOUL.md` and the installed `SKILL.md`s and replies in plain text with `[HW:/path:{json}]` markers inside (`runtimes/`).
-5. **Strip** — `os-server` pulls each marker out (`system/server/agent/delivery/http/handler_hw.go`), drops any whose capability this `DEVICE.md` doesn't declare, and POSTs the rest to HAL (:5001) before the words are spoken.
-6. **Mount** — HAL serves a route only if `DEVICE.md` lists it under a declared capability (`hal/board/device.py`). Intern declares `light` but only the `led` route, so `/scene` never mounts on it.
-7. **Clamp** — the safety gate, a pure function of `SAFETY.md` (`hal/safety/policy.py`), bounds brightness, quiet hours and explicit-move speed. Recorded moves — the `[HW:/emotion:…]` path on Lamp — and the 15 fps vision tracker are not speed-gated yet.
-8. **Move** — the driver talks to the hardware (`hal/drivers/`), and the body acts.
-
-If you run ROS 2, nothing here replaces your stack: no kernel, no bus, no planner, no real-time claims, and nothing above the drivers has a deadline — position control closes in the STS3215 firmware on Lamp and in Pollen's daemon on Reachy, never in HAL. What it adds is the part ROS never had a package for: a brain that reads markdown, a body file it can reason about, a safety clamp below the brain, a skill format shared with the agent world. A `MotionService` that publishes `JointTrajectory` makes your robot a driver here, not a rewrite ([wanted](docs/not-built-yet.md)).
-
-Read the figure top down. Every row is a folder in this repo — the table below is the map — and four of them are governed by a markdown file. Left margin is *act* — a skill writes `[HW:/servo/aim]`, os-server strips it and POSTs it down through HAL to the body. Right margin is *sense* — hardware events → `intent` → an agent turn. Dashed boxes are open slots and declarations: Go2-W is declared and not running; `your skill`, `your brain`, `your board`, `your robot` are where you plug in. A body is a PR, not a fork.
-
-![Autonomous OS stack, top down: 25 skills, six swappable agent runtimes, 14 Go system packages, the realtime voice agent, the 13 declared capabilities, a deterministic safety gate below them (brightness, quiet hours, explicit-move speed, thermal today), in-tree drivers and board profiles, the vendor Linux kernel, and the bodies — each row labelled with its repo folder.](docs/architecture/autonomous-stack.png)
-
-| Row in the figure | Folder | Governed by |
-|---|---|---|
-| Skills | [`skills/`](skills/) | `SKILL.md` |
-| Agentic runtime | [`runtimes/`](runtimes/) | `SOUL.md` |
-| System managers | [`system/`](system/) | — |
-| Realtime voice | [`hal/realtime/`](hal/realtime/) | — |
-| Capabilities | [`devices/contract/capabilities.md`](devices/contract/capabilities.md) → [`hal/routes/`](hal/routes/) | `DEVICE.md` |
-| Safety gate | [`hal/safety/`](hal/safety/) | `SAFETY.md` |
-| Drivers | [`hal/drivers/`](hal/drivers/) | — |
-| Boards | [`hal/board/boards.json`](hal/board/boards.json) | — |
-| Linux | the vendor kernel, not ours | — |
-| Bodies | [`devices/`](devices/) | `DEVICE.md` |
-
-Five of those rows carry detail the figure can't hold:
-
-- [`system/`](system/) — the Go daemon (`os-server`, :5000), one package per box in the figure: `server` strips markers and proxies HAL, `agent` switches brains, `intent` answers fixed commands, plus `network`, `monitor`, `healthwatch`, `ambient`, `device`, `skills`, `plugin`, `statusled`, `vision`, `buddy`; `bootstrap` is OTA, its own binary.
-- [`devices/contract/capabilities.md`](devices/contract/capabilities.md) → [`hal/routes/`](hal/routes/) — the 13 capability names a `DEVICE.md` declares. Ten mount HAL routes (111 endpoints, live Swagger at `/api/hardware/docs`); `presence` and `lifelike` are routeless loops, `companion` is os-server's `buddy`.
-- [`hal/safety/`](hal/safety/) — the clamp. SoC temperature polled every 10 s; over `max_temp_c` it stops the tracker — not moves, LEDs or audio. Stop is `POST /servo/release`: it moves to idle, then cuts torque — it does not abort a move in flight. No hardware e-stop; runtimes run as root. Confirmed on hardware vs unit-tested: [`docs/safety.md`](docs/safety.md).
-- [`hal/drivers/`](hal/drivers/) — one folder per subsystem. Lamp's five STS3215s speak through LeRobot's Feetech bus (pinned in `hal/pyproject.toml`), Reachy through Pollen's `reachy_mini` SDK, and Lamp's 30 move recordings are leader-arm teleop (`hal/record.py`); `skills/servo-control/SKILL.md` names 23 of them for the agent.
-
-Off the device: [`integrations/`](integrations/) and [`scripts/`](scripts/). Long form: [architecture](docs/architecture/overview.md) · [HAL](docs/architecture/hal.md) · [device spec](devices/contract/DEVICE-SPEC.md) · [capabilities](devices/contract/capabilities.md) · [safety](docs/safety.md) · [developer guide](docs/developer-guide.md).
 
 ## License
 
