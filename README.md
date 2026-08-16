@@ -44,31 +44,29 @@ Your robot declares what it has in a `DEVICE.md`, and the OS mounts exactly that
 
 Four bodies, one OS — two ours, one Pollen Robotics', one Unitree's. The same skills, the same brains, the same safety gate on all of them.
 
-<table>
-  <tr>
-    <td width="25%" align="center"><a href="devices/lamp"><img src="devices/lamp/images/lamp-white.webp" alt="Autonomous Lamp — 5-DOF desk robot running Autonomous OS" width="100%"></a><br><b><a href="devices/lamp">Autonomous Lamp</a></b></td>
-    <td width="25%" align="center"><a href="devices/reachy-mini"><img src="devices/reachy-mini/images/reachy-mini.webp" alt="Reachy Mini by Pollen Robotics running Autonomous OS" width="100%"></a><br><b><a href="devices/reachy-mini">Reachy Mini</a></b></td>
-    <td width="25%" align="center"><a href="devices/intern-v2"><img src="devices/intern-v2/images/intern-tile.webp" alt="Autonomous Intern — matte black pyramid desk agent" width="100%"></a><br><b><a href="devices/intern-v2">Autonomous Intern</a></b></td>
-    <td width="25%" align="center"><a href="devices/unitree-go2w"><img src="devices/unitree-go2w/images/go2-w-tile.webp" alt="Unitree Go2-W wheeled quadruped" width="100%"></a><br><b><a href="devices/unitree-go2w">Unitree Go2-W</a></b></td>
-  </tr>
-</table>
-
-| Skill | Lamp | Intern | Reachy Mini | Go2-W |
+| Skill | <a href="devices/lamp"><img src="devices/lamp/images/lamp-white.webp" width="150" alt="Autonomous Lamp"><br>Autonomous Lamp</a> | <a href="devices/intern-v2"><img src="devices/intern-v2/images/intern-tile.webp" width="150" alt="Autonomous Intern"><br>Autonomous Intern</a> | <a href="devices/reachy-mini"><img src="devices/reachy-mini/images/reachy-mini.webp" width="150" alt="Reachy Mini"><br>Reachy Mini</a> | <a href="devices/unitree-go2w"><img src="devices/unitree-go2w/images/go2-w-tile.webp" width="150" alt="Unitree Go2-W"><br>Unitree Go2-W</a> |
 |---|:---:|:---:|:---:|:---:|
 | [`camera`](skills/camera/)<br>See the room | ✅ |  | ✅ | ○ |
 | [`servo-tracking`](skills/servo-tracking/)<br>Track an object | ✅ |  | ○ | ○ |
 | [`face-enroll`](skills/face-enroll/)<br>Know your face | ✅ |  | ✅ |  |
-| [`voice`](skills/voice/) [`audio`](skills/audio/) [`speaker-recognizer`](skills/speaker-recognizer/)<br>Hear you and talk back | ✅ | ✅ | ✅ | ○ |
+| [`voice`](skills/voice/)<br>Talk back | ✅ | ✅ | ✅ | ○ |
+| [`audio`](skills/audio/)<br>Sound and volume | ✅ | ✅ | ✅ | ○ |
+| [`speaker-recognizer`](skills/speaker-recognizer/)<br>Know who is speaking | ✅ | ✅ | ✅ | ○ |
 | [`servo-control`](skills/servo-control/)<br>Move and gesture | ✅ |  | ✅ | ○ |
 | [`emotion`](skills/emotion/)<br>Show emotion | ✅ |  | ✅ |  |
 | [`led-control`](skills/led-control/)<br>Colors and effects | ✅ | ✅ |  |  |
 | [`scene`](skills/scene/)<br>Six lighting scenes | ✅ |  |  |  |
-| [`sensing`](skills/sensing/) [`sensing-track`](skills/sensing-track/)<br>Sense the room | ✅ | ✅ | ✅ | ○ |
+| [`sensing`](skills/sensing/)<br>Sense the room | ✅ | ✅ | ✅ | ○ |
+| [`sensing-track`](skills/sensing-track/)<br>Remember what it sensed | ✅ | ✅ | ✅ | ○ |
 | [`guard`](skills/guard/)<br>Guard the house | ✅ |  | ✅ |  |
-| [`music`](skills/music/) [`music-suggestion`](skills/music-suggestion/)<br>Play music | ✅ | ✅ | ✅ |  |
-| [`user-emotion-detection`](skills/user-emotion-detection/) [`mood`](skills/mood/)<br>Read your mood | ✅ | ✅ | ✅ | ○ |
-| [`wellbeing`](skills/wellbeing/) [`habit`](skills/habit/)<br>Look after you | ✅ | ✅ | ✅ | ○ |
-| [`computer-use`](skills/computer-use/) [`claude-buddy`](skills/claude-buddy/)<br>Drive your Mac | ✅ | ✅ | ✅ |  |
+| [`music`](skills/music/)<br>Play music | ✅ | ✅ | ✅ |  |
+| [`music-suggestion`](skills/music-suggestion/)<br>Suggest a song | ✅ | ✅ | ✅ |  |
+| [`user-emotion-detection`](skills/user-emotion-detection/)<br>Read your mood | ✅ | ✅ | ✅ | ○ |
+| [`mood`](skills/mood/)<br>Track mood over time | ✅ | ✅ | ✅ | ○ |
+| [`wellbeing`](skills/wellbeing/)<br>Posture and breaks | ✅ | ✅ | ✅ | ○ |
+| [`habit`](skills/habit/)<br>Learn your routines | ✅ | ✅ | ✅ | ○ |
+| [`computer-use`](skills/computer-use/)<br>Drive your Mac | ✅ | ✅ | ✅ |  |
+| [`claude-buddy`](skills/claude-buddy/)<br>Approve Claude Code by voice | ✅ | ✅ | ✅ | ○ |
 | [`connectors`](skills/connectors/)<br>Gmail, Calendar, Notion, GitHub | ✅ | ✅ | ✅ | ○ |
 | [`skill-creator`](skills/skill-creator/)<br>Write new skills | ✅ | ✅ | ✅ | ○ |
 
