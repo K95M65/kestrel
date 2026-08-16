@@ -60,6 +60,39 @@ curl -fsSL …/install.sh | sudo OTA_METADATA_URL=https://…/metadata.json bash
 curl -fsSL …/install.sh | sudo bash -s -- --skip agent
 ```
 
+## Set it up
+
+One command adds a brain — talk, see, remember, learn skills, six swappable agents, OTA —
+on top of Pollen's stack, not instead of it. Verified on the Wireless unit against Pollen's
+daemon `reachy_mini` 1.9.0 (2026-07-29); the driver pins `reachy-mini>=1.9`.
+
+1. **SSH in:** `ssh pollen@reachy-mini.local` — password from the SSH section of
+   [Pollen's get-started guide](https://huggingface.co/docs/reachy_mini/platforms/reachy_mini/get_started).
+   `pollen` has passwordless sudo, so the one-liner runs as-is.
+2. **Install** — the one-liner above, 10–15 minutes. It refuses to run on anything that is
+   not a Reachy Mini. ⚠️ Only this installer: never flash our SD-card image or run the Lamp
+   installer on a Reachy, either takes over Pollen's OS
+   ([reflash guide](https://huggingface.co/docs/reachy_mini/platforms/reachy_mini/reflash_the_rpi_ISO)
+   is the way back).
+3. **Add it.** In the Autonomous app: **Add robot** → Reachy Mini, then type
+   `reachy-mini.local` when it asks where the robot is. No app? Open
+   `http://reachy-mini.local/setup?debug=true&device_id=reachy-1` — a debug flag, because
+   the page was built for the app first; it shows the AI-key and chat-channel steps.
+4. **Talk to it.** The head tilts, the antennas lift. Its 22 emotions play as moves from
+   Pollen's own [emotion library](https://huggingface.co/datasets/pollen-robotics/reachy-mini-emotions-library)
+   — the whole expression layer here is a 28-line table in
+   [`reachy_service.py`](../../hal/drivers/motors/reachy_service.py) — and any of the
+   library's ~85 moves plays by name from a skill:
+   `[HW:/servo/play:{"recording":"dance1"}]`.
+5. **From here** it is the same as any body: give it a soul at
+   `/opt/devices/reachy-mini/SOUL.md`, teach it skills, swap the brain — steps 3–5 of
+   [Lamp's walkthrough](../lamp/README.md#set-it-up) apply as written. Web UI at
+   `http://reachy-mini.local/monitor`. Undo any time:
+   `sudo bash /opt/devices/reachy-mini/spike.sh --stop` / `--uninstall`.
+
+Reachy Mini Lite (the daemon runs on your laptop) is not supported yet — it needs the
+[mock body](https://github.com/autonomous-ai/autonomous-os/issues/200).
+
 ## What changes on your Reachy while it runs
 
 - **Camera and mic are ours** — taken through the daemon's own `/api/media`
