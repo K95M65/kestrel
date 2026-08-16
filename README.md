@@ -10,7 +10,7 @@ Autonomous OS is a fully customizable operating system for robots. Every compone
 
 ## Quick start
 
-The simplest way in is a robot we have already tested it on. What each of them can do: [robot comparison](docs/robot-comparison.md). Bringing your own? [Skip to it](#bring-your-own-robot).
+The simplest way in is a robot we have already tested it on. What each of them can do: [robot comparison](docs/robot-comparison.md). Bringing your own robot is three markdown files and one driver — [seven steps, laptop to merged](docs/bring-your-own-robot.md).
 
 <img src="devices/lamp/images/lamp-hero.webp" alt="Autonomous Lamp on a desk, ring lit" width="720">
 
@@ -52,86 +52,6 @@ The simplest way in is a robot we have already tested it on. What each of them c
 4. **Install a skill** from the Skill Store — everything that needs no camera or servos runs here.
 5. **Build your own skill.** Type what you want in the app; it is live on the next conversation.
 6. **Give it a character.** Edit `/opt/devices/intern-v2/SOUL.md` — Intern runs the same image as Lamp with fewer capabilities declared, so everything else works the same way.
-
-## Bring your own robot
-
-<img src="docs/media/build-your-own.webp" alt="Printed robot parts laid out on a bench" width="720">
-
-Skills, brains and the app are shared, so a new robot brings only three markdown files and one driver: **DEVICE.md** the body, **SOUL.md** the self, **SAFETY.md** the bounds. Seven steps, laptop to merged.
-
-**First check the compute.** 64-bit arm64 Linux with systemd, ~4 GB free (the installer brings its own Python 3.12), and a `/proc/device-tree/model` string that matches an entry in [`boards.json`](hal/board/boards.json) — a new board is one JSON entry, not a code change.
-
-### 1. Scaffold the folder
-
-```bash
-make new-device NAME=my-robot     # copies devices/_template/ into devices/my-robot/
-```
-
-### 2. Declare the body in `DEVICE.md`
-
-List the board and the [capabilities](devices/contract/capabilities.md) the robot has. The OS mounts exactly this and nothing else, and refuses to boot on a board you didn't name.
-
-```yaml
----
-schema: autonomous.device.v1
-id: my-robot
-name: My Robot
-type: mobile_robot
-boards: [raspberry_pi_5]
-gateway: { default: openclaw }
-capabilities:
-  audio:  { routes: [audio, speaker, voice], required: true }
-  vision: { routes: [camera], driver: opencv, required: true }
-  motion: { routes: [servo], driver: my_sdk, required: true, safety: SAFETY.md#motion }
-  system: { routes: [system], required: true }
-soul_ref: SOUL.md
-safety_ref: SAFETY.md
----
-```
-
-### 3. Write `SOUL.md` and `SAFETY.md`
-
-`SOUL.md` is who the robot is and how it talks — the engine reads it every turn. `SAFETY.md` is the bounds: how fast, how bright, how late. The [safety gate](hal/safety/) applies it to every request with no model in the loop, so it holds whoever asked. Start from [Lamp's](devices/lamp/) and edit.
-
-### 4. Add a driver if the hardware is new
-
-One Python class in [`hal/drivers/<subsystem>/`](hal/drivers/) and one line in its factory. Wrapping a vendor SDK is the normal case — Reachy Mini's entire motion driver imports Pollen's `reachy_mini`. A closed SDK runs out of process ([#204](https://github.com/autonomous-ai/autonomous-os/issues/204)).
-
-### 5. Run the test suite
-
-```bash
-make cts                          # on your laptop: DEVICE.md against the contract
-make cts-runtime TARGET=<ip>      # against the robot: every declared route answering
-```
-
-*Autonomous-compatible* means passing these two, not our opinion of your robot: [`COMPATIBILITY.md`](devices/contract/COMPATIBILITY.md) is 16 numbered rules and the suite checks them. No fee, no contract, no sign-off from us.
-
-### 6. Teach it a skill
-
-A skill is one folder with one `SKILL.md`, and it acts by writing markers the OS turns into motion:
-
-```markdown
----
-name: morning-wave
-description: When someone says good morning, greet them by name and wave.
----
-1. Reply with `[HW:/emotion:{"emotion":"greeting","intensity":0.9}]` — the arm waves, the ring warms up.
-2. Say good morning, using their name if you know their face. One sentence.
-```
-
-```bash
-make push-skill SKILL=./my-skill TARGET=pi@my-robot.local   # live on the next conversation, no reboot
-```
-
-It is the same `SKILL.md` OpenClaw and Claude skills use, so the ones you have work as they are. Writing one, the marker grammar, and shipping a skill to every robot: [`skills/README.md`](skills/README.md).
-
-### 7. Open the PR
-
-Start with an issue titled `port: <robot>` — we answer the interface questions there before you write code, and review the PR once both CTS halves are pasted in.
-
-The day it merges your robot is a product: a one-line installer for your customers, every skill its hardware supports, six brains, the app's Add-robot flow, OTA and a live monitor — plus every skill written from then on. Reachy Mini got all of it for ~2,900 lines over two weeks, with no change to Pollen's stack.
-
-Copy from a finished one: [Lamp](devices/lamp/), [Intern](devices/intern-v2/), [Reachy Mini](devices/reachy-mini/), [Go2-W](devices/unitree-go2w/). Every step, plus what is frozen and what still moves: [`docs/porting-a-robot.md`](docs/porting-a-robot.md).
 
 ## Platform architecture
 

@@ -25,4 +25,4 @@ A starting point for a port. Copy it with `make new-device NAME=<id>`, then:
    fails until it does.
 4. Write a `SOUL.md` — who this robot is.
 
-Full path: `docs/porting-a-robot.md`.
+Full path: `docs/bring-your-own-robot.md`.
