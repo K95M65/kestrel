@@ -14,9 +14,7 @@ Autonomous OS is a fully customizable operating system for robots. Every compone
 
 Autonomous Lamp and Autonomous Intern are the first two robots running Autonomous OS. We put it on Pollen Robotics' Reachy Mini as well, and Unitree's Go2-W is next — same OS, same skills, same safety gate, and each one thinks, acts and grows on its own. You can install it on your own robot too: [Get started](#get-started).
 
-**PHYSICAL SKILLS**
-
-| SKILLS | <a href="devices/lamp"><img src="devices/lamp/images/lamp-white.webp" width="150" alt="Lamp"><br>Lamp</a> | <a href="devices/intern-v2"><img src="devices/intern-v2/images/intern-tile.webp" width="150" alt="Intern"><br>Intern</a> | <a href="devices/reachy-mini"><img src="devices/reachy-mini/images/reachy-mini.webp" width="150" alt="Reachy Mini"><br>Reachy Mini</a> | <a href="devices/unitree-go2w"><img src="devices/unitree-go2w/images/go2-w-tile.webp" width="150" alt="Go2-W"><br>Go2-W</a> |
+| PHYSICAL SKILLS | <a href="devices/lamp"><img src="devices/lamp/images/lamp-white.webp" width="150" alt="Lamp"><br>Lamp</a> | <a href="devices/intern-v2"><img src="devices/intern-v2/images/intern-tile.webp" width="150" alt="Intern"><br>Intern</a> | <a href="devices/reachy-mini"><img src="devices/reachy-mini/images/reachy-mini.webp" width="150" alt="Reachy Mini"><br>Reachy Mini</a> | <a href="devices/unitree-go2w"><img src="devices/unitree-go2w/images/go2-w-tile.webp" width="150" alt="Go2-W"><br>Go2-W</a> |
 |---|:---:|:---:|:---:|:---:|
 | [camera](skills/camera/)<br>See the room | ✅ |  | ✅ | ○ |
 | [servo-tracking](skills/servo-tracking/)<br>Track an object | ✅ |  | ○ | ○ |
@@ -38,17 +36,15 @@ Autonomous Lamp and Autonomous Intern are the first two robots running Autonomou
 | [wellbeing](skills/wellbeing/)<br>Posture and breaks | ✅ | ✅ | ✅ | ○ |
 | [habit](skills/habit/)<br>Learn your routines | ✅ | ✅ | ✅ | ○ |
 
-**DIGITAL SKILLS**
-
-| SKILLS | [Lamp](devices/lamp) | [Intern](devices/intern-v2) | [Reachy Mini](devices/reachy-mini) | [Go2-W](devices/unitree-go2w) |
+| DIGITAL SKILLS | <a href="devices/lamp"><img src="devices/lamp/images/lamp-white.webp" width="150" alt="Lamp"><br>Lamp</a> | <a href="devices/intern-v2"><img src="devices/intern-v2/images/intern-tile.webp" width="150" alt="Intern"><br>Intern</a> | <a href="devices/reachy-mini"><img src="devices/reachy-mini/images/reachy-mini.webp" width="150" alt="Reachy Mini"><br>Reachy Mini</a> | <a href="devices/unitree-go2w"><img src="devices/unitree-go2w/images/go2-w-tile.webp" width="150" alt="Go2-W"><br>Go2-W</a> |
 |---|:---:|:---:|:---:|:---:|
-| [connectors](skills/connectors/)<br>Gmail | ✅ | ✅ | ✅ | ○ |
-| [connectors](skills/connectors/)<br>Calendar | ✅ | ✅ | ✅ | ○ |
-| [connectors](skills/connectors/)<br>Notion | ✅ | ✅ | ✅ | ○ |
-| [connectors](skills/connectors/)<br>GitHub | ✅ | ✅ | ✅ | ○ |
-| [computer-use](skills/computer-use/)<br>Your Mac | ✅ | ✅ | ✅ |  |
-| [claude-buddy](skills/claude-buddy/)<br>Approve Claude Code by voice | ✅ | ✅ | ✅ | ○ |
-| [skill-creator](skills/skill-creator/)<br>Write new skills | ✅ | ✅ | ✅ | ○ |
+| [Gmail](skills/connectors/)<br>Manage your email | ✅ | ✅ | ✅ | ○ |
+| [Calendar](skills/connectors/)<br>Book and move meetings | ✅ | ✅ | ✅ | ○ |
+| [Notion](skills/connectors/)<br>Search and write your notes | ✅ | ✅ | ✅ | ○ |
+| [GitHub](skills/connectors/)<br>Open issues, check pull requests | ✅ | ✅ | ✅ | ○ |
+| [Your Mac](skills/computer-use/)<br>Drive apps and the browser | ✅ | ✅ | ✅ |  |
+| [Claude Code](skills/claude-buddy/)<br>Approve prompts by voice | ✅ | ✅ | ✅ | ○ |
+| [New skills](skills/skill-creator/)<br>Write and test its own | ✅ | ✅ | ✅ | ○ |
 
 ✅ runs today · ○ on the way.
 
