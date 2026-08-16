@@ -2,7 +2,7 @@
 
 ## Autonomous OS: The "Android" for Robots
 
-Robots have had bodies for years and no brain. They stopped at gimmick demos. Autonomous OS brings the brain: install it on your robot and the robot starts doing real work.
+Robots have had bodies for years and no brain — waiting on a remote, a script, a human pressing go, stopping at gimmick demos. Autonomous OS brings the brain: install it on your robot and it thinks, acts and grows on its own. Autonomous in the literal sense.
 
 - **Your robot thinks.** Everything it sees and hears goes to a reasoning agent — [Hermes](runtimes/hermes/), [Claude Code](runtimes/claudecode/), or [whichever you like](runtimes/) — that decides what to do next.
 - **Your robot acts.** It [guards the house](skills/guard/), [knows your face](skills/face-enroll/), [follows you as you move](skills/servo-tracking/), [reads the mood on your face](skills/user-emotion-detection/), [sets the light](skills/scene/) — and does the desk work too: [Gmail, calendar, Notion, GitHub](skills/connectors/), [your Mac](skills/computer-use/). Each one is a skill, a folder of markdown; a new one is live on the next conversation.
