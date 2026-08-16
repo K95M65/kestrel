@@ -1,6 +1,6 @@
 <h1 align="center">Autonomous OS — the "Android" for robots</h1>
 
-<p align="center">Install it on a robot and the robot gets a mind: it sees, hears, thinks, acts, and learns a new job from one page of text — a plain markdown skill, the same kind any agent engine already reads, so the ones you have drop in unchanged.</p>
+<p align="center">Install it on a robot and the robot gets a brain: it thinks, it does real work, and it grows with you.</p>
 
 <p align="center">
   <a href="#license"><img src="https://img.shields.io/badge/license-Apache--2.0-green?style=flat-square" alt="Apache-2.0, GPL-3.0 inside hal/"></a>
