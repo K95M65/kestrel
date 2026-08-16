@@ -97,8 +97,15 @@ def stack():
 
     widest = 0
 
-    # 1 — Skills
+    # 0 — Apps: the surfaces a person touches. Android's top layer is System Apps;
+    # ours is the app that adds a robot, installs skills and switches brains.
     y += 60
+    labels = ["Autonomous app", "web setup", "live monitor"]
+    f.caption_left(y, "Apps", "system/web/", note="add a robot · install skills · switch brains")
+    r = f.row(y, labels, None, term=True); widest = max(widest, r)
+
+    # 1 — Skills
+    y += ROW
     skills_y = y
     labels = ["guard", "emotion", "face-enroll", "servo-tracking", "music", "+ 20 more", "your skill"]
     f.caption_left(y, "Skills", "skills/", "SKILL.md")
@@ -114,7 +121,7 @@ def stack():
     y += ROW
     top = ["server", "intent", "network", "monitor", "healthwatch", "ambient"]
     bot = ["device", "skills", "plugin", "statusled", "vision", "agent", "buddy", "bootstrap"]
-    f.caption_left(y + SUB / 2, "System managers", "system/")
+    f.caption_left(y + SUB / 2, "System services", "system/")
     r1 = f.row(y, top, "purple"); r2 = f.row(y + SUB, bot, "purple")
     widest = max(widest, r1, r2)
     y += SUB
@@ -144,9 +151,9 @@ def stack():
 
     # 6 — Drivers + boards
     y += ROW
-    labels = ["motors", "rgb", "camera", "voice", "display", "sensing", "tracking", "media_owner"]
+    labels = ["motors", "rgb", "camera", "voice", "display", "sensing", "tracking", "media_owner", "your driver"]
     f.caption_left(y, "Drivers", "hal/drivers/")
-    r = f.row(y, labels, "green"); widest = max(widest, r)
+    r = f.row(y, labels, "green", dashed=("your driver",)); widest = max(widest, r)
 
     y += SUB
     labels = ["Raspberry Pi 4", "Raspberry Pi 5", "Raspberry Pi CM4", "OrangePi 4 Pro", "your board"]

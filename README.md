@@ -59,7 +59,11 @@ The simplest way in is a robot we have already tested it on. What each of them c
 
 Autonomous OS is a software stack. Each layer uses only the layer below it, so any layer can be replaced without touching the others. Every layer is a folder in this repo.
 
-![Autonomous OS stack, top down: 25 skills, six swappable agent runtimes, 14 Go system packages, the realtime voice agent, the 13 declared capabilities, a deterministic safety gate below them (brightness, quiet hours, explicit-move speed, thermal today), in-tree drivers and board profiles, the vendor Linux kernel, and the bodies — each row labelled with its repo folder.](docs/architecture/autonomous-stack.png)
+![Autonomous OS stack, top down: the apps a person touches, 25 skills, six swappable agent runtimes, 14 Go system packages, the realtime voice agent, the 13 declared capabilities, a deterministic safety gate below them (brightness, quiet hours, explicit-move speed, thermal today), in-tree drivers and board profiles, the vendor Linux kernel, and the bodies — each row labelled with its repo folder, and the rows you can extend yourself drawn dashed](docs/architecture/autonomous-stack.png)
+
+### [Apps](system/web/)
+
+What a person touches. The Autonomous app adds a robot, sets up Wi-Fi, installs skills from the Skill Store and switches brains; the robot also serves its own setup and monitor UI from `system/web/`. Both talk to os-server on :5000 — the same API your own script can call.
 
 ### [Skills](skills/)
 
