@@ -12,7 +12,7 @@ Autonomous OS is a fully customizable operating system for robots. Every compone
 
 ## Meet the first robots running Autonomous OS
 
-We've installed Autonomous OS on three robots so far — Lamp, Intern and Pollen Robotics' Reachy Mini — and they think, act and grow on their own. Unitree's Go2-W is next. Here are the skills they have, and you can [install it on your own robot](#get-started) too.
+We've installed Autonomous OS on three robots so far — Lamp, Intern and Pollen Robotics' Reachy Mini — and they think, act and grow on their own. Unitree's Go2-W is next. Here are the skills they have, and you can [install it on your own robot](#quick-start) too.
 
 | PHYSICAL SKILLS | <a href="devices/lamp"><img src="devices/lamp/images/lamp-white.webp" width="150" alt="Lamp"><br>Lamp</a> | <a href="devices/intern-v2"><img src="devices/intern-v2/images/intern-tile.webp" width="150" alt="Intern"><br>Intern</a> | <a href="devices/reachy-mini"><img src="devices/reachy-mini/images/reachy-mini.webp" width="150" alt="Reachy Mini"><br>Reachy Mini</a> | <a href="devices/unitree-go2w"><img src="devices/unitree-go2w/images/go2-w-tile.webp" width="150" alt="Go2-W"><br>Go2-W</a> |
 |---|:---:|:---:|:---:|:---:|
@@ -59,52 +59,31 @@ Personalizing Autonomous OS for your robot is simple. It's just four markdown fi
 
 Check out the specifications of the first robots: [Lamp](devices/lamp/), [Intern](devices/intern-v2/), [Reachy Mini](devices/reachy-mini/), [Go2-W](devices/unitree-go2w/).
 
-## Get started
+## Quick start
 
-| You have | Time | Start |
-|---|---|---|
-| No robot | 3 min | the laptop port below — declare a body, run the compatibility test |
-| A Reachy Mini Wireless | 15 min | one command, below |
-| A Pi 5 / OrangePi and the parts | an afternoon | [BUILD.md](devices/lamp/BUILD.md), then the Lamp command below |
-| An Autonomous Lamp | 0 | it ships with the OS — app → **Add robot** |
+The fastest way in is a [Lamp](https://www.autonomous.ai/lamp) — our 5-DOF desk robot, $499, Autonomous OS already on it.
 
-Setup is the Autonomous app — [iOS](https://apps.apple.com/app/id6744885683) · [Android](https://play.google.com/store/apps/details?id=ai.autonomous.connect.wifi). Tap **Add robot**, pick your body, and it handles Wi-Fi, keys and pairing. You chat with the robot in the app; Telegram, Slack and Discord are optional.
+1. **Unbox it and open the app** — [iOS](https://apps.apple.com/app/id6744885683) · [Android](https://play.google.com/store/apps/details?id=ai.autonomous.connect.wifi).
+2. **Tap Add robot → Lamp.** It asks for your Wi-Fi and handles keys and pairing.
+3. **Say something.** It turns to look at you, the ring lights up, and it answers.
+4. **Give it a job.** Tap a skill in the Skill Store, or type what you want it to do.
+5. **Make it yours.** Edit [`SOUL.md`](devices/lamp/SOUL.md) and it is someone else on the next turn.
 
-We host three things — the Skill Store the app installs from, the AI gateway, the update feed. Nothing else phones home, perception runs wherever you point `DL_BACKEND_URL`, and offline the local commands, recorded moves and safety gate keep working: [`docs/hosted.md`](docs/hosted.md).
+Full walkthrough, including how to swap the engine: [`devices/lamp/README.md`](devices/lamp/README.md).
 
-**Reachy Mini** — SSH in and run one command. It installs beside Pollen's stack; nothing is flashed.
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/autonomous-ai/autonomous-os/main/devices/reachy-mini/install.sh | sudo bash
-```
-
-**Building a Lamp** on a Raspberry Pi 5 or OrangePi 4 Pro — on the board's own Linux:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/autonomous-ai/autonomous-os/main/scripts/provision/install.sh -o install.sh
-sudo -v && sudo DEVICE_TYPE=lamp nohup bash install.sh > install.log 2>&1 &
-tail -f install.log    # ~15 min; done when a lamp-xxxx Wi-Fi network appears
-```
-
-**No robot?** Port one that doesn't exist, on your laptop, in three minutes:
-
-```bash
-git clone https://github.com/autonomous-ai/autonomous-os && cd autonomous-os
-make new-device NAME=my-robot
-make cts    # fails: my-robot declares {'motion'} but ships no SAFETY.md
-cp devices/lamp/SAFETY.md devices/my-robot/ && make cts    # passes
-```
-
-That is the whole contract: a body is what it declares, and anything that moves ships its bounds.
-
-Then walk your robot end to end — set it up, give it a soul, teach it a skill, swap the brain:
+### Other robots
 
 | | |
 |---|---|
-| **Autonomous Lamp** | [`devices/lamp/README.md`](devices/lamp/README.md) — five steps · building one from parts: [`BUILD.md`](devices/lamp/BUILD.md) |
-| **Reachy Mini** | [`devices/reachy-mini/README.md`](devices/reachy-mini/README.md) — five steps, and how to undo it |
-| **Autonomous Intern** | [`devices/intern-v2/`](devices/intern-v2/) — same image as Lamp, fewer capabilities |
-| **More laptop paths** | [No robot yet](#no-robot-yet) — the safety gate and the marker parser run with no hardware |
+| **[Autonomous Intern](devices/intern-v2/)** | Same image as Lamp, fewer capabilities declared |
+| **[Reachy Mini](devices/reachy-mini/README.md)** | One command, installs beside Pollen's stack, nothing flashed |
+| **[Build a Lamp](devices/lamp/BUILD.md)** | Raspberry Pi 5 or OrangePi 4 Pro, parts, wiring, CAD |
+| **[Your own robot](docs/porting-a-robot.md)** | Three markdown files and a driver |
+| **Simulation** | Not yet — the mock body is [#200](https://github.com/autonomous-ai/autonomous-os/issues/200) |
+
+What we host and what stays on your network: [`docs/hosted.md`](docs/hosted.md).
+
+## Skills are how it grows
 
 Teaching it a new job is one file. Drop this on a Lamp or a Reachy Mini and both wave good morning:
 
@@ -125,19 +104,6 @@ lamp   "Morning, Dee."                                        ← spoken while t
 ```
 
 Text becomes motion. The brain writes the `[HW:/…]` marker in its reply; the OS strips it out and sends it to the body; the body moves; the words are spoken. Same file on any body that declares the capability — a body that doesn't just ignores it. ([One turn, top to bottom](#every-layer-is-a-folder).)
-
-### No robot yet?
-
-Two more run with no hardware — the safety gate is a pure function, and the marker parser has tests that show exactly what it strips:
-
-```bash
-python3 -c "from hal.safety.policy import parse_safety, clamp_brightness; p = parse_safety(open('devices/lamp/SAFETY.md').read()); print(clamp_brightness(p, 255))"
-go test ./system/server/agent/delivery/http/ -run ExtractHWCalls -v   # needs Go 1.24
-```
-
-[`skill-creator`](skills/skill-creator/) grades whether a skill *triggers* for the right requests, on your laptop. What the marker *does* still needs a body — or the [mock body](https://github.com/autonomous-ai/autonomous-os/issues/200).
-
-## Skills are how it grows
 
 **Two levels.** On your own robot: one folder in `/root/.openclaw/workspace/skills/<name>/`, live on the next conversation — no PR, no reboot, no Go. To ship it to *every* robot: the same folder plus one line in a Go catalog and a PR, until [#199](https://github.com/autonomous-ai/autonomous-os/issues/199) makes `skills/` the catalog. Level one is the OpenClaw workflow unchanged; level two is the part we still owe you.
 

@@ -33,3 +33,15 @@ Start with `make new-device NAME=<id>` — it copies [`devices/_template/`](../d
 6. **Put it on the board.** The one-line installer only ships bodies in our release feed. Until yours is merged: install with `DEVICE_TYPE=lamp` (or `intern-v2` for a mic-and-speaker body), copy `devices/<id>/` to `/opt/devices/<id>`, set `DEVICE_TYPE=<id>` in `/opt/hal/.env` and in `/etc/systemd/system/os-server.service`, restart `hal` and `os-server`. [`devices/reachy-mini/spike-device.sh`](../devices/reachy-mini/spike-device.sh) and [`spike-os.sh`](../devices/reachy-mini/spike-os.sh) are exactly these steps, scripted. Merged, your body gets what Reachy got: the one-liner for everyone, every skill whose capabilities it declares, the six brains, and the setup and monitor UI.
 7. **`make cts`** — the compatibility test suite ([`devices/contract/cts/`](../devices/contract/cts/)), Android-style. The static half proves your `DEVICE.md` obeys the [contract](../devices/contract/COMPATIBILITY.md). The runtime half proves the running body matches its own declaration — every declared route mounted and answering, nothing undeclared, `/servo/track/stop` replying (add `ALLOW_MOTION=1` to also prove `/servo/release`; it drops a raised arm). HAL and the daemon listen on the board's loopback only, so tunnel first: `ssh -N -L 5001:127.0.0.1:5001 -L 5000:127.0.0.1:5000 <user>@<body>.local`, then `make cts-runtime TARGET=127.0.0.1`. Passing both halves is what "Autonomous-compatible" means today; three rules of the spec the suite cannot check yet — local setup with no cloud round-trip, no stop routed through the brain, and a true e-stop — are on the list below.
 
+## Run the contract with no hardware
+
+The safety gate is a pure function, and the marker parser has tests that show exactly what it strips:
+
+```bash
+python3 -c "from hal.safety.policy import parse_safety, clamp_brightness; p = parse_safety(open('devices/lamp/SAFETY.md').read()); print(clamp_brightness(p, 255))"
+go test ./system/server/agent/delivery/http/ -run ExtractHWCalls -v   # needs Go 1.24
+```
+
+[`skill-creator`](skills/skill-creator/) grades whether a skill *triggers* for the right requests, on your laptop. What the marker *does* still needs a body — or the [mock body](https://github.com/autonomous-ai/autonomous-os/issues/200).
+
+
