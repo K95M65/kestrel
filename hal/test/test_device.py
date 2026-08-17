@@ -114,12 +114,15 @@ class TestParsing(unittest.TestCase):
 
     def test_so101_declares_only_the_policy_interface(self):
         profile = load_device("so101", DEVICES_DIR)
-        self.assertEqual(set(profile.capabilities), {"policy", "system"})
+        self.assertEqual(set(profile.capabilities), {"vision", "policy", "system"})
+        self.assertEqual(profile.capabilities["vision"].routes, ["camera"])
         self.assertEqual(profile.capabilities["policy"].routes, ["policy"])
         self.assertTrue(profile.capabilities["policy"].required)
         self.assertNotIn("motion", profile.capabilities)
-        plan = plan_mounts(profile.declared_routes(), {"policy": True, "system": True})
-        self.assertEqual(set(plan.mounted), {"policy", "system"})
+        plan = plan_mounts(
+            profile.declared_routes(), {"camera": True, "policy": True, "system": True}
+        )
+        self.assertEqual(set(plan.mounted), {"camera", "policy", "system"})
 
     def test_safety_ref_parsed(self):
         # SAMPLE declares no top-level safety_ref; lamp declares SAFETY.md.

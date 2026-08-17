@@ -203,6 +203,12 @@ class PolicyStatusResponse(BaseModel):
     active: Optional[PolicyRunResponse] = None
 
 
+class PolicyStopResponse(BaseModel):
+    status: str
+    id: Optional[str] = None
+    dry_run: bool = True
+
+
 class VolumeRequest(BaseModel):
     volume: int = Field(..., ge=0, le=100, description="Volume percentage 0-100")
 

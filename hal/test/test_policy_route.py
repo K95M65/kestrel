@@ -45,6 +45,21 @@ class TestPolicyRoute(unittest.TestCase):
         second = {"policy": "lerobot/smolvla_base", "task": "pick up the mug"}
         self.assertEqual(self.client.post("/policy/run", json=second).status_code, 409)
 
+    def test_stop_clears_the_active_dry_run_and_allows_another(self):
+        first = {"policy": "lerobot/act", "task": "open the drawer"}
+        started = self.client.post("/policy/run", json=first).json()
+
+        stopped = self.client.post("/policy/stop")
+        self.assertEqual(stopped.status_code, 200)
+        self.assertEqual(stopped.json(), {"status": "stopped", "id": started["id"], "dry_run": True})
+        self.assertIsNone(self.client.get("/policy").json()["active"])
+        self.assertEqual(self.client.post("/policy/run", json=first).status_code, 200)
+
+    def test_stop_is_idempotent_when_no_dry_run_is_active(self):
+        response = self.client.post("/policy/stop")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"status": "idle", "id": None, "dry_run": True})
+
     def test_validates_required_request_fields(self):
         response = self.client.post("/policy/run", json={"policy": "", "task": ""})
         self.assertEqual(response.status_code, 422)

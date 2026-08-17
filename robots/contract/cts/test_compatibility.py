@@ -19,11 +19,11 @@ DEVICES_DIR = os.path.join(ROOT, "robots")
 # The frozen capability vocabulary (robots/contract/capabilities.md).
 KNOWN_CAPABILITIES = {
     "audio", "vision", "sensing", "presence", "motion",
-    "light", "display", "expression", "lifelike", "media", "connectivity", "companion",
+    "policy", "light", "display", "expression", "lifelike", "media", "connectivity", "companion",
     "system",
 }
 # Capabilities that can move, heat, or emit — they require a SAFETY.md.
-SAFETY_CLASS = {"motion", "light"}
+SAFETY_CLASS = {"motion", "policy", "light"}
 # Non-device folders under robots/: anything underscore-prefixed (`_base`,
 # `_template`) is a profile or scaffold, not a body.
 NOT_DEVICES = {"examples"}

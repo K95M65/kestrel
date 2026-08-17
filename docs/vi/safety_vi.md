@@ -181,9 +181,9 @@ SmolVLA. Endpoint validate và ghi log `policy` cùng `task`, trả về run rec
 không gửi motor target. Vì chưa có target nên đây không phải đường vòng qua
 safety gate. Khi có execution thật, mọi target phải đi qua motion gate và
 `POST /servo/stop` phải huỷ policy worker trước rồi mới giữ nguyên body. Route
-stop hiện đã gọi cancellation qua interface; với dry run phần cancellation chỉ
-xoá request đã ghi log, còn thao tác hold servo tiếp theo vẫn là lệnh dừng phần
-cứng như trước.
+`POST /policy/stop` xoá dry-run request mà không đụng motor; trên body có mount
+`/servo/stop`, route dừng phần cứng hiện có cũng gọi cancellation như vậy trước
+rồi mới giữ nguyên body.
 
 - [x] **Unit:** `min_move_duration` kéo dài move quá nhanh (120° @120 deg/s → 1.0s),
       giữ move chậm, kẹp request tức thì (duration 0), pass-through khi không có

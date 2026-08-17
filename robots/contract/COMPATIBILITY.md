@@ -21,7 +21,7 @@ A compliant device:
 4. declares only capability groups defined in [`capabilities.md`](capabilities.md);
 5. for every **declared `required` capability**, brings the driver up at boot or **fails loud**
    (no silent half-boot);
-6. for any **safety-class capability** it declares (`motion`, `light`), ships a
+6. for any **safety-class capability** it declares (`motion`, `policy`, `light`), ships a
    [`SAFETY.md`](../lamp/SAFETY.md) and exposes an **immediate, deterministic stop**
    that does **not** route through the agentic runtime;
 7. returns the standard API envelope — `{"status":1,"data":…,"message":null}` on success,

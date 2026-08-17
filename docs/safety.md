@@ -190,9 +190,10 @@ as ACT or SmolVLA. It validates and logs `policy` plus `task`, returns a
 observation, or issue a motor target. This is deliberately not a safety bypass:
 there are no targets to pass through it yet. When execution is added, every
 target must traverse the motion gate and `POST /servo/stop` must first cancel
-the policy worker, then hold the body. The current stop route already makes
-the cancellation call against the interface, which only clears a dry-run
-request. The subsequent servo hold keeps its existing hardware-stop behavior.
+the policy worker, then hold the body. `POST /policy/stop` clears a dry-run
+request without touching a motor; on a body that also mounts `/servo/stop`,
+that existing hardware stop first makes the same cancellation call, then holds
+the body.
 
 - [x] **Unit:** `min_move_duration` stretches a too-fast move (120° at 120 deg/s →
       1.0s), passes a slow one, bounds an instant (duration 0) request, passes

@@ -72,6 +72,8 @@ func TestRouteCapability(t *testing.T) {
 		"/led/solid":        CapLight,
 		"/servo/track":      CapMotion,
 		"/servo/track/stop": CapMotion,
+		"/policy/run":       CapPolicy,
+		"/policy/stop":      CapPolicy,
 		"/display":          CapDisplay,
 		"/music/play":       CapMedia,
 		"/voice/status":     "", // audio paths fail open (almost always present)

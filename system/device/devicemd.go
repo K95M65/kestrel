@@ -85,6 +85,7 @@ const (
 	CapSensing  = "sensing"
 	CapPresence = "presence"
 	CapMotion   = "motion"
+	CapPolicy   = "policy"
 	CapLight    = "light"
 	CapDisplay  = "display"
 	// CapExpression — the body can show emotion (the /emotion route). An output
@@ -121,6 +122,8 @@ func RouteCapability(path string) string {
 		return CapLight
 	case strings.HasPrefix(path, "/servo"):
 		return CapMotion
+	case strings.HasPrefix(path, "/policy"):
+		return CapPolicy
 	case strings.HasPrefix(path, "/display"):
 		return CapDisplay
 	case strings.HasPrefix(path, "/music"):

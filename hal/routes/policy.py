@@ -7,7 +7,12 @@ servo.  This makes the interface safe to ship before a policy executor exists.
 from fastapi import APIRouter, HTTPException
 
 import hal.app_state as state
-from hal.models import PolicyRunRequest, PolicyRunResponse, PolicyStatusResponse
+from hal.models import (
+    PolicyRunRequest,
+    PolicyRunResponse,
+    PolicyStatusResponse,
+    PolicyStopResponse,
+)
 
 router = APIRouter(tags=["Policy"])
 
@@ -43,3 +48,12 @@ def get_policy_status():
     """Return the active dry-run request, if one has been accepted."""
     run = _svc().active_run()
     return {"active": _response(run) if run is not None else None}
+
+
+@router.post("/policy/stop", response_model=PolicyStopResponse)
+def stop_policy():
+    """Cancel a dry-run policy request without touching a motor."""
+    run = _svc().stop()
+    if run is None:
+        return {"status": "idle", "dry_run": True}
+    return {"status": "stopped", "id": run.id, "dry_run": run.dry_run}

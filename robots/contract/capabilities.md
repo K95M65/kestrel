@@ -17,7 +17,7 @@ LLM). **Skills and agents address capabilities, never routes or hardware models.
 | `sensing` | `sensing.presence`, `sensing.motion`, `sensing.sound`, `sensing.light` | sensing | ambient | — |
 | `presence` | `presence.face`, `presence.emotion` | — (perception loop → sensing events; see below) | biometric | — |
 | `motion` | `motion.move`, `motion.track`, `motion.stop` | servo, locomotion | — | motion |
-| `policy` | `policy.run` | policy | camera + task text | motion |
+| `policy` | `policy.run`, `policy.stop` | policy | camera + task text | motion |
 | `light` | `light.paint`, `light.effect` | led, scene | — | bright-output |
 | `display` | `display.render` | display | — | — |
 | `expression` | `expression.emote` | emotion | — | — |
@@ -81,7 +81,8 @@ asking: does it take the world **IN**, or does it drive the body **OUT**?
 
 `policy` is the typed boundary for a learned controller that turns observations and
 a task into motion targets. Its first HTTP surface is `POST /policy/run` with a
-`policy` identifier and a `task`. The initial implementation is explicitly
+`policy` identifier and a `task`; `POST /policy/stop` cancels an accepted run.
+The initial implementation is explicitly
 **dry-run**: it records and logs the request but imports no inference runtime and
 never sends a target to an actuator. When a body supplies an executor, each target
 must traverse the same motion safety gate as direct motion, and `/servo/stop` must
