@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"go.autonomous.ai/os/system/bootstrap/config"
 	"go.autonomous.ai/os/system/bootstrap/state"
 	"go.autonomous.ai/os/system/domain"
 )
@@ -122,6 +123,23 @@ func TestReconcileSkipsUninstalledComponent(t *testing.T) {
 	}
 	if v, ok := b.state.Components[domain.OTAKeyDevice]; ok {
 		t.Fatalf("a skipped component must not be written to state, got %q", v)
+	}
+}
+
+func TestReconcileSkipsVersionBlockedByRollback(t *testing.T) {
+	b := &Bootstrap{
+		cfg:   &config.Config{RollbackVersions: map[string]string{domain.OTAKeyOSServer: "1.2.3"}},
+		state: &state.State{Components: map[string]string{}},
+	}
+	updated, err := b.reconcile(context.Background(), domain.OTAKeyOSServer, domain.OTAComponent{
+		Version:    "1.2.3",
+		MinVersion: "1.2.3",
+	})
+	if err != nil {
+		t.Fatalf("reconcile blocked version: %v", err)
+	}
+	if updated {
+		t.Fatal("reconcile updated a version blocked by rollback")
 	}
 }
 

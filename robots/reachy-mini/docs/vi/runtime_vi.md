@@ -211,6 +211,20 @@ spike chạy đúng build cả fleet đang chạy, và bug tái hiện ở đây
 gì đó về máy người khác. Đổi feed bằng `OTA_METADATA_URL=…` hoặc field
 `metadata_url` trong `/root/config/bootstrap.json`.
 
+Ký OTA là tuỳ chọn. Khi `/root/config/bootstrap.json` có
+`signing_public_key` Ed25519 base64 đã được pin, `install.sh`, các spike script
+và `software-update` sẽ xác thực envelope `signed` của feed và `sha256` của mỗi
+ZIP trước khi giải nén. Không có field này thì luồng metadata và tải legacy vẫn
+được giữ nguyên, nên robot đã provision trước đó vẫn update bình thường.
+Để fresh install có xác thực, truyền key vào one-liner, ví dụ
+`curl -fsSL …/install.sh | sudo env OTA_SIGNING_PUBLIC_KEY=… bash`; key được pin
+trong `bootstrap.json` trước khi bất kỳ component script OTA nào chạy.
+
+Trước khi thay `os-server` hoặc `bootstrap-server`, `software-update` giữ binary
+cũ tại `/root/bootstrap/rollback/`. Dùng `sudo software-update rollback
+os-server` (hoặc `bootstrap`) để khôi phục; version lỗi bị chặn tới khi feed có
+version khác.
+
 Layout là **layout production**, không phải cây riêng cho spike:
 
 | Thành phần | Đường dẫn |

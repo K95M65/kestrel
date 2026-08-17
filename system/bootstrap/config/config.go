@@ -28,8 +28,12 @@ type Config struct {
 	// authorizes OTA metadata for this deployment. It is provisioned locally and
 	// is never accepted from the metadata feed itself.
 	SigningPublicKey string `json:"signing_public_key" yaml:"signingPublicKey"`
-	PollInterval     string `json:"poll_interval" yaml:"pollInterval"` // e.g. "1h", "10m"
-	StateFile        string `json:"state_file" yaml:"stateFile"`
+	// RollbackVersions records release versions explicitly rolled back by the
+	// local updater. Bootstrap skips only an exact matching target, allowing a
+	// later metadata version to resume automatic OTA without operator cleanup.
+	RollbackVersions map[string]string `json:"rollback_versions,omitempty" yaml:"rollbackVersions"`
+	PollInterval     string            `json:"poll_interval" yaml:"pollInterval"` // e.g. "1h", "10m"
+	StateFile        string            `json:"state_file" yaml:"stateFile"`
 }
 
 // Default returns the bootstrap config with operational defaults. MetadataURL is

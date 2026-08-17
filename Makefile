@@ -174,7 +174,30 @@ autonomous-build-chat:
 # Upload (OTA to GCS) — unified format: make upload-<component>
 # ============================================================================
 
-.PHONY: upload-os-server upload-bootstrap upload-hal upload-claude-desktop-buddy upload-autonomous-buddy upload-web upload-skills upload-hooks upload-setup upload-setup-ap upload-openclaw upload-device upload-twitch-irc upload-autonomous-chat upload-all promote-os-server promote-bootstrap promote-web promote-hal promote-claude-desktop-buddy promote-openclaw promote-device
+OTA_SIGNING_KEY_DIR ?= $(HOME)/.config/autonomous/ota
+OTA_SIGNING_KEY_ID ?= ota-$(shell date +%Y%m%d)
+
+.PHONY: ota-keygen upload-os-server upload-bootstrap upload-hal upload-claude-desktop-buddy upload-autonomous-buddy upload-web upload-skills upload-hooks upload-setup upload-setup-ap upload-openclaw upload-device upload-twitch-irc upload-autonomous-chat upload-all promote-os-server promote-bootstrap promote-web promote-hal promote-claude-desktop-buddy promote-openclaw promote-device
+
+# Generate a deployment-owned Ed25519 keypair outside the repository. The
+# private PEM is for release writers only; the printed public key is provisioned
+# to devices as OTA_SIGNING_PUBLIC_KEY.
+ota-keygen:
+	@set -eu; \
+	key_dir='$(OTA_SIGNING_KEY_DIR)'; \
+	key_id='$(OTA_SIGNING_KEY_ID)'; \
+	case "$$key_id" in ''|*[!A-Za-z0-9._-]*) echo "ERROR: OTA_SIGNING_KEY_ID may contain only letters, digits, ., _, -" >&2; exit 1 ;; esac; \
+	umask 077; mkdir -p "$$key_dir"; \
+	key_path="$$key_dir/$$key_id.pem"; \
+	[ ! -e "$$key_path" ] || { echo "ERROR: key already exists: $$key_path" >&2; exit 1; }; \
+	command -v openssl >/dev/null || { echo "ERROR: openssl is required" >&2; exit 1; }; \
+	openssl genpkey -algorithm Ed25519 -out "$$key_path"; \
+	public_key=$$(openssl pkey -in "$$key_path" -pubout -outform DER | tail -c 32 | base64 | tr -d '\n'); \
+	[ "$${#public_key}" -eq 44 ] || { echo "ERROR: generated public key is not 32 bytes" >&2; exit 1; }; \
+	printf '\nPrivate key (keep outside the repo): %s\n' "$$key_path"; \
+	printf 'export OTA_SIGNING_PRIVATE_KEY=%s\n' "$$key_path"; \
+	printf 'export OTA_SIGNING_KEY_ID=%s\n' "$$key_id"; \
+	printf 'export OTA_SIGNING_PUBLIC_KEY=%s\n' "$$public_key"
 
 upload-os-server:
 	bash scripts/release/upload-os-server.sh

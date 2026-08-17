@@ -2,6 +2,7 @@
 set -e
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ota-config.sh"
+source "${RELEASE_DIR}/ota-metadata.sh"
 
 HAL_DIR="${ROOT_DIR}/hal"
 VERSION_FILE="${ROOT_DIR}/hal/${VERSION_FILE:-VERSION_HAL}"
@@ -39,38 +40,35 @@ rm -f "$ZIP_PATH"
 
 echo "========== Upload ${ZIP_NAME} to Google Cloud Storage (no-cache) =========="
 gsutil -h "Cache-Control:no-cache, no-store, must-revalidate" cp "$ZIP_PATH" "gs://${GCS_BUCKET}/${GCS_PATH}"
+ZIP_SHA256=$(ota_artifact_sha256 "$ZIP_PATH")
 
 # Update metadata.json (${BUCKET_PREFIX}/ota/metadata.json) - hal key
 METADATA_PATH="${BUCKET_PREFIX}/ota/metadata.json"
 METADATA_TMP=$(mktemp)
+PAYLOAD_TMP=$(mktemp)
 HAL_URL="${HAL_URL:-https://storage.googleapis.com/${GCS_BUCKET}/${GCS_PATH}}"
 
 echo "========== Fetch metadata from gs://${GCS_BUCKET}/${METADATA_PATH} =========="
 if gsutil cp "gs://${GCS_BUCKET}/${METADATA_PATH}" "$METADATA_TMP" 2>/dev/null; then
-  content=$(cat "$METADATA_TMP")
+  ota_metadata_unpack "$METADATA_TMP" "$PAYLOAD_TMP"
 else
-  content=""
+  printf '{}' >"$PAYLOAD_TMP"
 fi
 
-if [[ -z "$(echo "$content" | tr -d '[:space:]')" ]]; then
-  content="{}"
-fi
-
-updated_metadata=$(echo "$content" | python3 -c "
+updated_metadata=$(python3 - "$PAYLOAD_TMP" "$new_version" "$HAL_URL" "$ZIP_SHA256" "$(date '+%Y-%m-%d %H:%M:%S %z')" <<'PY'
 import json, sys
-raw = sys.stdin.read()
-try:
-    data = json.loads(raw) if raw.strip() else {}
-except json.JSONDecodeError:
-    data = {}
+data = json.load(open(sys.argv[1]))
 entry = data.get('hal') if isinstance(data.get('hal'), dict) else {}
-entry.update({'version': sys.argv[1], 'url': sys.argv[2], 'updated_at': sys.argv[3]})
+entry.update({'version': sys.argv[2], 'url': sys.argv[3], 'sha256': sys.argv[4], 'updated_at': sys.argv[5]})
 # preserve existing min_version (staged-rollout floor); bump it via promote-ota.sh
 data['hal'] = entry
 print(json.dumps(data, indent=2))
-" "$new_version" "$HAL_URL" "$(date '+%Y-%m-%d %H:%M:%S %z')")
+PY
+)
 
-echo "$updated_metadata" > "$METADATA_TMP"
+echo "$updated_metadata" > "$PAYLOAD_TMP"
+ota_metadata_sign "$PAYLOAD_TMP" "$METADATA_TMP"
+rm -f "$PAYLOAD_TMP"
 echo "========== Upload metadata (hal: v${new_version}) =========="
 gsutil -h "Content-Type:application/json" -h "Cache-Control:no-cache, no-store, must-revalidate" cp "$METADATA_TMP" "gs://${GCS_BUCKET}/${METADATA_PATH}"
 rm -f "$METADATA_TMP"

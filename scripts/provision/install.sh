@@ -17,4 +17,4 @@ curl -fsSL -H "Cache-Control: no-cache" -H "Pragma: no-cache" \
   -o /tmp/setup.sh \
   "https://cdn.autonomous.ai/os/setup.sh"
 chmod +x /tmp/setup.sh
-OTA_METADATA_URL="$OTA_METADATA_URL" DEVICE_TYPE="$DEVICE_TYPE" bash /tmp/setup.sh
+OTA_METADATA_URL="$OTA_METADATA_URL" OTA_SIGNING_PUBLIC_KEY="${OTA_SIGNING_PUBLIC_KEY:-}" DEVICE_TYPE="$DEVICE_TYPE" bash /tmp/setup.sh

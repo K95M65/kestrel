@@ -72,6 +72,52 @@ ensure_tools() {
     || die "could not install ${missing[*]}"
 }
 
+# A key is trusted only when it was pinned in bootstrap.json by provisioning.
+# Metadata must never be allowed to nominate its own verification key.
+signing_public_key() {
+  [ -f "$CONFIG_DIR/bootstrap.json" ] || return 0
+  jq -r '.signing_public_key // empty' "$CONFIG_DIR/bootstrap.json" 2>/dev/null || true
+}
+
+ota_base64_decode() {
+  base64 --decode 2>/dev/null || base64 -D
+}
+
+ensure_ota_verifier() {
+  command -v openssl >/dev/null && return 0
+  info "installing: openssl"
+  apt-get update -qq >&2
+  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends openssl >&2 \
+    || die "could not install openssl for OTA signature verification"
+}
+
+# verify_ota_metadata <envelope> <payload> <base64-ed25519-public-key>
+# The signature covers the decoded payload bytes.  Hybrid feeds keep legacy
+# entries at the top level, while verified devices consume only .signed.
+verify_ota_metadata() {
+  local envelope="$1" payload="$2" public_key="$3" public_der signature
+  ensure_ota_verifier
+  public_der="$(mktemp)"
+  signature="$(mktemp)"
+  trap 'rm -f "$public_der" "$signature"' RETURN
+  jq -er '(.signed // .) | .format == "autonomous-ota/v1" and .signature.algorithm == "ed25519" and (.payload | type == "string")' "$envelope" >/dev/null \
+    || { info "ERROR: OTA metadata is unsigned or uses an unsupported format"; return 1; }
+  # SubjectPublicKeyInfo DER prefix for a raw 32-byte Ed25519 public key.
+  printf '\060\052\060\005\006\003\053\145\160\003\041\000' >"$public_der"
+  printf '%s' "$public_key" | ota_base64_decode >>"$public_der" \
+    || { info "ERROR: bootstrap signing_public_key is not base64"; return 1; }
+  [ "$(wc -c <"$public_der" | tr -d ' ')" = "44" ] \
+    || { info "ERROR: bootstrap signing_public_key is not a 32-byte Ed25519 key"; return 1; }
+  jq -r '(.signed // .).payload' "$envelope" | ota_base64_decode >"$payload" \
+    || { info "ERROR: OTA metadata payload is not valid base64"; return 1; }
+  jq -r '(.signed // .).signature.value' "$envelope" | ota_base64_decode >"$signature" \
+    || { info "ERROR: OTA metadata signature is not valid base64"; return 1; }
+  openssl pkeyutl -verify -pubin -keyform DER -inkey "$public_der" -rawin -in "$payload" -sigfile "$signature" >/dev/null \
+    || { info "ERROR: OTA metadata signature verification failed"; return 1; }
+  jq -e . "$payload" >/dev/null 2>&1 \
+    || { info "ERROR: verified OTA metadata payload is not JSON"; return 1; }
+}
+
 # --- OTA metadata ------------------------------------------------------------
 # The URL comes from bootstrap.json when it exists, so a robot pointed at a
 # staging feed keeps using it instead of silently falling back to production.
@@ -110,7 +156,18 @@ fetch_metadata() {
   # HTML, and caching that makes every later jq read come back empty with no
   # hint as to why.
   jq -e . "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; die "OTA metadata at $url is not valid JSON"; }
-  mv "$tmp" "$META_CACHE"
+  local public_key payload
+  public_key="$(signing_public_key)"
+  if [ -n "$public_key" ]; then
+    payload="$(mktemp)"
+    verify_ota_metadata "$tmp" "$payload" "$public_key" || { rm -f "$tmp" "$payload"; die "could not verify OTA metadata from $url"; }
+    rm -f "$tmp"
+    mv "$payload" "$META_CACHE"
+    info "OTA metadata signature: verified"
+  else
+    mv "$tmp" "$META_CACHE"
+    info "WARN: OTA signing is not configured; using legacy unsigned metadata"
+  fi
   info "OTA metadata: $url"
 }
 
@@ -133,8 +190,9 @@ clear_metadata_cache() { rm -f "$META_CACHE"; }
 # is idempotent, so the step that owns the worker calls it too.
 ensure_bootstrap_config() {
   ensure_tools
-  local url bs tmp
+  local url key bs tmp
   url="$(metadata_url)"
+  key="${OTA_SIGNING_PUBLIC_KEY:-}"
   bs="$CONFIG_DIR/bootstrap.json"
   mkdir -p "$CONFIG_DIR" /root/bootstrap
 
@@ -142,8 +200,8 @@ ensure_bootstrap_config() {
     # Merge-if-empty, never clobber: an operator who pointed this robot at a
     # staging feed must not be moved back to production by a re-run.
     tmp="$(mktemp)"
-    if jq --arg url "$url" \
-        'if (.metadata_url // "") == "" then .metadata_url = $url else . end' \
+    if jq --arg url "$url" --arg key "$key" \
+        'if (.metadata_url // "") == "" then .metadata_url = $url else . end | if (.signing_public_key // "") == "" and $key != "" then .signing_public_key = $key else . end' \
         "$bs" >"$tmp" 2>/dev/null; then
       mv "$tmp" "$bs"
       info "bootstrap.json: metadata_url=$(jq -r '.metadata_url // "(none)"' "$bs")"
@@ -154,8 +212,8 @@ ensure_bootstrap_config() {
     return 0
   fi
 
-  jq -n --arg url "$url" \
-    '{httpPort: 8080, metadata_url: $url, poll_interval: "5m", state_file: "/root/bootstrap/state.json"}' \
+  jq -n --arg url "$url" --arg key "$key" \
+    '{httpPort: 8080, metadata_url: $url, signing_public_key: $key, poll_interval: "5m", state_file: "/root/bootstrap/state.json"}' \
     >"$bs"
   info "seeded $bs with metadata_url=$url"
 }
@@ -177,14 +235,23 @@ ota_field() {
 # Downloads the component zip and unpacks it INTO dest_dir. Prints the version.
 ota_unpack() {
   local component="$1" dest="$2"
-  local url version zip_tmp
+  local url version sha256 zip_tmp public_key
   url="$(ota_field "$component" url)"
   version="$(ota_field "$component" version)"
+  sha256="$(ota_field "$component" sha256)"
   [ -n "$url" ] || die "OTA metadata has no url for '$component' (device_type=$DEVICE_TYPE)"
+  public_key="$(signing_public_key)"
+  if [ -n "$public_key" ] && ! [[ "$sha256" =~ ^[a-fA-F0-9]{64}$ ]]; then
+    die "OTA metadata has no valid SHA-256 for '$component'"
+  fi
 
   zip_tmp="$(mktemp)"
   retry "curl -fsSL -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' -o '$zip_tmp' '$url'" 5 \
     || die "download failed: $component from $url"
+  if [ -n "$public_key" ]; then
+    echo "$sha256  $zip_tmp" | sha256sum -c - >/dev/null \
+      || { rm -f "$zip_tmp"; die "SHA-256 mismatch: $component"; }
+  fi
   mkdir -p "$dest"
   unzip -o -q "$zip_tmp" -d "$dest" || die "unzip failed: $component"
   rm -f "$zip_tmp"

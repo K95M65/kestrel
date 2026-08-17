@@ -7,14 +7,14 @@ ota_base64_decode() {
 }
 
 # ota_metadata_unpack <envelope> <payload>
-# Existing unsigned feeds cannot be safely extended. Operators must create the
-# first signed metadata document with ota_metadata_sign over an explicit {}.
 ota_metadata_unpack() {
   local envelope="$1" payload="$2"
-  jq -er '.format == "autonomous-ota/v1" and .signature.algorithm == "ed25519" and (.payload | type == "string")' "$envelope" >/dev/null \
-    || { echo "ERROR: existing OTA metadata is not a signed autonomous-ota/v1 envelope" >&2; return 1; }
-  jq -r '.payload' "$envelope" | ota_base64_decode >"$payload" \
-    || { echo "ERROR: decode signed OTA metadata payload" >&2; return 1; }
+  if jq -er '(.signed // .) | .format == "autonomous-ota/v1" and .signature.algorithm == "ed25519" and (.payload | type == "string")' "$envelope" >/dev/null; then
+    jq -r '(.signed // .).payload' "$envelope" | ota_base64_decode >"$payload" \
+      || { echo "ERROR: decode signed OTA metadata payload" >&2; return 1; }
+  else
+    cp "$envelope" "$payload"
+  fi
   jq -e . "$payload" >/dev/null || { echo "ERROR: OTA metadata payload is not JSON" >&2; return 1; }
 }
 
@@ -23,8 +23,12 @@ ota_metadata_unpack() {
 # the key for operators and is not used as a trust decision on devices.
 ota_metadata_sign() {
   local payload="$1" envelope="$2" signature payload_b64 signature_b64
-  : "${OTA_SIGNING_PRIVATE_KEY:?OTA_SIGNING_PRIVATE_KEY (Ed25519 PEM path) is required}"
-  : "${OTA_SIGNING_KEY_ID:?OTA_SIGNING_KEY_ID is required}"
+  if [ -z "${OTA_SIGNING_PRIVATE_KEY:-}" ]; then
+    echo "WARN: OTA signing key is not configured; publishing legacy unsigned metadata" >&2
+    cp "$payload" "$envelope"
+    return 0
+  fi
+  : "${OTA_SIGNING_KEY_ID:?OTA_SIGNING_KEY_ID is required when OTA_SIGNING_PRIVATE_KEY is set}"
   [ -r "$OTA_SIGNING_PRIVATE_KEY" ] || { echo "ERROR: cannot read OTA_SIGNING_PRIVATE_KEY" >&2; return 1; }
 
   signature=$(mktemp)

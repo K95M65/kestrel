@@ -23,6 +23,7 @@
 set -euo pipefail
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ota-config.sh"
+source "${RELEASE_DIR}/ota-metadata.sh"
 
 component="${1:-}"
 override_min="${2:-}"
@@ -44,12 +45,14 @@ fi
 METADATA_PATH="${BUCKET_PREFIX}/ota/metadata.json"
 METADATA_GCS="gs://${GCS_BUCKET}/${METADATA_PATH}"
 METADATA_TMP=$(mktemp)
-trap 'rm -f "$METADATA_TMP"' EXIT
+PAYLOAD_TMP=$(mktemp)
+trap 'rm -f "$METADATA_TMP" "$PAYLOAD_TMP"' EXIT
 
 echo "========== Fetch metadata from ${METADATA_GCS} =========="
 gsutil cp "$METADATA_GCS" "$METADATA_TMP"
+ota_metadata_unpack "$METADATA_TMP" "$PAYLOAD_TMP"
 
-python3 - "$METADATA_TMP" "$component" "$override_min" <<'PY'
+python3 - "$PAYLOAD_TMP" "$component" "$override_min" <<'PY'
 import json, sys
 
 path, comp, override = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -77,6 +80,7 @@ print("%s: min_version %s -> %s" % (where, old, target))
 PY
 
 echo "========== Upload metadata to ${METADATA_GCS} =========="
+ota_metadata_sign "$PAYLOAD_TMP" "$METADATA_TMP"
 gsutil -h "Content-Type:application/json" \
        -h "Cache-Control:no-cache, no-store, must-revalidate" \
        cp "$METADATA_TMP" "$METADATA_GCS"

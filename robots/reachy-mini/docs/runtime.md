@@ -86,6 +86,20 @@ anyone else's build. Override the feed with `OTA_METADATA_URL=…`, or with
 `metadata_url` in `/root/config/bootstrap.json`; `spike-lib.sh` prefers the file
 so a robot pointed at a staging feed is not silently moved back to production.
 
+OTA signing is opt-in. If `/root/config/bootstrap.json` contains a pinned
+base64 Ed25519 `signing_public_key`, `install.sh`, the spike scripts, and
+`software-update` verify the feed's `signed` envelope and each downloaded ZIP's
+`sha256` before extraction. Without that field they retain the legacy metadata
+and download flow, so already provisioned robots continue to update normally.
+For a fresh verified install, pass the key with the one-liner, for example
+`curl -fsSL …/install.sh | sudo env OTA_SIGNING_PUBLIC_KEY=… bash`; it is pinned
+in `bootstrap.json` before any OTA component script runs.
+
+Before replacing `os-server` or `bootstrap-server`, `software-update` retains
+the previous binary at `/root/bootstrap/rollback/`. Use
+`sudo software-update rollback os-server` (or `bootstrap`) to restore it; the
+failed version is blocked until the feed publishes a different version.
+
 `spike.sh` is a **thin orchestrator** — it reimplements nothing, it just runs the
 component scripts in order. Each of those also runs standalone:
 

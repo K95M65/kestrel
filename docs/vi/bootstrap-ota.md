@@ -86,6 +86,24 @@ lấy từ feed. Payload đã decode có dạng:
 }
 ```
 
+### Tạo key ký OTA
+
+Chạy một lần trên máy của release operator:
+
+```bash
+make ota-keygen
+```
+
+Mặc định lệnh tạo private PEM Ed25519 ở ngoài repo, tại
+`~/.config/autonomous/ota/ota-YYYYMMDD.pem`, rồi in ba dòng `export`. Giữ kín
+`OTA_SIGNING_PRIVATE_KEY`; dùng nó cùng `OTA_SIGNING_KEY_ID` khi chạy
+`make upload-*`. Provision `OTA_SIGNING_PUBLIC_KEY` được in ra cho device mới.
+Có thể đổi thư mục hoặc ID:
+
+```bash
+make ota-keygen OTA_SIGNING_KEY_DIR=/secure/ota-keys OTA_SIGNING_KEY_ID=prod-2026-08
+```
+
 **Domain types** — `domain/ota.go`:
 
 ```go
@@ -246,6 +264,7 @@ nhưng nằm cùng thư mục `/root/config/`.
   "httpPort": 8080,
   "metadata_url": "https://storage.googleapis.com/{BUCKET}/{PREFIX}/ota/metadata.json",
   "signing_public_key": "<Ed25519 public key 32-byte base64>",
+  "rollback_versions": {"os-server": "1.2.3"},
   "poll_interval": "5m",
   "state_file": "/root/bootstrap/state.json"
 }
@@ -266,7 +285,10 @@ format legacy unsigned.
 Với hai binary tự chứa, mỗi lần update giữ
 `/root/bootstrap/rollback/<component>.previous`; chạy
 `software-update rollback os-server` hoặc `software-update rollback bootstrap`
-để khôi phục.
+để khôi phục. Updater ghi version vừa gỡ vào `rollback_versions`; bootstrap chỉ
+bỏ qua đúng target đó nên release lỗi không bị cài lại ở lần poll sau. Khi feed
+có version khác, OTA của component đó tự tiếp tục. Bản thân rollback không cần
+metadata URL hoặc mạng.
 
 Device không có `signing_public_key` chủ ý ở legacy mode: nó đọc component top
 level và chỉ log cảnh báo, không làm OTA lỗi. Đây là compatibility bridge, không

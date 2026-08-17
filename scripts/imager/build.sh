@@ -133,7 +133,7 @@ OUT_IMG_SIZE="8G"           # Output image size (expands to full SD on first boo
 # hardcoded default: fail fast if the caller did not provide one. Baked into the
 # image's /root/config/bootstrap.json below.
 OTA_METADATA_URL="${OTA_METADATA_URL:?OTA_METADATA_URL is required — build via 'make build OTA_METADATA_URL=...'}"
-OTA_SIGNING_PUBLIC_KEY="${OTA_SIGNING_PUBLIC_KEY:?OTA_SIGNING_PUBLIC_KEY (base64 Ed25519 public key) is required}"
+OTA_SIGNING_PUBLIC_KEY="${OTA_SIGNING_PUBLIC_KEY:-}"
 # Device profile baked into this golden image: 1 device type = 1 image. The
 # matching devices.<type> artifact (ROBOT.md + SOUL.md) is fetched from OTA
 # metadata and staged into DEVICES_DIR/<type>. Forwarded by the Makefile (-e).
@@ -946,21 +946,13 @@ set -euo pipefail
 # baked at image build). An explicit OTA_METADATA_URL env var still overrides it
 # for manual/debug runs. No compiled-in default — abort if neither is set.
 BOOTSTRAP_JSON="/root/config/bootstrap.json"
-if [ -z "\${OTA_METADATA_URL:-}" ]; then
-  OTA_METADATA_URL="\$(jq -r '.metadata_url // empty' "\$BOOTSTRAP_JSON" 2>/dev/null || true)"
-fi
-if [ -z "\$OTA_METADATA_URL" ]; then
-  echo "[software-update] ERROR: no metadata_url in \$BOOTSTRAP_JSON and OTA_METADATA_URL unset"
-  exit 1
-fi
-echo "[software-update] OTA metadata: \$OTA_METADATA_URL"
 retry() {
   local cmd="\$1" max="\${2:-5}" delay="\${3:-2}" n=0
   until [ "\$n" -ge "\$max" ]; do eval "\$cmd" && return 0; n=\$((n+1)); sleep "\$delay"; done
   echo "ERROR: failed \$max attempts"; return 1
 }
 [ "\$(id -u)" -ne 0 ] && { echo "Run as root."; exit 1; }
-[ \$# -lt 1 ] && { echo "Usage: software-update <bootstrap|os-server|hal|openclaw|web|claude-desktop-buddy|device>"; exit 1; }
+[ \$# -lt 1 ] && { echo "Usage: software-update <component>|rollback <os-server|bootstrap>"; exit 1; }
 
 # Wait for NTP time sync (RPi has no battery-backed RTC; clock may be wrong on boot)
 for i in \$(seq 1 10); do
@@ -969,47 +961,107 @@ for i in \$(seq 1 10); do
   sleep 2
 done
 KIND="\$1"
+if [ "\$KIND" = "rollback" ]; then
+  [ \$# -eq 2 ] || { echo "Usage: software-update rollback <os-server|bootstrap>"; exit 1; }
+  ROLLBACK_TARGET="\$2"
+  case "\$ROLLBACK_TARGET" in
+    os-server) DEST=/usr/local/bin/os-server; UNIT=os-server ;;
+    bootstrap) DEST=/usr/local/bin/bootstrap-server; UNIT=bootstrap ;;
+    *) echo "Rollback is currently supported for os-server and bootstrap only"; exit 1 ;;
+  esac
+  BACKUP="/root/bootstrap/rollback/\${ROLLBACK_TARGET}.previous"
+  [ -x "\$BACKUP" ] || { echo "No rollback backup for \$ROLLBACK_TARGET"; exit 1; }
+  BLOCKED_VERSION=\$("\$DEST" --version 2>/dev/null | sed -nE 's/.*([0-9]+\.[0-9]+\.[0-9]+([-.+_][0-9A-Za-z.-]+)?).*/\1/p' | head -1)
+  if [ -z "\$BLOCKED_VERSION" ] && [ -f /root/bootstrap/state.json ]; then
+    BLOCKED_VERSION=\$(jq -r --arg key "\$ROLLBACK_TARGET" '.components[\$key] // empty' /root/bootstrap/state.json 2>/dev/null || true)
+  fi
+  if [ -n "\$BLOCKED_VERSION" ] && [ -f "\$BOOTSTRAP_JSON" ]; then
+    CONFIG_TMP=\$(mktemp)
+    if jq --arg key "\$ROLLBACK_TARGET" --arg version "\$BLOCKED_VERSION" '.rollback_versions = (.rollback_versions // {}) | .rollback_versions[\$key] = \$version' "\$BOOTSTRAP_JSON" >"\$CONFIG_TMP"; then
+      mv "\$CONFIG_TMP" "\$BOOTSTRAP_JSON"
+    else
+      rm -f "\$CONFIG_TMP"
+      echo "WARN: could not record rollback version; lower min_version before the next OTA poll"
+    fi
+  fi
+  install -D -m 0755 "\$BACKUP" "\$DEST"
+  systemctl restart "\$UNIT"
+  [ "\$ROLLBACK_TARGET" != "bootstrap" ] && systemctl restart bootstrap
+  echo "\$ROLLBACK_TARGET restored from \$BACKUP"
+  exit 0
+fi
 case "\$KIND" in bootstrap|os-server|hal|openclaw|web|claude-desktop-buddy|device) ;; *) echo "Unknown: \$KIND (bootstrap, os-server, hal, openclaw, web, claude-desktop-buddy, device)"; exit 1 ;; esac
+if [ -z "\${OTA_METADATA_URL:-}" ]; then
+  OTA_METADATA_URL="\$(jq -r '.metadata_url // empty' "\$BOOTSTRAP_JSON" 2>/dev/null || true)"
+fi
+if [ -z "\$OTA_METADATA_URL" ]; then
+  echo "[software-update] ERROR: no metadata_url in \$BOOTSTRAP_JSON and OTA_METADATA_URL unset"
+  exit 1
+fi
+echo "[software-update] OTA metadata: \$OTA_METADATA_URL"
 META="\$(mktemp)"
 retry "curl -fsSL -H 'Cache-Control: no-cache' -o '\$META' '\$OTA_METADATA_URL'" 5
+PAYLOAD="\$(mktemp)"
+OTA_SIGNING_PUBLIC_KEY="\$(jq -r '.signing_public_key // empty' \"\$BOOTSTRAP_JSON\" 2>/dev/null || true)"
+if [ -n "\$OTA_SIGNING_PUBLIC_KEY" ]; then
+  PUB="\$(mktemp)"; SIG="\$(mktemp)"
+  jq -er '(.signed // .) | .format == "autonomous-ota/v1" and .signature.algorithm == "ed25519"' "\$META" >/dev/null || { echo "ERROR: unsigned OTA metadata"; exit 1; }
+  printf '\060\052\060\005\006\003\053\145\160\003\041\000' >"\$PUB"
+  printf '%s' "\$OTA_SIGNING_PUBLIC_KEY" | base64 -d >>"\$PUB"
+  jq -r '(.signed // .).payload' "\$META" | base64 -d >"\$PAYLOAD"
+  jq -r '(.signed // .).signature.value' "\$META" | base64 -d >"\$SIG"
+  openssl pkeyutl -verify -pubin -keyform DER -inkey "\$PUB" -rawin -in "\$PAYLOAD" -sigfile "\$SIG" >/dev/null || { echo "ERROR: invalid OTA signature"; exit 1; }
+else
+  cp "\$META" "\$PAYLOAD"
+fi
 if [ "\$KIND" = "device" ]; then
   # Device profile lives nested under devices.<type>; resolve THIS device's type
   # (no lamp fallback — wrong persona is worse than refusing).
   DEVICE_TYPE="\$(grep -E '^DEVICE_TYPE=' /opt/hal/.env 2>/dev/null | cut -d= -f2)"
   [ -z "\$DEVICE_TYPE" ] && DEVICE_TYPE="\$(jq -r '.device_type // empty' /root/config/config.json 2>/dev/null)"
   [ -z "\$DEVICE_TYPE" ] && { echo "ERROR: device_type not found in /opt/hal/.env or /root/config/config.json"; exit 1; }
-  URL=\$(jq -r --arg t "\$DEVICE_TYPE" '.devices[\$t].url // empty' "\$META")
-  VER=\$(jq -r --arg t "\$DEVICE_TYPE" '.devices[\$t].version // empty' "\$META")
+  URL=\$(jq -r --arg t "\$DEVICE_TYPE" '.devices[\$t].url // empty' "\$PAYLOAD")
+  VER=\$(jq -r --arg t "\$DEVICE_TYPE" '.devices[\$t].version // empty' "\$PAYLOAD")
+  SHA256=\$(jq -r --arg t "\$DEVICE_TYPE" '.devices[\$t].sha256 // empty' "\$PAYLOAD")
 else
-  URL=\$(jq -r --arg k "\$KIND" '.[\$k].url // empty' "\$META")
-  VER=\$(jq -r --arg k "\$KIND" '.[\$k].version // empty' "\$META")
+  URL=\$(jq -r --arg k "\$KIND" '.[\$k].url // empty' "\$PAYLOAD")
+  VER=\$(jq -r --arg k "\$KIND" '.[\$k].version // empty' "\$PAYLOAD")
+  SHA256=\$(jq -r --arg k "\$KIND" '.[\$k].sha256 // empty' "\$PAYLOAD")
 fi
 rm -f "\$META"
 [ -z "\$URL" ] && [ "\$KIND" != "openclaw" ] && { echo "ERROR: no url for \$KIND"; exit 1; }
+[ -z "\$URL" ] || [ -z "\$OTA_SIGNING_PUBLIC_KEY" ] || [[ "\$SHA256" =~ ^[a-fA-F0-9]{64}$ ]] || { echo "ERROR: no valid SHA-256 for \$KIND"; exit 1; }
+download_verified() {
+  local url="\$1" destination="\$2" digest="\$3"
+  curl -fsSL -o "\$destination" "\$url" || return 1
+  [ -z "\$OTA_SIGNING_PUBLIC_KEY" ] || echo "\$digest  \$destination" | sha256sum -c - >/dev/null
+}
 echo "Installing \$KIND \$VER..."
 if [ "\$KIND" = "web" ]; then
   mkdir -p /usr/share/nginx/html/setup
-  curl -fsSL -o /tmp/web.zip "\$URL"
+  download_verified "\$URL" /tmp/web.zip "\$SHA256"
   unzip -o -q /tmp/web.zip -d /usr/share/nginx/html/setup
   rm -f /tmp/web.zip
   systemctl reload nginx 2>/dev/null || systemctl restart nginx 2>/dev/null || true
 elif [ "\$KIND" = "os-server" ]; then
   Z="\$(mktemp)"; D="\$(mktemp -d)"
-  curl -fsSL -o "\$Z" "\$URL"; unzip -o -q "\$Z" -d "\$D"; rm -f "\$Z"
+  download_verified "\$URL" "\$Z" "\$SHA256"; unzip -o -q "\$Z" -d "\$D"; rm -f "\$Z"
   b=\$(find "\$D" -type f -executable 2>/dev/null | head -1)
   [ -z "\$b" ] && b=\$(find "\$D" -type f 2>/dev/null | head -1)
+  install -D -m 0755 /usr/local/bin/os-server /root/bootstrap/rollback/os-server.previous
   cp -f "\$b" /usr/local/bin/os-server; chmod +x /usr/local/bin/os-server; rm -rf "\$D"
   systemctl restart os-server 2>/dev/null || true
 elif [ "\$KIND" = "bootstrap" ]; then
   Z="\$(mktemp)"; D="\$(mktemp -d)"
-  curl -fsSL -o "\$Z" "\$URL"; unzip -o -q "\$Z" -d "\$D"; rm -f "\$Z"
+  download_verified "\$URL" "\$Z" "\$SHA256"; unzip -o -q "\$Z" -d "\$D"; rm -f "\$Z"
   b=\$(find "\$D" -type f -executable 2>/dev/null | head -1)
   [ -z "\$b" ] && b=\$(find "\$D" -type f 2>/dev/null | head -1)
+  install -D -m 0755 /usr/local/bin/bootstrap-server /root/bootstrap/rollback/bootstrap.previous
   cp -f "\$b" /usr/local/bin/bootstrap-server; chmod +x /usr/local/bin/bootstrap-server; rm -rf "\$D"
   systemctl restart bootstrap 2>/dev/null || true
 elif [ "\$KIND" = "hal" ]; then
   HAL_DIR="/opt/hal"
-  curl -fsSL -o /tmp/hal.zip "\$URL"
+  download_verified "\$URL" /tmp/hal.zip "\$SHA256"
   unzip -o -q /tmp/hal.zip -d "\$HAL_DIR"
   rm -f /tmp/hal.zip
   UV_BIN=\$(command -v uv || echo "/root/.local/bin/uv")
@@ -1024,7 +1076,7 @@ elif [ "\$KIND" = "openclaw" ]; then
   systemctl restart openclaw 2>/dev/null || true
 elif [ "\$KIND" = "claude-desktop-buddy" ]; then
   BUDDY_DIR="/opt/claude-desktop-buddy"; D="\$(mktemp -d)"
-  curl -fsSL -o /tmp/buddy.zip "\$URL"
+  download_verified "\$URL" /tmp/buddy.zip "\$SHA256"
   unzip -o -q /tmp/buddy.zip -d "\$D"; rm -f /tmp/buddy.zip
   mkdir -p "\$BUDDY_DIR"
   [ -f "\$D/buddy-plugin" ] && cp -f "\$D/buddy-plugin" "\$BUDDY_DIR/buddy-plugin" && chmod +x "\$BUDDY_DIR/buddy-plugin"
@@ -1036,7 +1088,7 @@ elif [ "\$KIND" = "device" ]; then
   DEVICES_DIR="\$(grep -E '^DEVICES_DIR=' /opt/hal/.env 2>/dev/null | cut -d= -f2)"
   [ -z "\$DEVICES_DIR" ] && DEVICES_DIR="/opt/devices"
   DEST="\$DEVICES_DIR/\$DEVICE_TYPE"
-  curl -fsSL -o /tmp/device.zip "\$URL"
+  download_verified "\$URL" /tmp/device.zip "\$SHA256"
   mkdir -p "\$DEST"
   unzip -o -q /tmp/device.zip -d "\$DEST"
   rm -f /tmp/device.zip

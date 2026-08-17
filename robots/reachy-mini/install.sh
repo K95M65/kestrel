@@ -26,6 +26,7 @@
 #
 # Options (environment):
 #   OTA_METADATA_URL=…   install from another feed (staging, a fork)
+#   OTA_SIGNING_PUBLIC_KEY=…  pin a base64 Ed25519 key for verified OTA
 #   DEVICE_TYPE=…        another device profile (default: reachy-mini)
 #
 # Anything after `bash -s --` is passed to spike.sh, e.g.:
@@ -93,6 +94,34 @@ if [ ${#missing[@]} -gt 0 ]; then
     || fail "could not install ${missing[*]}"
 fi
 
+# An existing installation may have a provisioning-pinned key.  In that case
+# this bootstrap installer must consume only the authenticated .signed payload;
+# a first install without a key remains fully compatible with legacy feeds.
+BOOTSTRAP_JSON="/root/config/bootstrap.json"
+OTA_SIGNING_PUBLIC_KEY="${OTA_SIGNING_PUBLIC_KEY:-$(jq -r '.signing_public_key // empty' "$BOOTSTRAP_JSON" 2>/dev/null || true)}"
+verify_ota_metadata() {
+  local envelope="$1" payload="$2" public_der signature
+  command -v openssl >/dev/null || { apt-get update -qq >&2 && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends openssl >&2; } \
+    || fail "could not install openssl for OTA signature verification"
+  public_der="$(mktemp)"
+  signature="$(mktemp)"
+  trap 'rm -f "$public_der" "$signature"' RETURN
+  jq -er '(.signed // .) | .format == "autonomous-ota/v1" and .signature.algorithm == "ed25519" and (.payload | type == "string")' "$envelope" >/dev/null \
+    || fail "OTA metadata is unsigned or uses an unsupported format"
+  printf '\060\052\060\005\006\003\053\145\160\003\041\000' >"$public_der"
+  printf '%s' "$OTA_SIGNING_PUBLIC_KEY" | (base64 --decode 2>/dev/null || base64 -D) >>"$public_der" \
+    || fail "bootstrap signing_public_key is not base64"
+  [ "$(wc -c <"$public_der" | tr -d ' ')" = "44" ] \
+    || fail "bootstrap signing_public_key is not a 32-byte Ed25519 key"
+  jq -r '(.signed // .).payload' "$envelope" | (base64 --decode 2>/dev/null || base64 -D) >"$payload" \
+    || fail "OTA metadata payload is not valid base64"
+  jq -r '(.signed // .).signature.value' "$envelope" | (base64 --decode 2>/dev/null || base64 -D) >"$signature" \
+    || fail "OTA metadata signature is not valid base64"
+  openssl pkeyutl -verify -pubin -keyform DER -inkey "$public_der" -rawin -in "$payload" -sigfile "$signature" >/dev/null \
+    || fail "OTA metadata signature verification failed"
+  jq -e . "$payload" >/dev/null 2>&1 || fail "verified OTA metadata payload is not JSON"
+}
+
 tag "reading the OTA feed"
 META="$(mktemp)"
 trap 'rm -f "$META"' EXIT
@@ -104,16 +133,31 @@ curl -fsSL -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' -o "$META" "$OTA_M
 # return empty strings that turn into a confusing "no url for device".
 jq -e . "$META" >/dev/null 2>&1 || fail "$OTA_METADATA_URL did not return JSON (captive portal?)"
 
+if [ -n "$OTA_SIGNING_PUBLIC_KEY" ]; then
+  META_PAYLOAD="$(mktemp)"
+  trap 'rm -f "$META" "$META_PAYLOAD"' EXIT
+  verify_ota_metadata "$META" "$META_PAYLOAD"
+  mv "$META_PAYLOAD" "$META"
+  tag "OTA metadata signature: verified"
+else
+  tag "WARN: OTA signing is not configured; using legacy unsigned metadata"
+fi
+
 PKG_URL="$(jq -r --arg t "$DEVICE_TYPE" '.devices[$t].url // empty' "$META")"
 PKG_VER="$(jq -r --arg t "$DEVICE_TYPE" '.devices[$t].version // empty' "$META")"
+PKG_SHA256="$(jq -r --arg t "$DEVICE_TYPE" '.devices[$t].sha256 // empty' "$META")"
 [ -n "$PKG_URL" ] || fail "the feed has no device profile for '$DEVICE_TYPE'
 Published profiles: $(jq -r '.devices | keys | join(", ")' "$META")"
+[ -z "$OTA_SIGNING_PUBLIC_KEY" ] || [[ "$PKG_SHA256" =~ ^[a-fA-F0-9]{64}$ ]] \
+  || fail "verified OTA metadata has no valid SHA-256 for device profile '$DEVICE_TYPE'"
 
 tag "device package $DEVICE_TYPE $PKG_VER"
 STAGING="$(mktemp -d)"
 trap 'rm -f "$META"; rm -rf "$STAGING"' EXIT
 curl -fsSL -H 'Cache-Control: no-cache' -o "$STAGING/pkg.zip" "$PKG_URL" \
   || fail "could not download the device package from $PKG_URL"
+[ -z "$OTA_SIGNING_PUBLIC_KEY" ] || echo "$PKG_SHA256  $STAGING/pkg.zip" | sha256sum -c - >/dev/null \
+  || fail "device package SHA-256 mismatch"
 unzip -o -q "$STAGING/pkg.zip" -d "$STAGING" || fail "the device package is not a readable zip"
 
 # Two generations of this package exist. The older one ships a spike.sh that
@@ -132,7 +176,7 @@ tag "handing over to spike.sh"
 echo >&2
 # Pass the feed down so every step installs from the same place this script
 # read, even when the robot's bootstrap.json points somewhere else.
-OTA_METADATA_URL="$OTA_METADATA_URL" DEVICE_TYPE="$DEVICE_TYPE" \
+OTA_METADATA_URL="$OTA_METADATA_URL" OTA_SIGNING_PUBLIC_KEY="$OTA_SIGNING_PUBLIC_KEY" DEVICE_TYPE="$DEVICE_TYPE" \
   bash "$STAGING/spike.sh" "$@"
 
 # The staging copy is temporary, but spike.sh's first step installs the same

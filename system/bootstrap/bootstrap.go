@@ -446,6 +446,10 @@ func (b *Bootstrap) reconcile(ctx context.Context, key string, target domain.OTA
 	if minVersion == "" {
 		minVersion = targetVersion
 	}
+	if b.cfg != nil && strings.TrimSpace(b.cfg.RollbackVersions[key]) == targetVersion {
+		slog.Warn("update blocked after local rollback", "component", "bootstrap", "key", key, "version", targetVersion)
+		return false, nil
+	}
 
 	current := b.detectVersion(ctx, key)
 	if current == "" {

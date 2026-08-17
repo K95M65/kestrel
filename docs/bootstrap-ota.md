@@ -86,6 +86,24 @@ never taken from the feed. Its decoded payload has this shape:
 }
 ```
 
+### Generate an OTA signing key
+
+Run this once on the release operator's machine:
+
+```bash
+make ota-keygen
+```
+
+It writes an Ed25519 private PEM outside the repository by default, at
+`~/.config/autonomous/ota/ota-YYYYMMDD.pem`, and prints three export lines. Keep
+`OTA_SIGNING_PRIVATE_KEY` private; use it with `OTA_SIGNING_KEY_ID` for
+`make upload-*`. Provision the printed `OTA_SIGNING_PUBLIC_KEY` into new devices.
+Override the path or ID when needed:
+
+```bash
+make ota-keygen OTA_SIGNING_KEY_DIR=/secure/ota-keys OTA_SIGNING_KEY_ID=prod-2026-08
+```
+
 **Domain types** — `domain/ota.go`:
 
 ```go
@@ -249,6 +267,7 @@ The bootstrap worker keeps its own config file, separate from os-server's
   "httpPort": 8080,
   "metadata_url": "https://storage.googleapis.com/{BUCKET}/{PREFIX}/ota/metadata.json",
   "signing_public_key": "<base64 32-byte Ed25519 public key>",
+  "rollback_versions": {"os-server": "1.2.3"},
   "poll_interval": "5m",
   "state_file": "/root/bootstrap/state.json"
 }
@@ -268,7 +287,11 @@ again and hashes every ZIP before extraction. When a release operator supplies
 envelope; without them they retain the legacy unsigned format. For the two self-contained
 binaries, each update retains `/root/bootstrap/rollback/<component>.previous`;
 run `software-update rollback os-server` or `software-update rollback bootstrap`
-to restore it.
+to restore it. The updater records the version it removed in
+`rollback_versions`; bootstrap then skips only that exact target, so the failed
+release is not reinstalled on the next poll. Publishing a different version
+automatically resumes OTA for that component. Rollback itself does not need the
+metadata URL or network access.
 
 Devices without `signing_public_key` deliberately remain in legacy mode: they
 read the top-level entries and emit a warning rather than failing OTA. This is a

@@ -31,7 +31,7 @@ OUT_IMG_SIZE="${OUT_IMG_SIZE:-14G}"
 # hardcoded default: fail fast if the caller did not provide one. Baked into the
 # image's /root/config/bootstrap.json.
 OTA_METADATA_URL="${OTA_METADATA_URL:?OTA_METADATA_URL is required — build via 'make build OTA_METADATA_URL=...'}"
-OTA_SIGNING_PUBLIC_KEY="${OTA_SIGNING_PUBLIC_KEY:?OTA_SIGNING_PUBLIC_KEY (base64 Ed25519 public key) is required}"
+OTA_SIGNING_PUBLIC_KEY="${OTA_SIGNING_PUBLIC_KEY:-}"
 AP_BAND="${AP_BAND:-2.4}"
 AP_CHANNEL="${AP_CHANNEL:-}"
 COUNTRY_CODE="${COUNTRY_CODE:-US}"
@@ -861,6 +861,43 @@ set -e
 # baked at image build). An explicit OTA_METADATA_URL env var still overrides it
 # for manual/debug runs. No compiled-in default — abort if neither is set.
 BOOTSTRAP_JSON="/root/config/bootstrap.json"
+[ "\$(id -u)" -ne 0 ] && { echo "Run as root."; exit 1; }
+[ \$# -lt 1 ] && { echo "Usage: software-update <component>|rollback <os-server|bootstrap>"; exit 1; }
+APP="\$1"
+if [ "\$APP" = "rollback" ]; then
+  [ \$# -eq 2 ] || { echo "Usage: software-update rollback <os-server|bootstrap>"; exit 1; }
+  ROLLBACK_TARGET="\$2"
+  case "\$ROLLBACK_TARGET" in
+    os-server) DEST=/usr/local/bin/os-server; UNIT=os-server ;;
+    bootstrap) DEST=/usr/local/bin/bootstrap-server; UNIT=bootstrap ;;
+    *) echo "Rollback is currently supported for os-server and bootstrap only"; exit 1 ;;
+  esac
+  BACKUP="/root/bootstrap/rollback/\${ROLLBACK_TARGET}.previous"
+  [ -x "\$BACKUP" ] || { echo "No rollback backup for \$ROLLBACK_TARGET"; exit 1; }
+  BLOCKED_VERSION=\$("\$DEST" --version 2>/dev/null | sed -nE 's/.*([0-9]+\.[0-9]+\.[0-9]+([-.+_][0-9A-Za-z.-]+)?).*/\1/p' | head -1)
+  if [ -z "\$BLOCKED_VERSION" ] && [ -f /root/bootstrap/state.json ]; then
+    BLOCKED_VERSION=\$(jq -r --arg key "\$ROLLBACK_TARGET" '.components[\$key] // empty' /root/bootstrap/state.json 2>/dev/null || true)
+  fi
+  if [ -n "\$BLOCKED_VERSION" ] && [ -f "\$BOOTSTRAP_JSON" ]; then
+    CONFIG_TMP=\$(mktemp)
+    if jq --arg key "\$ROLLBACK_TARGET" --arg version "\$BLOCKED_VERSION" '.rollback_versions = (.rollback_versions // {}) | .rollback_versions[\$key] = \$version' "\$BOOTSTRAP_JSON" >"\$CONFIG_TMP"; then
+      mv "\$CONFIG_TMP" "\$BOOTSTRAP_JSON"
+    else
+      rm -f "\$CONFIG_TMP"
+      echo "WARN: could not record rollback version; lower min_version before the next OTA poll"
+    fi
+  fi
+  install -D -m 0755 "\$BACKUP" "\$DEST"
+  systemctl restart "\$UNIT"
+  [ "\$ROLLBACK_TARGET" != "bootstrap" ] && systemctl restart bootstrap
+  echo "\$ROLLBACK_TARGET restored from \$BACKUP"
+  exit 0
+fi
+case "\$APP" in
+  os-server|openclaw|bootstrap|web|hal|claude-desktop-buddy|device) ;;
+  *) echo "Unknown app: \$APP. Use os-server, openclaw, bootstrap, web, hal, claude-desktop-buddy, or device."; exit 1 ;;
+esac
+
 if [ -z "\${OTA_METADATA_URL:-}" ]; then
   OTA_METADATA_URL="\$(jq -r '.metadata_url // empty' "\$BOOTSTRAP_JSON" 2>/dev/null || true)"
 fi
@@ -869,13 +906,6 @@ if [ -z "\$OTA_METADATA_URL" ]; then
   exit 1
 fi
 echo "[software-update] OTA metadata: \$OTA_METADATA_URL"
-[ "\$(id -u)" -ne 0 ] && { echo "Run as root."; exit 1; }
-[ \$# -ne 1 ] && { echo "Usage: software-update <os-server|openclaw|bootstrap|web|hal|claude-desktop-buddy|device>"; exit 1; }
-APP="\$1"
-case "\$APP" in
-  os-server|openclaw|bootstrap|web|hal|claude-desktop-buddy|device) ;;
-  *) echo "Unknown app: \$APP. Use os-server, openclaw, bootstrap, web, hal, claude-desktop-buddy, or device."; exit 1 ;;
-esac
 
 METADATA_TMP=\$(mktemp)
 METADATA_PAYLOAD=\$(mktemp)
@@ -884,14 +914,18 @@ DIR_TMP=""
 trap 'rm -f "\$METADATA_TMP" "\$METADATA_PAYLOAD" "\$ZIP_TMP"; rm -rf "\$DIR_TMP"' EXIT
 curl -fsSL -H "Cache-Control: no-cache" -H "Pragma: no-cache" -o "\$METADATA_TMP" "\$OTA_METADATA_URL" || { echo "Failed to fetch metadata from \$OTA_METADATA_URL"; exit 1; }
 OTA_SIGNING_PUBLIC_KEY="\$(jq -r '.signing_public_key // empty' "\$BOOTSTRAP_JSON" 2>/dev/null || true)"
-[ -n "\$OTA_SIGNING_PUBLIC_KEY" ] || { echo "[software-update] ERROR: no signing_public_key in \$BOOTSTRAP_JSON"; exit 1; }
-PUBLIC_DER=\$(mktemp); SIGNATURE_TMP=\$(mktemp)
-jq -er '.format == "autonomous-ota/v1" and .signature.algorithm == "ed25519"' "\$METADATA_TMP" >/dev/null || { echo "Unsigned or unsupported OTA metadata"; exit 1; }
-printf '\060\052\060\005\006\003\053\145\160\003\041\000' > "\$PUBLIC_DER"
-printf '%s' "\$OTA_SIGNING_PUBLIC_KEY" | base64 -d >> "\$PUBLIC_DER" || { echo "Invalid OTA signing public key"; exit 1; }
-jq -r '.payload' "\$METADATA_TMP" | base64 -d > "\$METADATA_PAYLOAD" || { echo "Invalid OTA metadata payload"; exit 1; }
-jq -r '.signature.value' "\$METADATA_TMP" | base64 -d > "\$SIGNATURE_TMP" || { echo "Invalid OTA metadata signature"; exit 1; }
-openssl pkeyutl -verify -pubin -keyform DER -inkey "\$PUBLIC_DER" -rawin -in "\$METADATA_PAYLOAD" -sigfile "\$SIGNATURE_TMP" >/dev/null || { echo "OTA metadata signature verification failed"; exit 1; }
+if [ -n "\$OTA_SIGNING_PUBLIC_KEY" ]; then
+  PUBLIC_DER=\$(mktemp); SIGNATURE_TMP=\$(mktemp)
+  jq -er '(.signed // .) | .format == "autonomous-ota/v1" and .signature.algorithm == "ed25519"' "\$METADATA_TMP" >/dev/null || { echo "Unsigned or unsupported OTA metadata"; exit 1; }
+  printf '\060\052\060\005\006\003\053\145\160\003\041\000' > "\$PUBLIC_DER"
+  printf '%s' "\$OTA_SIGNING_PUBLIC_KEY" | base64 -d >> "\$PUBLIC_DER" || { echo "Invalid OTA signing public key"; exit 1; }
+  jq -r '(.signed // .).payload' "\$METADATA_TMP" | base64 -d > "\$METADATA_PAYLOAD" || { echo "Invalid OTA metadata payload"; exit 1; }
+  jq -r '(.signed // .).signature.value' "\$METADATA_TMP" | base64 -d > "\$SIGNATURE_TMP" || { echo "Invalid OTA metadata signature"; exit 1; }
+  openssl pkeyutl -verify -pubin -keyform DER -inkey "\$PUBLIC_DER" -rawin -in "\$METADATA_PAYLOAD" -sigfile "\$SIGNATURE_TMP" >/dev/null || { echo "OTA metadata signature verification failed"; exit 1; }
+else
+  echo "[software-update] WARN: OTA signing is not configured; using legacy unsigned metadata"
+  cp "\$METADATA_TMP" "\$METADATA_PAYLOAD"
+fi
 if [ "\$APP" = "device" ]; then
   # Device profile lives nested under devices.<type>; resolve THIS device's type.
   DEVICE_TYPE="\$(grep -E '^DEVICE_TYPE=' /opt/hal/.env 2>/dev/null | cut -d= -f2)"
@@ -909,12 +943,12 @@ else
   SHA256=\$(jq -r --arg a "\$META_KEY" '.[\$a].sha256 // empty' "\$METADATA_PAYLOAD")
 fi
 [ -z "\$VERSION" ] && { echo "Metadata has no version for \$APP"; exit 1; }
-[ -z "\$URL" ] || [[ "\$SHA256" =~ ^[a-fA-F0-9]{64}$ ]] || { echo "Metadata has no valid SHA-256 for \$APP"; exit 1; }
+[ -z "\$URL" ] || [ -z "\$OTA_SIGNING_PUBLIC_KEY" ] || [[ "\$SHA256" =~ ^[a-fA-F0-9]{64}$ ]] || { echo "Metadata has no valid SHA-256 for \$APP"; exit 1; }
 
 download_verified() {
   local url="\$1" destination="\$2" digest="\$3"
   curl -fsSL -H "Cache-Control: no-cache" -o "\$destination" "\$url" || return 1
-  echo "\$digest  \$destination" | sha256sum -c - >/dev/null
+  [ -z "\$digest" ] || echo "\$digest  \$destination" | sha256sum -c - >/dev/null
 }
 
 if [ "\$APP" = "os-server" ]; then
@@ -926,6 +960,7 @@ if [ "\$APP" = "os-server" ]; then
   BIN=\$(find "\$DIR_TMP" -type f -executable 2>/dev/null | head -1)
   [ -z "\$BIN" ] && BIN=\$(find "\$DIR_TMP" -type f 2>/dev/null | head -1)
   [ -z "\$BIN" ] || [ ! -f "\$BIN" ] && { echo "No binary in os-server zip"; exit 1; }
+  install -D -m 0755 /usr/local/bin/os-server /root/bootstrap/rollback/os-server.previous
   cp -f "\$BIN" /usr/local/bin/os-server
   chmod +x /usr/local/bin/os-server
   systemctl restart os-server
@@ -939,6 +974,7 @@ elif [ "\$APP" = "bootstrap" ]; then
   BIN=\$(find "\$DIR_TMP" -type f -executable 2>/dev/null | head -1)
   [ -z "\$BIN" ] && BIN=\$(find "\$DIR_TMP" -type f 2>/dev/null | head -1)
   [ -z "\$BIN" ] || [ ! -f "\$BIN" ] && { echo "No binary in bootstrap zip"; exit 1; }
+  install -D -m 0755 /usr/local/bin/bootstrap-server /root/bootstrap/rollback/bootstrap.previous
   cp -f "\$BIN" /usr/local/bin/bootstrap-server
   chmod +x /usr/local/bin/bootstrap-server
   systemctl restart bootstrap

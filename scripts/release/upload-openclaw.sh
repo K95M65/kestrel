@@ -22,18 +22,22 @@ fi
 VERSION="$1"
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ota-config.sh"
+source "${RELEASE_DIR}/ota-metadata.sh"
 METADATA_GCS="gs://${GCS_BUCKET}/${BUCKET_PREFIX}/ota/metadata.json"
 
 METADATA_TMP=$(mktemp)
-trap 'rm -f "$METADATA_TMP"' EXIT
+PAYLOAD_TMP=$(mktemp)
+trap 'rm -f "$METADATA_TMP" "$PAYLOAD_TMP"' EXIT
 
 # Pull existing metadata; if missing, bootstrap with an empty object.
 if ! gsutil cp "$METADATA_GCS" "$METADATA_TMP" 2>/dev/null; then
   echo "Note: $METADATA_GCS not found — bootstrapping with empty object."
-  echo "{}" > "$METADATA_TMP"
+  printf '{}' > "$PAYLOAD_TMP"
+else
+  ota_metadata_unpack "$METADATA_TMP" "$PAYLOAD_TMP"
 fi
 
-python3 - "$METADATA_TMP" "$VERSION" "$(date '+%Y-%m-%d %H:%M:%S %z')" <<'PY'
+python3 - "$PAYLOAD_TMP" "$VERSION" "$(date '+%Y-%m-%d %H:%M:%S %z')" <<'PY'
 import json
 import sys
 
@@ -45,6 +49,8 @@ oc["updated_at"] = updated_at
 d["openclaw"] = oc
 json.dump(d, open(path, "w"), indent=4)
 PY
+
+ota_metadata_sign "$PAYLOAD_TMP" "$METADATA_TMP"
 
 gsutil -h "Cache-Control:no-cache, no-store, must-revalidate" \
        -h "Content-Type:application/json" \

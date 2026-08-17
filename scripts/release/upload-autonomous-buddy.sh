@@ -2,6 +2,7 @@
 set -e
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ota-config.sh"
+source "${RELEASE_DIR}/ota-metadata.sh"
 
 BUDDY_DIR="${ROOT_DIR}/integrations/companions/autonomous-buddy"
 VERSION_FILE="${BUDDY_DIR}/VERSION_AUTONOMOUS_BUDDY"
@@ -47,35 +48,30 @@ gsutil -h "Cache-Control:no-cache, no-store, must-revalidate" \
 # Update metadata.json (${BUCKET_PREFIX}/ota/metadata.json) - autonomous-buddy key
 METADATA_PATH="${BUCKET_PREFIX}/ota/metadata.json"
 METADATA_TMP=$(mktemp)
+PAYLOAD_TMP=$(mktemp)
 BUDDY_URL="${BUDDY_URL:-https://storage.googleapis.com/${GCS_BUCKET}/${GCS_PATH}}"
 
 echo "========== Fetch metadata from gs://${GCS_BUCKET}/${METADATA_PATH} =========="
 if gsutil cp "gs://${GCS_BUCKET}/${METADATA_PATH}" "$METADATA_TMP" 2>/dev/null; then
-  content=$(cat "$METADATA_TMP")
+  ota_metadata_unpack "$METADATA_TMP" "$PAYLOAD_TMP"
 else
-  content=""
+  printf '{}' >"$PAYLOAD_TMP"
 fi
 
-if [[ -z "$(echo "$content" | tr -d '[:space:]')" ]]; then
-  content="{}"
-fi
-
-updated_metadata=$(echo "$content" | python3 -c "
+updated_metadata=$(python3 - "$PAYLOAD_TMP" "$new_version" "$BUDDY_URL" "$(date '+%Y-%m-%d %H:%M:%S %z')" <<'PY'
 import json, sys
-raw = sys.stdin.read()
-try:
-    data = json.loads(raw) if raw.strip() else {}
-except json.JSONDecodeError:
-    data = {}
+data = json.load(open(sys.argv[1]))
 data.pop('claude-desktop-buddy', None)
-data['autonomous-buddy'] = {'version': sys.argv[1], 'url': sys.argv[2], 'updated_at': sys.argv[3]}
+data['autonomous-buddy'] = {'version': sys.argv[2], 'url': sys.argv[3], 'updated_at': sys.argv[4]}
 print(json.dumps(data, indent=2))
-" "$new_version" "$BUDDY_URL" "$(date '+%Y-%m-%d %H:%M:%S %z')")
+PY
+)
 
-echo "$updated_metadata" > "$METADATA_TMP"
+echo "$updated_metadata" > "$PAYLOAD_TMP"
+ota_metadata_sign "$PAYLOAD_TMP" "$METADATA_TMP"
 echo "========== Upload metadata (autonomous-buddy: v${new_version}) =========="
 gsutil -h "Content-Type:application/json" -h "Cache-Control:no-cache, no-store, must-revalidate" cp "$METADATA_TMP" "gs://${GCS_BUCKET}/${METADATA_PATH}"
-rm -f "$METADATA_TMP"
+rm -f "$METADATA_TMP" "$PAYLOAD_TMP"
 
 echo "Done: gs://${GCS_BUCKET}/${GCS_PATH} (v${new_version})"
 echo "URL:  ${BUDDY_URL}"
