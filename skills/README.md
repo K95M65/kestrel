@@ -32,9 +32,9 @@ Or type what you want in the app, or tap one in the Skill Store. On the robot, s
 
 1. Drop the folder in `skills/<name>/`. If it needs hardware, add `skill.json`: `{"capabilities": ["motion"]}` — any of the 13 [capability names](../devices/contract/capabilities.md), ANY-OF.
 2. `python skills/skill-creator/scripts/quick_validate.py skills/<name>` checks the format; `make skills-catalog` regenerates the catalog from the tree and `go test ./system/skills/` fails if you forget.
-3. Open the PR. After merge we push the skill feed (`make upload-skills` — a maintainer step, not CI yet); every body's skill watcher pulls it within 5 min and tells the agent to re-read.
+3. Open the PR. On merge, [`publish-skills.yml`](../.github/workflows/publish-skills.yml) uploads the feed for you; every body's skill watcher pulls it within 5 min and tells the agent to re-read. `make upload-skills` still works by hand for an out-of-band push.
 
-That maintainer push is the last step between this and "one folder, one PR, every robot" — [#199](https://github.com/autonomous-ai/autonomous-os/issues/199). [`skill-creator`](skill-creator/) also ships an eval loop — with-skill vs baseline runs, a grader, a description optimizer — so you can measure a skill before you publish it.
+One folder, one PR, every robot — no maintainer in the middle. [`skill-creator`](skill-creator/) also ships an eval loop — with-skill vs baseline runs, a grader, a description optimizer — so you can measure a skill before you publish it.
 
 
 ## Catalog

@@ -71,6 +71,11 @@ jobs:
         run: python -m unittest hal.test.test_board hal.test.test_device hal.test.test_safety -v
       - name: conformance suite (CTS — devices vs COMPATIBILITY.md)
         run: python -m unittest discover -s devices/contract/cts -v
+      # Go's TestCatalogMatchesTree only compares the tree against catalog_gen.go.
+      # This is the half it cannot see: the SKILLS_CATALOG + skill_caps() block
+      # generated into setup.sh, which is what a body seeds from on first boot.
+      - name: skill catalog matches the skills/ tree
+        run: python3 scripts/skills/gen_catalog.py --check
       - name: syntax check board + drivers
         run: |
           python -m py_compile \

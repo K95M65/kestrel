@@ -1,0 +1,76 @@
+name: Publish skills
+
+# The last manual step between a merged skill folder and every robot (#199).
+# On merge to main this uploads one deterministic zip per skills/<name>/ and
+# rewrites the `skills` block of ota/metadata.json; every body's skill watcher
+# picks the new version up within 5 min.
+#
+# Deliberately NOT part of ci.yml: that workflow's job names are required
+# checks on main, and a publish job that skips without credentials must never
+# be able to block a merge.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'skills/**'
+      - 'scripts/release/upload-skills.sh'
+      - 'scripts/release/ota-config.sh'
+      - '.github/workflows/publish-skills.yml'
+  workflow_dispatch:
+
+# metadata.json is read-modify-write (download, splice the skills block, upload).
+# Two merges publishing at once would lose one side's versions, so runs are
+# serialized — and never cancelled, because a cancel mid-upload leaves the feed
+# half-written.
+concurrency:
+  group: publish-skills
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish skills — zips + metadata.json
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # A stale catalog means the feed and what os-server/setup.sh believe about
+      # it disagree. Cheaper to fail here than to publish a skill no body loads.
+      - name: skill catalog matches the skills/ tree
+        run: python3 scripts/skills/gen_catalog.py --check
+
+      # The secret is added once by a maintainer with GCS access. Until then this
+      # workflow announces the skip instead of failing every merge to main.
+      - name: credentials present?
+        id: creds
+        env:
+          KEY: ${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "have=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Skills not published::GCS_SERVICE_ACCOUNT_KEY is unset — the skill feed was NOT updated. Run 'make upload-skills' by hand, or add the secret."
+          else
+            echo "have=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: google-github-actions/auth@v2
+        if: steps.creds.outputs.have == 'true'
+        with:
+          credentials_json: ${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+        if: steps.creds.outputs.have == 'true'
+
+      # No .skill-hashes cache on a fresh runner, so every skill is re-zipped and
+      # re-uploaded. That is correct, not wasteful-by-accident: the zips are
+      # byte-deterministic, so an unchanged skill uploads identical content and
+      # keeps its content-hash version.
+      - name: upload skill zips + metadata.json
+        if: steps.creds.outputs.have == 'true'
+        run: bash scripts/release/upload-skills.sh

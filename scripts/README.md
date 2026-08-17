@@ -38,7 +38,7 @@ All scripts source **`ota-config.sh`** (single edit point: `GCS_BUCKET=s3-autono
 | `upload-autonomous-buddy.sh` | macOS companion DMG | `os/ota/autonomous-buddy/<ver>.dmg` |
 | `upload-autonomous-chat.sh` | chat-bridge hook binary (zip) | `os/ota/autonomous-chat/<ver>.zip` |
 | `upload-twitch-irc.sh` | Twitch IRC hook binary (zip) | `os/ota/twitch-irc/<ver>.zip` |
-| `upload-skills.sh` | per-skill deterministic zips (content-hash version, `.skill-hashes` cache skips unchanged) | `os/skills/<name>.zip` |
+| `upload-skills.sh` | per-skill deterministic zips (content-hash version, `.skill-hashes` cache skips unchanged). Also runs from CI on every merge to main that touches `skills/` — [`publish-skills.yml`](../.github/workflows/publish-skills.yml) | `os/skills/<name>.zip` |
 | `upload-hooks.sh` | OpenClaw hooks (`HOOK.md`, `handler.ts`) | `os/hooks/<hook>/` |
 | `upload-openclaw.sh <ver>` | metadata-only: bumps `openclaw.version` (device installs from npm) | `os/ota/metadata.json` only |
 | `upload-setup.sh` / `upload-setup-ap.sh` | the provision scripts themselves | `os/setup.sh`, `os/setup-ap.sh` |
