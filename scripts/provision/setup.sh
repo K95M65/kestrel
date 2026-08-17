@@ -87,7 +87,7 @@ stage_prerequisites() {
   # though dhcpcd writes the lease into /run/resolvconf/interface/wlan0.dhcp,
   # so `ping 8.8.8.8` works but every hostname lookup fails.
   apt install -y \
-    hostapd dnsmasq nginx unzip curl jq wpasupplicant dhcpcd iproute2 iptables \
+    hostapd dnsmasq nginx unzip curl jq openssl wpasupplicant dhcpcd iproute2 iptables \
     iw git xvfb xauth chromium chromium-sandbox openresolv \
     avahi-daemon avahi-utils libnss-mdns || true
   systemctl stop hostapd dnsmasq nginx 2>/dev/null || true
@@ -178,26 +178,57 @@ stage_enable_spi() {
 # OTA metadata URL must be provided by the caller (install.sh sets it). No
 # fallback — fail fast here, before installing anything, if it is missing.
 OTA_METADATA_URL="${OTA_METADATA_URL:?OTA_METADATA_URL is required — run via install.sh or export it before running setup.sh}"
+OTA_SIGNING_PUBLIC_KEY="${OTA_SIGNING_PUBLIC_KEY:?OTA_SIGNING_PUBLIC_KEY (base64 Ed25519 public key) is required}"
+
+# verify_ota_metadata writes the authenticated metadata payload to its second
+# argument. The public key is supplied by the trusted installer/image and is
+# never read from the remotely fetched envelope.
+verify_ota_metadata() {
+  local envelope="$1" payload="$2" public_key="$3"
+  local public_der signature
+  public_der=$(mktemp)
+  signature=$(mktemp)
+  trap 'rm -f "$public_der" "$signature"' RETURN
+  jq -er '(.signed // .) | .format == "autonomous-ota/v1" and .signature.algorithm == "ed25519"' "$envelope" >/dev/null \
+    || { echo "ERROR: unsupported or unsigned OTA metadata" >&2; return 1; }
+  # SubjectPublicKeyInfo DER prefix for a raw 32-byte Ed25519 public key.
+  printf '\060\052\060\005\006\003\053\145\160\003\041\000' >"$public_der"
+  printf '%s' "$public_key" | base64 -d >>"$public_der" \
+    || { echo "ERROR: OTA_SIGNING_PUBLIC_KEY is not base64" >&2; return 1; }
+  jq -r '(.signed // .).payload' "$envelope" | base64 -d >"$payload" \
+    || { echo "ERROR: invalid OTA metadata payload" >&2; return 1; }
+  jq -r '(.signed // .).signature.value' "$envelope" | base64 -d >"$signature" \
+    || { echo "ERROR: invalid OTA metadata signature" >&2; return 1; }
+  openssl pkeyutl -verify -pubin -keyform DER -inkey "$public_der" -rawin -in "$payload" -sigfile "$signature" >/dev/null \
+    || { echo "ERROR: OTA metadata signature verification failed" >&2; return 1; }
+}
 
 stage_ota_metadata() {
   echo "[stage] Fetch OTA metadata"
+  METADATA_ENVELOPE_TMP="/tmp/ota-metadata.$$.envelope"
   METADATA_TMP="/tmp/ota-metadata.$$.json"
-  retry "curl -fsSL -H \"Cache-Control: no-cache\" -H \"Pragma: no-cache\" -o \"$METADATA_TMP\" \"$OTA_METADATA_URL\"" 5
-  export WEB_VERSION WEB_URL OS_SERVER_VERSION OS_SERVER_URL BOOTSTRAP_VERSION BOOTSTRAP_URL
+  retry "curl -fsSL -H \"Cache-Control: no-cache\" -H \"Pragma: no-cache\" -o \"$METADATA_ENVELOPE_TMP\" \"$OTA_METADATA_URL\"" 5
+  verify_ota_metadata "$METADATA_ENVELOPE_TMP" "$METADATA_TMP" "$OTA_SIGNING_PUBLIC_KEY"
+  export WEB_VERSION WEB_URL WEB_SHA256 OS_SERVER_VERSION OS_SERVER_URL OS_SERVER_SHA256 BOOTSTRAP_VERSION BOOTSTRAP_URL BOOTSTRAP_SHA256 HAL_SHA256 DEVICES_SHA256
   WEB_VERSION=$(jq -r '.web.version // empty' "$METADATA_TMP")
   WEB_URL=$(jq -r '.web.url // empty' "$METADATA_TMP")
+  WEB_SHA256=$(jq -r '.web.sha256 // empty' "$METADATA_TMP")
   OS_SERVER_VERSION=$(jq -r '."os-server".version // empty' "$METADATA_TMP")
   OS_SERVER_URL=$(jq -r '."os-server".url // empty' "$METADATA_TMP")
+  OS_SERVER_SHA256=$(jq -r '."os-server".sha256 // empty' "$METADATA_TMP")
   BOOTSTRAP_VERSION=$(jq -r '.bootstrap.version // empty' "$METADATA_TMP")
   BOOTSTRAP_URL=$(jq -r '.bootstrap.url // empty' "$METADATA_TMP")
+  BOOTSTRAP_SHA256=$(jq -r '.bootstrap.sha256 // empty' "$METADATA_TMP")
   HAL_VERSION=$(jq -r '.hal.version // empty' "$METADATA_TMP")
   HAL_URL=$(jq -r '.hal.url // empty' "$METADATA_TMP")
+  HAL_SHA256=$(jq -r '.hal.sha256 // empty' "$METADATA_TMP")
   BUDDY_VERSION=$(jq -r '."claude-desktop-buddy".version // empty' "$METADATA_TMP")
   BUDDY_URL=$(jq -r '."claude-desktop-buddy".url // empty' "$METADATA_TMP")
   DEVICES_URL=$(jq -r --arg t "$DEVICE_TYPE" '.devices[$t].url // empty' "$METADATA_TMP")
-  rm -f "$METADATA_TMP"
-  if [ -z "$WEB_URL" ] || [ -z "$OS_SERVER_URL" ] || [ -z "$BOOTSTRAP_URL" ]; then
-    echo "ERROR: OTA metadata missing web.url, os-server.url or bootstrap.url. Check $OTA_METADATA_URL"
+  DEVICES_SHA256=$(jq -r --arg t "$DEVICE_TYPE" '.devices[$t].sha256 // empty' "$METADATA_TMP")
+  rm -f "$METADATA_ENVELOPE_TMP" "$METADATA_TMP"
+  if [ -z "$WEB_URL" ] || [ -z "$OS_SERVER_URL" ] || [ -z "$BOOTSTRAP_URL" ] || ! [[ "$WEB_SHA256$OS_SERVER_SHA256$BOOTSTRAP_SHA256" =~ ^[a-fA-F0-9]{192}$ ]]; then
+    echo "ERROR: OTA metadata missing required URL or SHA-256. Check $OTA_METADATA_URL"
     exit 1
   fi
   echo "[stage] OTA versions: web=$WEB_VERSION os-server=$OS_SERVER_VERSION bootstrap=$BOOTSTRAP_VERSION hal=$HAL_VERSION buddy=$BUDDY_VERSION"
@@ -210,8 +241,8 @@ stage_ota_metadata() {
   local bs_json="/root/config/bootstrap.json"
   if [ -f "$bs_json" ]; then
     local bs_tmp; bs_tmp=$(mktemp)
-    if jq --arg url "$OTA_METADATA_URL" \
-        'if (.metadata_url // "") == "" then .metadata_url = $url else . end' \
+    if jq --arg url "$OTA_METADATA_URL" --arg key "$OTA_SIGNING_PUBLIC_KEY" \
+        'if (.metadata_url // "") == "" then .metadata_url = $url else . end | if (.signing_public_key // "") == "" then .signing_public_key = $key else . end' \
         "$bs_json" >"$bs_tmp" 2>/dev/null; then
       mv "$bs_tmp" "$bs_json"
     else
@@ -219,8 +250,8 @@ stage_ota_metadata() {
       echo "[stage] WARN: could not seed metadata_url (invalid $bs_json), leaving as-is"
     fi
   else
-    jq -n --arg url "$OTA_METADATA_URL" \
-      '{httpPort: 8080, metadata_url: $url, poll_interval: "5m", state_file: "/root/bootstrap/state.json"}' \
+    jq -n --arg url "$OTA_METADATA_URL" --arg key "$OTA_SIGNING_PUBLIC_KEY" \
+      '{httpPort: 8080, metadata_url: $url, signing_public_key: $key, poll_interval: "5m", state_file: "/root/bootstrap/state.json"}' \
       >"$bs_json"
   fi
   echo "[stage] Seeded metadata_url=$OTA_METADATA_URL into $bs_json"
@@ -231,10 +262,12 @@ install_binary_from_zip() {
   local url="$1"
   local dest_binary="$2"
   local name="$3"
+  local digest="$4"
   local zip_tmp="/tmp/${name}-zip.$$"
   local dir_tmp="/tmp/${name}-dir.$$"
   mkdir -p "$dir_tmp"
   retry "curl -fsSL -H \"Cache-Control: no-cache\" -H \"Pragma: no-cache\" -o \"$zip_tmp\" \"$url\"" 5
+  echo "$digest  $zip_tmp" | sha256sum -c - >/dev/null || { echo "ERROR: SHA-256 mismatch for $name"; rm -f "$zip_tmp"; return 1; }
   unzip -o -q "$zip_tmp" -d "$dir_tmp"
   rm -f "$zip_tmp"
   # Zip may contain os-server, bootstrap-server or bare binary (at root or in subdir)
@@ -268,8 +301,8 @@ stage_backend() {
     fi
   fi
 
-  install_binary_from_zip "$BOOTSTRAP_URL" /usr/local/bin/bootstrap-server "bootstrap"
-  install_binary_from_zip "$OS_SERVER_URL" /usr/local/bin/os-server "os-server"
+  install_binary_from_zip "$BOOTSTRAP_URL" /usr/local/bin/bootstrap-server "bootstrap" "$BOOTSTRAP_SHA256"
+  install_binary_from_zip "$OS_SERVER_URL" /usr/local/bin/os-server "os-server" "$OS_SERVER_SHA256"
 
   cat >/etc/systemd/system/bootstrap.service <<EOF
 [Unit]
@@ -330,6 +363,7 @@ stage_hal() {
   if [ -n "$HAL_URL" ]; then
     echo "[stage] Downloading HAL from OTA..."
     retry "curl -fsSL -H \"Cache-Control: no-cache\" -H \"Pragma: no-cache\" -o /tmp/hal.zip \"$HAL_URL\"" 5
+    echo "$HAL_SHA256  /tmp/hal.zip" | sha256sum -c - >/dev/null || { echo "[stage] ERROR: HAL SHA-256 mismatch"; return 1; }
     unzip -o -q /tmp/hal.zip -d "$HAL_DIR"
     rm -f /tmp/hal.zip
   else
@@ -1362,18 +1396,45 @@ if [ -z "$OTA_METADATA_URL" ]; then
 fi
 echo "[software-update] OTA metadata: $OTA_METADATA_URL"
 [ "$(id -u)" -ne 0 ] && { echo "Run as root."; exit 1; }
-[ $# -ne 1 ] && { echo "Usage: software-update <os-server|openclaw|bootstrap|web|hal|claude-desktop-buddy|device>"; exit 1; }
+[ $# -lt 1 ] && { echo "Usage: software-update <component>|rollback <os-server|bootstrap>"; exit 1; }
 APP="$1"
+if [ "$APP" = "rollback" ]; then
+  [ $# -eq 2 ] || { echo "Usage: software-update rollback <os-server|bootstrap>"; exit 1; }
+  ROLLBACK_TARGET="$2"
+  case "$ROLLBACK_TARGET" in
+    os-server) DEST=/usr/local/bin/os-server; UNIT=os-server ;;
+    bootstrap) DEST=/usr/local/bin/bootstrap-server; UNIT=bootstrap ;;
+    *) echo "Rollback is currently supported for os-server and bootstrap only"; exit 1 ;;
+  esac
+  BACKUP="/root/bootstrap/rollback/${ROLLBACK_TARGET}.previous"
+  [ -x "$BACKUP" ] || { echo "No rollback backup for $ROLLBACK_TARGET"; exit 1; }
+  install -D -m 0755 "$BACKUP" "$DEST"
+  systemctl restart "$UNIT"
+  echo "$ROLLBACK_TARGET restored from $BACKUP"
+  exit 0
+fi
 case "$APP" in
   os-server|openclaw|bootstrap|web|hal|claude-desktop-buddy|device) ;;
   *) echo "Unknown app: $APP. Use os-server, openclaw, bootstrap, web, hal, claude-desktop-buddy, or device."; exit 1 ;;
 esac
 
 METADATA_TMP=$(mktemp)
+METADATA_PAYLOAD=$(mktemp)
 ZIP_TMP=""
 DIR_TMP=""
-trap 'rm -f "$METADATA_TMP" "$ZIP_TMP"; rm -rf "$DIR_TMP"' EXIT
+trap 'rm -f "$METADATA_TMP" "$METADATA_PAYLOAD" "$ZIP_TMP"; rm -rf "$DIR_TMP"' EXIT
 curl -fsSL -H "Cache-Control: no-cache" -H "Pragma: no-cache" -o "$METADATA_TMP" "$OTA_METADATA_URL" || { echo "Failed to fetch metadata from $OTA_METADATA_URL"; exit 1; }
+OTA_SIGNING_PUBLIC_KEY="$(jq -r '.signing_public_key // empty' "$BOOTSTRAP_JSON" 2>/dev/null || true)"
+[ -n "$OTA_SIGNING_PUBLIC_KEY" ] || { echo "[software-update] ERROR: no signing_public_key in $BOOTSTRAP_JSON"; exit 1; }
+PUBLIC_DER=$(mktemp)
+SIGNATURE_TMP=$(mktemp)
+trap 'rm -f "$METADATA_TMP" "$METADATA_PAYLOAD" "$ZIP_TMP" "$PUBLIC_DER" "$SIGNATURE_TMP"; rm -rf "$DIR_TMP"' EXIT
+jq -er '(.signed // .) | .format == "autonomous-ota/v1" and .signature.algorithm == "ed25519"' "$METADATA_TMP" >/dev/null || { echo "Unsigned or unsupported OTA metadata"; exit 1; }
+printf '\060\052\060\005\006\003\053\145\160\003\041\000' > "$PUBLIC_DER"
+printf '%s' "$OTA_SIGNING_PUBLIC_KEY" | base64 -d >> "$PUBLIC_DER" || { echo "Invalid OTA signing public key"; exit 1; }
+jq -r '(.signed // .).payload' "$METADATA_TMP" | base64 -d > "$METADATA_PAYLOAD" || { echo "Invalid OTA metadata payload"; exit 1; }
+jq -r '(.signed // .).signature.value' "$METADATA_TMP" | base64 -d > "$SIGNATURE_TMP" || { echo "Invalid OTA metadata signature"; exit 1; }
+openssl pkeyutl -verify -pubin -keyform DER -inkey "$PUBLIC_DER" -rawin -in "$METADATA_PAYLOAD" -sigfile "$SIGNATURE_TMP" >/dev/null || { echo "OTA metadata signature verification failed"; exit 1; }
 if [ "$APP" = "device" ]; then
   # Device profile lives nested under devices.<type>; resolve THIS device's type.
   DEVICE_TYPE="$(grep -E '^DEVICE_TYPE=' /opt/hal/.env 2>/dev/null | cut -d= -f2)"
@@ -1381,24 +1442,34 @@ if [ "$APP" = "device" ]; then
   # No lamp fallback: pulling the lamp profile onto a device whose class can't be
   # resolved would overwrite its persona with the wrong one — refuse instead.
   [ -z "$DEVICE_TYPE" ] && { echo "ERROR: device_type not found in /opt/hal/.env or /root/config/config.json — cannot resolve device profile"; exit 1; }
-  VERSION=$(jq -r --arg t "$DEVICE_TYPE" '.devices[$t].version // empty' "$METADATA_TMP")
-  URL=$(jq -r --arg t "$DEVICE_TYPE" '.devices[$t].url // empty' "$METADATA_TMP")
+  VERSION=$(jq -r --arg t "$DEVICE_TYPE" '.devices[$t].version // empty' "$METADATA_PAYLOAD")
+  URL=$(jq -r --arg t "$DEVICE_TYPE" '.devices[$t].url // empty' "$METADATA_PAYLOAD")
+  SHA256=$(jq -r --arg t "$DEVICE_TYPE" '.devices[$t].sha256 // empty' "$METADATA_PAYLOAD")
 else
   META_KEY="$APP"
-  VERSION=$(jq -r --arg a "$META_KEY" '.[$a].version // empty' "$METADATA_TMP")
-  URL=$(jq -r --arg a "$META_KEY" '.[$a].url // empty' "$METADATA_TMP")
+  VERSION=$(jq -r --arg a "$META_KEY" '.[$a].version // empty' "$METADATA_PAYLOAD")
+  URL=$(jq -r --arg a "$META_KEY" '.[$a].url // empty' "$METADATA_PAYLOAD")
+  SHA256=$(jq -r --arg a "$META_KEY" '.[$a].sha256 // empty' "$METADATA_PAYLOAD")
 fi
 [ -z "$VERSION" ] && { echo "Metadata has no version for $APP"; exit 1; }
+[ -z "$URL" ] || [[ "$SHA256" =~ ^[a-fA-F0-9]{64}$ ]] || { echo "Metadata has no valid SHA-256 for $APP"; exit 1; }
+
+download_verified() {
+  local url="$1" destination="$2" digest="$3"
+  curl -fsSL -H "Cache-Control: no-cache" -o "$destination" "$url" || return 1
+  echo "$digest  $destination" | sha256sum -c - >/dev/null
+}
 
 if [ "$APP" = "os-server" ]; then
   [ -z "$URL" ] && { echo "Metadata has no url for os-server"; exit 1; }
   ZIP_TMP=$(mktemp)
   DIR_TMP=$(mktemp -d)
-  curl -fsSL -H "Cache-Control: no-cache" -o "$ZIP_TMP" "$URL" || { echo "Failed to download os-server"; exit 1; }
+  download_verified "$URL" "$ZIP_TMP" "$SHA256" || { echo "Failed checksum verification for os-server"; exit 1; }
   unzip -o -q "$ZIP_TMP" -d "$DIR_TMP"
   BIN=$(find "$DIR_TMP" -type f -executable 2>/dev/null | head -1)
   [ -z "$BIN" ] && BIN=$(find "$DIR_TMP" -type f 2>/dev/null | head -1)
   [ -z "$BIN" ] || [ ! -f "$BIN" ] && { echo "No binary in os-server zip"; exit 1; }
+  install -D -m 0755 /usr/local/bin/os-server /root/bootstrap/rollback/os-server.previous
   cp -f "$BIN" /usr/local/bin/os-server
   chmod +x /usr/local/bin/os-server
   systemctl restart os-server
@@ -1407,11 +1478,12 @@ elif [ "$APP" = "bootstrap" ]; then
   [ -z "$URL" ] && { echo "Metadata has no url for bootstrap"; exit 1; }
   ZIP_TMP=$(mktemp)
   DIR_TMP=$(mktemp -d)
-  curl -fsSL -H "Cache-Control: no-cache" -o "$ZIP_TMP" "$URL" || { echo "Failed to download bootstrap"; exit 1; }
+  download_verified "$URL" "$ZIP_TMP" "$SHA256" || { echo "Failed checksum verification for bootstrap"; exit 1; }
   unzip -o -q "$ZIP_TMP" -d "$DIR_TMP"
   BIN=$(find "$DIR_TMP" -type f -executable 2>/dev/null | head -1)
   [ -z "$BIN" ] && BIN=$(find "$DIR_TMP" -type f 2>/dev/null | head -1)
   [ -z "$BIN" ] || [ ! -f "$BIN" ] && { echo "No binary in bootstrap zip"; exit 1; }
+  install -D -m 0755 /usr/local/bin/bootstrap-server /root/bootstrap/rollback/bootstrap.previous
   cp -f "$BIN" /usr/local/bin/bootstrap-server
   chmod +x /usr/local/bin/bootstrap-server
   systemctl restart bootstrap
@@ -1427,7 +1499,7 @@ elif [ "$APP" = "web" ]; then
   [ -z "$URL" ] && { echo "Metadata has no url for web"; exit 1; }
   ZIP_TMP=$(mktemp)
   DIR_TMP=$(mktemp -d)
-  curl -fsSL -H "Cache-Control: no-cache" -o "$ZIP_TMP" "$URL" || { echo "Failed to download web"; exit 1; }
+  download_verified "$URL" "$ZIP_TMP" "$SHA256" || { echo "Failed checksum verification for web"; exit 1; }
   unzip -o -q "$ZIP_TMP" -d "$DIR_TMP"
   echo "$VERSION" > "$DIR_TMP/VERSION"
   WEB_ROOT="/usr/share/nginx/html/setup"
@@ -1438,7 +1510,7 @@ elif [ "$APP" = "web" ]; then
 elif [ "$APP" = "hal" ]; then
   [ -z "$URL" ] && { echo "Metadata has no url for hal"; exit 1; }
   ZIP_TMP=$(mktemp)
-  curl -fsSL -H "Cache-Control: no-cache" -o "$ZIP_TMP" "$URL" || { echo "Failed to download hal"; exit 1; }
+  download_verified "$URL" "$ZIP_TMP" "$SHA256" || { echo "Failed checksum verification for hal"; exit 1; }
   HAL_DIR="/opt/hal"
   unzip -o -q "$ZIP_TMP" -d "$HAL_DIR"
   UV_BIN=$(command -v uv || echo "/root/.local/bin/uv")
@@ -1451,7 +1523,7 @@ elif [ "$APP" = "claude-desktop-buddy" ]; then
   [ -z "$URL" ] && { echo "Metadata has no url for claude-desktop-buddy"; exit 1; }
   ZIP_TMP=$(mktemp)
   DIR_TMP=$(mktemp -d)
-  curl -fsSL -H "Cache-Control: no-cache" -o "$ZIP_TMP" "$URL" || { echo "Failed to download claude-desktop-buddy"; exit 1; }
+  download_verified "$URL" "$ZIP_TMP" "$SHA256" || { echo "Failed checksum verification for claude-desktop-buddy"; exit 1; }
   BUDDY_DIR="/opt/claude-desktop-buddy"
   mkdir -p "$BUDDY_DIR"
   unzip -o -q "$ZIP_TMP" -d "$DIR_TMP"
@@ -1466,7 +1538,7 @@ elif [ "$APP" = "device" ]; then
   [ -z "$DEVICES_DIR" ] && DEVICES_DIR="/opt/devices"
   DEST="$DEVICES_DIR/$DEVICE_TYPE"
   ZIP_TMP=$(mktemp)
-  curl -fsSL -H "Cache-Control: no-cache" -o "$ZIP_TMP" "$URL" || { echo "Failed to download device profile"; exit 1; }
+  download_verified "$URL" "$ZIP_TMP" "$SHA256" || { echo "Failed checksum verification for device profile"; exit 1; }
   mkdir -p "$DEST"
   unzip -o -q "$ZIP_TMP" -d "$DEST"
   systemctl restart os-server 2>/dev/null || true
@@ -1503,6 +1575,8 @@ stage_devices() {
   fi
   retry "curl -fsSL -H \"Cache-Control: no-cache\" -H \"Pragma: no-cache\" -o /tmp/device.zip \"$DEVICES_URL\"" 5 \
     || { echo "[stage] ERROR: failed to download device profile for $DEVICE_TYPE from $DEVICES_URL" >&2; return 1; }
+  echo "$DEVICES_SHA256  /tmp/device.zip" | sha256sum -c - >/dev/null \
+    || { echo "[stage] ERROR: device profile SHA-256 mismatch" >&2; return 1; }
   unzip -o -q /tmp/device.zip -d "$dest" \
     || { echo "[stage] ERROR: failed to extract device profile for $DEVICE_TYPE" >&2; return 1; }
   rm -f /tmp/device.zip

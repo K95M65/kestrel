@@ -2,6 +2,10 @@ package bootstrap
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,6 +13,62 @@ import (
 	"go.autonomous.ai/os/system/bootstrap/state"
 	"go.autonomous.ai/os/system/domain"
 )
+
+func TestDecodeOTAMetadataRequiresValidSignatureAndChecksum(t *testing.T) {
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := []byte(`{"os-server":{"version":"1.2.3","url":"https://example.test/os.zip","sha256":"039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81"}}`)
+	var envelope signedOTAMetadata
+	envelope.Format = otaMetadataFormat
+	envelope.Payload = base64.StdEncoding.EncodeToString(payload)
+	envelope.Signature.Algorithm = "ed25519"
+	envelope.Signature.Value = base64.StdEncoding.EncodeToString(ed25519.Sign(privateKey, payload))
+	encoded, err := json.Marshal(envelope)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	metadata, err := decodeOTAMetadata(encoded, base64.StdEncoding.EncodeToString(publicKey))
+	if err != nil {
+		t.Fatalf("decode signed metadata: %v", err)
+	}
+	if metadata[domain.OTAKeyOSServer].Version != "1.2.3" {
+		t.Fatalf("decoded wrong metadata: %+v", metadata)
+	}
+	var legacyCompatible map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &legacyCompatible); err != nil {
+		t.Fatal(err)
+	}
+	legacyCompatible["signed"] = encoded
+	hybrid, err := json.Marshal(legacyCompatible)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := decodeOTAMetadata(hybrid, base64.StdEncoding.EncodeToString(publicKey)); err != nil {
+		t.Fatalf("hybrid metadata rejected: %v", err)
+	}
+
+	envelope.Payload = base64.StdEncoding.EncodeToString([]byte(`{"os-server":{"version":"9.9.9"}}`))
+	tampered, err := json.Marshal(envelope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := decodeOTAMetadata(tampered, base64.StdEncoding.EncodeToString(publicKey)); err == nil {
+		t.Fatal("tampered metadata was accepted")
+	}
+}
+
+func TestVerifyArtifactSHA256(t *testing.T) {
+	data := []byte("abc")
+	if err := verifyArtifactSHA256(data, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"); err != nil {
+		t.Fatalf("valid checksum rejected: %v", err)
+	}
+	if err := verifyArtifactSHA256(data, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"); err == nil {
+		t.Fatal("wrong checksum was accepted")
+	}
+}
 
 func TestCompareVersions(t *testing.T) {
 	cases := []struct {

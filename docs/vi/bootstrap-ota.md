@@ -54,12 +54,19 @@ File JSON duy nhất trên GCS. Tất cả thành phần tham chiếu file này.
 
 **URL**: `https://storage.googleapis.com/{BUCKET}/{PREFIX}/ota/metadata.json`
 
+Tài liệu publish vẫn giữ component legacy ở top level và thêm envelope Ed25519
+`signed` theo `autonomous-ota/v1`. `signed.payload` là JSON base64;
+`signed.signature.value` ký đúng bytes payload sau khi decode. Public key 32
+byte dạng base64 được provision cục bộ trong `bootstrap.json`, không bao giờ
+lấy từ feed. Payload đã decode có dạng:
+
 ```json
 {
   "os-server": {
     "version": "1.2.3",
     "min_version": "1.2.0",
-    "url": "https://storage.googleapis.com/{BUCKET}/{PREFIX}/ota/os-server/1.2.3/os-server-1.2.3.zip"
+    "url": "https://storage.googleapis.com/{BUCKET}/{PREFIX}/ota/os-server/1.2.3/os-server-1.2.3.zip",
+    "sha256": "<64 ký tự hex thường>"
   },
   "bootstrap": {
     "version": "1.0.5",
@@ -96,6 +103,7 @@ type OTAComponent struct {
     Version    string `json:"version"`
     MinVersion string `json:"min_version,omitempty"`
     URL        string `json:"url,omitempty"`
+    SHA256     string `json:"sha256,omitempty"`
 }
 ```
 
@@ -237,6 +245,7 @@ nhưng nằm cùng thư mục `/root/config/`.
 {
   "httpPort": 8080,
   "metadata_url": "https://storage.googleapis.com/{BUCKET}/{PREFIX}/ota/metadata.json",
+  "signing_public_key": "<Ed25519 public key 32-byte base64>",
   "poll_interval": "5m",
   "state_file": "/root/bootstrap/state.json"
 }
@@ -247,6 +256,19 @@ nhưng nằm cùng thư mục `/root/config/`.
 được load dạng overlay lên các default vận hành (`httpPort` 8080, `poll_interval`
 5m, `state_file`), nên file một phần (chỉ có `metadata_url`) vẫn chạy được, và
 file thiếu thì dùng default với URL rỗng.
+
+`setup.sh` và image builder provision `OTA_SIGNING_PUBLIC_KEY`, rồi lưu thành
+`signing_public_key`. Bootstrap xác thực envelope trước khi đọc component;
+updater được provision xác thực lần nữa và hash mọi ZIP trước khi giải nén.
+Release writer cần `OTA_SIGNING_PRIVATE_KEY` và `OTA_SIGNING_KEY_ID` để ký lại envelope.
+Với hai binary tự chứa, mỗi lần update giữ
+`/root/bootstrap/rollback/<component>.previous`; chạy
+`software-update rollback os-server` hoặc `software-update rollback bootstrap`
+để khôi phục.
+
+Device không có `signing_public_key` chủ ý ở legacy mode: nó đọc component top
+level và chỉ log cảnh báo, không làm OTA lỗi. Đây là compatibility bridge, không
+phải bảo đảm trust; pin public key để bật verified OTA.
 
 **Đợi-rồi-retry khi chưa provisioning**: nếu `metadata_url` rỗng (device chưa
 setup), `Serve()` không khởi động poll loop lẫn healthcheck server. Nó log

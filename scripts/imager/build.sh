@@ -133,6 +133,7 @@ OUT_IMG_SIZE="8G"           # Output image size (expands to full SD on first boo
 # hardcoded default: fail fast if the caller did not provide one. Baked into the
 # image's /root/config/bootstrap.json below.
 OTA_METADATA_URL="${OTA_METADATA_URL:?OTA_METADATA_URL is required — build via 'make build OTA_METADATA_URL=...'}"
+OTA_SIGNING_PUBLIC_KEY="${OTA_SIGNING_PUBLIC_KEY:?OTA_SIGNING_PUBLIC_KEY (base64 Ed25519 public key) is required}"
 # Device profile baked into this golden image: 1 device type = 1 image. The
 # matching devices.<type> artifact (ROBOT.md + SOUL.md) is fetched from OTA
 # metadata and staged into DEVICES_DIR/<type>. Forwarded by the Makefile (-e).
@@ -627,7 +628,7 @@ DEBIAN_FRONTEND=noninteractive TERM=xterm chroot ${MNT} apt-get install -y \
   btrfs-progs \
   parted util-linux \
   hostapd dnsmasq nginx \
-  curl jq unzip ca-certificates \
+  curl jq unzip openssl ca-certificates \
   wpasupplicant dhcpcd5 \
   iproute2 iptables iw rfkill \
   cloud-guest-utils \
@@ -929,6 +930,7 @@ cat > /root/config/bootstrap.json <<BSJSON
 {
   "httpPort": 8080,
   "metadata_url": "${OTA_METADATA_URL}",
+  "signing_public_key": "${OTA_SIGNING_PUBLIC_KEY}",
   "poll_interval": "5m",
   "state_file": "/root/bootstrap/state.json"
 }

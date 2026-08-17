@@ -2,6 +2,7 @@
 set -e
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ota-config.sh"
+source "${RELEASE_DIR}/ota-metadata.sh"
 
 OS_BIN="${ROOT_DIR}/system/os-server"
 VERSION_FILE="${ROOT_DIR}/system/${VERSION_FILE:-VERSION_OS_SERVER}"
@@ -40,41 +41,36 @@ rm -f "$ZIP_PATH"
 
 echo "========== Upload ${ZIP_NAME} to Google Cloud Storage (no-cache) =========="
 gsutil -h "Cache-Control:no-cache, no-store, must-revalidate" cp "$ZIP_PATH" "gs://${GCS_BUCKET}/${GCS_PATH}"
+ZIP_SHA256=$(ota_artifact_sha256 "$ZIP_PATH")
 
 # Update metadata.json (${BUCKET_PREFIX}/ota/metadata.json) - backend key
 METADATA_PATH="${BUCKET_PREFIX}/ota/metadata.json"
 METADATA_TMP=$(mktemp)
+PAYLOAD_TMP=$(mktemp)
 BACKEND_URL="${BACKEND_URL:-https://storage.googleapis.com/${GCS_BUCKET}/${GCS_PATH}}"
 
 echo "========== Fetch metadata from gs://${GCS_BUCKET}/${METADATA_PATH} =========="
 if gsutil cp "gs://${GCS_BUCKET}/${METADATA_PATH}" "$METADATA_TMP" 2>/dev/null; then
-  content=$(cat "$METADATA_TMP")
+  ota_metadata_unpack "$METADATA_TMP" "$PAYLOAD_TMP"
 else
-  content=""
+  printf '{}' >"$PAYLOAD_TMP"
 fi
 
-if [[ -z "$(echo "$content" | tr -d '[:space:]')" ]]; then
-  content="{}"
-fi
-
-updated_metadata=$(echo "$content" | python3 -c "
+python3 - "$PAYLOAD_TMP" "$new_version" "$BACKEND_URL" "$ZIP_SHA256" "$(date '+%Y-%m-%d %H:%M:%S %z')" <<'PY'
 import json, sys
-raw = sys.stdin.read()
-try:
-    data = json.loads(raw) if raw.strip() else {}
-except json.JSONDecodeError:
-    data = {}
+path, version, url, digest, updated_at = sys.argv[1:]
+data = json.load(open(path))
 entry = data.get('os-server') if isinstance(data.get('os-server'), dict) else {}
-entry.update({'version': sys.argv[1], 'url': sys.argv[2], 'updated_at': sys.argv[3]})
+entry.update({'version': version, 'url': url, 'sha256': digest, 'updated_at': updated_at})
 # preserve existing min_version (staged-rollout floor); bump it via promote-ota.sh
 data['os-server'] = entry
-print(json.dumps(data, indent=2))
-" "$new_version" "$BACKEND_URL" "$(date '+%Y-%m-%d %H:%M:%S %z')")
+json.dump(data, open(path, 'w'), separators=(',', ':'))
+PY
 
-echo "$updated_metadata" > "$METADATA_TMP"
+ota_metadata_sign "$PAYLOAD_TMP" "$METADATA_TMP"
 echo "========== Upload metadata (backend: v${new_version}) =========="
 gsutil -h "Content-Type:application/json" -h "Cache-Control:no-cache, no-store, must-revalidate" cp "$METADATA_TMP" "gs://${GCS_BUCKET}/${METADATA_PATH}"
-rm -f "$METADATA_TMP"
+rm -f "$METADATA_TMP" "$PAYLOAD_TMP"
 
 rm -f "$ZIP_PATH" "$OS_BIN"
 echo "Done: gs://${GCS_BUCKET}/${GCS_PATH} (v${new_version})"

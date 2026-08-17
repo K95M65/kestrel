@@ -18,10 +18,10 @@ Autonomous OS phones home to three things and nothing else.
   Pointing OpenClaw at your own endpoint (Ollama, any OpenAI-compatible server on
   your LAN) is not built yet — it is [#198](https://github.com/autonomous-ai/autonomous-os/issues/198).
 - **Release feed** — the robot auto-updates from our CDN every 5 min
-  (`bootstrap/`, staged by `min_version`, so we can hold a floor). Today: zips
-  over HTTPS, no signature or checksum, no rollback. Running a fleet? Point
-  `OTA_METADATA_URL` at your own feed and you control what ships; signed
-  releases are on the list. There is no fleet view yet — one robot per **Add
+  (`bootstrap/`, staged by `min_version`, so we can hold a floor). Metadata is
+  Ed25519-signed and ZIPs are SHA-256 checked before extraction. Running a
+  fleet? Point `OTA_METADATA_URL` and `OTA_SIGNING_PUBLIC_KEY` at your own
+  feed/key; os-server and bootstrap retain one local rollback copy. There is no fleet view yet — one robot per **Add
   robot**, and every robot pulls the same skill feed and OTA floor.
 
 ## Bring your own LLM endpoint
@@ -65,5 +65,5 @@ the internet — [`SECURITY.md`](../SECURITY.md) has the audit.
 
 ## Running more than one robot
 
-Until signed OTA, a real `POST /servo/stop` and unprivileged runtimes merge,
-keep the fleet on your own `OTA_METADATA_URL` and off the public internet.
+Until a real `POST /servo/stop` and unprivileged runtimes merge, keep the fleet
+on its own `OTA_METADATA_URL` and pinned signing key.

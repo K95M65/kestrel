@@ -54,12 +54,19 @@ Single JSON file hosted on GCS. All components reference this file.
 
 **URL**: `https://storage.googleapis.com/{BUCKET}/{PREFIX}/ota/metadata.json`
 
+The published document retains legacy component entries at the top level and
+adds a `signed` `autonomous-ota/v1` Ed25519 envelope. `signed.payload` is
+base64-encoded JSON and `signed.signature.value` signs the decoded payload
+bytes; the 32-byte base64 public key is provisioned locally in `bootstrap.json`,
+never taken from the feed. Its decoded payload has this shape:
+
 ```json
 {
   "os-server": {
     "version": "1.2.3",
     "min_version": "1.2.0",
-    "url": "https://storage.googleapis.com/{BUCKET}/{PREFIX}/ota/os-server/1.2.3/os-server-1.2.3.zip"
+    "url": "https://storage.googleapis.com/{BUCKET}/{PREFIX}/ota/os-server/1.2.3/os-server-1.2.3.zip",
+    "sha256": "<64 lowercase hex characters>"
   },
   "bootstrap": {
     "version": "1.0.5",
@@ -96,6 +103,7 @@ type OTAComponent struct {
     Version    string `json:"version"`
     MinVersion string `json:"min_version,omitempty"`
     URL        string `json:"url,omitempty"`
+    SHA256     string `json:"sha256,omitempty"`
 }
 ```
 
@@ -240,6 +248,7 @@ The bootstrap worker keeps its own config file, separate from os-server's
 {
   "httpPort": 8080,
   "metadata_url": "https://storage.googleapis.com/{BUCKET}/{PREFIX}/ota/metadata.json",
+  "signing_public_key": "<base64 32-byte Ed25519 public key>",
   "poll_interval": "5m",
   "state_file": "/root/bootstrap/state.json"
 }
@@ -250,6 +259,20 @@ seeded into this file by `setup.sh` (`stage_ota_metadata`) at provisioning. The
 file is loaded as an overlay on operational defaults (`httpPort` 8080,
 `poll_interval` 5m, `state_file`), so a partial file (just `metadata_url`) works
 and a missing file yields defaults with an empty URL.
+
+`setup.sh` and golden-image builders provision `OTA_SIGNING_PUBLIC_KEY` as
+`signing_public_key`. Bootstrap verifies the envelope before reading any
+component; the provisioned updater verifies it again and hashes every ZIP
+before extraction. Release writers require `OTA_SIGNING_PRIVATE_KEY` and
+`OTA_SIGNING_KEY_ID` to re-sign the envelope. For the two self-contained
+binaries, each update retains `/root/bootstrap/rollback/<component>.previous`;
+run `software-update rollback os-server` or `software-update rollback bootstrap`
+to restore it.
+
+Devices without `signing_public_key` deliberately remain in legacy mode: they
+read the top-level entries and emit a warning rather than failing OTA. This is a
+compatibility bridge, not a trust guarantee; pin the public key to opt in to
+verified OTA.
 
 **Wait-then-retry when unprovisioned**: if `metadata_url` is empty (device not
 set up yet), `Serve()` does not start the poll loop or healthcheck server. It logs

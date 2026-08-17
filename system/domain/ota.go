@@ -13,6 +13,7 @@ type OTAComponent struct {
 	Version    string `json:"version"`
 	MinVersion string `json:"min_version,omitempty"`
 	URL        string `json:"url"`
+	SHA256     string `json:"sha256,omitempty"`
 }
 
 const (

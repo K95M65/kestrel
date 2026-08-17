@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -390,23 +391,20 @@ func resolveDeviceType() string {
 // the flat OTAMetadata decode in fetchMetadata can't see it — fetch + decode the
 // devices map directly.
 func (b *Bootstrap) fetchDeviceComponent(ctx context.Context, deviceType string) (domain.OTAComponent, bool, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, b.cfg.MetadataURL, nil)
+	payload, verified, err := b.fetchMetadataPayload(ctx)
 	if err != nil {
-		return domain.OTAComponent{}, false, fmt.Errorf("build metadata request: %w", err)
-	}
-	resp, err := b.client.Do(req)
-	if err != nil {
-		return domain.OTAComponent{}, false, fmt.Errorf("fetch metadata %s: %w", b.cfg.MetadataURL, err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return domain.OTAComponent{}, false, fmt.Errorf("fetch metadata %s: status %s", b.cfg.MetadataURL, resp.Status)
+		return domain.OTAComponent{}, false, err
 	}
 	var wrap struct {
 		Devices map[string]domain.OTAComponent `json:"devices"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&wrap); err != nil {
-		return domain.OTAComponent{}, false, fmt.Errorf("decode metadata: %w", err)
+	if err := json.Unmarshal(payload, &wrap); err != nil {
+		return domain.OTAComponent{}, false, fmt.Errorf("decode verified metadata: %w", err)
+	}
+	if verified {
+		if err := validateOTAMetadata(domain.OTAMetadata(wrap.Devices)); err != nil {
+			return domain.OTAComponent{}, false, err
+		}
 	}
 	comp, ok := wrap.Devices[deviceType]
 	return comp, ok, nil
@@ -509,6 +507,14 @@ func (b *Bootstrap) reconcile(ctx context.Context, key string, target domain.OTA
 	b.progressLED("ota_success")
 	time.Sleep(time.Second)
 	b.restoreLED()
+	// The bootstrap updater replaces this process asynchronously. Do not record
+	// the target as deployed until a later poll observes the restarted binary's
+	// injected version; otherwise a failed self-update would be persisted as a
+	// success and suppress the retry/rollback operator path.
+	if key == domain.OTAKeyBootstrap {
+		slog.Info("bootstrap update staged; waiting for restarted version confirmation", "component", "bootstrap", "version", targetVersion)
+		return false, nil
+	}
 	slog.Info("updated", "component", "bootstrap", "key", key, "version", targetVersion)
 	b.state.Components[key] = targetVersion
 	return true, nil
@@ -516,21 +522,50 @@ func (b *Bootstrap) reconcile(ctx context.Context, key string, target domain.OTA
 
 // fetchMetadata fetches OTA metadata JSON from the configured URL.
 func (b *Bootstrap) fetchMetadata(ctx context.Context) (domain.OTAMetadata, error) {
+	payload, verified, err := b.fetchMetadataPayload(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return decodeOTAMetadataPayload(payload, verified)
+}
+
+func (b *Bootstrap) fetchMetadataPayload(ctx context.Context) ([]byte, bool, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, b.cfg.MetadataURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("build metadata request: %w", err)
+		return nil, false, fmt.Errorf("build metadata request: %w", err)
 	}
 	resp, err := b.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fetch metadata %s: %w", b.cfg.MetadataURL, err)
+		return nil, false, fmt.Errorf("fetch metadata %s: %w", b.cfg.MetadataURL, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("fetch metadata %s: status %s", b.cfg.MetadataURL, resp.Status)
+		return nil, false, fmt.Errorf("fetch metadata %s: status %s", b.cfg.MetadataURL, resp.Status)
 	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	if err != nil {
+		return nil, false, fmt.Errorf("read metadata: %w", err)
+	}
+	if strings.TrimSpace(b.cfg.SigningPublicKey) == "" {
+		slog.Warn("OTA signature verification disabled: signing_public_key is not provisioned", "component", "bootstrap")
+		return data, false, nil
+	}
+	payload, err := verifyOTAMetadata(data, b.cfg.SigningPublicKey)
+	if err != nil {
+		return nil, false, fmt.Errorf("verify metadata %s: %w", b.cfg.MetadataURL, err)
+	}
+	return payload, true, nil
+}
+
+func decodeOTAMetadataPayload(payload []byte, requireChecksums bool) (domain.OTAMetadata, error) {
 	var meta domain.OTAMetadata
-	if err := json.NewDecoder(resp.Body).Decode(&meta); err != nil {
-		return nil, fmt.Errorf("decode metadata: %w", err)
+	if err := json.Unmarshal(payload, &meta); err != nil {
+		return nil, fmt.Errorf("decode verified metadata payload: %w", err)
+	}
+	if requireChecksums {
+		if err := validateOTAMetadata(meta); err != nil {
+			return nil, err
+		}
 	}
 	return meta, nil
 }

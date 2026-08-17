@@ -23,9 +23,13 @@ var BootstrapVersion = "dev"
 type Config struct {
 	HttpPort int `json:"httpPort" yaml:"httpPort" validate:"required"`
 
-	MetadataURL  string `json:"metadata_url" yaml:"metadataURL"`
-	PollInterval string `json:"poll_interval" yaml:"pollInterval"` // e.g. "1h", "10m"
-	StateFile    string `json:"state_file" yaml:"stateFile"`
+	MetadataURL string `json:"metadata_url" yaml:"metadataURL"`
+	// SigningPublicKey is the base64-encoded, 32-byte Ed25519 public key that
+	// authorizes OTA metadata for this deployment. It is provisioned locally and
+	// is never accepted from the metadata feed itself.
+	SigningPublicKey string `json:"signing_public_key" yaml:"signingPublicKey"`
+	PollInterval     string `json:"poll_interval" yaml:"pollInterval"` // e.g. "1h", "10m"
+	StateFile        string `json:"state_file" yaml:"stateFile"`
 }
 
 // Default returns the bootstrap config with operational defaults. MetadataURL is
