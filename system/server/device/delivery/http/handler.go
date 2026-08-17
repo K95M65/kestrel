@@ -127,11 +127,14 @@ func (h *DeviceHandler) Setup(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, serializers.ResponseError(err.Error()))
 		return
 	}
-	if err := req.ValidateChannel(); err != nil {
-		slog.Warn("setup channel validation failed", "component", "device", "error", err.Error(), "channel", req.Channel)
-		c.JSON(http.StatusBadRequest, serializers.ResponseError(err.Error()))
-		return
-	}
+	// Messaging channels are optional during initial setup. Keep the selected
+	// channel's validation available for re-enabling this policy if needed;
+	// POST /device/channel and MQTT add_channel still validate credentials.
+	// if err := req.ValidateChannel(); err != nil {
+	// 	slog.Warn("setup channel validation failed", "component", "device", "error", err.Error(), "channel", req.Channel)
+	// 	c.JSON(http.StatusBadRequest, serializers.ResponseError(err.Error()))
+	// 	return
+	// }
 
 	// If operator supplied an admin password, set the session cookie now so the
 	// browser is logged in by the time it redirects post-setup. The hash itself
