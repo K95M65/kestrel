@@ -639,5 +639,5 @@ worth building when shipping multiple Reachy units; for a single dev unit,
 - [Hardware datasheet](https://huggingface.co/docs/reachy_mini/platforms/reachy_mini/hardware)
 - [Reflash guide](https://huggingface.co/docs/reachy_mini/platforms/reachy_mini/reflash_the_rpi_ISO)
 - [BLE reset](https://wiki.seeedstudio.com/reachymini_platforms_reachy_mini_reset/)
-- [Autonomous setup.sh](../../scripts/provision/setup.sh)
-- [Autonomous imager](../../scripts/imager/README.md)
+- [Autonomous setup.sh](../../../scripts/provision/setup.sh)
+- [Autonomous imager](../../../scripts/imager/README.md)

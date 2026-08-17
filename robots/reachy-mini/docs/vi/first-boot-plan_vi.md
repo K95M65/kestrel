@@ -20,7 +20,7 @@ ssh pollen@reachy-mini.local   # mật khẩu: root
 `root` không SSH thẳng vào được (`Permission denied (publickey,password)`) — đăng
 nhập bằng `pollen` rồi `sudo`.
 
-**Lối tắt:** [`../recon.sh`](../recon.sh) chạy toàn bộ lệnh trong giai đoạn này
+**Lối tắt:** [`../recon.sh`](../../recon.sh) chạy toàn bộ lệnh trong giai đoạn này
 một phát và in ra bảng tóm tắt để điền. Ưu tiên dùng nó thay vì gõ tay từng mục:
 
 ```bash
@@ -626,5 +626,5 @@ ship NHIỀU con Reachy; với 1 con dev, `spike.sh` + `setup.sh`-cài-chồng l
 - [Thông số phần cứng](https://huggingface.co/docs/reachy_mini/platforms/reachy_mini/hardware)
 - [Hướng dẫn reflash](https://huggingface.co/docs/reachy_mini/platforms/reachy_mini/reflash_the_rpi_ISO)
 - [BLE reset](https://wiki.seeedstudio.com/reachymini_platforms_reachy_mini_reset/)
-- [Autonomous setup.sh](../../../scripts/provision/setup.sh)
-- [Autonomous imager](../../../scripts/imager/README.md)
+- [Autonomous setup.sh](../../../../scripts/provision/setup.sh)
+- [Autonomous imager](../../../../scripts/imager/README.md)
