@@ -47,7 +47,7 @@ hal/
 ├── server_support/               — HTTP/security support dùng chung
 └── pyproject.toml                — Python dependencies (opencv-python, insightface)
 
-devices/                          — Per-device configs and overlays
+robots/                          — Per-device configs and overlays
   contract/                       — Shared API contracts (+ cts/ compliance suite)
 skills/                           — Built-in SKILL.md cho agent runtime, gồm cả
                                     skill-creator để chủ thiết bị tự tạo skill

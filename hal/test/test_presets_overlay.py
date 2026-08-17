@@ -142,11 +142,11 @@ class TestApplyDevicePresets(unittest.TestCase):
         self.assertEqual(presets.EMOTION_PRESETS["listening"]["color"], [1, 2, 3])
 
     def test_shipped_example_file_is_valid(self):
-        # The committed devices/_base/presets.example.json must always apply
+        # The committed robots/_base/presets.example.json must always apply
         # cleanly — it is the copy-paste reference, so a typo there is a bug.
         here = os.path.dirname(os.path.abspath(__file__))
         example = os.path.normpath(
-            os.path.join(here, "..", "..", "devices", "_base", "presets.example.json")
+            os.path.join(here, "..", "..", "robots", "_base", "presets.example.json")
         )
         with open(example, "r", encoding="utf-8") as f:
             payload = json.load(f)

@@ -448,7 +448,7 @@ func (s *ClaudeCodeService) ensureSoulMDBlock() (bool, error) {
 }
 
 // deviceSoulCore resolves the soul text for this device from the `soul_ref` in
-// devices/<type>/ROBOT.md. Mirrors openclaw/picoclaw's deviceSoulCore.
+// robots/<type>/ROBOT.md. Mirrors openclaw/picoclaw's deviceSoulCore.
 func (s *ClaudeCodeService) deviceSoulCore() (content []byte, hasSoul bool, err error) {
 	devType := s.config.DeviceTypeOrDefault()
 	ref := device.SoulRef(devType)

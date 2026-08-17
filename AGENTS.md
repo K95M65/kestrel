@@ -12,7 +12,7 @@ rules apply to all code changes:
 1. **Update docs on code change** - When changing behavior, architecture, or
    APIs, update both the English and Vietnamese docs. Keep numbers, flows,
    endpoints, and states accurate with the code. Platform docs are in `docs/`;
-   lamp-specific docs are in `devices/lamp/docs/`.
+   lamp-specific docs are in `robots/lamp/docs/`.
 
    **Platform docs** (`docs/` + `docs/vi/`):
 
@@ -33,18 +33,18 @@ rules apply to all code changes:
    | Adding/changing an agentic backend (AgentGateway contract, switch, install/presync, migration, skills, hooks, reset) | `docs/agentic/adding-agent-runtime.md` | `docs/vi/agentic/adding-agent-runtime_vi.md` |
    | Safety engine (SAFETY.md bounds, deterministic enforcement gate) | `docs/safety.md` | `docs/vi/safety_vi.md` |
 
-   **Lamp-specific docs** (`devices/lamp/docs/` + `devices/lamp/docs/vi/`):
+   **Lamp-specific docs** (`robots/lamp/docs/` + `robots/lamp/docs/vi/`):
 
    | Code area | English doc | Vietnamese doc |
    |-----------|-------------|----------------|
-   | LED, effects, states, animations | `devices/lamp/docs/led-control.md` | `devices/lamp/docs/vi/led-control_vi.md` |
-   | Sensing behavior, sound escalation, reactions | `devices/lamp/docs/sensing-behavior.md` | `devices/lamp/docs/vi/sensing-behavior_vi.md` |
-   | Sensing threshold tuning | `devices/lamp/docs/sensing-tuning.md` | `devices/lamp/docs/vi/sensing-tuning_vi.md` |
-   | Habit tracking, pattern building, habit-aware nudge phrasing | `devices/lamp/docs/habit-tracking.md` | `devices/lamp/docs/vi/habit-tracking_vi.md` |
-   | Vision tracking, object follow, servo track | `devices/lamp/docs/vision-tracking.md` | `devices/lamp/docs/vi/vision-tracking_vi.md` |
-   | Physical controls (GPIO button, TTP223 touchpad, gestures, pet response) | `devices/lamp/docs/physical-controls.md` | `devices/lamp/docs/vi/physical-controls_vi.md` |
+   | LED, effects, states, animations | `robots/lamp/docs/led-control.md` | `robots/lamp/docs/vi/led-control_vi.md` |
+   | Sensing behavior, sound escalation, reactions | `robots/lamp/docs/sensing-behavior.md` | `robots/lamp/docs/vi/sensing-behavior_vi.md` |
+   | Sensing threshold tuning | `robots/lamp/docs/sensing-tuning.md` | `robots/lamp/docs/vi/sensing-tuning_vi.md` |
+   | Habit tracking, pattern building, habit-aware nudge phrasing | `robots/lamp/docs/habit-tracking.md` | `robots/lamp/docs/vi/habit-tracking_vi.md` |
+   | Vision tracking, object follow, servo track | `robots/lamp/docs/vision-tracking.md` | `robots/lamp/docs/vi/vision-tracking_vi.md` |
+   | Physical controls (GPIO button, TTP223 touchpad, gestures, pet response) | `robots/lamp/docs/physical-controls.md` | `robots/lamp/docs/vi/physical-controls_vi.md` |
    | Autonomous Buddy (Mac companion app) | `integrations/companions/autonomous-buddy/docs/autonomous-buddy.md`, `integrations/companions/autonomous-buddy/docs/autonomous-buddy-mvp.md`, `integrations/companions/autonomous-buddy/docs/release-signing.md` | `integrations/companions/autonomous-buddy/docs/vi/autonomous-buddy_vi.md`, `integrations/companions/autonomous-buddy/docs/vi/autonomous-buddy-mvp_vi.md`, `integrations/companions/autonomous-buddy/docs/vi/release-signing_vi.md` |
-   | Security test checklist | `devices/lamp/docs/security-test.md` | _(no vi version)_ |
+   | Security test checklist | `robots/lamp/docs/security-test.md` | _(no vi version)_ |
 
 2. **Comments in English** - Project standard.
 3. **Code is the single source of truth** - Docs reflect code, not the other
@@ -188,8 +188,8 @@ Selected by `system/agent` (AgentGateway factory).
 - `board/` - Per-board profiles (pin maps, debounce).
 - `routes/` - FastAPI route modules (servo, led, camera, audio, emotion, ...).
 
-**OS-level dirs (repo root):** `skills/` (agent skills), `devices/` (per-device
-declarations + docs; `devices/contract/` device specs, `devices/contract/cts/`
+**OS-level dirs (repo root):** `skills/` (agent skills), `robots/` (per-device
+declarations + docs; `robots/contract/` device specs, `robots/contract/cts/`
 compliance tests), `scripts/imager/` (OrangePi image build), `scripts/` (setup +
 OTA upload), `integrations/perception-service/`, `integrations/companions/`.
 

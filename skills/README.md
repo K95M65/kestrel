@@ -30,7 +30,7 @@ Or type what you want in the app, or tap one in the Skill Store. On the robot, s
 
 ## Shipping one to every robot
 
-1. Drop the folder in `skills/<name>/`. If it needs hardware, add `skill.json`: `{"capabilities": ["motion"]}` — any of the 13 [capability names](../devices/contract/capabilities.md), ANY-OF.
+1. Drop the folder in `skills/<name>/`. If it needs hardware, add `skill.json`: `{"capabilities": ["motion"]}` — any of the 13 [capability names](../robots/contract/capabilities.md), ANY-OF.
 2. `python skills/skill-creator/scripts/quick_validate.py skills/<name>` checks the format; `make skills-catalog` regenerates the catalog from the tree and `go test ./system/skills/` fails if you forget.
 3. Open the PR. On merge, [`publish-skills.yml`](../.github/workflows/publish-skills.yml) uploads the feed for you; every body's skill watcher pulls it within 5 min and tells the agent to re-read. `make upload-skills` still works by hand for an out-of-band push.
 
@@ -85,7 +85,7 @@ sidecar next to it —
 
 `capabilities` is ANY-OF: the skill installs on any body whose `ROBOT.md`
 declares at least one of them (the 13 names are in
-`devices/contract/capabilities.md`). No sidecar means a platform skill with no
+`robots/contract/capabilities.md`). No sidecar means a platform skill with no
 hardware dependency — it installs everywhere.
 
 The tree is the catalog. `make skills-catalog` regenerates

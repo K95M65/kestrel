@@ -35,7 +35,7 @@ AP_BAND="${AP_BAND:-2.4}"
 AP_CHANNEL="${AP_CHANNEL:-}"
 COUNTRY_CODE="${COUNTRY_CODE:-US}"
 OPENCLAW_VERSION="${OPENCLAW_VERSION:-2026.6.10}"
-# Device class this golden image is for — bakes devices/<type>/{DEVICE,SOUL}.md
+# Device class this golden image is for — bakes robots/<type>/{DEVICE,SOUL}.md
 # so one DEVICE_TYPE = one golden image. Forwarded by the Makefile via docker -e.
 # REQUIRED, no default — a golden image must declare which device class it is.
 DEVICE_TYPE="${DEVICE_TYPE:?DEVICE_TYPE is required — build via 'make build DEVICE_TYPE=...'}"
@@ -1414,7 +1414,7 @@ if [ -n "\$DEVICES_URL" ]; then
   unzip -o -q /tmp/device-profile.zip -d "\$DEVICE_PROFILE_DIR"
   rm -f /tmp/device-profile.zip
   echo "[overlay] device profile baked → \$DEVICE_PROFILE_DIR"
-  # Device rootfs overlay: devices/<type>/rootfs/ mirrors the target filesystem.
+  # Device rootfs overlay: robots/<type>/rootfs/ mirrors the target filesystem.
   # Copy the whole tree onto / for device-specific system config (udev rules, …).
   if [ -d "\$DEVICE_PROFILE_DIR/rootfs" ]; then
     cp -a "\$DEVICE_PROFILE_DIR/rootfs/." /

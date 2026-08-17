@@ -55,7 +55,7 @@ independent device teams never clobber each other.
 
 **VERSION auto-bump.** Each upload script auto-increments the patch component of
 its version file (`system/VERSION_OS_SERVER`, `hal/VERSION_HAL`,
-`system/VERSION_WEB`, `devices/<type>/VERSION`, …) and injects it into the
+`system/VERSION_WEB`, `robots/<type>/VERSION`, …) and injects it into the
 build (Go binaries via `make … VERSION=x.y.z` → ldflags). Never hand-edit these
 for a release, and never commit built binaries.
 

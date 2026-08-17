@@ -67,7 +67,7 @@ reference is embedded in a single shot (one clean vector), while recognize sends
 `embed_model_version` fingerprint of the loaded weights, so HAL can tell when the
 server model changed and re-embed its stored voice profiles instead of matching
 against stale vectors (see
-[`devices/lamp/docs/speaker-enrollment.md`](../devices/lamp/docs/speaker-enrollment.md)). Exact endpoints
+[`robots/lamp/docs/speaker-enrollment.md`](../robots/lamp/docs/speaker-enrollment.md)). Exact endpoints
 and payloads are in [`integrations/perception-service/docs/api.md`](../integrations/perception-service/docs/api.md); every
 config knob is in
 [`integrations/perception-service/docs/configuration.md`](../integrations/perception-service/docs/configuration.md).

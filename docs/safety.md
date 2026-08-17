@@ -2,13 +2,13 @@
 
 The safety engine enforces a device's `SAFETY.md` bounds **deterministically in the
 runtime**, below the agent. It is the mechanism behind the first principle in
-`devices/contract/SAFETY-SPEC.md`: *safety is below the brain.* The agent requests actions;
+`robots/contract/SAFETY-SPEC.md`: *safety is below the brain.* The agent requests actions;
 the engine decides — on every request, regardless of who issued it — whether the
 hardware is allowed to honour them and within what limits.
 
 > **Status:** Slice 1 (brightness ceiling) is **implemented and enforced** —
 > `hal/safety/policy.py` + the LED gate in `rgb_service.py`, loaded from
-> `devices/lamp/SAFETY.md`. Later slices reuse the same loader + gate. Each table
+> `robots/lamp/SAFETY.md`. Later slices reuse the same loader + gate. Each table
 > row below is marked enforced / reserved. This document tracks the code, not the
 > other way around.
 
@@ -38,7 +38,7 @@ hardware
 ```
 
 - **`SAFETY.md` front matter** — the bounds, keyed by capability group. Schema and
-  field table: `devices/contract/SAFETY-SPEC.md`.
+  field table: `robots/contract/SAFETY-SPEC.md`.
 - **`hal/safety/policy.py`** — a pure loader (regex front-matter parse,
   dependency-free, same discipline as `hal/board/device.py`) producing a typed
   `SafetyPolicy`, plus pure gate functions. No hardware, no clock side effects, fully
@@ -54,7 +54,7 @@ device endpoint so the declared bounds are observable: `GET /device` already ret
 
 ## Fail-safe semantics
 
-Per-capability criticality (full rule in `devices/contract/SAFETY-SPEC.md`):
+Per-capability criticality (full rule in `robots/contract/SAFETY-SPEC.md`):
 
 | Capability | Bound absent / unloadable | Rationale |
 |------------|---------------------------|-----------|
@@ -87,7 +87,7 @@ routes; the loader and the front-matter contract do not change shape between sli
 
 A safety bound is only real if you can *prove* it holds and that the agent cannot get
 around it. Each slice is verified at three levels; a bound is not "done" until all
-three pass. (This is distinct from `devices/lamp/docs/security-test.md`, which covers
+three pass. (This is distinct from `robots/lamp/docs/security-test.md`, which covers
 network/access-control security — ports, RCE, CORS — not actuation bounds.)
 
 1. **Unit (pure gate, off-hardware).** The gate function is pure, so its limit is a

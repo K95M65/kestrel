@@ -21,7 +21,7 @@ make hal-lint                         # broken imports + undefined names
 | `recordings/`, `calibration/` | the 32 teleop-recorded servo animations and the per-unit calibration story |
 
 How it fits the rest of the OS: [`docs/architecture/hal.md`](../docs/architecture/hal.md) ·
-the frozen contract it serves: [`devices/contract/`](../devices/contract/) ·
+the frozen contract it serves: [`robots/contract/`](../robots/contract/) ·
 adding a driver: [`../README.md#contribute`](../README.md#contribute).
 
 ## License

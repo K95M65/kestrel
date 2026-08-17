@@ -4,11 +4,11 @@ Per-device preset overlay.
 The base preset tables in ``hal.presets`` (``EMOTION_PRESETS``, ``SCENE_PRESETS``,
 ``AIM_PRESETS``) are the platform default — every device gets them. A device may
 override only the values it wants different by shipping a sparse
-``devices/<type>/presets.json``; this module deep-merges that delta onto the base
+``robots/<type>/presets.json``; this module deep-merges that delta onto the base
 tables IN PLACE at startup, before any route or driver reads them. A device with
 no ``presets.json`` keeps the base verbatim.
 
-"Declare what's different" — the same philosophy as ``devices/_base`` inheritance,
+"Declare what's different" — the same philosophy as ``robots/_base`` inheritance,
 applied to look/behaviour values (LED colors, scene mixes, servo aim positions).
 This is HAL-only: the OS core (Go) does not read presets, so unlike capability
 inheritance there is no cross-language parser to keep in sync.
@@ -76,7 +76,7 @@ def _merge_table(name: str, base: Dict[str, Dict], override: Any, device_type: s
 
 
 def apply_device_presets(device_type: str, devices_dir: str) -> int:
-    """Overlay ``devices/<device_type>/presets.json`` onto the base preset tables
+    """Overlay ``robots/<device_type>/presets.json`` onto the base preset tables
     in place and return the device's LED count (``DEFAULT_LED_COUNT`` if unset).
 
     Missing file → base tables unchanged, default LED count. A malformed file or an

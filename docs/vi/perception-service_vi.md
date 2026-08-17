@@ -67,7 +67,7 @@ cửa sổ chồng lấn và bỏ phiếu theo từng chunk. Response embed (và
 trả `embed_model_version` — vân tay của
 trọng số model đang nạp, để HAL biết khi model server đổi và **tự tính lại
 embedding** cho các hồ sơ giọng đã lưu thay vì so khớp với vector đã lỗi thời
-(xem [`devices/lamp/docs/speaker-enrollment.md`](../../devices/lamp/docs/speaker-enrollment.md)). Endpoint và payload chính xác nằm trong
+(xem [`robots/lamp/docs/speaker-enrollment.md`](../../robots/lamp/docs/speaker-enrollment.md)). Endpoint và payload chính xác nằm trong
 [`integrations/perception-service/docs/api.md`](../../integrations/perception-service/docs/api.md); mọi tham số cấu hình nằm trong
 [`integrations/perception-service/docs/configuration.md`](../../integrations/perception-service/docs/configuration.md).
 

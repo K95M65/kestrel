@@ -2,13 +2,13 @@
 
 Safety engine thực thi các **giới hạn (bounds)** trong `SAFETY.md` của thiết bị một
 cách **tất định, ngay trong runtime**, *dưới* tầng agent. Đây là cơ chế hiện thực
-nguyên tắc số một trong `devices/contract/SAFETY-SPEC.md`: *an toàn nằm dưới bộ não.* Agent
+nguyên tắc số một trong `robots/contract/SAFETY-SPEC.md`: *an toàn nằm dưới bộ não.* Agent
 yêu cầu hành động; engine quyết định — trên **mọi** yêu cầu, bất kể ai phát ra —
 phần cứng có được phép thực thi không và trong giới hạn nào.
 
 > **Trạng thái:** Slice 1 (trần độ sáng) đã **được hiện thực và thực thi** —
 > `hal/safety/policy.py` + gate LED trong `rgb_service.py`, nạp từ
-> `devices/lamp/SAFETY.md`. Các slice sau tái dùng cùng loader + gate. Mỗi dòng bảng
+> `robots/lamp/SAFETY.md`. Các slice sau tái dùng cùng loader + gate. Mỗi dòng bảng
 > dưới được đánh dấu đã-thực-thi / dự-trữ. Tài liệu này bám theo code, không ngược lại.
 
 ## Vì sao cần engine, không phải nhắc (prompt) agent
@@ -37,7 +37,7 @@ phần cứng
 ```
 
 - **`SAFETY.md` front matter** — các bound, keyed theo capability group. Schema + bảng
-  field: `devices/contract/SAFETY-SPEC.md`.
+  field: `robots/contract/SAFETY-SPEC.md`.
 - **`hal/safety/policy.py`** — loader thuần (parse front-matter bằng regex,
   dependency-free, cùng kỷ luật với `hal/board/device.py`) tạo ra `SafetyPolicy`
   có kiểu, kèm các gate function thuần. Không phần cứng, không tác dụng phụ về đồng hồ,
@@ -52,7 +52,7 @@ resolve cũng hiện ở đó.
 
 ## Ngữ nghĩa fail-safe
 
-Theo mức tới hạn của từng capability (quy tắc đầy đủ ở `devices/contract/SAFETY-SPEC.md`):
+Theo mức tới hạn của từng capability (quy tắc đầy đủ ở `robots/contract/SAFETY-SPEC.md`):
 
 | Capability | Bound vắng / không nạp được | Lý do |
 |------------|------------------------------|-------|
@@ -85,7 +85,7 @@ loader và contract front-matter **không** đổi hình dạng giữa các slic
 
 Một bound chỉ thực sự tồn tại nếu bạn *chứng minh* được nó giữ vững **và** agent không
 lách qua được. Mỗi slice được kiểm ở ba mức; bound chưa "xong" cho tới khi cả ba pass.
-(Khác với `devices/lamp/docs/security-test.md` — cái đó về security mạng/kiểm soát truy
+(Khác với `robots/lamp/docs/security-test.md` — cái đó về security mạng/kiểm soát truy
 cập: port, RCE, CORS — không phải giới hạn actuation.)
 
 1. **Unit (gate thuần, off-hardware).** Gate là hàm thuần nên giới hạn của nó là một

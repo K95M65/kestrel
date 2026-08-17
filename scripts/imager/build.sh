@@ -2220,7 +2220,7 @@ if [ -n "\${DEVICES_URL:-}" ]; then
   unzip -o -q /tmp/device.zip -d "\$DEVICE_DEST"
   rm -f /tmp/device.zip
   echo "[overlay] Device profile '\$DEVICE_TYPE' installed at \$DEVICE_DEST"
-  # Device rootfs overlay: devices/<type>/rootfs/ mirrors the target filesystem,
+  # Device rootfs overlay: robots/<type>/rootfs/ mirrors the target filesystem,
   # so copying it onto / lands each file at its real path. This is where the
   # device's HAL tuning lives (/opt/hal/.env — ALSA device names, VAD/camera
   # thresholds, realtime flags); without this copy HAL boots with only the two

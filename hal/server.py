@@ -88,7 +88,7 @@ def _devices_dir() -> str:
     # hal/server.py -> hal -> repo root (dev fallback; real installs always
     # set DEVICES_DIR, default /opt/devices)
     return os.environ.get("DEVICES_DIR") or os.path.normpath(
-        os.path.join(os.path.dirname(__file__), "..", "devices")
+        os.path.join(os.path.dirname(__file__), "..", "robots")
     )
 
 
@@ -864,13 +864,13 @@ app = FastAPI(
 # Mount routes by crossing what this device's ROBOT.md *declares* with which
 # drivers are actually *available* (importable), via hal.board.device.plan_mounts.
 # A device is "the device minus motion+display" by declaring fewer capabilities — not by
-# forking. Per devices/contract/ROBOT-SPEC.md the boot rule is:
+# forking. Per robots/contract/ROBOT-SPEC.md the boot rule is:
 #   declared + available            -> mount
 #   declared + required + missing    -> FAIL LOUD in production (a hardware fault)
 #   declared + optional  + missing    -> skip (graceful degradation)
 #   undeclared                       -> skip (a different device, by design)
 # Falls back to mounting everything when no ROBOT.md is found, so existing
-# deployments are unaffected. See devices/contract/ROBOT-SPEC.md and hal/board/device.py.
+# deployments are unaffected. See robots/contract/ROBOT-SPEC.md and hal/board/device.py.
 
 # Route modules import their own driver stacks, so importing all 12
 # unconditionally would defeat the declaration-gated driver imports above.
@@ -893,7 +893,7 @@ for _rname in (
 
 # Speaker recognition imports separately — its deps (face/speaker embedding
 # models) are heavy and may be absent. It's a declared `speaker` route under the
-# audio capability (devices/*/ROBOT.md), so it joins the SAME declaration gate
+# audio capability (robots/*/ROBOT.md), so it joins the SAME declaration gate
 # below: import success == availability, no separate bypass mount.
 if "speaker" in _declared:
     try:
@@ -930,7 +930,7 @@ from hal.safety.policy import load_safety
 _safety = load_safety(os.path.join(_devices_dir(), _resolve_device_type()), _profile.safety_ref)
 state.safety_policy = _safety  # route-level gates (e.g. music quiet hours) read it here
 
-# Per-device preset overlay: deep-merge devices/<type>/presets.json onto the base
+# Per-device preset overlay: deep-merge robots/<type>/presets.json onto the base
 # EMOTION/SCENE/AIM tables in place (a device declares only the look/behaviour
 # values it wants different) and resolve the LED ring size. Runs at import, before
 # lifespan builds RGBService and before any route reads a preset. No file → base
@@ -1053,7 +1053,7 @@ if not _plan.ok:
     raise RuntimeError(
         f"Device '{_resolve_device_type()}' requires routes whose drivers are "
         f"unavailable: {_plan.failed_required}. Fix the driver/hardware, or mark "
-        f"the capability optional in devices/{_resolve_device_type()}/ROBOT.md."
+        f"the capability optional in robots/{_resolve_device_type()}/ROBOT.md."
     )
 for _name in _plan.mounted:
     app.include_router(_ROUTERS_BY_NAME[_name])

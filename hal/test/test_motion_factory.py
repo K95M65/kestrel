@@ -1,6 +1,6 @@
 """Tests for the motion driver factory (hal/drivers/motors/factory.py).
 
-Pure logic, no hardware. Also parses the REAL committed devices/reachy-mini
+Pure logic, no hardware. Also parses the REAL committed robots/reachy-mini
 ROBOT.md to guard the declared driver name against drift, and AST-checks
 ReachyMotionService against the MotionService protocol (the reachy_mini SDK
 is not installed on dev machines, so the module can't be imported here).
@@ -14,7 +14,7 @@ from hal.drivers.motors.factory import MOTION_DRIVERS, resolve_motion_class
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 # hal/test -> hal -> repo root
-DEVICES_DIR = os.path.normpath(os.path.join(HERE, "..", "..", "devices"))
+DEVICES_DIR = os.path.normpath(os.path.join(HERE, "..", "..", "robots"))
 
 
 class TestResolveMotionClass(unittest.TestCase):

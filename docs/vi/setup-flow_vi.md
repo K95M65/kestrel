@@ -10,7 +10,7 @@ Khi OS server chưa được cấu hình (`SetUpCompleted = false`), thiết b�
 1. Thiết bị khởi động → check config.json
 2. Chưa setup → AP mode (WiFi hotspot)
 3. Người dùng kết nối WiFi → mở Web UI
-4. Nhập: WiFi SSID/password + LLM config + channel
+4. Nhập: WiFi SSID/password + LLM config + messaging channel (tuỳ chọn)
 5. POST /api/device/setup
 6. OS Server xử lý (async):
    a. Kết nối WiFi (connect-wifi CLI) — song song, một goroutine
@@ -61,6 +61,8 @@ Khi OS server chưa được cấu hình (`SetUpCompleted = false`), thiết b�
 ```
 
 **Response:** Trả về ngay `{"status": 1}`. Setup chạy async trong goroutine sau 2s delay.
+
+**Messaging channel:** Toàn bộ cấu hình Telegram, Slack hoặc Discord là tuỳ chọn ở lần setup đầu. Không gửi chúng không chặn setup; có thể cấu hình channel sau qua `POST /api/device/channel`. Credential gửi cùng `POST /api/device/setup` vẫn đi theo luồng setup hiện tại nhưng không được validate theo channel tại đây; `POST /api/device/channel` sẽ validate credential bắt buộc của channel được chọn.
 
 **Admin password mặc định:** `admin_password` là optional. Khi để trống ở first-time setup (`SetUpCompleted=false` và chưa có `AdminPasswordHash`), handler mặc định lấy suffix 4 ký tự từ `device.GetDeviceMac()` — cùng suffix mà `scripts/provision/setup-ap.sh` dùng cho AP SSID (`<DEVICE_TYPE>-<xxxx>`). Suffix in trên nhãn dán dưới đế thiết bị, nên user có thể sign in trang admin mà không cần tự đặt password lúc setup. Web UI Setup V2 ẩn hẳn field DEVICE PASSWORD và dựa vào default này; V1 (Device step riêng) vẫn bắt user chọn. Fail 400 (`device hardware ID unreadable`) khi `GetDeviceMac()` trả empty (không có env `DEVICE_TYPE`, không có serial, không có eth MAC) — silent fallback sẽ khiến mọi device không identify được đều có cùng một password well-known.
 
@@ -536,7 +538,7 @@ wizard không bao giờ tới được nút bắn `setup_done`.
 "My Voice" và "Face" là phần cứng chứ không phải sở thích: một cái thu operator qua
 mic, một cái chụp họ qua camera. Mỗi bước chỉ hiện khi thiết bị khai báo capability
 làm nó khả thi — `Cap.Audio` cho Voice, `Cap.Vision` cho Face — đọc từ
-`GET /api/system/info` (`useCapabilities`), tức là bản parse `devices/<type>/ROBOT.md`
+`GET /api/system/info` (`useCapabilities`), tức là bản parse `robots/<type>/ROBOT.md`
 của os-server, đúng contract mà Monitor đang gate tab. Gate này phủ cả entry ở
 sidebar, cả section được mount (để section không chạy được thì cũng không bắn request
 phần cứng lúc mount), **và** hai danh sách `required` / `order` quyết định "đã xong

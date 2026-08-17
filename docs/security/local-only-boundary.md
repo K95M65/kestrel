@@ -1069,9 +1069,9 @@ Docs contain language equivalent to:
 
 Examples found around:
 
-- `devices/lamp/docs/architecture-decision.md`
+- `robots/lamp/docs/architecture-decision.md`
 - `docs/bootstrap-ota.md`
-- `devices/lamp/docs/vi/architecture-decision.md`
+- `robots/lamp/docs/vi/architecture-decision.md`
 - `docs/vi/bootstrap-ota.md`
 
 ### Why it is risky
@@ -1279,9 +1279,9 @@ Files to edit:
   - Update default host and warning for public bind.
 
 - Docs:
-  - `devices/lamp/docs/architecture-decision.md`
+  - `robots/lamp/docs/architecture-decision.md`
   - `docs/bootstrap-ota.md`
-  - `devices/lamp/docs/vi/architecture-decision.md`
+  - `robots/lamp/docs/vi/architecture-decision.md`
   - `docs/vi/bootstrap-ota.md`
   - Remove “external `/hw/docs` for Swagger/debug” as expected behavior.
 

@@ -4,10 +4,10 @@ This project is developed with **Cursor** and **Claude Code** (multi-IDE). Chang
 
 ## Conventions When Making Changes
 
-1. **Update docs** — When code changes, update the relevant docs (full table in `CLAUDE.md`). Platform docs live in `docs/` + `docs/vi/`; lamp-specific docs live in `devices/lamp/docs/` + `devices/lamp/docs/vi/`:
+1. **Update docs** — When code changes, update the relevant docs (full table in `CLAUDE.md`). Platform docs live in `docs/` + `docs/vi/`; lamp-specific docs live in `robots/lamp/docs/` + `robots/lamp/docs/vi/`:
    - `docs/bootstrap-ota.md` — OTA system, setup stages, upload scripts (platform)
-   - `devices/lamp/docs/architecture-decision.md` — Architecture, layers, inherited/new components (lamp-specific)
-   - `devices/lamp/docs/product-vision.md` — Product vision, use cases, hardware specs (lamp-specific)
+   - `robots/lamp/docs/architecture-decision.md` — Architecture, layers, inherited/new components (lamp-specific)
+   - `robots/lamp/docs/product-vision.md` — Product vision, use cases, hardware specs (lamp-specific)
    - Vietnamese translations in the matching `vi/` subdir, same filenames
    - Keep numbers, flows, endpoints, and states accurate
 

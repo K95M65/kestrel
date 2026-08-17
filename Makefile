@@ -71,20 +71,20 @@ hal-clean:
 	rm -rf $(HAL_DIR)/.venv $(HAL_DIR)/__pycache__
 
 # ============================================================================
-# CTS — Compatibility Test Suite (devices/contract/cts)
+# CTS — Compatibility Test Suite (robots/contract/cts)
 # ============================================================================
 
 .PHONY: new-device push-skill skills-catalog skills-catalog-check latency cts cts-runtime
 
-# Scaffold a new body from devices/_template/ — ROBOT.md + SOUL.md, no SAFETY.md
+# Scaffold a new body from robots/_template/ — ROBOT.md + SOUL.md, no SAFETY.md
 # on purpose: `make cts` fails until you write the bounds for what you declared.
 new-device:
 	@test -n "$(NAME)" || { echo "usage: make new-device NAME=my-robot" >&2; exit 2; }
-	@test -d devices/_template || { echo "devices/_template missing — is this a full clone?" >&2; exit 2; }
-	@test ! -d devices/$(NAME) || { echo "devices/$(NAME) already exists" >&2; exit 2; }
-	@cp -r devices/_template devices/$(NAME)
-	@sed -i.bak 's/my-robot/$(NAME)/g; s/My Robot/$(NAME)/g' devices/$(NAME)/ROBOT.md devices/$(NAME)/SOUL.md && rm -f devices/$(NAME)/*.bak
-	@echo "devices/$(NAME)/ — edit ROBOT.md, then: make cts"
+	@test -d robots/_template || { echo "robots/_template missing — is this a full clone?" >&2; exit 2; }
+	@test ! -d robots/$(NAME) || { echo "robots/$(NAME) already exists" >&2; exit 2; }
+	@cp -r robots/_template robots/$(NAME)
+	@sed -i.bak 's/my-robot/$(NAME)/g; s/My Robot/$(NAME)/g' robots/$(NAME)/ROBOT.md robots/$(NAME)/SOUL.md && rm -f robots/$(NAME)/*.bak
+	@echo "robots/$(NAME)/ — edit ROBOT.md, then: make cts"
 
 # Regenerate the skill catalog from the skills/ tree (one folder per skill,
 # capabilities in skills/<name>/skill.json) into system/skills/catalog_gen.go
@@ -110,21 +110,21 @@ push-skill:
 	@ssh $(TARGET) 'sudo mv /tmp/$(notdir $(SKILL)) /root/.openclaw/workspace/skills/'
 	@echo "$(notdir $(SKILL)) → $(TARGET) — live on the next conversation"
 
-# Static half: validates every devices/<id>/ROBOT.md against COMPATIBILITY.md.
+# Static half: validates every robots/<id>/ROBOT.md against COMPATIBILITY.md.
 # No hardware, no deps — this is what CI runs.
 cts:
-	python3 -m unittest discover -s devices/contract/cts -v
+	python3 -m unittest discover -s robots/contract/cts -v
 
 # Runtime half: compares a LIVE device against its own declaration.
 #   make cts-runtime TARGET=lamp-ac82.local
 # Add ALLOW_MOTION=1 to also exercise torque-off (it drops a raised arm).
-# See devices/contract/cts/README.md for the full environment.
+# See robots/contract/cts/README.md for the full environment.
 cts-runtime:
 	@test -n "$(TARGET)" || { echo "usage: make cts-runtime TARGET=<device-host>" >&2; exit 2; }
 	CTS_HAL=http://$(TARGET):5001 \
 	CTS_OS=http://$(TARGET):5000 \
 	CTS_ALLOW_MOTION=$(ALLOW_MOTION) \
-	  python3 -m unittest discover -s devices/contract/cts -v
+	  python3 -m unittest discover -s robots/contract/cts -v
 
 # ============================================================================
 # Web (React/Vite/Tailwind) — install | dev | build

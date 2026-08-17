@@ -193,7 +193,7 @@ func wipeHermesState(cfg *config.Config) {
 }
 
 // resolveSoulContent returns the SOUL.md bytes to seed after a factory reset:
-//   - device declares soul_ref → content of devices/<type>/<ref> (or URL)
+//   - device declares soul_ref → content of robots/<type>/<ref> (or URL)
 //   - no soul_ref              → hermesSoulFallback stub
 func resolveSoulContent(cfg *config.Config) []byte {
 	devType := cfg.DeviceTypeOrDefault()

@@ -329,7 +329,7 @@ tính là đã cài, nên OTA vẫn tự chữa được (binary `os-server` h�
 
 ### OTA LED Feedback
 
-Bootstrap dùng `lib/hal` để báo trạng thái update qua LED. Xem chi tiết: [status-led_vi.md](../../devices/lamp/docs/vi/status-led_vi.md).
+Bootstrap dùng `lib/hal` để báo trạng thái update qua LED. Xem chi tiết: [status-led_vi.md](../../robots/lamp/docs/vi/status-led_vi.md).
 
 | Giai đoạn | LED |
 |----------|-----|
@@ -635,5 +635,5 @@ Version của HAL là file text `VERSION` trong thư mục gốc package. Bootst
 ---
 
 > Tài liệu này mô tả toàn bộ hệ thống OTA và bootstrap.
-> Xem [architecture-decision.md](../../devices/lamp/docs/vi/architecture-decision.md) cho quyết định kiến trúc.
-> Xem [product-vision.md](../../devices/lamp/docs/vi/product-vision.md) cho tầm nhìn sản phẩm.
+> Xem [architecture-decision.md](../../robots/lamp/docs/vi/architecture-decision.md) cho quyết định kiến trúc.
+> Xem [product-vision.md](../../robots/lamp/docs/vi/product-vision.md) cho tầm nhìn sản phẩm.

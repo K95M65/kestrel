@@ -334,7 +334,7 @@ absent one is skipped.
 
 ### OTA LED Feedback
 
-Bootstrap uses `lib/hal` to show update status on LEDs. See [status-led.md](../devices/lamp/docs/status-led.md) for full spec.
+Bootstrap uses `lib/hal` to show update status on LEDs. See [status-led.md](../robots/lamp/docs/status-led.md) for full spec.
 
 | Phase | LED |
 |-------|-----|
@@ -639,4 +639,4 @@ HAL version is a plain text `VERSION` file in the package root. Read by bootstra
 
 ---
 
-*This document describes the full OTA and bootstrap system. For architecture decisions, see [architecture-decision.md](../devices/lamp/docs/architecture-decision.md). For product vision, see [product-vision.md](../devices/lamp/docs/product-vision.md).*
+*This document describes the full OTA and bootstrap system. For architecture decisions, see [architecture-decision.md](../robots/lamp/docs/architecture-decision.md). For product vision, see [product-vision.md](../robots/lamp/docs/product-vision.md).*

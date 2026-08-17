@@ -173,7 +173,7 @@ OUT  🔊 <output text>
 
 - Strip được extract từ marker `[snapshot:]` + `[pose_bucket:]` / `[pose_worst:]` trong `sensing_input`. Click thumbnail mở lightbox inline (giống cũ).
 - Nút **LOAD MORE** mở `PoseBucketModal` → fetch `/api/hardware/sensing/pose-bucket/<id>` (proxy về lelamp) → render bảng từng sample (monospace + cột joint giống Sensing tab). Row có filename trong `worst_snapshots` được highlight (viền đỏ + ⭐) để xem nhanh khung tệ nhất.
-- Khi /dm fire, OS server tự đính các worst snapshot vào Telegram qua `sendMediaGroup` — caption nằm trên ảnh đầu tiên, agent không cần biết file path. Xem `devices/lamp/docs/sensing-behavior.md` mục "/dm auto-attach".
+- Khi /dm fire, OS server tự đính các worst snapshot vào Telegram qua `sendMediaGroup` — caption nằm trên ảnh đầu tiên, agent không cần biết file path. Xem `robots/lamp/docs/sensing-behavior.md` mục "/dm auto-attach".
 
 ### Clip audio debug trên Turn card
 

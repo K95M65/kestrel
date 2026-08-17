@@ -33,7 +33,7 @@ Organized by subsystem (Linux) with declarative device overlays (Android):
 ```
 contract/              the frozen ABI — what skills + devices build against
   capabilities.md      the capability vocabulary (the "feature flags")
-  DEVICE-SPEC.md       the device-manifest format + versioning
+  ROBOT-SPEC.md       the device-manifest format + versioning
   COMPATIBILITY.md     the CDD — what a compliant device MUST do
 skills/                the apps (SKILL.md), by domain
 os/
@@ -45,7 +45,7 @@ os/
     board/             BY BOARD: rpi5/ rpi4/ orangepi/   (a new board is one entry)
     runtime/           the capability host — mounts what DEVICE.md declares
   web/                 on-device setup + monitor UI
-devices/               declarative overlays: _base/, lamp/, intern/, examples/
+robots/               declarative overlays: _base/, lamp/, intern/, examples/
 contract/cts/          conformance test suite — "is this an Autonomous device?"
 tools/                 imager, scripts (build + SBC images)
 integrations/companions/            off-device apps (autonomous-buddy, claude-desktop-buddy)
@@ -62,7 +62,7 @@ The `Drivers` and `Board` layers are surfaced as `hal/drivers/<subsystem>` and
 A device declares what it **provides**; the OS version declares what it **requires**; the two
 are matched before the OS boots or updates — Android's Treble check, simplified.
 
-- **Provides** — `devices/<id>/DEVICE.md` front matter: the capability groups this body has,
+- **Provides** — `robots/<id>/DEVICE.md` front matter: the capability groups this body has,
   the schema version, the board.
 - **Requires** — the OS targets a `contract` schema version (`autonomous.device.v1`). A device
   declaring an unknown major version is refused, not crashed.
@@ -103,7 +103,7 @@ committees, no heavy process. Docs live in-tree beside the code they describe.
 
 The restructure landed in CI-gated stages:
 
-1. ✅ **Conformance + base**: `contract/COMPATIBILITY.md`, `contract/cts/`, `devices/_base`.
+1. ✅ **Conformance + base**: `contract/COMPATIBILITY.md`, `contract/cts/`, `robots/_base`.
 2. ✅ **Go layer**: `os/core` → `services` (runtime bridge stays `runtimes/openclaw`).
 3. ✅ **HAL package**: `lelamp` → `hal`, surfaced as `hal/drivers` (by subsystem) +
    `hal/board` (by board). Deploy identifiers renamed consistently (`/opt/hal`,

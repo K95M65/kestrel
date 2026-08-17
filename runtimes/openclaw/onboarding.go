@@ -405,7 +405,7 @@ func (s *OpenclawService) ensureAgentsMDBlock() (bool, error) {
 }
 
 // devicesDir returns the root that holds per-device profile folders
-// (devices/<type>/{DEVICE,SOUL}.md). Override with DEVICES_DIR; defaults to the
+// (robots/<type>/{DEVICE,SOUL}.md). Override with DEVICES_DIR; defaults to the
 // on-device install path. The same tree HAL reads via HAL_DEVICES_DIR.
 func devicesDir() string {
 	if d := strings.TrimSpace(os.Getenv("DEVICES_DIR")); d != "" {
@@ -415,11 +415,11 @@ func devicesDir() string {
 }
 
 // deviceSoulCore returns the soul text to inject for this device, resolved from
-// the `soul_ref` declared in devices/<type>/ROBOT.md (config.device_type):
+// the `soul_ref` declared in robots/<type>/ROBOT.md (config.device_type):
 //   - absent  → hasSoul=false: inject nothing, leaving the agentic runtime
 //     (OpenClaw) to use its own default soul. We never override a soulless body.
 //   - http(s) URL → download the soul artifact.
-//   - any other value → a path read relative to devices/<type>/ (e.g. SOUL.md).
+//   - any other value → a path read relative to robots/<type>/ (e.g. SOUL.md).
 //
 // A declared soul_ref that fails to resolve is a deploy fault (named a soul but
 // did not ship it), so it returns an error rather than silently going soulless.

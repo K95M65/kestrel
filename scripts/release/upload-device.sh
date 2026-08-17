@@ -17,7 +17,7 @@ if [[ -z "$DEVICE_TYPE" ]]; then
   exit 1
 fi
 
-DEVICE_DIR="${ROOT_DIR}/devices/${DEVICE_TYPE}"
+DEVICE_DIR="${ROOT_DIR}/robots/${DEVICE_TYPE}"
 if [[ ! -d "$DEVICE_DIR" ]]; then
   echo "Error: device profile not found at $DEVICE_DIR" >&2
   exit 1
@@ -49,7 +49,7 @@ GCS_PATH="${GCS_PATH:-${BUCKET_PREFIX}/ota/devices/${DEVICE_TYPE}/${new_version}
 # Ship the runtime contract (ROBOT.md / SOUL.md / SAFETY.md / VERSION) plus the
 # device rootfs overlay (rootfs/ — system config like etc/asound.conf installed
 # onto / at build/OTA). Exclude docs/, hardware/ (CAD!), images/ — never read.
-echo "========== Zipping devices/${DEVICE_TYPE} (contract + rootfs) to ${ZIP_NAME} =========="
+echo "========== Zipping robots/${DEVICE_TYPE} (contract + rootfs) to ${ZIP_NAME} =========="
 rm -f "$ZIP_PATH"
 (cd "$DEVICE_DIR" && zip -r "$ZIP_PATH" . \
   -x "docs/*" "hardware/*" "images/*" ".git/*" "*/__pycache__/*" "*.pyc")

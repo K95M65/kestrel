@@ -171,8 +171,8 @@ với demo LED + giọng nói.
 
 ## Tham Khảo
 
-- Phân tích hệ sinh thái Pollen: `devices/reachy-mini/docs/pollen-ecosystem-analysis.md`
+- Phân tích hệ sinh thái Pollen: `robots/reachy-mini/docs/pollen-ecosystem-analysis.md`
 - API routes của HAL: `hal/routes/`
-- Capability thiết bị: `devices/contract/capabilities.md`
+- Capability thiết bị: `robots/contract/capabilities.md`
 - Template plugin: `integrations/community-apps/plugin-template/`
 - HuggingFace template: https://huggingface.co/spaces/autonomous-os/autonomous-os-hello-robot

@@ -600,7 +600,7 @@ func (b *Bootstrap) detectVersion(ctx context.Context, key string) string {
 // skipped.
 //
 // The lookups mirror detectVersion and the on-device updater
-// (devices/<type>/software-update); keep the three in step. os-server/openclaw
+// (robots/<type>/software-update); keep the three in step. os-server/openclaw
 // use the same PATH resolution detectVersion runs them with, so the two can
 // never disagree about whether the binary exists.
 func (b *Bootstrap) componentInstalled(key string) bool {

@@ -18,7 +18,7 @@ import (
 
 // ProvideGateway returns the AgentGateway implementation. The backend is chosen
 // by config.AgentRuntime; when that is unset it falls back to the device's
-// declared gateway.default (devices/<type>/ROBOT.md), then OpenClaw.
+// declared gateway.default (robots/<type>/ROBOT.md), then OpenClaw.
 //
 // "openclaw" (default): persistent WebSocket to the OpenClaw daemon at
 // 127.0.0.1:18789. See runtimes/openclaw and docs/os-server.md.

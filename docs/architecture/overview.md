@@ -35,7 +35,7 @@ A device's `DEVICE.md` declares which it has; the runtime mounts only those. The
 the **safety gate** (`hal/safety`): `SAFETY.md` bounds —
 e-stop, motion limits, brightness, quiet hours — enforced deterministically below the brain,
 never by the LLM.
-*(`devices/contract/` + `hal` — see [hal.md](hal.md))*
+*(`robots/contract/` + `hal` — see [hal.md](hal.md))*
 
 **Agentic Middle** — the realtime voice agent (`hal/realtime`, hosted in-process by the HAL but
 brain-tier, so it is drawn as its own band). Voice turns land here first, and it decides per turn:
@@ -51,5 +51,5 @@ we run on; we don't ship one. Our **Drivers** (`motors`, `rgb`, `display`, `came
 ## See also
 
 [hal.md](hal.md) · [kernel.md](kernel.md) ·
-[`DEVICE-SPEC.md`](../../devices/contract/DEVICE-SPEC.md) ·
-[`capabilities.md`](../../devices/contract/capabilities.md)
+[`ROBOT-SPEC.md`](../../robots/contract/ROBOT-SPEC.md) ·
+[`capabilities.md`](../../robots/contract/capabilities.md)

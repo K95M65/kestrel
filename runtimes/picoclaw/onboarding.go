@@ -290,8 +290,8 @@ func (s *PicoclawService) ensureSoulMDBlock() (bool, error) {
 }
 
 // deviceSoulCore resolves the soul text for this device from the `soul_ref` in
-// devices/<type>/ROBOT.md. Mirrors openclaw's deviceSoulCore: absent → no override;
-// http(s) → download; otherwise a path relative to devices/<type>/.
+// robots/<type>/ROBOT.md. Mirrors openclaw's deviceSoulCore: absent → no override;
+// http(s) → download; otherwise a path relative to robots/<type>/.
 func (s *PicoclawService) deviceSoulCore() (content []byte, hasSoul bool, err error) {
 	devType := s.config.DeviceTypeOrDefault()
 	ref := device.SoulRef(devType)
@@ -317,7 +317,7 @@ func (s *PicoclawService) deviceSoulCore() (content []byte, hasSoul bool, err er
 }
 
 // devicesDir returns the root holding per-device profile folders
-// (devices/<type>/{DEVICE,SOUL}.md). Override with DEVICES_DIR. Mirrors openclaw.
+// (robots/<type>/{DEVICE,SOUL}.md). Override with DEVICES_DIR. Mirrors openclaw.
 func devicesDir() string {
 	if d := strings.TrimSpace(os.Getenv("DEVICES_DIR")); d != "" {
 		return d

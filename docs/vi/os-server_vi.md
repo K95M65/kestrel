@@ -110,7 +110,7 @@ Config field: `guard_mode` trong `config/config.json` (bool, mặc định `fals
 | POST | `/api/mood/log` | Ghi mood user (agent gọi qua Mood skill) |
 | POST | `/api/monitor/event` | Push event trực tiếp vào monitor bus (dùng bởi HAL để gửi trạng thái sound tracker) |
 
-> **Ghi chú:** Theo dõi stranger (stats, lưu trữ) được xử lý bởi **HAL** (port 5001) tại `GET /face/stranger-stats`. Xem [sensing-behavior_vi.md](../../devices/lamp/docs/vi/sensing-behavior_vi.md#theo-dõi-người-lạ-stranger-visit-tracking) để biết chi tiết.
+> **Ghi chú:** Theo dõi stranger (stats, lưu trữ) được xử lý bởi **HAL** (port 5001) tại `GET /face/stranger-stats`. Xem [sensing-behavior_vi.md](../../robots/lamp/docs/vi/sensing-behavior_vi.md#theo-dõi-người-lạ-stranger-visit-tracking) để biết chi tiết.
 
 **Request body:**
 ```json
@@ -226,7 +226,7 @@ Truy cập qua nginx proxy: `/hw/*` → `127.0.0.1:5001`
 | GET | `/servo/aim` | Danh sách aim directions |
 | POST | `/servo/aim` | Aim đầu thiết bị (center, desk, wall, left, right, up, down, user) |
 | GET | `/servo/track/targets` | Danh sách target gợi ý cho YOLOWorld |
-| POST | `/servo/track` | Bắt đầu tracking — `{"target":"cup"}` (tự detect) hoặc `{"bbox":[x,y,w,h]}`. Xem [vision-tracking_vi.md](../../devices/lamp/docs/vi/vision-tracking_vi.md) |
+| POST | `/servo/track` | Bắt đầu tracking — `{"target":"cup"}` (tự detect) hoặc `{"bbox":[x,y,w,h]}`. Xem [vision-tracking_vi.md](../../robots/lamp/docs/vi/vision-tracking_vi.md) |
 | POST | `/servo/track/stop` | Dừng phiên tracking |
 | GET | `/servo/track` | Trạng thái tracking (active, target, bbox, confidence) |
 | POST | `/servo/track/update` | Khởi tạo lại tracker với bbox mới |

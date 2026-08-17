@@ -52,7 +52,7 @@ After placing the file, run `make build DEVICE_TYPE=lamp OTA_METADATA_URL=…` a
 | udev rules | **Hardware team** | Baked into base image |
 | SPI3 overlay | **Hardware team** | Baked into base image |
 
-The device profile overlay (`devices/<type>/rootfs/`) only contains files owned by the OS team.
+The device profile overlay (`robots/<type>/rootfs/`) only contains files owned by the OS team.
 
 ## Targets
 
@@ -185,14 +185,14 @@ make upload-source DEVICE_TYPE=lamp       # lamp hardware team base image (overw
 make upload-source DEVICE_TYPE=intern-v2  # intern-v2 hardware team base image
 ```
 
-### Upload device profile ZIPs (after changing devices/<type>/)
+### Upload device profile ZIPs (after changing robots/<type>/)
 
 ```bash
 cd scripts/release && bash upload-device.sh lamp
 cd scripts/release && bash upload-device.sh intern-v2
 ```
 
-Run this after any change to `devices/<type>/` so OTA (`software-update device`) picks it up.
+Run this after any change to `robots/<type>/` so OTA (`software-update device`) picks it up.
 
 ## File layout
 

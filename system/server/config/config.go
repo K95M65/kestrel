@@ -199,7 +199,7 @@ type Config struct {
 	// sets one; the device then keeps whatever the OS image shipped with.
 	Timezone string `json:"timezone,omitempty" yaml:"timezone"`
 
-	// DeviceType is the device class/profile id — the folder name under devices/
+	// DeviceType is the device class/profile id — the folder name under robots/
 	// (e.g. "lamp", "intern-v2", "unitree-go2w"). Selects which ROBOT.md/SOUL.md the
 	// runtime loads. Empty resolves to "" — no "lamp" fallback (see DeviceTypeOrDefault;
 	// the Serve startup guard fail-louds). HAL reads the same key from config.json via
@@ -331,7 +331,7 @@ func (c *Config) WakeWordEnabled() bool {
 }
 
 // DeviceTypeOrDefault resolves the device class used to pick
-// devices/<type>/{DEVICE,SOUL}.md. Order mirrors HAL's _resolve_device_type:
+// robots/<type>/{DEVICE,SOUL}.md. Order mirrors HAL's _resolve_device_type:
 // the DEVICE_TYPE env (set at provisioning — an immutable hardware identity that
 // must outrank anything the web UI writes) → config.json "device_type".
 // Returns "" when unresolved — NO "lamp" fallback; the startup guard in Serve

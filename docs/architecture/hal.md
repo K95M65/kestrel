@@ -10,7 +10,7 @@ not a fork" true.
 | | Capability | Driver |
 |---|---|---|
 | Example | `motion.move` | feetech servo on `/dev/ttyACM0` |
-| Lives in | `devices/contract/capabilities.md` | `hal/drivers/*` |
+| Lives in | `robots/contract/capabilities.md` | `hal/drivers/*` |
 | Stability | **frozen** — never renamed/removed in a major version | internal — changes freely |
 | Addressed by | skills and the runtime | nothing above the HAL |
 
@@ -21,7 +21,7 @@ that one rule lets a skill run on Lamp, Intern, or any third-party body.
 ## How a capability resolves
 
 ```
-motion.move   capability   devices/contract/capabilities.md      frozen
+motion.move   capability   robots/contract/capabilities.md      frozen
   └ route      hal/routes/servo.py             HTTP surface
     └ driver   hal/drivers/motors/*            talks to hardware
       └ board  hal/board/board.py                     which bus / pins
@@ -56,12 +56,12 @@ declarations, no fork. *(planner: `hal/board/device.py`)*
 Three existing artifacts, no new file type:
 
 1. **Driver** under `hal/drivers/<subsystem>/`, exposing a route.
-2. **`devices/contract/capabilities.md`** — add the name to the frozen vocabulary.
+2. **`robots/contract/capabilities.md`** — add the name to the frozen vocabulary.
 3. **`DEVICE.md`** — declare it on each device that has the hardware.
 
 If it moves, heats, or emits light/sound, it must expose a deterministic stop governed by
-[`SAFETY.md`](../../devices/lamp/SAFETY.md) — the stop never routes through the runtime.
+[`SAFETY.md`](../../robots/lamp/SAFETY.md) — the stop never routes through the runtime.
 
 ## See also
 
-[overview.md](overview.md) · [kernel.md](kernel.md) · [`DEVICE-SPEC.md`](../../devices/contract/DEVICE-SPEC.md)
+[overview.md](overview.md) · [kernel.md](kernel.md) · [`ROBOT-SPEC.md`](../../robots/contract/ROBOT-SPEC.md)

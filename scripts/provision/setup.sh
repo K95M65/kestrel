@@ -52,7 +52,7 @@ run_stage() {
 AP_BAND="${AP_BAND:-2.4}"       # 2.4 or 5 (5 GHz for better throughput)
 AP_CHANNEL="${AP_CHANNEL:-}"    # default: 6 (2.4 GHz) or 36 (5 GHz); override e.g. AP_CHANNEL=11 or 40
 
-# Device class this install is for — selects devices/<type>/{DEVICE,SOUL}.md at
+# Device class this install is for — selects robots/<type>/{DEVICE,SOUL}.md at
 # runtime (os-server + HAL) and drives the network identity (<type>-XXXX SSID +
 # mDNS hostname). REQUIRED, no default — provisioning must declare the device class
 # so one OS image can't silently brand itself "lamp". Pass via env, e.g.

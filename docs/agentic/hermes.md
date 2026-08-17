@@ -25,14 +25,14 @@ which brain is active.
 
 | `agent_runtime` | Backend |
 |---|---|
-| unset | falls back to `gateway.default` in `devices/<type>/ROBOT.md`, then OpenClaw if that is empty too |
+| unset | falls back to `gateway.default` in `robots/<type>/ROBOT.md`, then OpenClaw if that is empty too |
 | `"openclaw"` | OpenClaw (default) |
 | `"hermes"` | Hermes (`hermes.ProvideService`) |
 | `"picoclaw"` | PicoClaw (`picoclaw.ProvideService`) — persistent WebSocket client; assumes the PicoClaw service is already running. See `docs/agentic/picoclaw.md` + `runtimes/picoclaw`. |
 | anything else | OpenClaw (logged as `FALLBACK — unknown runtime=…`) |
 
 When `agent_runtime` is unset in `config.json`, the backend is taken from the
-device's declared `gateway.default` (`devices/<type>/ROBOT.md`); OpenClaw is used
+device's declared `gateway.default` (`robots/<type>/ROBOT.md`); OpenClaw is used
 only if that is also empty. The banner logs `source` so you can tell which won.
 
 On startup `ProvideGateway` prints an `AGENT BACKEND ACTIVE → HERMES` banner with

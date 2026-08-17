@@ -9,7 +9,7 @@ import (
 	"go.autonomous.ai/os/system/server/config"
 )
 
-// repoDevicesDir resolves the committed devices/ tree by walking up from the
+// repoDevicesDir resolves the committed robots/ tree by walking up from the
 // test working dir until it finds it, so package moves don't silently break
 // the SOUL.md tests with an off-by-one ".." chain again.
 func repoDevicesDir(t *testing.T) string {
@@ -19,12 +19,12 @@ func repoDevicesDir(t *testing.T) string {
 		t.Fatalf("getwd: %v", err)
 	}
 	for dir := wd; dir != filepath.Dir(dir); dir = filepath.Dir(dir) {
-		candidate := filepath.Join(dir, "devices")
+		candidate := filepath.Join(dir, "robots")
 		if st, err := os.Stat(filepath.Join(candidate, "lamp")); err == nil && st.IsDir() {
 			return candidate
 		}
 	}
-	t.Fatalf("devices/ tree not found above %s", wd)
+	t.Fatalf("robots/ tree not found above %s", wd)
 	return ""
 }
 
@@ -105,7 +105,7 @@ _You're not a chatbot. You're becoming someone._
 `
 
 // soulService builds a OpenclawService whose OpenclawConfigDir is an isolated temp dir and
-// whose device soul resolves from the committed devices/ tree.
+// whose device soul resolves from the committed robots/ tree.
 func soulService(t *testing.T, deviceType string) (*OpenclawService, string) {
 	t.Helper()
 	t.Setenv("DEVICES_DIR", repoDevicesDir(t))

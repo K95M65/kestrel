@@ -23,7 +23,7 @@ logger = logging.getLogger("hal.motion.factory")
 MOTION_DRIVERS: dict[str, Tuple[str, str]] = {
     "feetech": ("hal.drivers.motors.animation_service", "AnimationService"),
     "reachy_sdk": ("hal.drivers.motors.reachy_service", "ReachyMotionService"),
-    # A body made of variables — devices/sim, so the stack runs off-device.
+    # A body made of variables — robots/sim, so the stack runs off-device.
     "mock": ("hal.drivers.motors.mock_service", "MockMotionService"),
 }
 

@@ -10,7 +10,7 @@ When the OS server is not yet configured (`SetUpCompleted = false`), the device 
 1. Device boots → check config.json
 2. Not set up → AP mode (WiFi hotspot)
 3. User connects to WiFi → opens Web UI
-4. Enters: WiFi SSID/password + LLM config + channel
+4. Enters: WiFi SSID/password + LLM config + optional messaging channel
 5. POST /api/device/setup
 6. OS Server processes (async):
    a. Connect WiFi (connect-wifi CLI) — in parallel, an early-capture
@@ -61,6 +61,8 @@ When the OS server is not yet configured (`SetUpCompleted = false`), the device 
 ```
 
 **Response:** Returns immediately `{"status": 1}`. Setup runs async in a goroutine after 2s delay.
+
+**Messaging channel:** The entire Telegram, Slack, or Discord configuration is optional during initial setup. Omitting it does not block setup; configure a channel later with `POST /api/device/channel`. Credentials supplied to `POST /api/device/setup` keep the existing setup path but are not channel-validated there; `POST /api/device/channel` validates the credentials required by its selected channel.
 
 **Admin password default:** `admin_password` is optional. When empty on a first-time setup (`SetUpCompleted=false` and no `AdminPasswordHash` on file), the handler defaults it to the 4-char hardware suffix from `device.GetDeviceMac()` — the same suffix `scripts/provision/setup-ap.sh` uses for the AP SSID (`<DEVICE_TYPE>-<xxxx>`). The suffix is printed on the sticker at the bottom of the device, so operators can sign into the admin UI without picking a password. The V2 Setup Web UI hides the DEVICE PASSWORD field entirely and relies on this default; V1's dedicated Device step still asks the operator to pick one. Fails 400 (`device hardware ID unreadable`) when `GetDeviceMac()` returns empty (no `DEVICE_TYPE` env, no serial, no eth MAC) — silent fallback would give every unidentified device the same well-known password.
 
@@ -568,7 +570,7 @@ through the mic, the other photographs them through the camera. Each is offered
 only when the device declares the capability that makes it possible —
 `Cap.Audio` for Voice, `Cap.Vision` for Face — read from
 `GET /api/system/info` (`useCapabilities`), which is os-server's parse of
-`devices/<type>/ROBOT.md` and the same contract Monitor gates its tabs on. The
+`robots/<type>/ROBOT.md` and the same contract Monitor gates its tabs on. The
 gate covers the sidebar entry, the mounted section (so a section that can't work
 never issues its hardware requests), **and** the `required` / `order` lists that
 drive completion, since an enrollment the device can't perform is not a pending

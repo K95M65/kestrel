@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This repo is developed in both **Cursor** and **Claude Code**. The following rules (from `.cursor/rules/`) apply to all code changes:
 
-1. **Update docs on code change** — When you change code that affects behavior, architecture, or APIs, update **both** the English and Vietnamese docs to match. Keep numbers, flows, endpoints, and states 100% accurate with the code. Platform docs are in `docs/`; lamp-specific docs are in `devices/lamp/docs/`.
+1. **Update docs on code change** — When you change code that affects behavior, architecture, or APIs, update **both** the English and Vietnamese docs to match. Keep numbers, flows, endpoints, and states 100% accurate with the code. Platform docs are in `docs/`; lamp-specific docs are in `robots/lamp/docs/`.
 
    **Platform docs** (`docs/` + `docs/vi/`):
 
@@ -30,27 +30,27 @@ This repo is developed in both **Cursor** and **Claude Code**. The following rul
    | Adding/changing an agentic backend (AgentGateway contract, switch, install/presync, migration, skills, hooks, reset) | `docs/agentic/adding-agent-runtime.md` | `docs/vi/agentic/adding-agent-runtime_vi.md` |
    | Safety engine (SAFETY.md bounds, deterministic enforcement gate) | `docs/safety.md` | `docs/vi/safety_vi.md` |
 
-   **Lamp-specific docs** (`devices/lamp/docs/` + `devices/lamp/docs/vi/`):
+   **Lamp-specific docs** (`robots/lamp/docs/` + `robots/lamp/docs/vi/`):
 
    | Code area | English doc | Vietnamese doc |
    |-----------|-------------|----------------|
-   | LED, effects, states, animations | `devices/lamp/docs/led-control.md` | `devices/lamp/docs/vi/led-control_vi.md` |
-   | Sensing behavior, sound escalation, reactions | `devices/lamp/docs/sensing-behavior.md` | `devices/lamp/docs/vi/sensing-behavior_vi.md` |
-   | Sensing threshold tuning | `devices/lamp/docs/sensing-tuning.md` | `devices/lamp/docs/vi/sensing-tuning_vi.md` |
-   | Habit tracking, pattern building, habit-aware nudge phrasing | `devices/lamp/docs/habit-tracking.md` | `devices/lamp/docs/vi/habit-tracking_vi.md` |
-   | Vision tracking, object follow, servo track | `devices/lamp/docs/vision-tracking.md` | `devices/lamp/docs/vi/vision-tracking_vi.md` |
-   | Physical controls (GPIO button, TTP223 touchpad, gestures, pet response) | `devices/lamp/docs/physical-controls.md` | `devices/lamp/docs/vi/physical-controls_vi.md` |
+   | LED, effects, states, animations | `robots/lamp/docs/led-control.md` | `robots/lamp/docs/vi/led-control_vi.md` |
+   | Sensing behavior, sound escalation, reactions | `robots/lamp/docs/sensing-behavior.md` | `robots/lamp/docs/vi/sensing-behavior_vi.md` |
+   | Sensing threshold tuning | `robots/lamp/docs/sensing-tuning.md` | `robots/lamp/docs/vi/sensing-tuning_vi.md` |
+   | Habit tracking, pattern building, habit-aware nudge phrasing | `robots/lamp/docs/habit-tracking.md` | `robots/lamp/docs/vi/habit-tracking_vi.md` |
+   | Vision tracking, object follow, servo track | `robots/lamp/docs/vision-tracking.md` | `robots/lamp/docs/vi/vision-tracking_vi.md` |
+   | Physical controls (GPIO button, TTP223 touchpad, gestures, pet response) | `robots/lamp/docs/physical-controls.md` | `robots/lamp/docs/vi/physical-controls_vi.md` |
    | Autonomous Buddy (Mac companion app) | `integrations/companions/autonomous-buddy/docs/autonomous-buddy.md`, `integrations/companions/autonomous-buddy/docs/autonomous-buddy-mvp.md`, `integrations/companions/autonomous-buddy/docs/release-signing.md` | `integrations/companions/autonomous-buddy/docs/vi/autonomous-buddy_vi.md`, `integrations/companions/autonomous-buddy/docs/vi/autonomous-buddy-mvp_vi.md`, `integrations/companions/autonomous-buddy/docs/vi/release-signing_vi.md` |
-   | Security test checklist | `devices/lamp/docs/security-test.md` | _(no vi version)_ |
+   | Security test checklist | `robots/lamp/docs/security-test.md` | _(no vi version)_ |
 
-   **Reachy Mini docs** (`devices/reachy-mini/docs/` + `devices/reachy-mini/docs/vi/`):
+   **Reachy Mini docs** (`robots/reachy-mini/docs/` + `robots/reachy-mini/docs/vi/`):
 
    | Code area | English doc | Vietnamese doc |
    |-----------|-------------|----------------|
-   | Bring-up, motion driver, deploy, safety delta | `devices/reachy-mini/docs/runtime.md` | `devices/reachy-mini/docs/vi/runtime_vi.md` |
-   | Recovery (Pollen OS), SSH, WiFi impact | `devices/reachy-mini/docs/recovery.md` | `devices/reachy-mini/docs/vi/recovery_vi.md` |
-   | First-boot recon plan, setup.sh design, smoke tests | `devices/reachy-mini/docs/first-boot-plan.md` | `devices/reachy-mini/docs/vi/first-boot-plan_vi.md` |
-   | Pollen ecosystem reference (voice, tool registry, app distribution) | `devices/reachy-mini/docs/pollen-ecosystem-analysis.md` | `devices/reachy-mini/docs/vi/pollen-ecosystem-analysis_vi.md` |
+   | Bring-up, motion driver, deploy, safety delta | `robots/reachy-mini/docs/runtime.md` | `robots/reachy-mini/docs/vi/runtime_vi.md` |
+   | Recovery (Pollen OS), SSH, WiFi impact | `robots/reachy-mini/docs/recovery.md` | `robots/reachy-mini/docs/vi/recovery_vi.md` |
+   | First-boot recon plan, setup.sh design, smoke tests | `robots/reachy-mini/docs/first-boot-plan.md` | `robots/reachy-mini/docs/vi/first-boot-plan_vi.md` |
+   | Pollen ecosystem reference (voice, tool registry, app distribution) | `robots/reachy-mini/docs/pollen-ecosystem-analysis.md` | `robots/reachy-mini/docs/vi/pollen-ecosystem-analysis_vi.md` |
 
 2. **Comments in English** — Project standard.
 3. **Code is the single source of truth** — Docs reflect code, not the other way around.
@@ -146,7 +146,7 @@ Uses **Google Wire** for compile-time DI. After changing provider signatures, ru
 - **`board/`** — Per-board profiles (pin maps, debounce).
 - **`routes/`** — FastAPI route modules (servo, led, camera, audio, emotion, …).
 
-**OS-level dirs (repo root):** `skills/` (agent skills), `devices/` (per-device declarations + docs; `devices/contract/` device specs, `devices/contract/cts/` compliance tests), `scripts/imager/` (OrangePi image build), `scripts/` (setup + OTA upload), `integrations/perception-service/`, `integrations/companions/`.
+**OS-level dirs (repo root):** `skills/` (agent skills), `robots/` (per-device declarations + docs; `robots/contract/` device specs, `robots/contract/cts/` compliance tests), `scripts/imager/` (OrangePi image build), `scripts/` (setup + OTA upload), `integrations/perception-service/`, `integrations/companions/`.
 
 ### API Response Format
 

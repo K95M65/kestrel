@@ -1,7 +1,7 @@
 """Tests for the device-profile layer: ROBOT.md parsing + mount planning.
 
-Pure logic, no hardware. Also parses the REAL committed devices/lamp and
-devices/intern-v2 ROBOT.md files to guard the contract against drift.
+Pure logic, no hardware. Also parses the REAL committed robots/lamp and
+robots/intern-v2 ROBOT.md files to guard the contract against drift.
 """
 import os
 import shutil
@@ -23,7 +23,7 @@ from hal.board.device import (
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 # hal/test -> hal -> repo root
-DEVICES_DIR = os.path.normpath(os.path.join(HERE, "..", "..", "devices"))
+DEVICES_DIR = os.path.normpath(os.path.join(HERE, "..", "..", "robots"))
 
 SAMPLE = """---
 schema: autonomous.device.v1

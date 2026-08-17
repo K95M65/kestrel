@@ -5,8 +5,8 @@
 #   scripts/release/upload-cad.sh <local-file> [remote-dir]
 #
 # Examples:
-#   scripts/release/upload-cad.sh devices/lamp/hardware/cad/lamp-v3.stp
-#   scripts/release/upload-cad.sh devices/lamp/hardware/cad/lamp-v3.stp /lamp-cad
+#   scripts/release/upload-cad.sh robots/lamp/hardware/cad/lamp-v3.stp
+#   scripts/release/upload-cad.sh robots/lamp/hardware/cad/lamp-v3.stp /lamp-cad
 #
 # Requirements:
 #   - MEGAcmd installed (brew install --cask megacmd)
@@ -58,4 +58,4 @@ fi
 echo ""
 echo "Public link: $LINK"
 echo ""
-echo "Paste this into devices/lamp/hardware/cad/README.md."
+echo "Paste this into robots/lamp/hardware/cad/README.md."

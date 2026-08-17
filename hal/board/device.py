@@ -12,7 +12,7 @@ them explicit:
 
 Dependency-free: a focused parser for the ROBOT.md front-matter capability
 block (no pyyaml in the runtime). Pure functions so the logic is unit-testable
-off-hardware. See devices/contract/ROBOT-SPEC.md and devices/contract/capabilities.md.
+off-hardware. See robots/contract/ROBOT-SPEC.md and robots/contract/capabilities.md.
 """
 from __future__ import annotations
 
@@ -213,7 +213,7 @@ def parse_device(device_type: str, text: str) -> DeviceProfile:
     dev_id = _parse_scalar(front_matter, "id")
     # `id` is the device's stable identity; it must equal the folder it is
     # mounted from (device_type). A mismatch means a ROBOT.md copied into the
-    # wrong folder or a typo'd id — a deploy fault, so fail loud (DEVICE-SPEC #3).
+    # wrong folder or a typo'd id — a deploy fault, so fail loud (ROBOT-SPEC #3).
     if dev_id != device_type:
         raise ValueError(
             f"ROBOT.md id '{dev_id}' does not match its folder '{device_type}' — "
@@ -307,7 +307,7 @@ def profile_path(device_dir: str) -> str:
 
 
 def load_device(device_type: str, devices_dir: str) -> DeviceProfile:
-    """Load devices/<device_type>/ROBOT.md (or ROBOT.md) from a devices directory."""
+    """Load robots/<device_type>/ROBOT.md (or ROBOT.md) from a devices directory."""
     device_dir = os.path.join(devices_dir, device_type)
     with open(profile_path(device_dir), "r") as f:
         profile = parse_device(device_type, f.read())

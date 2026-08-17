@@ -104,7 +104,7 @@ except (OSError, ValueError, KeyError, TypeError) as e:
 
 
 # HAL_BOARD forces a board id instead of reading /proc/device-tree/model. It
-# exists for the mock body (devices/sim): a laptop has no device tree, so no
+# exists for the mock body (robots/sim): a laptop has no device tree, so no
 # board can be detected and HAL refuses to boot. It is opt-in, must name a real
 # boards.json entry, and is logged loudly — a robot never sets it.
 BOARD_ENV_VAR = "HAL_BOARD"

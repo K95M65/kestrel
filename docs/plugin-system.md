@@ -150,7 +150,7 @@ Git URL → venv → systemd unit → HAL HTTP. Full plugin lifecycle:
 - **Auto MCP tool registration** — plugin methods with docstrings become
   agent-callable tools via local MCP server. Agent can invoke plugins by voice.
 - **Cross-device capability routing** — `capabilities` in plugin.json gates
-  which devices can run a plugin (reuses `devices/contract/capabilities.md`
+  which devices can run a plugin (reuses `robots/contract/capabilities.md`
   vocabulary).
 
 ### v3 — Ecosystem
@@ -178,8 +178,8 @@ hello-world plugin with LED + voice demo.
 
 ## References
 
-- Pollen ecosystem analysis: `devices/reachy-mini/docs/pollen-ecosystem-analysis.md`
+- Pollen ecosystem analysis: `robots/reachy-mini/docs/pollen-ecosystem-analysis.md`
 - HAL API routes: `hal/routes/`
-- Device capabilities: `devices/contract/capabilities.md`
+- Device capabilities: `robots/contract/capabilities.md`
 - Plugin template: `integrations/community-apps/plugin-template/`
 - HuggingFace template: https://huggingface.co/spaces/autonomous-os/autonomous-os-hello-robot

@@ -61,7 +61,7 @@ def read_tree():
                 if c not in CAP_CONST:
                     raise SystemExit(
                         f"{sidecar}: unknown capability {c!r} — "
-                        f"the 13 names live in devices/contract/capabilities.md"
+                        f"the 13 names live in robots/contract/capabilities.md"
                     )
         elif not (d / "SKILL.md").is_file():
             continue  # not a skill folder

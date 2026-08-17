@@ -1,6 +1,6 @@
 """The mock body: HAL's pieces without hardware under them.
 
-These are the tests that make `devices/sim` a real path rather than a promise —
+These are the tests that make `robots/sim` a real path rather than a promise —
 the board override resolves and refuses what it should, the declaration parses
 and plans the same mounts a real body would, and the mock motion driver
 satisfies the same protocol the Feetech and Pollen drivers do.
@@ -16,7 +16,7 @@ from hal.board.device import load_device, plan_mounts
 from hal.safety.policy import min_move_duration, parse_safety
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-DEVICES_DIR = os.path.join(REPO_ROOT, "devices")
+DEVICES_DIR = os.path.join(REPO_ROOT, "robots")
 
 
 def _load(name, relpath):

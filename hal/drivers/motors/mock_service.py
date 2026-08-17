@@ -5,7 +5,7 @@ satisfies `MotionService` without hardware: joints are floats in a dict, moves
 land instantly, and every call is recorded so a test (or a person poking HAL on
 a laptop) can see exactly what the robot was told to do.
 
-It is used by `devices/sim` (the mock body) together with `HAL_BOARD=sim`. It
+It is used by `robots/sim` (the mock body) together with `HAL_BOARD=sim`. It
 is not a simulator: nothing here models inertia, collision or time. It answers
 the contract so routes, skills, markers and the safety gate can be exercised
 end to end off-device.
