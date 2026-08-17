@@ -4,7 +4,7 @@ Every skill runs on every robot whose hardware declares what it needs — so a s
 
 Skills install by capability: a robot's [`ROBOT.md`](../robots/lamp/ROBOT.md) declares the hardware it has, and every skill that needs only that hardware lands on it. Nothing is per-model, so the grid fills itself in as bodies arrive.
 
-| PHYSICAL SKILLS | <a href="../devices/lamp"><img src="../devices/lamp/images/lamp-white.webp" width="150" alt="Lamp"><br>Lamp</a> | <a href="../devices/intern-v2"><img src="../devices/intern-v2/images/intern-tile.webp" width="150" alt="Intern"><br>Intern</a> | <a href="../devices/reachy-mini"><img src="../devices/reachy-mini/images/reachy-mini.webp" width="150" alt="Reachy Mini"><br>Reachy Mini</a> | <a href="../devices/unitree-go2w"><img src="../devices/unitree-go2w/images/go2-w-tile.webp" width="150" alt="Go2-W"><br>Go2-W</a> |
+| PHYSICAL SKILLS | <a href="../robots/lamp"><img src="../robots/lamp/images/lamp-white.webp" width="150" alt="Lamp"><br>Lamp</a> | <a href="../robots/intern-v2"><img src="../robots/intern-v2/images/intern-tile.webp" width="150" alt="Intern"><br>Intern</a> | <a href="../robots/reachy-mini"><img src="../robots/reachy-mini/images/reachy-mini.webp" width="150" alt="Reachy Mini"><br>Reachy Mini</a> | <a href="../robots/unitree-go2w"><img src="../robots/unitree-go2w/images/go2-w-tile.webp" width="150" alt="Go2-W"><br>Go2-W</a> |
 |---|:---:|:---:|:---:|:---:|
 | [camera](../skills/camera/)<br>See the room | ✅ |  | ✅ | ○ |
 | [servo-tracking](../skills/servo-tracking/)<br>Track an object | ✅ |  | ○ | ○ |
@@ -26,7 +26,7 @@ Skills install by capability: a robot's [`ROBOT.md`](../robots/lamp/ROBOT.md) de
 | [wellbeing](../skills/wellbeing/)<br>Posture and breaks | ✅ | ✅ | ✅ | ○ |
 | [habit](../skills/habit/)<br>Learn your routines | ✅ | ✅ | ✅ | ○ |
 
-| DIGITAL SKILLS | <a href="../devices/lamp"><img src="../devices/lamp/images/lamp-white.webp" width="150" alt="Lamp"><br>Lamp</a> | <a href="../devices/intern-v2"><img src="../devices/intern-v2/images/intern-tile.webp" width="150" alt="Intern"><br>Intern</a> | <a href="../devices/reachy-mini"><img src="../devices/reachy-mini/images/reachy-mini.webp" width="150" alt="Reachy Mini"><br>Reachy Mini</a> | <a href="../devices/unitree-go2w"><img src="../devices/unitree-go2w/images/go2-w-tile.webp" width="150" alt="Go2-W"><br>Go2-W</a> |
+| DIGITAL SKILLS | <a href="../robots/lamp"><img src="../robots/lamp/images/lamp-white.webp" width="150" alt="Lamp"><br>Lamp</a> | <a href="../robots/intern-v2"><img src="../robots/intern-v2/images/intern-tile.webp" width="150" alt="Intern"><br>Intern</a> | <a href="../robots/reachy-mini"><img src="../robots/reachy-mini/images/reachy-mini.webp" width="150" alt="Reachy Mini"><br>Reachy Mini</a> | <a href="../robots/unitree-go2w"><img src="../robots/unitree-go2w/images/go2-w-tile.webp" width="150" alt="Go2-W"><br>Go2-W</a> |
 |---|:---:|:---:|:---:|:---:|
 | [Gmail](../skills/connectors/)<br>Manage your email | ✅ | ✅ | ✅ | ○ |
 | [Calendar](../skills/connectors/)<br>Book and move meetings | ✅ | ✅ | ✅ | ○ |

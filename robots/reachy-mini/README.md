@@ -15,7 +15,7 @@ through Pollen's own SDK.
 SSH into your robot and run:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/autonomous-ai/autonomous-os/main/devices/reachy-mini/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/autonomous-ai/autonomous-os/main/robots/reachy-mini/install.sh | sudo bash
 ```
 
 That is the whole thing. No repo to clone, no Go or Node toolchain, no build

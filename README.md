@@ -34,7 +34,7 @@ The simplest way in is a robot we have already tested it on. What each of them c
 1. **SSH in** — `ssh pollen@reachy-mini.local`.
 2. **Run one command.** Nothing is flashed; the Reachy daemon keeps the motors.
    ```bash
-   curl -fsSL https://raw.githubusercontent.com/autonomous-ai/autonomous-os/main/devices/reachy-mini/install.sh | sudo bash
+   curl -fsSL https://raw.githubusercontent.com/autonomous-ai/autonomous-os/main/robots/reachy-mini/install.sh | sudo bash
    ```
 3. **Add it.** In the app, tap **Add robot → Reachy Mini** and give it `reachy-mini.local`.
 4. **Interact with it.** Say something — the head tilts, the antennas lift, and it answers.

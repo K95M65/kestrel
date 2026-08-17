@@ -3,7 +3,7 @@
 #
 # SSH into your robot, then:
 #
-#   curl -fsSL https://raw.githubusercontent.com/autonomous-ai/autonomous-os/main/devices/reachy-mini/install.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/autonomous-ai/autonomous-os/main/robots/reachy-mini/install.sh | sudo bash
 #
 # That is all a Reachy Mini needs. No repo to clone, no Go or Node toolchain, no
 # build step, nothing copied from your laptop.
