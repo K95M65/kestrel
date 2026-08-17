@@ -40,9 +40,15 @@ import (
 // interleave with other openclaw.json writers (watcher, refresh, setup).
 // The network fetch happens before the lock to keep the critical section short.
 func (s *OpenclawService) SyncModelsFromAPI() (bool, error) {
-	resp, err := FetchModelsFromAPI()
+	// Same source-of-catalog decision as SetupAgent / ensureProviderConfig /
+	// ensureAgentDefaults (byo_models.go). This one is the periodic writer and
+	// the LAST to run at boot, so a hosted fetch here silently overwrites a BYO
+	// catalog the other three got right — the device ends up pointed at Ollama
+	// while advertising the hosted model keys, which is the exact bug #198 is
+	// about.
+	resp, byo, err := resolveModels(context.Background(), s.config.LLMBaseURL, s.config.LLMAPIKey)
 	if err != nil {
-		return false, fmt.Errorf("fetch models: %w", err)
+		return false, fmt.Errorf("fetch models (byo=%v): %w", byo, err)
 	}
 
 	s.primarySyncMu.Lock()
