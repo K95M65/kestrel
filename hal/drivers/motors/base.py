@@ -82,6 +82,19 @@ class MotionService(Protocol):
         """Move to gravity-rest, then disable torque. Returns per-motor error dict (empty=ok)."""
         ...
 
+    def halt(self) -> None:
+        """Abort any move, recording or tracking in flight and HOLD where the body is.
+
+        This is the deterministic stop. It is NOT `release`: torque stays ON and
+        the body does not travel to a rest pose first — a stop that moves is
+        wrong for anything with legs or wheels. It is NOT `stop` either, which
+        is the service lifecycle (see above).
+
+        Must be safe to call at any time, including when nothing is moving, and
+        must never be gated by a safety bound (`motion.stop_always`).
+        """
+        ...
+
     def resume(self) -> None:
         """Exit zero/hold, re-enable torque, restart idle animation."""
         ...

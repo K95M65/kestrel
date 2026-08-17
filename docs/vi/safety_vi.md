@@ -154,7 +154,24 @@ dài duration** (move vẫn tới target, chỉ chậm lại) — không cắt c
 (`release`/`zero`/`hold`/`stop`) không bao giờ bị gate để luôn safe được body.
 `stop_always` được parse và trả về như một phần policy đã khai báo, nhưng hiện chưa
 có HAL route nào dùng field này: tính chất recovery là cấu trúc (các route không bị
-gate), không phải policy gate được thực thi độc lập.
+gate), không phải policy gate được thực thi độc lập. `POST /servo/stop` chính là
+route mà tính chất đó tồn tại vì nó — cắt ngang move hoặc recording đang chạy rồi
+*giữ nguyên vị trí* (torque vẫn ON), không đọc bound nào, không nhận tham số nào.
+Nó KHÔNG phải `/servo/release` — cái đó đi về tư thế nghỉ rồi mới tắt torque; một
+lệnh dừng mà lại di chuyển trước là sai với mọi thân có bánh hoặc có chân (#201).
+
+Vòng lặp vision-tracking cũng đã được gate, nhưng cần cơ chế riêng:
+`min_move_duration` không bound được nó vì không có đích nào để kéo dài duration,
+chỉ có speed profile theo từng frame. `cap_speed_dps` kẹp trần pursuit/saccade của
+chính vòng lặp (55 / 100 deg/s, `hal/drivers/tracking/constants.py`) xuống
+`motion.max_speed` đã khai báo, ngay tại chỗ duy nhất profile được chọn
+(`tracker_service.set_profile`). Hai hằng số đó là tuning, không phải giấy phép —
+trên Lamp (`max_speed: 120`) hôm nay không có gì bị kẹp; gate này dành cho thân nào
+khai trần thấp hơn.
+
+**Vẫn CHƯA gate:** recorded animation. Chúng phát lại frame đã lưu ở fps cố định,
+nên bound tốc độ nghĩa là đổi cách animation trông ra sao, không phải kéo dài một
+con số — đây là câu hỏi mở chứ không phải thiếu một dòng code.
 
 - [x] **Unit:** `min_move_duration` kéo dài move quá nhanh (120° @120 deg/s → 1.0s),
       giữ move chậm, kẹp request tức thì (duration 0), pass-through khi không có

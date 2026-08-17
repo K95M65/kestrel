@@ -486,6 +486,25 @@ class ReachyMotionService:
         self._take_servo()
         self._goto({k: 0.0 for k in JOINT_KEYS}, 2.0)
 
+    def halt(self) -> None:
+        """Pin the head where it is, motors still enabled.
+
+        The daemon owns interpolation, so there is no frame loop to break out
+        of the way the Feetech driver does. The equivalent is to command the
+        pose it is passing through right now with a ~0 duration: the running
+        goto is superseded and the body stops there. Motors are NOT disabled —
+        that is release().
+        """
+        self._take_servo()
+        try:
+            here = self.get_positions()
+            if here:
+                self._goto(here, _MIN_MOVE_DURATION_S)
+        except Exception as e:
+            # Never raise — halt must always be answerable.
+            logger.warning("[reachy] halt could not pin current pose: %s", e)
+        logger.info("[reachy] motion halted, holding pose (motors enabled)")
+
     def release(self) -> Dict[str, str]:
         errors: Dict[str, str] = {}
         self._released = True  # before the claim — stops a groove repeat (see zero_pose)

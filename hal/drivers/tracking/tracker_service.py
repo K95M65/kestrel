@@ -32,7 +32,9 @@ import cv2
 import numpy as np
 import numpy.typing as npt
 
+from hal import app_state
 from hal.drivers.tracking import constants as C
+from hal.safety.policy import cap_speed_dps
 from hal.drivers.tracking.detection import ObjectDetector
 from hal.drivers.tracking.filters import AlphaBetaFilter2D, PID, soft_deadband
 from hal.drivers.tracking.servo_follow import ServoFollower
@@ -578,9 +580,17 @@ class TrackerService:
                         saccade_mode = False
                 elif offset_mag > C.SACCADE_OFFSET_FRAC * w_fr:
                     saccade_mode = True
+                # The tracking loop is a declared-bound path like any other: its
+                # own pursuit/saccade ceilings (55/100 deg/s) are tuning, not
+                # permission. A body that declares a lower motion.max_speed wins
+                # — this is the only place the loop's speed is chosen, so it is
+                # the whole gate.
                 self._follower.set_profile(
                     C.SACCADE_SMOOTH_TIME if saccade_mode else C.SERVO_SMOOTH_TIME,
-                    C.SACCADE_MAX_SPEED_DPS if saccade_mode else C.SERVO_MAX_SPEED_DPS,
+                    cap_speed_dps(
+                        app_state.safety_policy,
+                        C.SACCADE_MAX_SPEED_DPS if saccade_mode else C.SERVO_MAX_SPEED_DPS,
+                    ),
                 )
                 # Tiered dead zone: true zero inside INNER, lazy creep toward
                 # center up to the outer edge, full error beyond (continuous).

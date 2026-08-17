@@ -19,6 +19,7 @@ from hal.safety.policy import (
     clamp_color,
     in_window,
     load_safety,
+    cap_speed_dps,
     min_move_duration,
     parse_safety,
     read_soc_temp_c,
@@ -327,6 +328,36 @@ class TestReadSocTemp(unittest.TestCase):
 
     def test_unreadable_returns_none(self):
         self.assertIsNone(read_soc_temp_c("/nonexistent/thermal/zone"))
+
+
+class TestCapSpeedDps(unittest.TestCase):
+    """The bound for streaming paths (the vision-tracking loop), which have no
+    destination for min_move_duration to stretch a move toward."""
+
+    def setUp(self):
+        self.p = parse_safety(_FM_MOTION)  # max_speed 120 deg/s
+
+    def test_below_the_ceiling_passes_through(self):
+        # The tracker's own pursuit/saccade ceilings on Lamp today.
+        self.assertEqual(cap_speed_dps(self.p, 55.0), 55.0)
+        self.assertEqual(cap_speed_dps(self.p, 100.0), 100.0)
+
+    def test_above_the_ceiling_is_clamped(self):
+        self.assertEqual(cap_speed_dps(self.p, 200.0), 120.0)
+
+    def test_lower_declared_ceiling_wins_over_tuning(self):
+        """The case the gate exists for: a body whose declared bound is below
+        the loop's tuning constants."""
+        slow = parse_safety(_FM_MOTION.replace("max_speed: 120", "max_speed: 40"))
+        self.assertEqual(cap_speed_dps(slow, 55.0), 40.0)
+        self.assertEqual(cap_speed_dps(slow, 100.0), 40.0)
+
+    def test_no_speed_bound_passthrough(self):
+        self.assertEqual(cap_speed_dps(parse_safety(_FM), 55.0), 55.0)
+
+    def test_no_policy_passthrough(self):
+        # Undeclared stays undeclared — never invent a ceiling of 0.
+        self.assertEqual(cap_speed_dps(None, 55.0), 55.0)
 
 
 if __name__ == "__main__":

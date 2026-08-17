@@ -312,6 +312,22 @@ def audio_quiet_now(policy: Optional[SafetyPolicy], now: Optional[dtime] = None)
     return in_window(policy.audio_quiet, now)
 
 
+def cap_speed_dps(policy: Optional[SafetyPolicy], requested: float) -> float:
+    """The speed ceiling to actually use, in deg/s: `requested`, or the declared
+    `motion.max_speed` when that is lower.
+
+    For the continuous paths — the vision-tracking loop and any other follower
+    that streams positions rather than commanding a move with a duration.
+    `min_move_duration` cannot bound those: there is no destination to stretch a
+    move towards, only a speed profile per frame. Pure; pass-through when no
+    ceiling is declared, so an undeclared bound stays undeclared rather than
+    inventing 0.
+    """
+    if policy is None or policy.motion is None or policy.motion.max_speed is None:
+        return requested
+    return min(float(requested), float(policy.motion.max_speed))
+
+
 def min_move_duration(
     policy: Optional[SafetyPolicy],
     target: dict,

@@ -260,11 +260,12 @@ file is loaded as an overlay on operational defaults (`httpPort` 8080,
 `poll_interval` 5m, `state_file`), so a partial file (just `metadata_url`) works
 and a missing file yields defaults with an empty URL.
 
-`setup.sh` and golden-image builders provision `OTA_SIGNING_PUBLIC_KEY` as
-`signing_public_key`. Bootstrap verifies the envelope before reading any
-component; the provisioned updater verifies it again and hashes every ZIP
-before extraction. Release writers require `OTA_SIGNING_PRIVATE_KEY` and
-`OTA_SIGNING_KEY_ID` to re-sign the envelope. For the two self-contained
+When supplied, `setup.sh` and golden-image builders persist
+`OTA_SIGNING_PUBLIC_KEY` as `signing_public_key`. Bootstrap then verifies the
+envelope before reading any component; the provisioned updater verifies it
+again and hashes every ZIP before extraction. When a release operator supplies
+`OTA_SIGNING_PRIVATE_KEY` and `OTA_SIGNING_KEY_ID`, release writers re-sign the
+envelope; without them they retain the legacy unsigned format. For the two self-contained
 binaries, each update retains `/root/bootstrap/rollback/<component>.previous`;
 run `software-update rollback os-server` or `software-update rollback bootstrap`
 to restore it.

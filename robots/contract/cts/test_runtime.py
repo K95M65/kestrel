@@ -218,7 +218,63 @@ class TestRuntimeConformance(unittest.TestCase):
 
     # ── MUST NOT 15 / MUST 6 — a motion device ships a deterministic stop ──
 
-    def test_mustnot15_motion_device_has_deterministic_stop(self):
+    def test_mustnot15_motion_device_has_a_holding_stop(self):
+        """`POST /servo/stop` aborts what is in flight and HOLDS — torque stays
+        on, the body does not travel to a rest pose first.
+
+        The probe below (`/servo/track/stop`) only ends the vision tracker, so
+        it passes on a body that cannot stop a move at all. This is the one that
+        a rolling or legged body has to answer: a stop that parks first is not a
+        stop when the thing has wheels.
+        """
+        profile = self._profile()
+        if "motion" not in profile.capabilities:
+            self.skipTest("device declares no motion capability")
+        _, before, _ = _request(f"{HAL}/servo/position")
+        status, _, elapsed_ms = _request(f"{HAL}/servo/stop", method="POST")
+        self.assertLess(status, 400,
+                        f"MUST 6: device declares motion but POST /servo/stop returned {status} — "
+                        f"no holding stop reachable")
+        print(f"\n    [cts] holding stop answered in {elapsed_ms:.0f} ms", end="")
+        if STOP_BUDGET_MS:
+            self.assertLessEqual(elapsed_ms, float(STOP_BUDGET_MS),
+                                 f"MUST 6: stop took {elapsed_ms:.0f} ms, over the "
+                                 f"{STOP_BUDGET_MS} ms budget given in CTS_STOP_BUDGET_MS")
+        # It HOLDS: a stop that parks the body would show up here as movement.
+        _, after, _ = _request(f"{HAL}/servo/position")
+        if before and after:
+            for joint, was in (before.get("positions") or {}).items():
+                now = (after.get("positions") or {}).get(joint)
+                if now is None:
+                    continue
+                self.assertAlmostEqual(
+                    float(was), float(now), delta=2.0,
+                    msg=f"MUST 6: /servo/stop moved {joint} from {was} to {now} — "
+                        f"a stop must hold, not travel to a rest pose")
+
+    def test_must6_locomotion_body_has_a_holding_stop(self):
+        """A body that rolls or walks declares the `locomotion` route, and its
+        stop is the one that matters most: wheels coast, legs fall.
+
+        Same contract as `/servo/stop` above, different route, because a rolling
+        base has no servo joints to read — `/locomotion/stop` must answer, and
+        answer fast. Skipped on every body in the tree today; it exists so the
+        first one that declares `locomotion` cannot merge without it.
+        """
+        profile = self._profile()
+        if "locomotion" not in (profile.declared_routes() or {}):
+            self.skipTest("device declares no locomotion route")
+        status, _, elapsed_ms = _request(f"{HAL}/locomotion/stop", method="POST")
+        self.assertLess(status, 400,
+                        f"MUST 6: device declares the locomotion route but POST /locomotion/stop "
+                        f"returned {status} — a rolling body with no stop cannot ship")
+        print(f"\n    [cts] locomotion stop answered in {elapsed_ms:.0f} ms", end="")
+        if STOP_BUDGET_MS:
+            self.assertLessEqual(elapsed_ms, float(STOP_BUDGET_MS),
+                                 f"MUST 6: locomotion stop took {elapsed_ms:.0f} ms, over the "
+                                 f"{STOP_BUDGET_MS} ms budget given in CTS_STOP_BUDGET_MS")
+
+    def test_mustnot15_tracking_loop_has_a_stop(self):
         profile = self._profile()
         if "motion" not in profile.capabilities:
             self.skipTest("device declares no motion capability")

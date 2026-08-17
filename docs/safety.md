@@ -162,7 +162,25 @@ capped) — never by truncating the destination. Recovery actions
 (`release`/`zero`/`hold`/`stop`) are never gated so you can always safe the body.
 `stop_always` is parsed and reported as part of the declared policy, but no HAL
 route currently consumes that field: this recovery property is structural (the
-routes are ungated), not an independently enforced policy gate.
+routes are ungated), not an independently enforced policy gate. `POST
+/servo/stop` is the route that property exists for — it aborts a move or a
+recording in flight and *holds* (torque stays on), reads no bound, and takes no
+arguments. It is not `/servo/release`, which travels to a rest pose before
+cutting torque; a stop that moves first is wrong for anything with wheels or
+legs (#201).
+
+The vision-tracking loop is gated too, and needs its own mechanism:
+`min_move_duration` cannot bound it because there is no destination to stretch a
+move toward, only a per-frame speed profile. `cap_speed_dps` clamps the loop's
+own pursuit/saccade ceilings (55 / 100 deg/s, `hal/drivers/tracking/constants.py`)
+to the declared `motion.max_speed` at the single place the profile is chosen
+(`tracker_service.set_profile`). Those constants are tuning, not permission — on
+Lamp (`max_speed: 120`) nothing is clamped today; a body declaring a lower
+ceiling is what the gate is for.
+
+**Still not gated:** recorded animations. They replay stored frames at a fixed
+fps, so bounding their speed means changing how an animation looks, not
+stretching a number — an open question rather than a missing line of code.
 
 - [x] **Unit:** `min_move_duration` stretches a too-fast move (120° at 120 deg/s →
       1.0s), passes a slow one, bounds an instant (duration 0) request, passes

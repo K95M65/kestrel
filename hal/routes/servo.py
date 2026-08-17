@@ -302,6 +302,30 @@ def release_servos():
     return {"status": "ok"}
 
 
+@router.post("/servo/stop", response_model=StatusResponse)
+def stop_servos():
+    """Deterministic stop: abort motion in flight and HOLD. Torque stays ON.
+
+    Not /servo/release, which travels to a rest pose and then cuts torque — a
+    stop that moves first is wrong for anything with legs or wheels
+    (ROBOT-SPEC / COMPATIBILITY rule 6). Not safety-gated either: `motion.
+    stop_always` says a stop is never clamped, delayed or refused, so this
+    route reads no bound and takes no arguments.
+    """
+    svc = _svc_connected()
+    # The tracker drives the bus from its own worker thread. Stop it first or it
+    # keeps writing goals and the "stop" holds nothing — same ordering the
+    # release path needs, and for the same reason.
+    if state.tracker_service and state.tracker_service.is_tracking:
+        try:
+            state.logger.info("stop: halting vision tracker")
+            state.tracker_service.stop()
+        except Exception as e:
+            state.logger.warning(f"tracker stop during halt failed: {e}")
+    svc.halt()
+    return {"status": "ok"}
+
+
 @router.get("/servo/position", response_model=ServoPositionResponse)
 def get_servo_position():
     """Read current servo joint positions."""

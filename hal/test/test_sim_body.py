@@ -137,6 +137,35 @@ class TestMockMotionService(unittest.TestCase):
         self.assertEqual(self.m.get_positions()["base_yaw.pos"], 0.0)
         self.assertIn("release", [c[0] for c in self.m.calls])
 
+    def test_halt_holds_position_and_keeps_torque(self):
+        """halt() is the deterministic stop: it holds. Nothing moves, torque
+        stays on. This is the whole difference from release()."""
+        self.m.move_to({"base_yaw.pos": 30.0})
+        before = self.m.get_positions()
+        self.m.halt()
+        self.assertEqual(self.m.get_positions(), before, "halt moved the body")
+        self.assertTrue(self.m._torque, "halt cut torque — that is release, not stop")
+
+    def test_halt_and_release_are_opposites(self):
+        """Same call site, opposite contracts — the confusion #201 is about."""
+        self.m.move_to({"base_yaw.pos": 40.0})
+        parked = self.m.get_positions()["base_yaw.pos"]
+        self.m.halt()
+        self.assertEqual(self.m.get_positions()["base_yaw.pos"], parked)
+        self.assertTrue(self.m._torque)
+        self.m.release()
+        self.assertEqual(self.m.get_positions()["base_yaw.pos"], 0.0)
+        self.assertFalse(self.m._torque)
+
+    def test_halt_is_idempotent_and_cleared_by_the_next_move(self):
+        """A halt must survive the move it interrupted but must not wedge the
+        driver: the next commanded move clears it."""
+        self.m.halt()
+        self.m.halt()
+        self.assertTrue(self.m._halted)
+        self.m.move_to({"base_yaw.pos": 5.0})
+        self.assertFalse(self.m._halted)
+
     def test_unknown_joints_are_ignored(self):
         self.m.send_positions({"nonexistent.pos": 5.0})
         self.assertNotIn("nonexistent.pos", self.m.get_positions())

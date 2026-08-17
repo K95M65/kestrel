@@ -46,6 +46,9 @@ class MockMotionService:
         self._suppressed = False
         self._frozen = False
         self._torque = True
+        # Set by halt(), cleared by the next commanded move — mirrors the real
+        # driver's _halt event, so a test can assert the sequence without one.
+        self._halted = False
         self._recordings: Dict[str, List[Dict[str, float]]] = {}
         self.calls: List[tuple] = []
 
@@ -100,6 +103,7 @@ class MockMotionService:
     # --- Motion primitives ---
 
     def move_to(self, target_positions: Dict[str, float], duration: float = 2.0) -> None:
+        self._halted = False
         self._apply(target_positions)
         self._record("move_to", dict(target_positions), duration)
 
@@ -135,7 +139,15 @@ class MockMotionService:
         self._record("release")
         return {}
 
+    def halt(self) -> None:
+        # The honest mock: a halt writes no new position and does not touch
+        # torque. Contrast release() above, which travels to rest first — the
+        # whole point of the distinction this driver exists to make visible.
+        self._halted = True
+        self._record("halt")
+
     def resume(self) -> None:
+        self._halted = False
         self._torque = True
         self._suppressed = False
         self._record("resume")

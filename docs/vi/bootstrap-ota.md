@@ -257,10 +257,12 @@ nhưng nằm cùng thư mục `/root/config/`.
 5m, `state_file`), nên file một phần (chỉ có `metadata_url`) vẫn chạy được, và
 file thiếu thì dùng default với URL rỗng.
 
-`setup.sh` và image builder provision `OTA_SIGNING_PUBLIC_KEY`, rồi lưu thành
-`signing_public_key`. Bootstrap xác thực envelope trước khi đọc component;
-updater được provision xác thực lần nữa và hash mọi ZIP trước khi giải nén.
-Release writer cần `OTA_SIGNING_PRIVATE_KEY` và `OTA_SIGNING_KEY_ID` để ký lại envelope.
+Khi được truyền vào, `setup.sh` và image builder lưu `OTA_SIGNING_PUBLIC_KEY`
+thành `signing_public_key`. Khi đó Bootstrap xác thực envelope trước khi đọc
+component; updater được provision xác thực lần nữa và hash mọi ZIP trước khi
+giải nén. Khi release operator truyền `OTA_SIGNING_PRIVATE_KEY` và
+`OTA_SIGNING_KEY_ID`, release writer ký lại envelope; thiếu chúng thì vẫn giữ
+format legacy unsigned.
 Với hai binary tự chứa, mỗi lần update giữ
 `/root/bootstrap/rollback/<component>.previous`; chạy
 `software-update rollback os-server` hoặc `software-update rollback bootstrap`

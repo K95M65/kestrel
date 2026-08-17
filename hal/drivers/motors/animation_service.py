@@ -97,6 +97,12 @@ class AnimationService:
         self._music_playing = False
         self._music_recording = SERVO_MUSIC_GROOVE
 
+        # Deterministic stop. Set by halt(), checked every frame by the move and
+        # playback loops; they return where they are, leaving the last goal
+        # written and torque ON. Cleared by the next commanded motion, so a halt
+        # stops what is in flight without wedging the driver.
+        self._halt = threading.Event()
+
         # Custom event handling
         self._running = threading.Event()
         self._event_queue = []
@@ -318,6 +324,7 @@ class AnimationService:
     
     def _handle_play(self, recording_name: str):
         """Start playing a recording with interpolation from current state"""
+        self._begin_motion()
         self._idle_settled = False
         self._holding_logged = False
         self._hold_logged = False
@@ -408,6 +415,20 @@ class AnimationService:
 
         # Skip servo writes while frozen (camera stabilization)
         if self._frozen.is_set():
+            return
+
+        # Halt: drop the recording where it is and stop writing. Same shape as
+        # the tracking drop below, and deliberately BEFORE it — a halt outranks
+        # every other reason to keep playing. No goal is written, so the servos
+        # hold the last frame that landed.
+        if self._halt.is_set():
+            logger.info("[halt] dropped recording %r mid-playback", self._current_recording)
+            self._idle_settled = True
+            self._current_recording = None
+            self._current_actions = []
+            self._current_frame_index = 0
+            self._interpolation_frames = 0
+            self._interpolation_target = None
             return
 
         # Tracking lock: tracker owns the servo. Drop any in-progress
@@ -567,6 +588,49 @@ class AnimationService:
             logger.error(f"Error loading recording {recording_name}: {e}")
             return None
 
+    # --- Deterministic stop -------------------------------------------------
+    #
+    # Three different things are called "stop" around here, so to be explicit:
+    #   stop()    — service lifecycle: tear the event loop down.
+    #   release() — travel to gravity-rest, THEN cut torque. Moves first.
+    #   halt()    — this one. Abort what is in flight, hold position, torque ON.
+    #
+    # The mechanism is the abort check the frame loops already had for shutdown
+    # (`not self._running.is_set()`); halt just gives it a second reason to fire.
+    # A loop that returns mid-interpolation leaves the last goal it wrote on the
+    # servos, so "stop" and "hold" are the same act — nothing extra to command.
+
+    def _motion_aborted(self) -> bool:
+        """True when an in-flight move or playback must stop THIS frame."""
+        return self._halt.is_set() or not self._running.is_set()
+
+    def _begin_motion(self) -> None:
+        """Clear a previous halt so a newly commanded motion can run.
+
+        Called by the commanded-motion entry points, never by the loops
+        themselves: a halt has to outlive the move it interrupted, or the very
+        next frame would clear it.
+        """
+        self._halt.clear()
+
+    def halt(self) -> None:
+        """Abort any move/recording in flight and hold position. Torque stays ON."""
+        self._halt.set()
+        # Pin the servos where they are. The aborted loop already left a goal
+        # written, but a halt with nothing in flight (the common case — an
+        # operator hitting stop on an idle body) must still be a no-op that
+        # cannot drift, and re-writing the present position is that no-op.
+        try:
+            with self.bus_lock:
+                current = _motor_positions_from_bus(self.robot) if self.robot else {}
+            if current:
+                with self.bus_lock:
+                    self.robot.send_action(current)
+        except Exception as e:
+            # Never raise: halt is the one call that must always be answerable.
+            logger.warning("[halt] could not pin current position: %s", e)
+        logger.info("[halt] motion halted, holding position (torque ON)")
+
     def move_to(self, target_positions: Dict[str, float], duration: float = DEFAULT_MOVE_DURATION):
         """Smoothly move servos to target positions using software interpolation.
 
@@ -580,6 +644,7 @@ class AnimationService:
         """
         if not self.robot:
             raise RuntimeError("Robot not connected")
+        self._begin_motion()
 
         # Read current positions (bus-only; avoid get_observation camera reads)
         try:
@@ -599,6 +664,9 @@ class AnimationService:
         total_frames = max(1, int(duration * self.fps))
 
         for frame in range(1, total_frames + 1):
+            if self._motion_aborted():
+                logger.info("move_to aborted at frame %d/%d — holding position", frame, total_frames)
+                return
             t0 = time.perf_counter()
             progress = frame / total_frames
 
