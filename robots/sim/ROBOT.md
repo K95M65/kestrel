@@ -23,10 +23,20 @@ machine with no device tree.
 Run it on a laptop:
 
 ```bash
-HAL_BOARD=sim DEVICE_TYPE=sim make hal-dev
+make hal-sim
 curl -s -X POST localhost:5001/servo/aim -H 'content-type: application/json' -d '{"direction":"left"}'
-curl -s localhost:5001/servo/positions
+curl -s localhost:5001/servo/position
 ```
+
+`hal/test/test_sim_server.py` boots this exact ASGI server in CI and verifies
+the declaration, mock driver, motion safety clamp, and `/servo/stop` over
+HTTP. It is the no-robot path for skills that require `motion`; skills that
+declare absent capabilities remain correctly unavailable on this minimal body.
+
+On a laptop, HAL automatically falls back from the production `/var/log/hal`
+directory to `/tmp/autonomous-hal` when it cannot create the former. Set
+`HAL_LOG_DIR` explicitly to keep logs elsewhere; an explicit unwritable path
+still fails loud.
 
 `HAL_BOARD` is what makes it possible — without a `/proc/device-tree/model` no
 board can be detected and HAL refuses to boot, which is the correct behavior on

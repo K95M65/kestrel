@@ -64,6 +64,14 @@ integrations/                     — Off-device: companions/, chat-bridges/, pe
 - **Chủ thiết bị có thể tạo skill** — `skill-creator` built-in hướng dẫn soạn,
   kiểm thử và đóng gói skill để đưa lên Autonomous Skill Store.
 
+## Mock Body trên Laptop
+
+`make hal-sim` khởi động body `robots/sim` đã khai báo với motion driver trong
+bộ nhớ. Nó không mở servo bus, camera, microphone hay GPIO, nhưng vẫn giữ HTTP
+path và motion safety path bình thường của HAL. Đây là test body, không phải
+simulator 3D hay physics; chỉ các skill cần capability `motion` mà nó khai báo
+mới khả dụng. Xem `robots/sim/ROBOT.md` để chạy và kiểm tra HTTP.
+
 ## Voice Pipeline
 
 ```

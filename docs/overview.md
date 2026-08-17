@@ -64,6 +64,14 @@ integrations/                     — Off-device: companions/, chat-bridges/, pe
 - **Owners can create skills** — the built-in `skill-creator` guides an owner
   through drafting, testing, and packaging a skill for the Autonomous Skill Store.
 
+## Mock Body on a Laptop
+
+`make hal-sim` boots the declared `robots/sim` body with an in-memory motion
+driver. It opens no servo bus, camera, microphone, or GPIO, while preserving
+the normal HAL HTTP and motion-safety paths. This is a test body, not a 3D or
+physics simulator: only skills requiring its declared `motion` capability are
+available. See `robots/sim/ROBOT.md` for the run and HTTP-check commands.
+
 ## Voice Pipeline
 
 ```

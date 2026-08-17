@@ -49,12 +49,17 @@ os-test:
 # HAL (Python) — dev | run | test
 # ============================================================================
 
-.PHONY: hal hal-dev hal-run hal-lint hal-test hal-clean
+.PHONY: hal hal-dev hal-sim hal-run hal-lint hal-test hal-clean
 
 hal: hal-dev
 
 hal-dev:
 	cd $(HAL_DIR) && PYTHONPATH=.. HAL_MODE=developer .venv/bin/uvicorn hal.server:app --host 0.0.0.0 --port $(HAL_PORT) --reload
+
+# Boot the declared mock body on a laptop. It has mock motion only; unlisted
+# peripherals are not opened, and no physical servo bus is required.
+hal-sim:
+	HAL_BOARD=sim DEVICE_TYPE=sim $(MAKE) hal-dev
 
 hal-run:
 	cd $(HAL_DIR) && PYTHONPATH=.. .venv/bin/python -m hal.server

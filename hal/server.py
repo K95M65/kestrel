@@ -385,7 +385,11 @@ async def lifespan(app: FastAPI):
 
     # --- Phase 2: Audio detect + TTS + VoiceService ---
 
-    if sd:
+    # A declaration without audio/media routes must not even enumerate the
+    # laptop's speaker or microphone. Besides keeping the mock body honest,
+    # this avoids a device without audio claiming an arbitrary host device in
+    # GET /health.
+    if sd and {"audio", "voice", "music", "speaker"} & set(_plan.mounted):
         _audio_results = [None, None]
 
         def _detect_output():
@@ -700,14 +704,18 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("TrackerService skipped — needs servo+camera routes mounted")
 
-    # GPIO17 button (single=stop/unmute, triple=reboot, long=shutdown)
-    try:
-        from hal.drivers.gpio_button import GPIOButtonHandler
+    # GPIO17 button (single=stop/unmute, triple=reboot, long=shutdown). The
+    # mock board carries parser-required placeholder pins, never GPIO hardware.
+    if _board_id != "sim":
+        try:
+            from hal.drivers.gpio_button import GPIOButtonHandler
 
-        _gpio_button_handler = GPIOButtonHandler()
-        _gpio_button_handler.start()
-    except Exception as e:
-        logger.warning(f"GPIO button init failed: {e}")
+            _gpio_button_handler = GPIOButtonHandler()
+            _gpio_button_handler.start()
+        except Exception as e:
+            logger.warning(f"GPIO button init failed: {e}")
+    else:
+        logger.info("GPIO button skipped — mock board has no hardware")
 
     # TTP223 capacitive touchpad (OrangePi sun60 only — same gestures as
     # GPIO button, runs independently. Skips silently on other boards.)
@@ -732,13 +740,14 @@ async def lifespan(app: FastAPI):
 
     # Restore Bluetooth headset route if the user had one active before reboot.
     # Best effort — silent fallback to the device speaker/mic if anything goes wrong.
-    try:
-        from hal.drivers.audio_route import maybe_restore_bt_route
-        threading.Thread(
-            target=maybe_restore_bt_route, daemon=True, name="bt-route-restore"
-        ).start()
-    except Exception as e:
-        logger.warning(f"BT route restore scheduling failed: {e}")
+    if "bluetooth" in _plan.mounted:
+        try:
+            from hal.drivers.audio_route import maybe_restore_bt_route
+            threading.Thread(
+                target=maybe_restore_bt_route, daemon=True, name="bt-route-restore"
+            ).start()
+        except Exception as e:
+            logger.warning(f"BT route restore scheduling failed: {e}")
 
     # Re-apply the scene that was active before a service restart (boot-scoped
     # sidecar) so the agent's belief ("focus mode is on") stays true across

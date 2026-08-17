@@ -38,8 +38,16 @@ DEFAULT_JOINTS = (
 class MockMotionService:
     """In-memory MotionService. Every mutation is recorded in `calls`."""
 
-    def __init__(self, joints: Optional[Set[str]] = None) -> None:
+    def __init__(
+        self,
+        joints: Optional[Set[str]] = None,
+        safety_policy: Any = None,
+    ) -> None:
         self._joints = set(joints or DEFAULT_JOINTS)
+        # Keep the same construction shape as SDK-backed motion services. The
+        # HTTP routes still enforce the policy; retaining it here lets the mock
+        # boot through the production factory without special cases.
+        self._safety_policy = safety_policy
         self._positions: Dict[str, float] = {j: 0.0 for j in self._joints}
         self._lock = threading.Lock()
         self._connected = False

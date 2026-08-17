@@ -36,8 +36,24 @@ class _ColorFormatter(logging.Formatter):
 def setup_logging() -> logging.Logger:
     """Configure root logging (console + rotating file + GELF) and return the
     `hal.server` logger. Idempotent enough for a single boot call."""
-    log_dir = Path(os.environ.get("HAL_LOG_DIR", "/var/log/hal"))
-    log_dir.mkdir(parents=True, exist_ok=True)
+    configured_log_dir = os.environ.get("HAL_LOG_DIR")
+    log_dir = Path(configured_log_dir or "/var/log/hal")
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+        writable = os.access(log_dir, os.W_OK)
+    except PermissionError:
+        writable = False
+    if not writable:
+        # A laptop developer running the mock body has no reason to need sudo
+        # merely to create the production log directory. Keep an explicit
+        # HAL_LOG_DIR authoritative — a bad operator-supplied path must fail
+        # loud — and make a production device fail loud too.
+        if configured_log_dir:
+            raise PermissionError(f"HAL_LOG_DIR is not writable: {log_dir}")
+        if os.environ.get("HAL_MODE", "production").strip().lower() != "developer":
+            raise PermissionError(f"production log directory is not writable: {log_dir}")
+        log_dir = Path("/tmp/autonomous-hal")
+        log_dir.mkdir(parents=True, exist_ok=True)
 
     _root = logging.getLogger()
     _log_level = os.environ.get("HAL_LOG_LEVEL", "INFO").upper()
@@ -89,19 +105,22 @@ def setup_logging() -> logging.Logger:
     _usage_qwen.addHandler(_usage_qwen_file)
     _usage_qwen.propagate = False
 
-    # GELF handler: send INFO+ logs to centralized Graylog
-    try:
-        from hal.drivers.gelf_handler import GELFHandler
-        from hal.config import _os_cfg_get
+    # GELF handler: send INFO+ logs to centralized Graylog. A simulated body
+    # must be fully local — no surprise network traffic while a developer is
+    # proving a skill on a laptop.
+    if os.environ.get("DEVICE_TYPE") != "sim":
+        try:
+            from hal.drivers.gelf_handler import GELFHandler
+            from hal.config import _os_cfg_get
 
-        _gelf = GELFHandler()
-        _gelf.setFormatter(logging.Formatter("%(message)s"))
-        _device_id = _os_cfg_get("device_id")
-        if _device_id:
-            _gelf.set_host(_device_id)
-        _root.addHandler(_gelf)
-    except Exception:
-        pass
+            _gelf = GELFHandler()
+            _gelf.setFormatter(logging.Formatter("%(message)s"))
+            _device_id = _os_cfg_get("device_id")
+            if _device_id:
+                _gelf.set_host(_device_id)
+            _root.addHandler(_gelf)
+        except Exception:
+            pass
 
     logger = logging.getLogger("hal.server")
     logger.info("Logging to %s/server.log", log_dir)
