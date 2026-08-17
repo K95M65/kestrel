@@ -1,11 +1,11 @@
 package http
 
 import (
-	"encoding/json"
-	"io"
+	// "encoding/json"  // Browse only — restore with it (#213)
+	// "io"             // Browse only
 	"log/slog"
 	"net/http"
-	"time"
+	// "time"           // Browse only
 
 	"github.com/gin-gonic/gin"
 
@@ -79,26 +79,37 @@ func (h *PluginHandler) Uninstall(c *gin.Context) {
 	c.JSON(http.StatusOK, serializers.ResponseSuccess(true))
 }
 
-// Browse handles GET /api/plugin/browse. Proxies HuggingFace Spaces search
-// to avoid CORS issues when the web UI fetches from the device.
-func (h *PluginHandler) Browse(c *gin.Context) {
-	const hfURL = "https://huggingface.co/api/spaces?filter=autonomous-os-plugin&full=true&sort=likes&direction=-1"
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Get(hfURL)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, serializers.ResponseError("failed to reach HuggingFace"))
-		return
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, serializers.ResponseError("failed to read HuggingFace response"))
-		return
-	}
-	var spaces []any
-	if err := json.Unmarshal(body, &spaces); err != nil {
-		c.JSON(http.StatusBadGateway, serializers.ResponseError("invalid JSON from HuggingFace"))
-		return
-	}
-	c.JSON(http.StatusOK, serializers.ResponseSuccess(spaces))
-}
+// Browse — PARKED, not deleted (#213).
+//
+// This listed plugins from Hugging Face Spaces by the `autonomous-os-plugin`
+// tag. That was the prototype; plugins belong in our own catalog, beside
+// skills. It is commented out rather than removed because the shape is right
+// and only the source is wrong: when the catalog grows a `plugins` collection,
+// uncomment this, swap the fetch for skills.StoreGet("/api/v1/plugins", …)
+// (system/skills/store.go already speaks to apiv2.autonomous.ai), and
+// re-register the route in server.go.
+//
+// Installing is unaffected — POST /api/plugin/install takes a git URL and does
+// not go through here.
+//
+// func (h *PluginHandler) Browse(c *gin.Context) {
+// 	const hfURL = "https://huggingface.co/api/spaces?filter=autonomous-os-plugin&full=true&sort=likes&direction=-1"
+// 	client := &http.Client{Timeout: 10 * time.Second}
+// 	resp, err := client.Get(hfURL)
+// 	if err != nil {
+// 		c.JSON(http.StatusBadGateway, serializers.ResponseError("failed to reach HuggingFace"))
+// 		return
+// 	}
+// 	defer resp.Body.Close()
+// 	body, err := io.ReadAll(resp.Body)
+// 	if err != nil {
+// 		c.JSON(http.StatusBadGateway, serializers.ResponseError("failed to read HuggingFace response"))
+// 		return
+// 	}
+// 	var spaces []any
+// 	if err := json.Unmarshal(body, &spaces); err != nil {
+// 		c.JSON(http.StatusBadGateway, serializers.ResponseError("invalid JSON from HuggingFace"))
+// 		return
+// 	}
+// 	c.JSON(http.StatusOK, serializers.ResponseSuccess(spaces))
+// }

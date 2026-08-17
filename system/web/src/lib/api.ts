@@ -528,21 +528,25 @@ export async function uninstallPlugin(name: string): Promise<boolean> {
   });
 }
 
-// HuggingFace plugin discovery — proxied through backend to avoid CORS.
-export interface HFSpace {
-  id: string;
-  likes: number;
-  tags: string[];
-  cardData?: { title?: string; emoji?: string; description?: string };
-}
+// HuggingFace plugin discovery — PARKED, not deleted (#213). Plugins move to
+// our own catalog, beside skills. Restore this pair together with the Go
+// handler and its route, and point the request at the catalog endpoint; the
+// StoreSkill client just below is the shape to copy.
+//
+// export interface HFSpace {
+//   id: string;
+//   likes: number;
+//   tags: string[];
+//   cardData?: { title?: string; emoji?: string; description?: string };
+// }
+//
+// /** GET /api/plugin/browse */
+// export async function searchHFPlugins(): Promise<HFSpace[]> {
+//   return apiRequest<HFSpace[]>(`${API_BASE}/api/plugin/browse`);
+// }
 
-/** GET /api/plugin/browse */
-export async function searchHFPlugins(): Promise<HFSpace[]> {
-  return apiRequest<HFSpace[]>(`${API_BASE}/api/plugin/browse`);
-}
-
-// Autonomous Agent Skills catalog — proxied through the backend (same reason as
-// /api/plugin/browse: avoids CORS and keeps the catalog host server-side).
+// Autonomous Agent Skills catalog — proxied through the backend (avoids CORS
+// and keeps the catalog host server-side).
 // Shapes mirror system/domain/skillstore.go.
 export interface StoreSkill {
   id: string;

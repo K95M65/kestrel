@@ -1,9 +1,14 @@
 import { useEffect, useState } from "react";
-import { Blocks, Download, Heart } from "lucide-react";
+import { Blocks } from "lucide-react";
+// Download, Heart — PARKED with the browse block (#213)
 import { toast } from "sonner";
 import { C, SectionCard, LABEL_STYLE, INPUT_STYLE } from "@/components/setup/shared";
-import { listPlugins, installPlugin, startPlugin, stopPlugin, uninstallPlugin, searchHFPlugins } from "@/lib/api";
-import type { Plugin, HFSpace } from "@/lib/api";
+import { listPlugins, installPlugin, startPlugin, stopPlugin, uninstallPlugin } from "@/lib/api";
+import type { Plugin } from "@/lib/api";
+// PARKED (#213): plugin discovery moves off Hugging Face Spaces to our own
+// catalog. Restore alongside the api.ts pair, the Go handler, and its route.
+// import { searchHFPlugins } from "@/lib/api";
+// import type { HFSpace } from "@/lib/api";
 
 export function PluginsSection({ active }: { active: boolean }) {
   const [plugins, setPlugins] = useState<Plugin[]>([]);
@@ -12,10 +17,10 @@ export function PluginsSection({ active }: { active: boolean }) {
   const [installing, setInstalling] = useState(false);
   const [acting, setActing] = useState<string | null>(null);
 
-  // HF browse state
-  const [hfSpaces, setHfSpaces] = useState<HFSpace[]>([]);
-  const [hfLoading, setHfLoading] = useState(true);
-  const [hfInstalling, setHfInstalling] = useState<string | null>(null);
+  // HF browse state — PARKED (#213)
+  // const [hfSpaces, setHfSpaces] = useState<HFSpace[]>([]);
+  // const [hfLoading, setHfLoading] = useState(true);
+  // const [hfInstalling, setHfInstalling] = useState<string | null>(null);
 
   function refresh() {
     listPlugins()
@@ -24,37 +29,38 @@ export function PluginsSection({ active }: { active: boolean }) {
       .finally(() => setLoading(false));
   }
 
-  function refreshHF() {
-    setHfLoading(true);
-    searchHFPlugins()
-      .then(setHfSpaces)
-      .catch(() => {})
-      .finally(() => setHfLoading(false));
-  }
+  // PARKED (#213) — the browse half. Installing from a URL below is unaffected.
+  // function refreshHF() {
+  //   setHfLoading(true);
+  //   searchHFPlugins()
+  //     .then(setHfSpaces)
+  //     .catch(() => {})
+  //     .finally(() => setHfLoading(false));
+  // }
+  //
+  // function hfUrlForSpace(id: string) {
+  //   return `https://huggingface.co/spaces/${id}`;
+  // }
+  //
+  // function isInstalled(spaceId: string) {
+  //   const spaceUrl = hfUrlForSpace(spaceId);
+  //   return plugins.some((p) => p.url === spaceUrl);
+  // }
+  //
+  // async function handleHFInstall(spaceId: string) {
+  //   setHfInstalling(spaceId);
+  //   try {
+  //     await installPlugin(hfUrlForSpace(spaceId));
+  //     toast.success("Plugin install started.");
+  //     setTimeout(refresh, 5000);
+  //   } catch (err) {
+  //     toast.error(err instanceof Error ? err.message : "Failed to install.");
+  //   } finally {
+  //     setHfInstalling(null);
+  //   }
+  // }
 
-  useEffect(() => { refresh(); refreshHF(); }, []);
-
-  function hfUrlForSpace(id: string) {
-    return `https://huggingface.co/spaces/${id}`;
-  }
-
-  function isInstalled(spaceId: string) {
-    const spaceUrl = hfUrlForSpace(spaceId);
-    return plugins.some((p) => p.url === spaceUrl);
-  }
-
-  async function handleHFInstall(spaceId: string) {
-    setHfInstalling(spaceId);
-    try {
-      await installPlugin(hfUrlForSpace(spaceId));
-      toast.success("Plugin install started.");
-      setTimeout(refresh, 5000);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to install.");
-    } finally {
-      setHfInstalling(null);
-    }
-  }
+  useEffect(() => { refresh(); }, []);
 
   async function handleInstall() {
     const u = url.trim();
@@ -205,7 +211,9 @@ export function PluginsSection({ active }: { active: boolean }) {
             </div>
           )}
 
-          {/* Browse HF plugins */}
+          {/* PARKED (#213) — Browse listed plugins from Hugging Face Spaces.
+              Restore with the api.ts pair + Go handler + route, pointing at
+              our own catalog instead. Install-from-URL below is unaffected.
           <div style={{ marginBottom: 16 }}>
             <div style={{ fontSize: 11, fontWeight: 600, color: C.textMuted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>
               Browse
@@ -275,6 +283,8 @@ export function PluginsSection({ active }: { active: boolean }) {
               })
             )}
           </div>
+
+          */}
 
           {/* Manual install form */}
           <div style={{ marginBottom: 6 }}>
