@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent / ".env", override=False)
 
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 import hal.app_state as state
@@ -110,6 +110,14 @@ def _device_profile():
 _profile = _device_profile()
 # Full declared route surface (incl. `speaker`), keys usable with `in`.
 _declared = _profile.declared_routes()
+_simulation = os.environ.get("HAL_SIMULATE", "").lower() in ("1", "true", "yes")
+_simulation_media = os.environ.get("HAL_SIM_MEDIA", "virtual").strip().lower()
+if _simulation_media not in {"virtual", "host"}:
+    raise RuntimeError("HAL_SIM_MEDIA must be 'virtual' or 'host'")
+if _simulation:
+    logger.info("Simulation mode enabled for device '%s' (media=%s)", _profile.id, _simulation_media)
+elif os.environ.get("HAL_BOARD") == "sim":
+    raise RuntimeError("HAL_BOARD=sim requires HAL_SIMULATE=1; refusing a physical-driver boot on a virtual board")
 
 # Warm the heaviest driver chain (lerobot → torch, ~4s of the ~7.5s total import
 # time on an A523) in parallel with the rest of the module imports below.
@@ -120,7 +128,7 @@ if "servo" in _declared:
     from hal.drivers.motors.factory import MOTION_DRIVERS
 
     _motion_cap = _profile.capabilities.get("motion")
-    _motion_driver = _motion_cap.driver if _motion_cap else None
+    _motion_driver = "mock" if _simulation else (_motion_cap.driver if _motion_cap else None)
     _motion_entry = MOTION_DRIVERS.get(_motion_driver or "feetech")
 
     def _warm_import_servo():
@@ -144,7 +152,7 @@ if "servo" in _declared:
     from hal.drivers.motors.factory import resolve_motion_class
     _motion_cap = _profile.capabilities.get("motion")
     AnimationService = resolve_motion_class(
-        _motion_cap.driver if _motion_cap else None,
+        _motion_driver,
         _motion_cap.required if _motion_cap else False,
     )
     if AnimationService is None:
@@ -186,7 +194,7 @@ if "camera" in _declared:
         # CSI sensor behind libcamera and a UVC webcam share no open path.
         _vision_cap = _profile.capabilities.get("vision")
         LocalVideoCaptureDevice = resolve_camera_class(
-            _vision_cap.driver if _vision_cap else None,
+            "virtual" if _simulation and _simulation_media != "host" else (_vision_cap.driver if _vision_cap else None),
             _vision_cap.required if _vision_cap else False,
         )
         if LocalVideoCaptureDevice is None:
@@ -229,6 +237,10 @@ if "sensing" in _declared:
         FacePerception = None
 else:
     logger.info("Sensing service skipped — 'sensing' not declared in ROBOT.md")
+
+if _simulation and "sensing" in _declared:
+    from hal.drivers.sensing.virtual_service import VirtualSensingService
+    SensingService = VirtualSensingService
 
 VoiceService = None
 DeepgramSTT = None
@@ -389,7 +401,14 @@ async def lifespan(app: FastAPI):
     # laptop's speaker or microphone. Besides keeping the mock body honest,
     # this avoids a device without audio claiming an arbitrary host device in
     # GET /health.
-    if sd and {"audio", "voice", "music", "speaker"} & set(_plan.mounted):
+    if _simulation and _simulation_media != "host" and {"audio", "voice", "music", "speaker"} & set(_plan.mounted):
+        # Virtual device ids are never passed to sounddevice. They make the
+        # capability observable via the existing API while avoiding macOS mic /
+        # speaker permissions and any sound emitted on the developer's host.
+        state.audio_output_device = 0
+        state.audio_input_device = 0
+        logger.info("Audio using virtual input/output devices")
+    elif sd and {"audio", "voice", "music", "speaker"} & set(_plan.mounted):
         _audio_results = [None, None]
 
         def _detect_output():
@@ -458,6 +477,12 @@ async def lifespan(app: FastAPI):
             logger.info(f"Audio input device: {state.audio_input_device}")
 
     # Auto-start voice pipeline from os-server config
+    if _simulation and "voice" in _plan.mounted:
+        from hal.drivers.voice.virtual_service import VirtualTTSService, VirtualVoiceService
+        state.tts_service = VirtualTTSService(voice=TTS_VOICE, instructions=TTS_INSTRUCTIONS)
+        state.voice_service = VirtualVoiceService(tts_service=state.tts_service)
+        logger.info("Voice using virtual microphone and speaker")
+
     os_config_path = OS_CONFIG_PATH
     try:
         with open(os_config_path) as f:
@@ -1051,7 +1076,10 @@ def _thermal_view():
 # mount any actuating route (raw match, so the default_board fallback can't mask
 # an unsupported board).
 from hal.board.board import assert_board_supported
-_board_id = assert_board_supported(_profile.boards)
+# Simulation has no physical wiring. HAL_BOARD=sim selects the inert board
+# profile used by common driver construction paths and is accepted only while
+# HAL_SIMULATE is set.
+_board_id = assert_board_supported([] if _simulation else _profile.boards)
 logger.info("Board gate: device=%s board=%s declared=%s", _resolve_device_type(), _board_id, _profile.boards)
 
 from hal.board.device import plan_mounts
@@ -1117,6 +1145,55 @@ def custom_swagger_ui() -> HTMLResponse:
         "</html>\n"
     )
     return HTMLResponse(content=html)
+
+
+@app.get("/simulator", include_in_schema=False)
+def simulator() -> HTMLResponse:
+    """Local Lamp visualizer, available only when HAL is in simulation mode."""
+    if not _simulation or _profile.id != "lamp":
+        return HTMLResponse(status_code=404, content="Simulation mode is not enabled")
+    page = _STATIC_DIR / "lamp-simulator.html"
+    if not page.is_file():
+        return HTMLResponse(status_code=500, content="Lamp simulator assets are missing")
+    return HTMLResponse(content=page.read_text(encoding="utf-8"))
+
+
+@app.get("/simulator/reference", include_in_schema=False)
+def simulator_reference():
+    """Serve the checked-in physical Lamp reference image to the laptop UI."""
+    if not _simulation or _profile.id != "lamp":
+        return HTMLResponse(status_code=404, content="Lamp simulator is unavailable")
+    image = Path(_devices_dir()) / "lamp" / "images" / "lamp-white.webp"
+    if not image.is_file():
+        return HTMLResponse(status_code=404, content="Lamp reference image is unavailable")
+    return FileResponse(image, media_type="image/webp")
+
+
+@app.get("/simulator/cad", include_in_schema=False)
+def simulator_cad():
+    """Serve the Lamp's checked-in static CAD mesh for the local viewer.
+
+    STL carries a static assembly only. It intentionally is not transformed by
+    live servo positions: the repository has no joint hierarchy or axes with
+    which to make such a claim truthfully.
+    """
+    if not _simulation or _profile.id != "lamp":
+        return HTMLResponse(status_code=404, content="Lamp simulator is unavailable")
+    mesh = Path(_devices_dir()) / "lamp" / "hardware" / "cad" / "stl" / "lamp.stl"
+    if not mesh.is_file() or mesh.stat().st_size < 1024:
+        return HTMLResponse(
+            status_code=404,
+            content="Lamp CAD mesh is unavailable; run git lfs pull in the repository.",
+        )
+    return FileResponse(mesh, media_type="model/stl")
+
+
+@app.get("/simulator/state", include_in_schema=False)
+def simulator_state():
+    """Expose only the local UI mode; no hardware state is changed here."""
+    if not _simulation or _profile.id != "lamp":
+        return HTMLResponse(status_code=404, content="Lamp simulator is unavailable")
+    return {"media": _simulation_media}
 
 
 from hal.server_support.http_security import (

@@ -3,7 +3,9 @@ schema: autonomous.device.v1
 id: lamp
 name: Autonomous Lamp
 type: desk_robot
-boards: [raspberry_pi_4, raspberry_pi_5, orangepi_sun60]
+# `sim` is an inert laptop-only profile selected by `make sim`; it carries no
+# wiring and is refused unless HAL_SIMULATE explicitly opts in.
+boards: [sim, raspberry_pi_4, raspberry_pi_5, orangepi_sun60]
 gateway:
   default: openclaw
   protocol: websocket

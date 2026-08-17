@@ -1,0 +1,995 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Autonomous Lamp Simulator</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: ui-rounded, Inter, system-ui, sans-serif;
+        background: #0a0c0d;
+        color: #f5f0e8;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 28px 0;
+      }
+      main {
+        width: min(1240px, 94vw);
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 310px;
+        gap: 20px;
+        align-items: start;
+      }
+      .stage {
+        position: relative;
+        overflow: hidden;
+        border: 1px solid #4b4235;
+        border-radius: 22px;
+        background: radial-gradient(ellipse at 46% 17%, #433722, #080a0a 78%);
+        box-shadow: 0 22px 65px #0008;
+      }
+      canvas {
+        display: block;
+        width: 100%;
+        aspect-ratio: 4/3;
+        touch-action: none;
+        cursor: grab;
+      }
+      canvas:active {
+        cursor: grabbing;
+      }
+      .caption {
+        position: absolute;
+        left: 20px;
+        right: 20px;
+        top: 17px;
+        color: #fbf0df;
+        font-size: 13px;
+        text-shadow: 0 1px 2px #000;
+      }
+      .caption small {
+        display: block;
+        margin-top: 4px;
+        color: #c7bba8;
+        font-size: 11px;
+      }
+      .view-toggle {
+        position: absolute;
+        right: 18px;
+        bottom: 17px;
+        width: auto;
+        padding: 8px 10px;
+      }
+      .loading {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        padding: 28px;
+        color: #d5c5ac;
+        background: radial-gradient(
+          ellipse at center,
+          #17130d88,
+          #080a0a22 65%
+        );
+        font-size: 13px;
+        text-align: center;
+      }
+      .loading[hidden] {
+        display: none;
+      }
+      aside {
+        padding: 18px;
+        border: 1px solid #4b4235;
+        border-radius: 22px;
+        background: linear-gradient(160deg, #211f1a, #141513);
+        box-shadow: 0 18px 48px #0005;
+      }
+      h1 {
+        margin: 0 0 5px;
+        font-size: 21px;
+        letter-spacing: -0.04em;
+      }
+      h2 {
+        margin: 16px 0 7px;
+        font-size: 11px;
+        color: #d5c5ac;
+        text-transform: uppercase;
+        letter-spacing: 0.09em;
+      }
+      p {
+        color: #c9bfae;
+        font-size: 13px;
+        line-height: 1.42;
+        margin: 7px 0;
+      }
+      .dot {
+        display: inline-block;
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: #555;
+        margin-right: 7px;
+        box-shadow: 0 0 12px currentColor;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 6px;
+      }
+      button {
+        width: 100%;
+        padding: 9px 6px;
+        color: inherit;
+        background: #2a2821;
+        border: 1px solid #685a3f;
+        border-radius: 9px;
+        cursor: pointer;
+        font: 600 12px inherit;
+      }
+      button:hover {
+        background: #3c3426;
+        border-color: #a78650;
+      }
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.45;
+      }
+      .primary {
+        background: #4a3820;
+        border-color: #986e35;
+      }
+      .danger {
+        color: #ffd8cf;
+        border-color: #8d5044;
+        background: #38221e;
+      }
+      .state {
+        margin: 11px 0 8px;
+        padding: 10px;
+        border-radius: 10px;
+        background: #0e100f;
+        color: #dcccb0;
+        font:
+          11px/1.65 ui-monospace,
+          monospace;
+        white-space: pre-wrap;
+      }
+      .action {
+        min-height: 18px;
+        color: #f5bd68;
+        font-size: 12px;
+        margin: 6px 0;
+      }
+      .camera {
+        display: block;
+        width: 100%;
+        border-radius: 10px;
+        background: #060707;
+        border: 1px solid #4b4235;
+        aspect-ratio: 4/3;
+        object-fit: cover;
+      }
+      .media-buttons {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+        margin-top: 6px;
+      }
+      audio {
+        width: 100%;
+        margin-top: 6px;
+        height: 32px;
+      }
+      .reference {
+        position: relative;
+        overflow: hidden;
+        display: flex;
+        align-items: end;
+        height: 94px;
+        margin-top: 14px;
+        border: 1px solid #4b4235;
+        border-radius: 10px;
+        background: #e9e5df;
+      }
+      .reference img {
+        width: 100%;
+        height: 142px;
+        object-fit: cover;
+        object-position: 50% 32%;
+        filter: contrast(1.04) saturate(0.82);
+      }
+      .reference span {
+        position: absolute;
+        right: 7px;
+        bottom: 6px;
+        padding: 3px 6px;
+        border-radius: 5px;
+        background: #111c;
+        color: #fff;
+        font-size: 10px;
+      }
+      .foot {
+        color: #b9aa92;
+        font-size: 11px;
+      }
+      .foot code {
+        color: #f1bd67;
+      }
+      .led-preview {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        margin: 0 4px -2px 0;
+        border-radius: 50%;
+        background: #111;
+        box-shadow: 0 0 12px #000;
+      }
+      .led-preview.running {
+        animation: alive 0.9s infinite alternate;
+      }
+      @keyframes alive {
+        to {
+          box-shadow: 0 0 22px currentColor;
+        }
+      }
+      @media (max-width: 760px) {
+        body {
+          padding: 14px 0;
+        }
+        main {
+          grid-template-columns: 1fr;
+        }
+        aside {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 0 14px;
+        }
+        aside > h1,
+        aside > p,
+        aside > .grid,
+        aside > .state,
+        aside > .action,
+        aside > .camera,
+        aside > .media-buttons,
+        aside > audio {
+          grid-column: 1/-1;
+        }
+        .reference {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="stage">
+        <canvas
+          id="lamp"
+          width="960"
+          height="720"
+          aria-label="Autonomous Lamp 3D motion preview"
+        ></canvas>
+        <div class="caption">
+          <span id="view-title">Lamp motion preview</span
+          ><small id="view-detail"
+            >Live five-joint state from HAL · drag camera orbit · scroll zoom ·
+            double-click reset.</small
+          >
+        </div>
+        <div class="loading" id="loading">Loading the 54 MB Lamp CAD mesh…</div>
+        <button class="view-toggle" id="view-toggle">
+          View actual CAD (static)
+        </button>
+      </section>
+      <aside>
+        <h1>Autonomous Lamp</h1>
+        <p>
+          <span class="dot" id="health"></span
+          ><span id="status">Connecting…</span>
+        </p>
+        <p>
+          Controls call production HAL routes. The preview follows the five live
+          joint values.
+        </p>
+        <h2>Pose</h2>
+        <div class="grid">
+          <button data-aim="left">Look left</button
+          ><button data-aim="center">Center</button
+          ><button data-aim="right">Look right</button
+          ><button data-aim="desk">Desk</button><button data-aim="up">Up</button
+          ><button data-aim="down">Down</button>
+        </div>
+        <h2>Animations</h2>
+        <div class="grid">
+          <button data-play="greeting">Greeting</button
+          ><button data-play="happy_wiggle">Happy</button
+          ><button data-play="curious">Curious</button
+          ><button data-play="nod">Nod</button
+          ><button data-play="scanning">Scan</button
+          ><button class="danger" id="stop">Stop</button>
+        </div>
+        <h2>LED</h2>
+        <div class="grid">
+          <button class="primary" id="amber">Warm</button
+          ><button id="off">Off</button
+          ><button data-effect="breathing">Breathe</button
+          ><button data-effect="candle">Candle</button
+          ><button data-effect="rainbow">Rainbow</button
+          ><button data-effect="pulse">Pulse</button
+          ><button data-effect="notification_flash">Flash</button
+          ><button class="danger" id="effect-stop">Stop effect</button>
+        </div>
+        <p class="foot">
+          <span class="led-preview" id="led-preview"></span
+          ><span id="led-label">LED state loading…</span>
+        </p>
+        <div class="state" id="state">Waiting for HAL…</div>
+        <p class="action" id="action">No action yet.</p>
+        <h2>Camera & audio</h2>
+        <img
+          class="camera"
+          src="/camera/stream"
+          alt="Live HAL camera preview"
+        />
+        <div class="media-buttons">
+          <button id="tone">Play tone</button
+          ><button id="record">Record 3s</button>
+        </div>
+        <p class="foot" id="media-note">Checking media mode…</p>
+        <audio id="recording" controls></audio>
+        <div class="reference">
+          <img src="/simulator/reference" alt="Physical Autonomous Lamp" /><span
+            >Physical Lamp reference</span
+          >
+        </div>
+        <p class="foot">
+          API: <code>/servo/*</code>, <code>/led/*</code>,
+          <code>/camera/*</code>, <code>/audio/*</code>
+        </p>
+      </aside>
+    </main>
+    <script>
+      const canvas = document.querySelector("#lamp"),
+        gl = canvas.getContext("webgl", { antialias: true }),
+        status = document.querySelector("#status"),
+        dot = document.querySelector("#health"),
+        stateEl = document.querySelector("#state"),
+        action = document.querySelector("#action"),
+        ledPreview = document.querySelector("#led-preview"),
+        ledLabel = document.querySelector("#led-label"),
+        viewTitle = document.querySelector("#view-title"),
+        viewDetail = document.querySelector("#view-detail"),
+        viewToggle = document.querySelector("#view-toggle"),
+        loading = document.querySelector("#loading");
+      const joints = [
+        "base_yaw.pos",
+        "base_pitch.pos",
+        "elbow_pitch.pos",
+        "wrist_pitch.pos",
+        "wrist_roll.pos",
+      ];
+      let target = Object.fromEntries(joints.map((j) => [j, 0])),
+        pose = { ...target },
+        led = [0, 0, 0],
+        az = -0.68,
+        el = 0.27,
+        zoom = 1,
+        drag,
+        rawCAD = new URLSearchParams(location.search).has("raw"),
+        cadMesh;
+      if (!gl) {
+        action.textContent = "WebGL is unavailable in this browser.";
+        throw Error("WebGL unavailable");
+      }
+      viewTitle.textContent = "Lamp CAD motion preview";
+      viewDetail.textContent =
+        "Actual CAD mesh with motion visualization from live HAL joint state.";
+      viewToggle.textContent = "View raw CAD reference";
+      const V = {
+        sub: (a, b) => a.map((x, i) => x - b[i]),
+        dot: (a, b) => a.reduce((s, x, i) => s + x * b[i], 0),
+        cross: (a, b) => [
+          a[1] * b[2] - a[2] * b[1],
+          a[2] * b[0] - a[0] * b[2],
+          a[0] * b[1] - a[1] * b[0],
+        ],
+        unit: (a) => {
+          const n = Math.hypot(...a) || 1;
+          return a.map((x) => x / n);
+        },
+      };
+      const M = {
+        id: () => [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+        mul: (a, b) => {
+          const c = [];
+          for (let j = 0; j < 4; j++)
+            for (let i = 0; i < 4; i++)
+              c[j * 4 + i] =
+                a[i] * b[j * 4] +
+                a[4 + i] * b[j * 4 + 1] +
+                a[8 + i] * b[j * 4 + 2] +
+                a[12 + i] * b[j * 4 + 3];
+          return c;
+        },
+        tr: (x, y, z) => [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, z, 1],
+        sc: (x, y, z) => [x, 0, 0, 0, 0, y, 0, 0, 0, 0, z, 0, 0, 0, 0, 1],
+        rx: (a) => {
+          const c = Math.cos(a),
+            s = Math.sin(a);
+          return [1, 0, 0, 0, 0, c, s, 0, 0, -s, c, 0, 0, 0, 0, 1];
+        },
+        ry: (a) => {
+          const c = Math.cos(a),
+            s = Math.sin(a);
+          return [c, 0, -s, 0, 0, 1, 0, 0, s, 0, c, 0, 0, 0, 0, 1];
+        },
+        rz: (a) => {
+          const c = Math.cos(a),
+            s = Math.sin(a);
+          return [c, s, 0, 0, -s, c, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+        },
+        pers: (f, a, n, z) => {
+          const q = 1 / Math.tan(f / 2);
+          return [
+            q / a,
+            0,
+            0,
+            0,
+            0,
+            q,
+            0,
+            0,
+            0,
+            0,
+            (z + n) / (n - z),
+            -1,
+            0,
+            0,
+            (2 * z * n) / (n - z),
+            0,
+          ];
+        },
+        look: (e, t) => {
+          const z = V.unit(V.sub(e, t)),
+            x = V.unit(V.cross([0, 1, 0], z)),
+            y = V.cross(z, x);
+          return [
+            x[0],
+            y[0],
+            z[0],
+            0,
+            x[1],
+            y[1],
+            z[1],
+            0,
+            x[2],
+            y[2],
+            z[2],
+            0,
+            -V.dot(x, e),
+            -V.dot(y, e),
+            -V.dot(z, e),
+            1,
+          ];
+        },
+      };
+      const vs =
+        "attribute vec3 p,n;uniform mat4 view,proj;varying vec3 vN,vP;void main(){vN=n;vP=p;gl_Position=proj*view*vec4(p,1.);}";
+      const fs =
+        "precision mediump float;varying vec3 vN,vP;uniform vec3 color,emit;void main(){vec3 l=normalize(vec3(-.4,.85,.65));float d=max(dot(normalize(vN),l),0.);float rim=pow(1.-max(dot(normalize(vN),normalize(-vP)),0.),2.);gl_FragColor=vec4(color*(.18+.82*d)+emit+rim*.10,1.);}";
+      function shader(t, s) {
+        const o = gl.createShader(t);
+        gl.shaderSource(o, s);
+        gl.compileShader(o);
+        return o;
+      }
+      const program = gl.createProgram();
+      gl.attachShader(program, shader(gl.VERTEX_SHADER, vs));
+      gl.attachShader(program, shader(gl.FRAGMENT_SHADER, fs));
+      gl.linkProgram(program);
+      gl.useProgram(program);
+      const L = {
+        p: gl.getAttribLocation(program, "p"),
+        n: gl.getAttribLocation(program, "n"),
+        view: gl.getUniformLocation(program, "view"),
+        proj: gl.getUniformLocation(program, "proj"),
+        color: gl.getUniformLocation(program, "color"),
+        emit: gl.getUniformLocation(program, "emit"),
+      };
+      function mesh(v, n, i) {
+        const o = { i: gl.createBuffer(), count: i.length };
+        for (const [k, d] of Object.entries({ p: v, n })) {
+          o[k] = gl.createBuffer();
+          gl.bindBuffer(gl.ARRAY_BUFFER, o[k]);
+          gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(d), gl.STATIC_DRAW);
+        }
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, o.i);
+        gl.bufferData(
+          gl.ELEMENT_ARRAY_BUFFER,
+          new Uint16Array(i),
+          gl.STATIC_DRAW,
+        );
+        return o;
+      }
+      function box() {
+        const v = [],
+          n = [],
+          i = [];
+        for (const [q, r, s, N] of [
+          [
+            [1, 0, 0],
+            [0, 0, 1],
+            [0, 1, 0],
+            [1, 0, 0],
+          ],
+          [
+            [-1, 0, 0],
+            [0, 1, 0],
+            [0, 0, 1],
+            [-1, 0, 0],
+          ],
+          [
+            [0, 1, 0],
+            [1, 0, 0],
+            [0, 0, -1],
+            [0, 1, 0],
+          ],
+          [
+            [0, -1, 0],
+            [0, 0, 1],
+            [1, 0, 0],
+            [0, -1, 0],
+          ],
+          [
+            [0, 0, 1],
+            [1, 0, 0],
+            [0, 1, 0],
+            [0, 0, 1],
+          ],
+          [
+            [0, 0, -1],
+            [0, 1, 0],
+            [1, 0, 0],
+            [0, 0, -1],
+          ],
+        ]) {
+          const k = v.length / 3;
+          for (const a of [-1, 1])
+            for (const b of [-1, 1]) {
+              v.push(
+                q[0] + r[0] * a + s[0] * b,
+                q[1] + r[1] * a + s[1] * b,
+                q[2] + r[2] * a + s[2] * b,
+              );
+              n.push(...N);
+            }
+          i.push(k, k + 1, k + 3, k, k + 3, k + 2);
+        }
+        return mesh(v, n, i);
+      }
+      function cyl(seg = 32, r0 = 1, r1 = 1) {
+        const v = [],
+          n = [],
+          i = [];
+        for (let y = 0; y < 2; y++)
+          for (let k = 0; k <= seg; k++) {
+            const a = (k * Math.PI * 2) / seg,
+              c = Math.cos(a),
+              s = Math.sin(a);
+            v.push(c * (y ? r1 : r0), y, s * (y ? r1 : r0));
+            n.push(c, 0, s);
+          }
+        for (let k = 0; k < seg; k++) {
+          const a = k,
+            b = k + 1,
+            c = seg + 1 + k,
+            d = c + 1;
+          i.push(a, b, d, a, d, c);
+        }
+        return mesh(v, n, i);
+      }
+      function disc(seg = 36) {
+        const v = [0, 0, 0],
+          n = [0, -1, 0],
+          i = [];
+        for (let k = 0; k <= seg; k++) {
+          const a = (k * 2 * Math.PI) / seg;
+          v.push(Math.cos(a), 0, Math.sin(a));
+          n.push(0, -1, 0);
+        }
+        for (let k = 0; k < seg; k++) i.push(0, k + 2, k + 1);
+        return mesh(v, n, i);
+      }
+      function torus(a = 1, b = 0.12, seg = 32, tube = 10) {
+        const v = [],
+          n = [],
+          i = [];
+        for (let j = 0; j <= tube; j++)
+          for (let k = 0; k <= seg; k++) {
+            const u = (k * 2 * Math.PI) / seg,
+              w = (j * 2 * Math.PI) / tube,
+              c = Math.cos(u),
+              s = Math.sin(u),
+              q = Math.cos(w),
+              z = Math.sin(w);
+            v.push((a + b * q) * c, b * z, (a + b * q) * s);
+            n.push(q * c, z, q * s);
+          }
+        for (let j = 0; j < tube; j++)
+          for (let k = 0; k < seg; k++) {
+            const x = j * (seg + 1) + k;
+            i.push(x, x + 1, x + seg + 2, x, x + seg + 2, x + seg + 1);
+          }
+        return mesh(v, n, i);
+      }
+      const cube = box(),
+        round = cyl(),
+        shade = cyl(42, 0.92, 0.58),
+        front = disc(),
+        ring = torus();
+      const mm = (...x) => x.reduce((a, b) => M.mul(a, b));
+      const d = (x) => (x * Math.PI) / 180;
+      function draw(o, m, c, e = [0, 0, 0]) {
+        gl.bindBuffer(gl.ARRAY_BUFFER, o.p);
+        gl.vertexAttribPointer(L.p, 3, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(L.p);
+        gl.bindBuffer(gl.ARRAY_BUFFER, o.n);
+        gl.vertexAttribPointer(L.n, 3, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(L.n);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, o.i);
+        gl.uniformMatrix4fv(L.model, false, m);
+        gl.uniformMatrix3fv(L.normal, false, [
+          m[0],
+          m[1],
+          m[2],
+          m[4],
+          m[5],
+          m[6],
+          m[8],
+          m[9],
+          m[10],
+        ]);
+        gl.uniform3fv(L.color, c);
+        gl.uniform3fv(L.emit, e);
+        gl.drawElements(gl.TRIANGLES, o.count, gl.UNSIGNED_SHORT, 0);
+      }
+      function drawPreview() {
+        const ivory = [0.91, 0.88, 0.8],
+          edge = [0.24, 0.23, 0.2],
+          dark = [0.05, 0.06, 0.065],
+          yaw = mm(M.ry(d(pose["base_yaw.pos"])));
+        draw(cube, mm(M.tr(0, 28, 0), M.sc(120, 28, 84)), ivory);
+        draw(cube, mm(M.tr(0, 3, 0), M.sc(124, 3, 88)), dark);
+        draw(cube, mm(M.tr(0, 65, 0), M.sc(34, 37, 34)), ivory);
+        const shoulder = mm(
+          yaw,
+          M.tr(0, 94, 0),
+          M.rz(d(-pose["base_pitch.pos"] - 20)),
+        );
+        draw(
+          round,
+          mm(yaw, M.tr(0, 95, 0), M.rz(Math.PI / 2), M.sc(29, 29, 29)),
+          edge,
+        );
+        draw(cube, mm(shoulder, M.tr(0, 82, 0), M.sc(28, 82, 22)), ivory);
+        const elbow = mm(
+          shoulder,
+          M.tr(0, 164, 0),
+          M.rz(d(-pose["elbow_pitch.pos"] + 32)),
+        );
+        draw(
+          round,
+          mm(shoulder, M.tr(0, 164, 0), M.rz(Math.PI / 2), M.sc(26, 26, 26)),
+          edge,
+        );
+        draw(cube, mm(elbow, M.tr(0, 74, 0), M.sc(25, 74, 20)), ivory);
+        const wrist = mm(
+          elbow,
+          M.tr(0, 148, 0),
+          M.rz(d(-pose["wrist_pitch.pos"])),
+          M.ry(d(pose["wrist_roll.pos"])),
+        );
+        draw(
+          round,
+          mm(elbow, M.tr(0, 148, 0), M.rz(Math.PI / 2), M.sc(23, 23, 23)),
+          edge,
+        );
+        draw(cube, mm(wrist, M.tr(0, 30, 0), M.sc(20, 30, 20)), ivory);
+        const head = mm(wrist, M.tr(0, 57, 0), M.rx(Math.PI / 2));
+        draw(shade, mm(head, M.sc(73, 73, 73)), ivory);
+        draw(round, mm(head, M.tr(0, 1, 0), M.sc(77, 8, 77)), edge);
+        draw(
+          front,
+          mm(head, M.tr(0, -5, 0), M.sc(70, 1, 70)),
+          [0.14, 0.15, 0.16],
+        );
+        const glow = led.map((x) => Math.min(1, x / 120));
+        draw(
+          ring,
+          mm(head, M.tr(0, -8, 0), M.sc(60, 60, 60)),
+          [0.3, 0.28, 0.22],
+          glow,
+        );
+        draw(front, mm(head, M.tr(0, -9, 0), M.sc(42, 1, 42)), dark);
+      }
+      async function loadCAD() {
+        if (cadMesh) return;
+        try {
+          const r = await fetch("/simulator/cad");
+          if (!r.ok) throw Error("run git lfs pull");
+          const b = await r.arrayBuffer(),
+            v = new DataView(b),
+            total = v.getUint32(80, true);
+          if (b.byteLength < 84 || total < 1 || total > 5000000)
+            throw Error("CAD is not binary STL");
+          const stride = 1,
+            source = new Float32Array(Math.ceil(total / stride) * 9),
+            n = new Float32Array(source.length);
+          let out = 0;
+          for (let i = 0; i < total; i += stride) {
+            const o = 84 + i * 50;
+            if (o + 50 > b.byteLength) break;
+            const nx = v.getFloat32(o, true),
+              ny = v.getFloat32(o + 4, true),
+              nz = v.getFloat32(o + 8, true);
+            for (let q = 0; q < 3; q++) {
+              const k = o + 12 + q * 12;
+              source.set(
+                [
+                  v.getFloat32(k, true) - 3006,
+                  v.getFloat32(k + 8, true) - 37,
+                  -(v.getFloat32(k + 4, true) - 552),
+                ],
+                out,
+              );
+              n.set([nx, nz, -ny], out);
+              out += 3;
+            }
+          }
+          const positions = source.subarray(0, out);
+          cadMesh = { count: out / 3 };
+          for (const [k, data] of Object.entries({
+            p: positions,
+            n: n.subarray(0, out),
+          })) {
+            cadMesh[k] = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, cadMesh[k]);
+            gl.bufferData(
+              gl.ARRAY_BUFFER,
+              data,
+              gl.STATIC_DRAW,
+            );
+          }
+          loading.hidden = true;
+          viewDetail.textContent = `${Math.round(cadMesh.count / 3).toLocaleString()} CAD triangles · live HAL joint state.`;
+        } catch (e) {
+          viewDetail.textContent = `CAD unavailable: ${e.message}`;
+          loading.textContent = `CAD unavailable: ${e.message}`;
+          viewToggle.disabled = true;
+        }
+      }
+      function drawCAD() {
+        if (!cadMesh) return;
+        gl.bindBuffer(gl.ARRAY_BUFFER, cadMesh.p);
+        gl.vertexAttribPointer(L.p, 3, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(L.p);
+        gl.bindBuffer(gl.ARRAY_BUFFER, cadMesh.n);
+        gl.vertexAttribPointer(L.n, 3, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(L.n);
+        gl.uniform3fv(L.color, [0.89, 0.84, 0.74]);
+        gl.uniform3fv(L.emit, [0, 0, 0]);
+        gl.drawArrays(gl.TRIANGLES, 0, cadMesh.count);
+      }
+      function render() {
+        for (const j of joints) pose[j] += (target[j] - pose[j]) * 0.11;
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        gl.enable(gl.DEPTH_TEST);
+        gl.clearColor(0.045, 0.052, 0.05, 1);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        const livePitch = rawCAD
+            ? 0
+            : Math.max(
+                -38,
+                Math.min(
+                  38,
+                  -(
+                    0.15 * (pose["base_pitch.pos"] + 20) +
+                    0.65 * (pose["elbow_pitch.pos"] - 32) +
+                    0.2 * pose["wrist_pitch.pos"]
+                  ),
+                ),
+              ),
+          liveYaw = rawCAD ? 0 : pose["base_yaw.pos"],
+          previewAz = az - d(liveYaw * 0.38),
+          previewEl = Math.max(-0.42, Math.min(0.75, el + d(livePitch * 0.32))),
+          r = 660 * zoom,
+          t = [0, 205, 0],
+          eye = [
+            r * Math.sin(previewAz) * Math.cos(previewEl),
+            t[1] + r * Math.sin(previewEl),
+            r * Math.cos(previewAz) * Math.cos(previewEl),
+          ];
+        gl.uniformMatrix4fv(L.view, false, M.look(eye, t));
+        gl.uniformMatrix4fv(
+          L.proj,
+          false,
+          M.pers(0.78, canvas.width / canvas.height, 10, 1800),
+        );
+        drawCAD();
+        requestAnimationFrame(render);
+      }
+      const api = async (path, body) => {
+        const r = await fetch(path, {
+          method: body ? "POST" : "GET",
+          headers: body ? { "content-type": "application/json" } : {},
+          body: body ? JSON.stringify(body) : undefined,
+        });
+        if (!r.ok) throw Error(`${path} → ${r.status}`);
+        return r.json();
+      };
+      async function act(label, path, body) {
+        try {
+          await api(path, body);
+          action.textContent = `✓ ${label}`;
+          await refresh();
+        } catch (e) {
+          action.textContent = `✕ ${e.message}`;
+        }
+      }
+      async function refresh() {
+        try {
+          const [h, p, l, s, sim] = await Promise.all([
+            api("/health"),
+            api("/servo/position"),
+            api("/led/color"),
+            api("/servo"),
+            api("/simulator/state"),
+          ]);
+          target = { ...target, ...(p.positions || {}) };
+          const ok = h.servo && h.led && h.camera;
+          dot.style.background = ok ? "#83dd86" : "#e75e4e";
+          status.textContent = ok ? "HAL connected" : "HAL degraded";
+          stateEl.textContent =
+            joints
+              .map(
+                (j) =>
+                  `${j.replace(".pos", "").padEnd(13)} ${Math.round(
+                    target[j] || 0,
+                  )
+                    .toString()
+                    .padStart(4)}°`,
+              )
+              .join("\n") + `\nrecording     ${s.current || "idle"}`;
+          const c = l.color || [0, 0, 0],
+            hex = l.hex || "#000";
+          ledPreview.style.background = `rgb(${c.join(",")})`;
+          ledPreview.style.color = hex;
+          ledPreview.classList.toggle("running", Boolean(l.effect));
+          ledLabel.textContent = l.effect
+            ? `${l.effect} effect · ${hex}`
+            : `${l.on ? "solid" : "off"} · ${hex}`;
+          const host = sim.media === "host";
+          document.querySelector("#tone").disabled = !host;
+          document.querySelector("#record").disabled = !host;
+          document.querySelector("#media-note").textContent = host
+            ? "Host media: tone uses this Mac speaker; record uses this Mac microphone."
+            : "Virtual media: tone is intentionally silent and recording is a deterministic silent WAV. Restart with make sim SIM_MEDIA=host to test this Mac.";
+        } catch (e) {
+          dot.style.background = "#e75e4e";
+          status.textContent = "HAL unavailable";
+          stateEl.textContent = e.message;
+        }
+      }
+      document.querySelectorAll("[data-aim]").forEach(
+        (b) =>
+          (b.onclick = () =>
+            act(`Aim: ${b.dataset.aim}`, "/servo/aim", {
+              direction: b.dataset.aim,
+              duration: 0.25,
+            })),
+      );
+      document.querySelectorAll("[data-play]").forEach(
+        (b) =>
+          (b.onclick = () =>
+            act(`Playing ${b.dataset.play}`, "/servo/play", {
+              recording: b.dataset.play,
+            })),
+      );
+      document.querySelectorAll("[data-effect]").forEach(
+        (b) =>
+          (b.onclick = () =>
+            act(`${b.dataset.effect} effect started`, "/led/effect", {
+              effect: b.dataset.effect,
+              color: [255, 180, 100],
+              speed: 1,
+              duration_ms: 8000,
+            })),
+      );
+      document.querySelector("#amber").onclick = () =>
+        act("Warm light applied", "/led/solid", { color: [255, 175, 75] });
+      document.querySelector("#off").onclick = () =>
+        act("Light switched off", "/led/off", {});
+      document.querySelector("#stop").onclick = () =>
+        act("Servo stop sent", "/servo/stop", {});
+      document.querySelector("#effect-stop").onclick = () =>
+        act("LED effect stopped", "/led/effect/stop", {});
+      document.querySelector("#tone").onclick = () =>
+        act(
+          "Test tone requested",
+          "/audio/play-tone?frequency=440&duration_ms=300",
+          {},
+        );
+      document.querySelector("#record").onclick = async () => {
+        try {
+          action.textContent = "Recording 3 seconds…";
+          const r = await fetch("/audio/record?duration_ms=3000", {
+            method: "POST",
+          });
+          if (!r.ok) throw Error(`/audio/record → ${r.status}`);
+          document.querySelector("#recording").src = URL.createObjectURL(
+            await r.blob(),
+          );
+          action.textContent = "✓ Recording ready — press play below.";
+        } catch (e) {
+          action.textContent = `✕ ${e.message}`;
+        }
+      };
+      viewToggle.onclick = () => {
+        rawCAD = !rawCAD;
+        viewTitle.textContent = rawCAD
+          ? "Actual Lamp CAD reference"
+          : "Lamp CAD motion preview";
+        viewDetail.textContent = rawCAD
+          ? "Raw static assembly — no joint visualization."
+          : "Actual CAD mesh with motion visualization from live HAL joint state.";
+        viewToggle.textContent = rawCAD
+          ? "Return to live motion"
+          : "View raw CAD reference";
+      };
+      canvas.addEventListener("pointerdown", (e) => {
+        drag = [e.clientX, e.clientY];
+        canvas.setPointerCapture(e.pointerId);
+      });
+      canvas.addEventListener("pointermove", (e) => {
+        if (!drag) return;
+        az += (e.clientX - drag[0]) * 0.011;
+        el = Math.max(
+          -0.42,
+          Math.min(0.75, el + (e.clientY - drag[1]) * 0.009),
+        );
+        drag = [e.clientX, e.clientY];
+      });
+      canvas.addEventListener("pointerup", () => (drag = null));
+      canvas.addEventListener("pointercancel", () => (drag = null));
+      canvas.addEventListener(
+        "wheel",
+        (e) => {
+          e.preventDefault();
+          zoom = Math.max(
+            0.65,
+            Math.min(1.55, zoom * (e.deltaY > 0 ? 1.08 : 0.92)),
+          );
+        },
+        { passive: false },
+      );
+      canvas.addEventListener("dblclick", () => {
+        az = -0.68;
+        el = 0.27;
+        zoom = 1;
+      });
+      setInterval(refresh, 100);
+      refresh();
+      loadCAD();
+      render();
+    </script>
+  </body>
+</html>

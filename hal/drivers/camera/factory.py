@@ -30,6 +30,7 @@ CAMERA_DRIVERS: dict[str, Tuple[str, str]] = {
     "opencv": ("hal.drivers.camera.video_capture_device", "LocalVideoCaptureDevice"),
     # Raspberry Pi CSI sensors behind libcamera, via an rpicam-vid MJPEG pipe.
     "rpicam": ("hal.drivers.camera.rpicam_capture_device", "RpicamVideoCaptureDevice"),
+    "virtual": ("hal.drivers.camera.virtual_capture_device", "VirtualVideoCaptureDevice"),
 }
 
 

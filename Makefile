@@ -49,17 +49,24 @@ os-test:
 # HAL (Python) — dev | run | test
 # ============================================================================
 
-.PHONY: hal hal-dev hal-sim hal-run hal-lint hal-test hal-clean
+.PHONY: hal hal-dev sim hal-run hal-lint hal-test hal-clean
 
 hal: hal-dev
 
 hal-dev:
 	cd $(HAL_DIR) && PYTHONPATH=.. HAL_MODE=developer .venv/bin/uvicorn hal.server:app --host 0.0.0.0 --port $(HAL_PORT) --reload
 
-# Boot the declared mock body on a laptop. It has mock motion only; unlisted
-# peripherals are not opened, and no physical servo bus is required.
-hal-sim:
-	HAL_BOARD=sim DEVICE_TYPE=sim $(MAKE) hal-dev
+# Boot any declared body on a laptop without opening its physical peripherals.
+# DEVICE_TYPE remains the single body selector; Lamp is the default product body.
+DEVICE_TYPE ?= lamp
+SIM_STATE_DIR ?= /tmp/autonomous-sim
+# virtual is deterministic and permission-free; host opts into the developer
+# machine's camera, microphone and speaker for manual media checks.
+SIM_MEDIA ?= virtual
+sim:
+	@echo "HAL simulator: http://127.0.0.1:$(HAL_PORT)/docs"
+	$(if $(filter lamp,$(DEVICE_TYPE)),@echo "Lamp visualizer: http://127.0.0.1:$(HAL_PORT)/simulator (drag to orbit; wheel to zoom)",@echo "No Lamp visualizer for DEVICE_TYPE=$(DEVICE_TYPE)")
+	HAL_SIMULATE=1 HAL_SIM_MEDIA=$(SIM_MEDIA) HAL_BOARD=sim DEVICE_TYPE=$(DEVICE_TYPE) HAL_USERS_DIR=$(SIM_STATE_DIR)/users HAL_STRANGERS_DIR=$(SIM_STATE_DIR)/strangers HAL_BT_STATE_DIR=$(SIM_STATE_DIR) HAL_VOLUME_STATE_PATH=$(SIM_STATE_DIR)/volume $(MAKE) hal-dev
 
 hal-run:
 	cd $(HAL_DIR) && PYTHONPATH=.. .venv/bin/python -m hal.server

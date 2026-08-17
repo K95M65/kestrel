@@ -76,6 +76,14 @@ soc_temp_c = None
 
 audio_output_device: Optional[int] = None
 audio_input_device: Optional[int] = None
+# Simulation exposes an in-memory microphone/speaker pair. Keeping this state
+# here lets the audio routes preserve their HTTP contract without querying the
+# developer's macOS devices.
+simulation_audio: bool = (
+    os.environ.get("HAL_SIMULATE", "").lower() in ("1", "true", "yes")
+    and os.environ.get("HAL_SIM_MEDIA", "virtual").lower() != "host"
+)
+simulation_volume: int = 65
 
 # --- Camera state ---
 

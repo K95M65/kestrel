@@ -4,6 +4,7 @@ import io
 import os
 import re
 import subprocess
+import wave
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
@@ -159,6 +160,10 @@ def set_volume(req: VolumeRequest):
     """Set system speaker volume (0-100%). Routes to the BT headset sink
     (PulseAudio) when one is active, else to the built-in speaker (amixer)."""
     pct = max(0, min(100, req.volume))
+    if state.simulation_audio:
+        state.simulation_volume = pct
+        _persist_volume(pct)
+        return {"status": "ok"}
     sink = _bt_sink()
     if sink:
         from hal.drivers.bluetooth_manager import BluetoothManager
@@ -197,6 +202,8 @@ def get_volume():
     DAC controls are tried first so round-trip is stable on codecs whose raw%
     range differs from our [-60dB, +2dB] envelope (e.g. WM8960, Rockchip).
     """
+    if state.simulation_audio:
+        return {"control": "virtual", "volume": state.simulation_volume}
     sink = _bt_sink()
     if sink:
         from hal.drivers.bluetooth_manager import BluetoothManager
@@ -233,6 +240,8 @@ def get_volume():
 @router.post("/audio/play-tone", response_model=StatusResponse)
 def play_tone(frequency: int = 440, duration_ms: int = 500):
     """Play a test tone through the speaker."""
+    if state.simulation_audio:
+        return {"status": "ok"}
     if not sd or not np:
         raise HTTPException(503, "Audio not available")
     if state.audio_output_device is None:
@@ -254,12 +263,20 @@ def play_tone(frequency: int = 440, duration_ms: int = 500):
 @router.post("/audio/record")
 def record_audio(duration_ms: int = 3000):
     """Record audio from the microphone. Returns WAV bytes."""
+    if state.simulation_audio:
+        sample_rate = 16_000
+        frames = int(sample_rate * duration_ms / 1000)
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(sample_rate)
+            wf.writeframes(b"\x00\x00" * frames)
+        return Response(content=buf.getvalue(), media_type="audio/wav")
     if not sd or not np:
         raise HTTPException(503, "Audio not available")
     if state.audio_input_device is None:
         raise HTTPException(503, "No input audio device found")
-    import wave
-
     dev_info = sd.query_devices(state.audio_input_device)
     sample_rate = int(dev_info["default_samplerate"])
     channels = 1

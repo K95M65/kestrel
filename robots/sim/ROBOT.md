@@ -23,7 +23,7 @@ machine with no device tree.
 Run it on a laptop:
 
 ```bash
-make hal-sim
+make sim DEVICE_TYPE=sim
 curl -s -X POST localhost:5001/servo/aim -H 'content-type: application/json' -d '{"direction":"left"}'
 curl -s localhost:5001/servo/position
 ```
