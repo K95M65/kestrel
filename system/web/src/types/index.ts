@@ -11,11 +11,14 @@ export interface NetworkItem {
 
 export type ChannelType = "telegram" | "slack" | "discord";
 
+/** Initial setup may defer messaging-channel configuration entirely. */
+export type SetupChannelType = ChannelType | "none";
+
 /** Request body for POST /api/device/setup */
 export interface SetupRequest {
   ssid: string;
   password: string;
-  channel: ChannelType;
+  channel?: ChannelType;
   telegram_bot_token?: string;
   telegram_user_id?: string;
   slack_bot_token?: string;

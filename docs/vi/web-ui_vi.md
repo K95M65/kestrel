@@ -1,6 +1,6 @@
 # Web UI — Monitor Dashboard
 
-## Ngày cập nhật: 2026-08-13
+## Ngày cập nhật: 2026-08-17
 
 ---
 
@@ -12,6 +12,10 @@ Web UI của thiết bị là một React SPA (Single Page Application) được
 2. **Monitor Dashboard** — Theo dõi trạng thái thiết bị real-time (`/monitor`)
 
 File build output (`dist/`) được nginx serve tại root `/` trên thiết bị.
+
+Trong lần setup đầu, **Channels** là tuỳ chọn và mặc định là **Not now**.
+Chọn Telegram, Slack hoặc Discord sẽ hiện các field credential, nhưng user có
+thể để trống hoặc cấu hình channel sau trong Settings.
 
 ### 1.1 Tiêu đề tab trình duyệt
 

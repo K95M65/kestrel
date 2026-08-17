@@ -1,6 +1,6 @@
 # Web UI — Monitor Dashboard
 
-## Last updated: 2026-08-13
+## Last updated: 2026-08-17
 
 ---
 
@@ -12,6 +12,10 @@ The device's Web UI is a React SPA (Single Page Application) built with **React 
 2. **Monitor Dashboard** — Real-time device status monitoring (`/monitor`)
 
 Build output (`dist/`) is served by nginx at root `/` on the device.
+
+During initial setup, **Channels** is optional and defaults to **Not now**.
+Selecting Telegram, Slack, or Discord reveals its credential fields, but the
+operator may leave them blank or configure a channel later in Settings.
 
 ### 1.1 Browser Tab Title
 

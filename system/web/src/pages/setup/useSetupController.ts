@@ -13,7 +13,7 @@ import { useCapabilities } from "@/hooks/useCapabilities";
 import { Cap } from "@/pages/monitor/types";
 import { setupBridge } from "@/lib/setupBridge";
 import type { SectionId, LlmLoadedState, ChannelLoadedState } from "@/hooks/setup/types";
-import type { ChannelType, NetworkItem } from "@/types";
+import type { ChannelType, NetworkItem, SetupChannelType } from "@/types";
 import { normaliseSetupError, type SetupMode } from "./helpers";
 
 // useSetupController owns ALL of the Setup page's state, effects, derived
@@ -39,9 +39,11 @@ export function useSetupController(mode: SetupMode) {
   useDocumentTitle("Setup");
 
   const channelParam = searchParams.get("channel");
-  const initialChannel: ChannelType =
-    channelParam === "slack" || channelParam === "discord" ? (channelParam as ChannelType) : "telegram";
-  const [channel, setChannel] = useState<ChannelType>(initialChannel);
+  const initialChannel: SetupChannelType =
+    channelParam === "telegram" || channelParam === "slack" || channelParam === "discord"
+      ? (channelParam as ChannelType)
+      : "none";
+  const [channel, setChannel] = useState<SetupChannelType>(initialChannel);
 
   const urlParams = useSetupUrlParams();
 
@@ -280,11 +282,7 @@ export function useSetupController(mode: SetupMode) {
     llm: !!llmApiKey || llmLoaded.apiKey,
     language: true, // Auto/empty is a valid choice — never block on this.
     realtime: true, // Not a setup step (edit-only card); never blocks setup.
-    channel: channel === "telegram"
-      ? (!!teleToken || channelLoaded.teleToken)
-      : channel === "slack"
-        ? (!!slackBotToken || channelLoaded.slackBotToken)
-        : (!!discordBotToken || channelLoaded.discordBotToken),
+    channel: true,
     tts: !!ttsVoice,
     voice: faceOwners.some((p) => (p.voice_samples?.length ?? 0) > 0),
     face: faceOwners.some((p) => p.photo_count > 0),
@@ -373,7 +371,7 @@ export function useSetupController(mode: SetupMode) {
     // `face` in here on a camera-less device meant `required` could never be
     // fully satisfied, so the "everything is done" branch — the one that emits
     // setup_done and bounces to /monitor — was unreachable for that device.
-    const required: SectionId[] = ["wifi", "llm", "channel", "tts",
+    const required: SectionId[] = ["wifi", "llm", "tts",
       ...(canEnrollVoice ? ["voice" as SectionId] : []),
       ...(canEnrollFace ? ["face" as SectionId] : []),
     ];
@@ -643,9 +641,9 @@ export function useSetupController(mode: SetupMode) {
   // wired up and submitted with empty or URL-prefilled defaults, so
   // re-adding a SectionCard + a SECTIONS entry brings them back without
   // other plumbing.
-  // `optional` flags the enrollment steps (Voice/Face) that the operator can
-  // skip — drives the "Optional" sidebar tag and the Skip button so they don't
-  // feel like a blocking requirement. Required steps omit the flag.
+  // `optional` flags steps the operator can skip — drives the "Optional"
+  // sidebar tag and the Skip button so they don't feel like a blocking
+  // requirement. Required steps omit the flag.
   const SECTIONS: { id: SectionId; label: string; optional?: boolean }[] = [
     // Admin password no longer has a dedicated step — it's hidden in the merged
     // Wi-Fi step and defaulted server-side to the device's hardware suffix
@@ -654,7 +652,7 @@ export function useSetupController(mode: SetupMode) {
     { id: "wifi", label: "Wi-Fi" },
     ...(debug ? [
       { id: "llm" as SectionId, label: "AI Brain" },
-      { id: "channel" as SectionId, label: "Channels" },
+      { id: "channel" as SectionId, label: "Channels", optional: true },
       { id: "language" as SectionId, label: "Language" },
       { id: "tts" as SectionId, label: "Voice" },
     ] : []),
@@ -752,7 +750,6 @@ export function useSetupController(mode: SetupMode) {
   const STEP_BLOCK_HINTS: Partial<Record<SectionId, string>> = {
     wifi: "Choose a Wi-Fi network and enter its password before continuing.",
     llm: "Add the AI Brain API key before continuing.",
-    channel: "Add the messaging channel token before continuing.",
   };
   const goNext = () => {
     if (isLastStep) return;
@@ -905,8 +902,8 @@ export function useSetupController(mode: SetupMode) {
     // Pre-flight check for the two visible Wi-Fi fields. Catches implicit
     // Enter-key form submission and any other accidental fire-before-ready
     // path with a plain hint instead of letting the Go validator return a
-    // tag-format error. Other required fields (LLM creds, device ID, channel
-    // tokens) ride through URL params or the saved config merge on the
+    // tag-format error. Other required fields (LLM creds and device ID) ride
+    // through URL params or the saved config merge on the
     // backend, so we let the server be the source of truth for those — see
     // the normaliseSetupError() catch below for friendlier rendering.
     // No network chosen is only an error when the device actually needs one.
@@ -926,7 +923,7 @@ export function useSetupController(mode: SetupMode) {
     }
     setLoading(true);
     try {
-      let channelCredentials: Record<string, string>;
+      let channelCredentials: Record<string, string> = {};
       switch (channel) {
         case "telegram":
           channelCredentials = {
@@ -941,15 +938,17 @@ export function useSetupController(mode: SetupMode) {
             slack_user_id: urlParams.slackUserId || slackUserId,
           };
           break;
-        default:
+        case "discord":
           channelCredentials = {
             discord_bot_token: urlParams.discordBotToken || discordBotToken,
             discord_guild_id: urlParams.discordGuildId || discordGuildId,
             discord_user_id: urlParams.discordUserId || discordUserId,
           };
+          break;
       }
       const body: Parameters<typeof setupDevice>[0] = {
-        ssid: ssid.trim(), password, channel,
+        ssid: ssid.trim(), password,
+        ...(channel === "none" ? {} : { channel }),
         ...channelCredentials,
         llm_base_url: urlParams.llmUrl || llmUrl,
         llm_api_key: urlParams.llmApiKey || llmApiKey,

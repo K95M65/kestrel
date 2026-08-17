@@ -1,6 +1,6 @@
 import { MessageSquare } from "lucide-react";
 import { ConfiguredHint, LockedField, LockedPasswordField, SectionCard, LABEL_STYLE, INPUT_STYLE, FIELD_GAP } from "./shared";
-import type { ChannelType } from "@/types";
+import type { SetupChannelType } from "@/types";
 import type { ChannelLoadedState } from "@/hooks/setup/types";
 
 export function ChannelSection({
@@ -11,8 +11,8 @@ export function ChannelSection({
   discordBotToken, setDiscordBotToken, discordGuildId, setDiscordGuildId, discordUserId, setDiscordUserId,
 }: {
   active: boolean;
-  channel: ChannelType;
-  setChannel: (v: ChannelType) => void;
+  channel: SetupChannelType;
+  setChannel: (v: SetupChannelType) => void;
   channelLoaded: ChannelLoadedState;
   teleToken: string; setTeleToken: (v: string) => void;
   teleUserId: string; setTeleUserId: (v: string) => void;
@@ -25,15 +25,16 @@ export function ChannelSection({
 }) {
   return (
     <SectionCard id="channel" title="Messaging Channels" active={active} icon={<MessageSquare size={17} />}
-      description="Connect a chat app so you can message your device and get its replies.">
+      description="Optionally connect a chat app now, or configure one later in Settings.">
       <div style={{ marginBottom: FIELD_GAP }}>
-        <label htmlFor="channel" style={LABEL_STYLE}>Channel *</label>
+        <label htmlFor="channel" style={LABEL_STYLE}>Channel</label>
         <select
           id="channel"
           value={channel}
-          onChange={(e) => setChannel(e.target.value as ChannelType)}
+          onChange={(e) => setChannel(e.target.value as SetupChannelType)}
           style={{ ...INPUT_STYLE, cursor: "pointer" }}
         >
+          <option value="none">Not now</option>
           <option value="telegram">Telegram</option>
           <option value="slack">Slack</option>
           <option value="discord">Discord</option>
@@ -44,9 +45,9 @@ export function ChannelSection({
           {channelLoaded.teleToken ? (
             <ConfiguredHint label="Bot Token" />
           ) : (
-            <LockedPasswordField required lockedInitially={false} label="Bot Token *" id="tele_token" value={teleToken} onChange={setTeleToken} placeholder="123456:ABC-DEF..." />
+            <LockedPasswordField lockedInitially={false} label="Bot Token" id="tele_token" value={teleToken} onChange={setTeleToken} placeholder="123456:ABC-DEF..." />
           )}
-          <LockedField required lockedInitially={channelLoaded.teleUserId} label="User ID *" id="tele_user_id" value={teleUserId} onChange={setTeleUserId} placeholder="123456789" />
+          <LockedField lockedInitially={channelLoaded.teleUserId} label="User ID" id="tele_user_id" value={teleUserId} onChange={setTeleUserId} placeholder="123456789" />
         </>
       )}
       {channel === "slack" && (
@@ -54,14 +55,14 @@ export function ChannelSection({
           {channelLoaded.slackBotToken ? (
             <ConfiguredHint label="Bot Token" />
           ) : (
-            <LockedPasswordField required lockedInitially={false} label="Bot Token *" id="slack_bot_token" value={slackBotToken} onChange={setSlackBotToken} placeholder="xoxb-..." />
+            <LockedPasswordField lockedInitially={false} label="Bot Token" id="slack_bot_token" value={slackBotToken} onChange={setSlackBotToken} placeholder="xoxb-..." />
           )}
           {channelLoaded.slackAppToken ? (
             <ConfiguredHint label="App Token" />
           ) : (
-            <LockedPasswordField required lockedInitially={false} label="App Token *" id="slack_app_token" value={slackAppToken} onChange={setSlackAppToken} placeholder="xapp-..." />
+            <LockedPasswordField lockedInitially={false} label="App Token" id="slack_app_token" value={slackAppToken} onChange={setSlackAppToken} placeholder="xapp-..." />
           )}
-          <LockedField required lockedInitially={channelLoaded.slackUserId} label="User ID *" id="slack_user_id" value={slackUserId} onChange={setSlackUserId} placeholder="U0123456789" />
+          <LockedField lockedInitially={channelLoaded.slackUserId} label="User ID" id="slack_user_id" value={slackUserId} onChange={setSlackUserId} placeholder="U0123456789" />
         </>
       )}
       {channel === "discord" && (
@@ -69,10 +70,10 @@ export function ChannelSection({
           {channelLoaded.discordBotToken ? (
             <ConfiguredHint label="Bot Token" />
           ) : (
-            <LockedPasswordField required lockedInitially={false} label="Bot Token *" id="discord_bot_token" value={discordBotToken} onChange={setDiscordBotToken} placeholder="Bot token" />
+            <LockedPasswordField lockedInitially={false} label="Bot Token" id="discord_bot_token" value={discordBotToken} onChange={setDiscordBotToken} placeholder="Bot token" />
           )}
-          <LockedField required lockedInitially={channelLoaded.discordGuildId} label="Guild ID *" id="discord_guild_id" value={discordGuildId} onChange={setDiscordGuildId} placeholder="123456789" />
-          <LockedField required lockedInitially={channelLoaded.discordUserId} label="User ID *" id="discord_user_id" value={discordUserId} onChange={setDiscordUserId} placeholder="123456789" />
+          <LockedField lockedInitially={channelLoaded.discordGuildId} label="Guild ID" id="discord_guild_id" value={discordGuildId} onChange={setDiscordGuildId} placeholder="123456789" />
+          <LockedField lockedInitially={channelLoaded.discordUserId} label="User ID" id="discord_user_id" value={discordUserId} onChange={setDiscordUserId} placeholder="123456789" />
         </>
       )}
     </SectionCard>

@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { getDeviceConfig, getSetupStatus } from "@/lib/api";
-import type { ChannelType } from "@/types";
+import type { SetupChannelType } from "@/types";
 import type { SetupUrlParams } from "./useSetupUrlParams";
 import type { SectionId, LlmLoadedState, ChannelLoadedState } from "./types";
 
@@ -36,7 +36,7 @@ export function useConfigPrefill(args: {
   setSlackUserId: Dispatch<SetStateAction<string>>;
   setDiscordGuildId: Dispatch<SetStateAction<string>>;
   setDiscordUserId: Dispatch<SetStateAction<string>>;
-  setChannel: Dispatch<SetStateAction<ChannelType>>;
+  setChannel: Dispatch<SetStateAction<SetupChannelType>>;
   setMqttEndpoint: Dispatch<SetStateAction<string>>;
   setMqttPort: Dispatch<SetStateAction<string>>;
   setMqttUsername: Dispatch<SetStateAction<string>>;
@@ -111,7 +111,7 @@ export function useConfigPrefill(args: {
       setDiscordUserId((prev) => prev || cfg.discord_user_id || "");
       // Adopt saved channel only when the user hasn't already picked one via URL.
       if (!channelParam && (cfg.channel === "telegram" || cfg.channel === "slack" || cfg.channel === "discord")) {
-        setChannel(cfg.channel as ChannelType);
+        setChannel(cfg.channel as SetupChannelType);
       }
       setMqttEndpoint((prev) => prev || cfg.mqtt_endpoint || "");
       setMqttPort((prev) => prev || (cfg.mqtt_port ? String(cfg.mqtt_port) : ""));
