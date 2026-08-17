@@ -4,7 +4,7 @@
 .env.*.local
 **/.env
 !**/.env.example
-!devices/**/rootfs/**/.env
+!robots/**/rootfs/**/.env
 .idea/
 .vscode/
 .cursor/
