@@ -167,6 +167,7 @@ Monitor poll API system/HW mỗi **3 giây**. Flow dùng hybrid theo file: REST 
 | `GET /api/agent/flow-events?date=YYYY-MM-DD&last=500` | API flow theo file dùng cho seed/history của Flow |
 | `GET /api/agent/flow-stream` | Stream live theo file (SSE) khi JSONL thay đổi |
 | `GET /api/agent/events` | SSE từ monitor bus, giữ để tương thích |
+| `POST /api/agent/restart` | Recovery "start + enable + restart": backend gọi best-effort `systemctl enable <unit>` (để fix vẫn còn sau reboot) rồi gọi `RestartAgent()` của runtime (chạy `systemctl restart <unit>` — start nếu đang stopped). Là nút icon restart nhỏ ở góc phải-dưới card Agent Gateway. |
 | `POST /api/system/force-update` | Kích hoạt kiểm tra OTA qua bootstrap worker (proxy tới `localhost:8080/force-check`) |
 
 > **Lưu ý format**: OS server API trả `{ status: 1, data: <payload>, message: null }` khi thành công.
@@ -197,6 +198,7 @@ Gồm các card:
 - Trạng thái connected/disconnected
 - Tên agent
 - Session key: Acquired / Pending
+- **Nút restart icon** ở góc phải-dưới card (nút `RotateCw` nhỏ 24×24). Hỏi `confirm()` rồi POST `/api/agent/restart` — backend làm "start + enable + restart": (1) `systemctl enable <unit>` best-effort để fix vẫn còn sau reboot, (2) `RestartAgent()` của runtime → `systemctl restart <unit>` (start ngay cả khi đang stopped). Icon quay khi request đang chạy; nhãn `OK` / `Failed` hiện ~2.5s sau khi xong. Dùng để phục hồi gateway đã stopped+disabled không cần SSH.
 
 **Network**
 - SSID + Signal bars (4 mức dựa trên dBm)

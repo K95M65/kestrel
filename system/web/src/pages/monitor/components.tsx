@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import type { ReactNode } from "react";
+import { RotateCw } from "lucide-react";
 import { getApiToken } from "@/lib/api";
 import { API } from "./types";
 import { S } from "./styles";
@@ -58,6 +59,82 @@ export function SoftwareUpdateButton({ target, label }: { target: "os-server" | 
       {busy ? "…" : label}
       {msg && <span style={{ marginLeft: 4, color: msg === "OK" ? "var(--lm-green)" : "var(--lm-red)" }}>{msg}</span>}
     </button>
+  );
+}
+
+// Icon-sized restart button for the Agent Gateway card. POSTs /api/agent/restart
+// which does "enable + start/restart" recovery: backend re-enables the systemd
+// unit (survives reboot) and then calls the runtime's RestartAgent() — which
+// resolves to `systemctl restart <unit>` (starts the service even if currently
+// stopped). Confirm() prompt keeps a stray click from cycling the gateway.
+export function RestartAgentButton({ agentName }: { agentName?: string }) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const trigger = async () => {
+    const label = agentName ? ` (${agentName})` : "";
+    // Guard against a stray second click landing during the confirm dialog
+    // (rare but possible if the operator double-clicks the icon).
+    if (busy) return;
+    if (!window.confirm(
+      `Restart the agent gateway${label}?\n\n` +
+      `This will re-enable auto-start on boot, then drop the current session and reconnect. ` +
+      `Please wait a few seconds after clicking OK — do NOT click Restart again while it's spinning.`
+    )) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const token = getApiToken();
+      const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
+      const r = await fetch(`${API}/agent/restart`, { method: "POST", headers });
+      setMsg(r.ok ? "Restarted" : "Failed");
+    } catch {
+      setMsg("Unreachable");
+    } finally {
+      setBusy(false);
+      // Longer than the fetch response so the operator has time to read the
+      // outcome before it fades — avoids the "did it work?" second click.
+      setTimeout(() => setMsg(null), 4000);
+    }
+  };
+  return (
+    <div style={{
+      position: "absolute", right: 8, bottom: 8,
+      display: "flex", alignItems: "center", gap: 4,
+    }}>
+      {msg && (
+        <span style={{ fontSize: 9.5, fontWeight: 600, color: msg === "OK" ? "var(--lm-green)" : "var(--lm-red)" }}>
+          {msg}
+        </span>
+      )}
+      <button
+        onClick={trigger}
+        disabled={busy}
+        title={`Restart agent${agentName ? ` (${agentName})` : ""}`}
+        aria-label="Restart agent"
+        style={{
+          display: "flex", alignItems: "center", justifyContent: "center",
+          width: 24, height: 24, padding: 0, borderRadius: 6,
+          background: "transparent",
+          border: "1px solid var(--lm-border)",
+          color: "var(--lm-text-muted)",
+          cursor: busy ? "wait" : "pointer",
+          opacity: busy ? 0.5 : 0.8,
+          transition: "all 0.15s ease",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.color = "var(--lm-amber)";
+          e.currentTarget.style.borderColor = "var(--lm-amber)";
+          e.currentTarget.style.opacity = "1";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.color = "var(--lm-text-muted)";
+          e.currentTarget.style.borderColor = "var(--lm-border)";
+          e.currentTarget.style.opacity = "0.8";
+        }}
+      >
+        <RotateCw size={12} className={busy ? "lm-spin-ico" : undefined} />
+      </button>
+    </div>
   );
 }
 

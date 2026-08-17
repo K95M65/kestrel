@@ -167,6 +167,7 @@ Monitor polls system/HW APIs every **3 seconds**. Flow uses file-backed hybrid m
 | `GET /api/agent/flow-events?date=YYYY-MM-DD&last=500` | File-backed flow events API used for Flow seed/history |
 | `GET /api/agent/flow-stream` | File-backed live stream (SSE) for Flow updates when JSONL changes |
 | `GET /api/agent/events` | Monitor bus SSE endpoint (kept for compatibility) |
+| `POST /api/agent/restart` | "Start + enable + restart" recovery: backend does best-effort `systemctl enable <unit>` (so the fix survives reboot) then calls the runtime's own `RestartAgent()` (which resolves to `systemctl restart <unit>` — starts if stopped). Powers the Agent Gateway card's small restart icon at bottom-right. |
 | `POST /api/system/force-update` | Triggers OTA check via bootstrap worker (proxies to `localhost:8080/force-check`) |
 
 > **Note on format**: The OS server API returns `{ status: 1, data: <payload>, message: null }` on success.
@@ -197,6 +198,7 @@ Cards included:
 - Connected/disconnected status
 - Agent name
 - Session key: Acquired / Pending
+- **Restart icon** at the bottom-right of the card (small `RotateCw` button, 24×24). Prompts a `confirm()` then POSTs `/api/agent/restart` — backend does "start + enable + restart": (1) `systemctl enable <unit>` best-effort so the fix survives reboot, (2) runtime `RestartAgent()` → `systemctl restart <unit>` which starts the service even if it was stopped. Icon spins while the request is in flight; `OK` / `Failed` label appears for ~2.5s. Used to recover a stopped+disabled gateway without SSH.
 
 **Network**
 - SSID + Signal bars (4 levels based on dBm)

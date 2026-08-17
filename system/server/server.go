@@ -411,6 +411,9 @@ func (s *Server) Serve(closeFn func()) error {
 	// not enough since the raw openclaw.json holds gateway tokens.
 	agent.POST("tts/stop", adminAuthMiddleware(s.config), s.agentHandler.StopTTS)
 	agent.POST("busy", adminAuthMiddleware(s.config), s.agentHandler.SetBusy)
+	// Restart the active runtime (openclaw/hermes/codex/opencode/claudecode/picoclaw).
+	// Each runtime's RestartAgent() picks the actual command — see handler_api_monitor.go.
+	agent.POST("restart", adminAuthMiddleware(s.config), s.agentHandler.Restart)
 	agent.GET("status", adminAuthMiddleware(s.config), s.agentHandler.Status)
 	agent.GET("events", adminAuthMiddleware(s.config), s.agentHandler.Events)
 	agent.GET("recent", adminAuthMiddleware(s.config), s.agentHandler.Recent)
