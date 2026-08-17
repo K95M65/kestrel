@@ -36,6 +36,7 @@ class TestSimServer(unittest.TestCase):
             {
                 "PYTHONPATH": str(REPO_ROOT),
                 "HAL_MODE": "developer",
+                "HAL_SIMULATE": "1",
                 "HAL_BOARD": "sim",
                 "DEVICE_TYPE": "sim",
                 "HAL_LOG_DIR": cls.logs.name,
@@ -130,7 +131,7 @@ class TestSimServer(unittest.TestCase):
             body={"direction": "left", "duration": 0.2},
         )
         self.assertEqual(status, 200)
-        self.assertEqual(aimed["positions"]["base_yaw.pos"], 30.0)
+        self.assertEqual(aimed["positions"]["base_yaw.pos"], -90.0)
 
         status, stopped = self._request("/servo/stop", method="POST", body={})
         self.assertEqual(status, 200)
@@ -138,4 +139,4 @@ class TestSimServer(unittest.TestCase):
 
         status, position = self._request("/servo/position")
         self.assertEqual(status, 200)
-        self.assertEqual(position["positions"]["base_yaw.pos"], 30.0)
+        self.assertEqual(position["positions"]["base_yaw.pos"], -90.0)

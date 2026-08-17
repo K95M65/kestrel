@@ -64,13 +64,33 @@ integrations/                     — Off-device: companions/, chat-bridges/, pe
 - **Chủ thiết bị có thể tạo skill** — `skill-creator` built-in hướng dẫn soạn,
   kiểm thử và đóng gói skill để đưa lên Autonomous Skill Store.
 
-## Mock Body trên Laptop
+## Lamp Simulator trên Laptop
 
-`make hal-sim` khởi động body `robots/sim` đã khai báo với motion driver trong
-bộ nhớ. Nó không mở servo bus, camera, microphone hay GPIO, nhưng vẫn giữ HTTP
-path và motion safety path bình thường của HAL. Đây là test body, không phải
-simulator 3D hay physics; chỉ các skill cần capability `motion` mà nó khai báo
-mới khả dụng. Xem `robots/sim/ROBOT.md` để chạy và kiểm tra HTTP.
+`make sim` khởi động declaration `lamp` production trên laptop. HAL vẫn dùng
+route và safety gate bình thường, nhưng thay motion, LED, camera, microphone,
+speaker, voice và sensing bằng service ảo; nó không mở servo bus, camera/mic
+macOS, GPIO hay gửi GELF log. Khi khởi động, lệnh in link local có thể click
+cho HAL docs và, với body Lamp mặc định, `http://127.0.0.1:5001/simulator`.
+Link sau có CAD assembly Lamp đã check-in để xem quanh, cùng giá trị live của
+năm joint, playback recording và nút LED effect qua đúng endpoint `/servo/*`
+và `/led/*` mà skill sử dụng: kéo để xoay camera, cuộn để zoom, double-click
+để reset. Motion preview của CAD phản hồi theo joint live, kể cả khi phát
+recording; một control chuyển về assembly tĩnh nguyên bản để đối chiếu. Repo
+chưa có hierarchy cơ khí, pivot, axis hay CAD zero offset đã calibration, nên
+phản hồi hình ảnh này không khẳng định pose `down` hoặc `right` render ra đúng
+với Lamp vật lý.
+
+Đây là interface simulator, không phải physics model: không có khối lượng hay
+va chạm; recording CSV có sẵn chỉ replay timing trong RAM. Nội dung
+camera/audio ảo là deterministic. Muốn boot test body tối giản theo contract
+thì chạy `make sim DEVICE_TYPE=sim`. Xem `robots/sim/ROBOT.md` để biết
+contract motion-only hẹp hơn của body đó.
+
+Muốn kiểm tra media thật trên Mac, chạy `make sim SIM_MEDIA=host`. Lệnh này
+chủ động mở camera, microphone và speaker của máy: trang simulator hiển thị
+camera stream, **Play test tone** dùng speaker, còn **Record 3 seconds** thu
+WAV để phát lại. Mặc định `SIM_MEDIA=virtual` không xin permission và giữ test
+deterministic.
 
 ## Voice Pipeline
 

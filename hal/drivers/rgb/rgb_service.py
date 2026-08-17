@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 from typing import Any, List, Union
 from ..base import ServiceBase
@@ -49,6 +50,28 @@ class _StripPWM:
     def getPixelColor(self, index):
         raw = self._strip.getPixelColor(index)
         return (raw >> 16) & 0xFF, (raw >> 8) & 0xFF, raw & 0xFF
+
+    def deinit(self):
+        pass
+
+
+class _MemoryStrip:
+    """WS2812-compatible strip retained in memory for HAL_SIMULATE."""
+
+    def __init__(self, led_count: int):
+        self._pixels = [(0, 0, 0)] * led_count
+
+    def setPixelColor(self, index: int, color_tuple):
+        self._pixels[index] = tuple(color_tuple)
+
+    def fill(self, color_tuple, count: int):
+        self._pixels[:count] = [tuple(color_tuple)] * count
+
+    def show(self):
+        pass
+
+    def getPixelColor(self, index: int):
+        return self._pixels[index]
 
     def deinit(self):
         pass
@@ -177,7 +200,10 @@ class RGBService(ServiceBase):
 
         led = board_profile().led
         try:
-            if led.transport == "spi":
+            if os.environ.get("HAL_SIMULATE", "").lower() in ("1", "true", "yes"):
+                self._driver = _MemoryStrip(led_count)
+                self.logger.info("RGB using virtual memory strip")
+            elif led.transport == "spi":
                 self._driver = _StripSPI(
                     led_count, led_brightness / 255.0,
                     spi_bus=led.spi_bus, spi_device=led.spi_device,

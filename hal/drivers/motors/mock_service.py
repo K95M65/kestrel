@@ -6,9 +6,9 @@ land instantly, and every call is recorded so a test (or a person poking HAL on
 a laptop) can see exactly what the robot was told to do.
 
 It is used by `robots/sim` (the mock body) together with `HAL_BOARD=sim`. It
-is not a simulator: nothing here models inertia, collision or time. It answers
-the contract so routes, skills, markers and the safety gate can be exercised
-end to end off-device.
+is not a physics simulator: it models neither inertia nor collision. It does
+replay recorded CSV frame timing in memory so route consumers can observe the
+same changing joint-state contract without any actuator output.
 
     from hal.drivers.motors.mock_service import MockMotionService
     m = MockMotionService(); m.start()
@@ -18,8 +18,12 @@ end to end off-device.
 """
 from __future__ import annotations
 
+import csv
 import logging
+import os
 import threading
+import time
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
 logger = logging.getLogger("hal.motion.mock")
@@ -49,6 +53,15 @@ class MockMotionService:
         # boot through the production factory without special cases.
         self._safety_policy = safety_policy
         self._positions: Dict[str, float] = {j: 0.0 for j in self._joints}
+        # A physical Lamp is never visually meaningful with all five joints at
+        # zero.  The laptop Lamp starts in the same center pose its real aim
+        # driver uses; the generic `sim` body deliberately remains all-zero.
+        if (
+            os.environ.get("HAL_SIMULATE", "").lower() in ("1", "true", "yes")
+            and os.environ.get("DEVICE_TYPE") == "lamp"
+        ):
+            from hal.presets import AIM_CENTER, AIM_PRESETS
+            self._positions.update(AIM_PRESETS[AIM_CENTER])
         self._lock = threading.Lock()
         self._connected = False
         self._suppressed = False
@@ -57,7 +70,11 @@ class MockMotionService:
         # Set by halt(), cleared by the next commanded move — mirrors the real
         # driver's _halt event, so a test can assert the sequence without one.
         self._halted = False
+        # routes/servo.py exposes the active recording for every MotionService.
+        self._current_recording: Optional[str] = None
         self._recordings: Dict[str, List[Dict[str, float]]] = {}
+        self._play_cancel = threading.Event()
+        self._play_thread: Optional[threading.Thread] = None
         self.calls: List[tuple] = []
 
     # --- Lifecycle ---
@@ -68,6 +85,7 @@ class MockMotionService:
         logger.info("[mock] motion up — %d joints, no hardware", len(self._joints))
 
     def stop(self, timeout: float = 5.0) -> None:
+        self._cancel_playback()
         self._connected = False
         self._record("stop", timeout)
 
@@ -81,10 +99,14 @@ class MockMotionService:
     # --- Animation / event dispatch ---
 
     def dispatch(self, event_type: str, payload: Any) -> None:
+        if event_type == "play":
+            self._play_recording(str(payload))
         self._record("dispatch", event_type, payload)
 
     def get_available_recordings(self) -> List[str]:
-        return sorted(self._recordings)
+        recordings_dir = Path(__file__).parents[2] / "recordings"
+        builtins = {path.stem for path in recordings_dir.glob("*.csv")}
+        return sorted(builtins | set(self._recordings))
 
     def add_recording(self, name: str, actions: List[Dict[str, float]]) -> None:
         self._recordings[name] = list(actions)
@@ -111,11 +133,13 @@ class MockMotionService:
     # --- Motion primitives ---
 
     def move_to(self, target_positions: Dict[str, float], duration: float = 2.0) -> None:
+        self._cancel_playback()
         self._halted = False
         self._apply(target_positions)
         self._record("move_to", dict(target_positions), duration)
 
     def move_and_hold(self, target_positions: Dict[str, float], duration: float = 2.0) -> None:
+        self._cancel_playback()
         self._apply(target_positions)
         self._suppressed = True
         self._record("move_and_hold", dict(target_positions), duration)
@@ -152,6 +176,7 @@ class MockMotionService:
         # torque. Contrast release() above, which travels to rest first — the
         # whole point of the distinction this driver exists to make visible.
         self._halted = True
+        self._cancel_playback()
         self._record("halt")
 
     def resume(self) -> None:
@@ -173,22 +198,24 @@ class MockMotionService:
 
     # --- Aim & nudge ---
 
-    # Directions map to (yaw, pitch) degrees, mirroring the reference body's
-    # convention: +yaw is left, +pitch is up.
-    AIM_DIRECTIONS = {
-        "center": (0.0, 0.0),
-        "left": (30.0, 0.0),
-        "right": (-30.0, 0.0),
-        "up": (0.0, 25.0),
-        "down": (0.0, -25.0),
-    }
-
     def aim(self, direction: str, duration: float, current_positions: Dict[str, float],
             safety_policy: Any) -> Dict[str, float]:
-        if direction not in self.AIM_DIRECTIONS:
-            raise ValueError(f"unknown aim direction {direction!r} (known: {sorted(self.AIM_DIRECTIONS)})")
-        yaw, pitch = self.AIM_DIRECTIONS[direction]
-        target = {"base_yaw.pos": yaw, "base_pitch.pos": pitch}
+        # Keep aim semantics aligned with AnimationService. The simulator is a
+        # safe motion driver, not a second Lamp kinematic table: left/right
+        # only pan base_yaw; other named aims preserve the current yaw.
+        from hal.presets import AIM_CENTER, AIM_LEFT, AIM_PRESETS, AIM_RIGHT
+
+        preset = AIM_PRESETS.get(direction)
+        if preset is None:
+            logger.warning("Unknown aim direction %r — defaulting to center", direction)
+            direction = AIM_CENTER
+            preset = AIM_PRESETS[AIM_CENTER]
+
+        current = current_positions or self.get_positions()
+        if direction in (AIM_LEFT, AIM_RIGHT):
+            target = {**current, "base_yaw.pos": preset["base_yaw.pos"]}
+        else:
+            target = {**preset, "base_yaw.pos": current.get("base_yaw.pos", preset["base_yaw.pos"])}
         self._apply(target)
         self._record("aim", direction, duration)
         return self.get_positions()
@@ -212,6 +239,59 @@ class MockMotionService:
             for joint, value in positions.items():
                 if joint in self._joints:
                     self._positions[joint] = float(value)
+
+    def _cancel_playback(self) -> None:
+        self._play_cancel.set()
+        self._current_recording = None
+
+    def _play_recording(self, name: str) -> None:
+        """Replay the shipped CSV frames in memory, with no actuator output."""
+        self._cancel_playback()
+        frames = self._load_recording(name)
+        if not frames:
+            logger.warning("[mock] recording %r is unavailable", name)
+            return
+
+        cancel = threading.Event()
+        self._play_cancel = cancel
+        self._current_recording = name
+
+        def replay() -> None:
+            previous = frames[0][0]
+            try:
+                for timestamp, positions in frames:
+                    if cancel.wait(max(0.0, timestamp - previous)):
+                        return
+                    self._apply(positions)
+                    previous = timestamp
+            finally:
+                if self._play_cancel is cancel:
+                    self._current_recording = None
+
+        self._play_thread = threading.Thread(
+            target=replay, daemon=True, name=f"mock-servo-{name}"
+        )
+        self._play_thread.start()
+
+    def _load_recording(self, name: str) -> List[tuple[float, Dict[str, float]]]:
+        if name in self._recordings:
+            return [(index * 0.05, positions) for index, positions in enumerate(self._recordings[name])]
+        path = Path(__file__).parents[2] / "recordings" / f"{name}.csv"
+        if not path.is_file():
+            return []
+        try:
+            with path.open(newline="") as source:
+                return [
+                    (
+                        float(row["timestamp"]),
+                        {joint: float(value) for joint, value in row.items()
+                         if joint != "timestamp" and value is not None},
+                    )
+                    for row in csv.DictReader(source)
+                ]
+        except (OSError, ValueError, KeyError) as exc:
+            logger.warning("[mock] cannot load recording %r: %s", name, exc)
+            return []
 
     def _record(self, name: str, *args: Any) -> None:
         self.calls.append((name, *args))

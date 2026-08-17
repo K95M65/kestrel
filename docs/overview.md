@@ -64,13 +64,34 @@ integrations/                     — Off-device: companions/, chat-bridges/, pe
 - **Owners can create skills** — the built-in `skill-creator` guides an owner
   through drafting, testing, and packaging a skill for the Autonomous Skill Store.
 
-## Mock Body on a Laptop
+## Lamp Simulator on a Laptop
 
-`make hal-sim` boots the declared `robots/sim` body with an in-memory motion
-driver. It opens no servo bus, camera, microphone, or GPIO, while preserving
-the normal HAL HTTP and motion-safety paths. This is a test body, not a 3D or
-physics simulator: only skills requiring its declared `motion` capability are
-available. See `robots/sim/ROBOT.md` for the run and HTTP-check commands.
+`make sim` boots the production `lamp` declaration on a laptop. It keeps the
+normal HAL routes and safety gates, but substitutes virtual motion, LED,
+camera, microphone, speaker, voice and sensing services; it never opens a
+servo bus, macOS camera/mic, GPIO, or sends GELF logs. Startup prints clickable
+local links for the HAL docs and, for the default Lamp body,
+`http://127.0.0.1:5001/simulator`. The latter has an orbitable view of the
+checked-in Lamp CAD assembly plus live five-joint values, recording playback,
+and LED-effect controls using the same `/servo/*` and `/led/*` endpoints a
+skill uses. Drag to orbit, scroll to zoom, and double-click to reset the
+camera. Its CAD motion preview responds to the live joint values, including
+recording playback; a control switches to the untouched static assembly for
+comparison. The repository does not include the mechanical joint hierarchy,
+pivots, axes, or calibrated CAD zero offsets, so this visual response is not a
+claim that a rendered `down` or `right` pose is physically correct.
+
+This is an interface simulator, not a physics model: it has no mass or
+collision model, while shipped recording CSVs replay their timing in memory.
+Virtual camera/audio content is deterministic. To boot a minimal contract test
+body instead, use `make sim DEVICE_TYPE=sim`. See
+`robots/sim/ROBOT.md` for that body's narrower motion-only contract.
+
+For a manual Mac media check, use `make sim SIM_MEDIA=host`. This explicitly
+opens the host camera, microphone and speaker: the simulator page shows its
+camera stream, **Play test tone** uses the speaker, and **Record 3 seconds**
+captures a WAV for playback. The default `SIM_MEDIA=virtual` remains
+permission-free and deterministic for tests.
 
 ## Voice Pipeline
 

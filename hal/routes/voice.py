@@ -57,6 +57,16 @@ except ImportError:
 @router.post("/voice/start", response_model=StatusResponse)
 def start_voice(req: VoiceStartRequest):
     """Start the voice pipeline (always-on Deepgram STT + TTS)."""
+    if state.simulation_audio:
+        from hal.drivers.voice.virtual_service import VirtualTTSService, VirtualVoiceService
+        if not state.tts_service:
+            state.tts_service = VirtualTTSService(
+                voice=req.tts_voice or TTS_VOICE,
+                instructions=req.tts_instructions or TTS_INSTRUCTIONS or None,
+            )
+        if not state.voice_service:
+            state.voice_service = VirtualVoiceService(tts_service=state.tts_service)
+        return {"status": "already_running" if state.voice_service.listening else "ok"}
     voice = req.tts_voice or TTS_VOICE
     instructions = req.tts_instructions or TTS_INSTRUCTIONS or None
     # Resolve per-role credentials with fallback to the LLM defaults so

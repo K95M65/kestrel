@@ -122,12 +122,13 @@ class TestMockMotionService(unittest.TestCase):
         self.assertEqual(self.m.calls[-1], ("move_to", {"base_yaw.pos": 20.0}, 0.5))
 
     def test_aim_and_nudge(self):
-        self.assertEqual(self.m.aim("left", 0.3, self.m.get_positions(), None)["base_yaw.pos"], 30.0)
+        self.assertEqual(self.m.aim("left", 0.3, self.m.get_positions(), None)["base_yaw.pos"], -90.0)
         after = self.m.nudge(-5.0, 10.0, 0.2, self.m.get_positions(), None)
-        self.assertEqual(after["base_yaw.pos"], 25.0)
+        self.assertEqual(after["base_yaw.pos"], -95.0)
         self.assertEqual(after["base_pitch.pos"], 10.0)
-        with self.assertRaises(ValueError):
-            self.m.aim("sideways", 0.3, self.m.get_positions(), None)
+        unknown = self.m.aim("sideways", 0.3, self.m.get_positions(), None)
+        self.assertEqual(unknown["base_yaw.pos"], -95.0)
+        self.assertEqual(unknown["elbow_pitch.pos"], 32.0)
 
     def test_release_travels_before_torque_off(self):
         """The mock reproduces the honest behavior of the real driver: release
