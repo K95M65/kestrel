@@ -152,6 +152,7 @@ Config field: `guard_mode` in `config/config.json` (bool, default `false`). The 
 | GET | `/api/agent/status` | WS connection status; includes `uptime` (OS server WS uptime) and `agentUptime` (OpenClaw process uptime, survives OS server restarts) |
 | GET | `/api/agent/events` | SSE stream real-time events |
 | GET | `/api/agent/recent` | 100 most recent events (ring buffer) |
+| POST | `/api/agent/restart` | "Start + enable + restart" recovery for the active runtime. Steps: (1) best-effort `systemctl enable <unit>` — where `<unit>` is picked from a runtime→unit map (`openclaw`, `hermes-gateway`, `picoclaw`, `codex`, `claudecode`, `opencode`) — so the fix survives a reboot; (2) `agentGateway.RestartAgent()` which resolves to `systemctl restart <unit>` and thus STARTS the service even if it was stopped. Response `{backend, enabled}`. Used by the Overview's Agent Gateway card to recover a gateway that was stopped+disabled, without SSH. Internal restart callers (config refresh, migration) still bypass the enable step. |
 
 ---
 

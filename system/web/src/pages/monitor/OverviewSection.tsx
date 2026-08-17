@@ -35,7 +35,7 @@ function useEmotionPresets() {
   return { emotions, colors };
 }
 import type { SystemInfo, NetworkInfo, HWHealth, OCStatus, PresenceInfo, VoiceStatus, ServoState, DisplayState, AudioVolume, LEDColor, SceneInfo } from "./types";
-import { StatusDot, HWBadge, SignalBars, Skeleton, SkeletonRows, SoftwareUpdateButton, StatRow, StatusBadge, STATUS_TONE, CardLabel } from "./components";
+import { StatusDot, HWBadge, SignalBars, Skeleton, SkeletonRows, SoftwareUpdateButton, StatRow, StatusBadge, STATUS_TONE, CardLabel, RestartAgentButton } from "./components";
 import { formatUptime, formatAgo, useCountUp } from "./utils";
 import { BuddyCard } from "./BuddyCard";
 
@@ -187,7 +187,8 @@ export function OverviewSection({
       {/* Row 1: 4 status cards in one row */}
       <div className="lm-grid-4 lm-overview-status-grid">
         {/* Agent Gateway */}
-        <div className="lm-mon-card" style={monCard}>
+        {/* position:relative anchors the bottom-right RestartAgentButton to the card. */}
+        <div className="lm-mon-card" style={{ ...monCard, position: "relative" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
             <CardLabel icon={<Satellite size={13} />} text="Agent Gateway" />
             <StatusBadge text={oc?.connected ? "ONLINE" : "OFFLINE"} ok={!!oc?.connected} pulse={!!oc?.connected} />
@@ -208,6 +209,7 @@ export function OverviewSection({
               {oc.emotion && <StatRow label="Emotion" value={oc.emotion} color="var(--lm-amber)" />}
             </div>
           ) : <SkeletonRows lines={3} />}
+          <RestartAgentButton agentName={oc?.name} />
         </div>
 
         {/* Network */}

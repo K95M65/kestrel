@@ -6,6 +6,9 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
+	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -21,6 +24,21 @@ import (
 	"go.autonomous.ai/os/system/lib/hal"
 	"go.autonomous.ai/os/system/server/serializers"
 )
+
+// agentUnitByBackend maps the runtime `Name()` (see domain.AgentRuntime*
+// constants) to its systemd unit name. Sourced from each runtime's own
+// gateway_unit.go / service_gateway.go — kept in sync with those files.
+// Used only by the UI-triggered Restart handler to re-enable the unit
+// before restarting; internal restart helpers still call systemctl restart
+// directly with the same names.
+var agentUnitByBackend = map[string]string{
+	domain.AgentRuntimeOpenClaw:   "openclaw",
+	domain.AgentRuntimeHermes:     "hermes-gateway",
+	domain.AgentRuntimePicoclaw:   "picoclaw",
+	domain.AgentRuntimeCodex:      "codex",
+	domain.AgentRuntimeClaudeCode: "claudecode",
+	domain.AgentRuntimeOpenCode:   "opencode",
+}
 
 // GetOpenClawVersion returns the cached OpenClaw binary version (e.g. "2026.5.27").
 // The cache lives in the openclaw package — single source of truth, shared with
@@ -99,6 +117,50 @@ func (h *AgentHandler) StopTTS(c *gin.Context) {
 func (h *AgentHandler) SetBusy(c *gin.Context) {
 	h.agentGateway.SetBusy(true)
 	c.JSON(http.StatusOK, serializers.ResponseSuccess(nil))
+}
+
+// Restart is the "start + enable + restart" recovery action fired from the
+// Overview's Agent Gateway card. It differs from the internal restart callers
+// (config refresh, migration) by ALSO re-enabling the unit so the recovery
+// survives a reboot.
+//
+// Steps:
+//  1. systemctl enable <unit>  — best-effort; a failed enable does not block
+//     the restart (survives reboot is nice-to-have; getting the service running
+//     right now is the primary user intent).
+//  2. agentGateway.RestartAgent()  — runtime picks the actual command; on
+//     openclaw this is `systemctl restart openclaw`, which STARTS the service
+//     if it's currently stopped (systemctl restart semantics), so an operator
+//     who stopped+disabled a broken gateway can recover from the web UI without
+//     SSH.
+func (h *AgentHandler) Restart(c *gin.Context) {
+	name := h.agentGateway.Name()
+	slog.Info("agent restart requested", "component", "agent", "backend", name)
+
+	enabled := false
+	if unit, ok := agentUnitByBackend[name]; ok && unit != "" && os.Geteuid() == 0 {
+		if _, err := exec.LookPath("systemctl"); err == nil {
+			if out, err := exec.Command("systemctl", "enable", unit).CombinedOutput(); err != nil {
+				slog.Warn("systemctl enable failed (best-effort, continuing to restart)",
+					"component", "agent", "backend", name, "unit", unit,
+					"error", err, "output", strings.TrimSpace(string(out)))
+			} else {
+				enabled = true
+				slog.Info("systemctl enabled for auto-start on boot",
+					"component", "agent", "backend", name, "unit", unit)
+			}
+		}
+	}
+
+	if err := h.agentGateway.RestartAgent(); err != nil {
+		slog.Warn("RestartAgent failed", "component", "agent", "backend", name, "error", err)
+		c.JSON(http.StatusBadGateway, serializers.ResponseError(err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, serializers.ResponseSuccess(map[string]any{
+		"backend": name,
+		"enabled": enabled,
+	}))
 }
 
 // Status returns the current agent connection status.

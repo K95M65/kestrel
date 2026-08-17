@@ -150,6 +150,7 @@ Config field: `guard_mode` trong `config/config.json` (bool, mặc định `fals
 | GET | `/api/agent/status` | Trạng thái kết nối WS; gồm `uptime` (uptime WS phía OS server) và `agentUptime` (uptime tiến trình OpenClaw, không reset khi OS server restart) |
 | GET | `/api/agent/events` | SSE stream events real-time |
 | GET | `/api/agent/recent` | 100 events gần nhất (ring buffer) |
+| POST | `/api/agent/restart` | Recovery "start + enable + restart" cho runtime đang active. Các bước: (1) best-effort `systemctl enable <unit>` — `<unit>` lấy từ map runtime→unit (`openclaw`, `hermes-gateway`, `picoclaw`, `codex`, `claudecode`, `opencode`) — để fix vẫn còn sau reboot; (2) `agentGateway.RestartAgent()` gọi `systemctl restart <unit>` — tự START service ngay cả khi đang stopped. Response `{backend, enabled}`. Dùng bởi card Agent Gateway ở Overview để phục hồi gateway đã stopped+disabled, không cần SSH. Các caller restart nội bộ (config refresh, migration) vẫn bỏ qua bước enable. |
 
 ---
 
