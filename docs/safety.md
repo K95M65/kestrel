@@ -182,6 +182,18 @@ ceiling is what the gate is for.
 fps, so bounding their speed means changing how an animation looks, not
 stretching a number — an open question rather than a missing line of code.
 
+### Learned-policy interface (dry run)
+
+`POST /policy/run` is an interface-only endpoint for a learned controller such
+as ACT or SmolVLA. It validates and logs `policy` plus `task`, returns a
+`dry_run` run record, and does **not** import an inference runtime, capture an
+observation, or issue a motor target. This is deliberately not a safety bypass:
+there are no targets to pass through it yet. When execution is added, every
+target must traverse the motion gate and `POST /servo/stop` must first cancel
+the policy worker, then hold the body. The current stop route already makes
+the cancellation call against the interface, which only clears a dry-run
+request. The subsequent servo hold keeps its existing hardware-stop behavior.
+
 - [x] **Unit:** `min_move_duration` stretches a too-fast move (120° at 120 deg/s →
       1.0s), passes a slow one, bounds an instant (duration 0) request, passes
       through with no `max_speed` and with no policy at all, ignores joints with no

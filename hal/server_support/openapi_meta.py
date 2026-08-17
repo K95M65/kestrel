@@ -17,6 +17,10 @@ OPENAPI_TAGS = [
         "description": "5-axis Feetech servo motor control. Play pre-recorded animations or send direct joint positions.",
     },
     {
+        "name": "Policy",
+        "description": "Learned robot-control policy interface. Currently dry-run only: requests are logged and never actuate hardware.",
+    },
+    {
         "name": "LED",
         "description": "WS2812 RGB LED strip (64 LEDs). Set solid color, paint individual pixels, or turn off.",
     },

@@ -165,6 +165,44 @@ class StatusResponse(BaseModel):
     status: str
 
 
+class PolicyRunRequest(BaseModel):
+    """Intent for a learned arm-control policy; execution is not enabled yet."""
+
+    policy: str = Field(
+        ...,
+        min_length=1,
+        max_length=200,
+        description="Policy identifier, for example lerobot/smolvla_base.",
+    )
+    task: str = Field(
+        ...,
+        min_length=1,
+        max_length=1000,
+        description="Natural-language task passed to the policy executor in a future implementation.",
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {"policy": "lerobot/smolvla_base", "task": "pick up the mug"}
+            ]
+        }
+    }
+
+
+class PolicyRunResponse(BaseModel):
+    status: str
+    id: str
+    policy: str
+    task: str
+    state: str
+    dry_run: bool
+
+
+class PolicyStatusResponse(BaseModel):
+    active: Optional[PolicyRunResponse] = None
+
+
 class VolumeRequest(BaseModel):
     volume: int = Field(..., ge=0, le=100, description="Volume percentage 0-100")
 

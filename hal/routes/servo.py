@@ -312,6 +312,15 @@ def stop_servos():
     stop_always` says a stop is never clamped, delayed or refused, so this
     route reads no bound and takes no arguments.
     """
+    # Policy execution is currently dry-run only, but the stop relationship is
+    # part of the interface now: the future executor must be cancelled before
+    # the hardware hold is requested.  This call never generates a target.
+    if state.policy_service is not None:
+        try:
+            state.policy_service.stop()
+        except Exception as e:
+            state.logger.warning("stop: policy cancellation failed: %s", e)
+
     svc = _svc_connected()
     # The tracker drives the bus from its own worker thread. Stop it first or it
     # keeps writing goals and the "stop" holds nothing — same ordering the

@@ -112,6 +112,15 @@ class TestParsing(unittest.TestCase):
         # framebuffer-only render loop nobody sees (see ROBOT.md).
         self.assertNotIn("display", caps)
 
+    def test_so101_declares_only_the_policy_interface(self):
+        profile = load_device("so101", DEVICES_DIR)
+        self.assertEqual(set(profile.capabilities), {"policy", "system"})
+        self.assertEqual(profile.capabilities["policy"].routes, ["policy"])
+        self.assertTrue(profile.capabilities["policy"].required)
+        self.assertNotIn("motion", profile.capabilities)
+        plan = plan_mounts(profile.declared_routes(), {"policy": True, "system": True})
+        self.assertEqual(set(plan.mounted), {"policy", "system"})
+
     def test_safety_ref_parsed(self):
         # SAMPLE declares no top-level safety_ref; lamp declares SAFETY.md.
         self.assertEqual(parse_device("sample", SAMPLE).safety_ref, "")
@@ -239,6 +248,12 @@ class TestSafetyRefs(unittest.TestCase):
         safety_path = os.path.join(DEVICES_DIR, "lamp", "SAFETY.md")
         with open(safety_path, "r") as f:
             self.assertEqual(validate_safety_refs(lamp, f.read()), [])
+
+    def test_so101_interface_ref_validates_clean(self):
+        so101 = load_device("so101", DEVICES_DIR)
+        safety_path = os.path.join(DEVICES_DIR, "so101", "SAFETY.md")
+        with open(safety_path, "r") as f:
+            self.assertEqual(validate_safety_refs(so101, f.read()), [])
 
 
 class TestMountPlanning(unittest.TestCase):

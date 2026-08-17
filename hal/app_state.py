@@ -55,6 +55,9 @@ display_service = None
 tts_service = None
 music_service = None
 tracker_service = None
+# A logging-only PolicyService until a body supplies a safety-gated learned
+# policy executor.  See hal/policy/service.py.
+policy_service = None
 
 # Resolved SAFETY.md bounds (hal.safety.policy.SafetyPolicy), or None when the
 # device declares none. Routes consult it as a deterministic gate before

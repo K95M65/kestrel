@@ -173,6 +173,18 @@ khai trần thấp hơn.
 nên bound tốc độ nghĩa là đổi cách animation trông ra sao, không phải kéo dài một
 con số — đây là câu hỏi mở chứ không phải thiếu một dòng code.
 
+### Interface learned-policy (dry run)
+
+`POST /policy/run` hiện chỉ là interface cho learned controller như ACT hoặc
+SmolVLA. Endpoint validate và ghi log `policy` cùng `task`, trả về run record
+`dry_run`, và **không** import runtime inference, không lấy observation, cũng
+không gửi motor target. Vì chưa có target nên đây không phải đường vòng qua
+safety gate. Khi có execution thật, mọi target phải đi qua motion gate và
+`POST /servo/stop` phải huỷ policy worker trước rồi mới giữ nguyên body. Route
+stop hiện đã gọi cancellation qua interface; với dry run phần cancellation chỉ
+xoá request đã ghi log, còn thao tác hold servo tiếp theo vẫn là lệnh dừng phần
+cứng như trước.
+
 - [x] **Unit:** `min_move_duration` kéo dài move quá nhanh (120° @120 deg/s → 1.0s),
       giữ move chậm, kẹp request tức thì (duration 0), pass-through khi không có
       `max_speed` và khi không có policy nào, bỏ qua joint không biết vị trí đầu;

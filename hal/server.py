@@ -884,7 +884,7 @@ _ALWAYS_ROUTES = ("audio", "emotion", "scene", "system", "bluetooth")
 _ROUTERS_BY_NAME = {}
 for _rname in (
     "servo", "led", "camera", "audio", "emotion", "scene", "sensing",
-    "display", "voice", "music", "system", "bluetooth",
+    "display", "voice", "music", "system", "bluetooth", "policy",
 ):
     if _rname not in _declared and _rname not in _ALWAYS_ROUTES:
         logger.info("Route module '%s' skipped — not declared in ROBOT.md", _rname)
@@ -919,6 +919,10 @@ _route_available = {
     "sensing": SensingService is not None,
     "display": DisplayService is not None,
     "music": MusicService is not None,
+    # Policy starts as a logging-only interface, so mounting it has no model or
+    # actuator dependency.  A real executor must make availability conditional
+    # on its driver and preserve the same response contract.
+    "policy": True,
     "emotion": True, "scene": True, "system": True, "bluetooth": True,
     "speaker": "speaker" in _ROUTERS_BY_NAME,
 }
@@ -928,6 +932,13 @@ _route_available = {
 # fail-louds inside load_safety, like ROBOT.md. Slice 1 = light.max_brightness.
 from hal.safety.policy import load_safety
 _safety = load_safety(os.path.join(_devices_dir(), _resolve_device_type()), _profile.safety_ref)
+
+# The policy route is a contract-only, logging implementation at this stage.
+# Constructing it neither loads a policy model nor opens a motion driver.
+if "policy" in _declared:
+    from hal.policy.service import LoggingPolicyService
+
+    state.policy_service = LoggingPolicyService(logger)
 state.safety_policy = _safety  # route-level gates (e.g. music quiet hours) read it here
 
 # Per-device preset overlay: deep-merge robots/<type>/presets.json onto the base
