@@ -27,7 +27,7 @@ OTA_METADATA_URL ?=
 
 # Device class baked into this golden image — one image per device type (3 device
 # types = 3 golden images). Forwarded into the build container; the build script
-# bakes it into os-server.service + /opt/hal/.env and stages only devices/<type>/
+# bakes it into os-server.service + /opt/hal/.env and stages only robots/<type>/
 # into the image. REQUIRED, no default — a golden image must declare its device
 # class. E.g. make build TARGET=opi DEVICE_TYPE=intern.
 DEVICE_TYPE ?=

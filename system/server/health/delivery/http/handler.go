@@ -95,7 +95,7 @@ func (h *HealthHandler) SystemInfo(c *gin.Context) {
 }
 
 // deviceCapabilities returns this device's DECLARED capabilities (sorted), read
-// from devices/<type>/ROBOT.md via device.Capabilities. This is the OS contract
+// from robots/<type>/ROBOT.md via device.Capabilities. This is the OS contract
 // surface the web gates tabs on ("address capabilities, not routes"): Go is the
 // capability owner — it already parses the same ROBOT.md and gates intent,
 // skills, ambient, etc. on it — so the web asks the OS here rather than reaching
