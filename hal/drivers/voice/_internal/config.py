@@ -14,6 +14,11 @@ from hal import config as _hal_config
 # OS server endpoint
 # ---------------------------------------------------------------------------
 OS_SENSING_URL = "http://127.0.0.1:5000/api/sensing/event"
+# Dead-air filler for the realtime wait. os-server owns the phrase pools, the
+# language resolution, and the WAV cache; HAL only decides WHEN the wait has run
+# long enough to deserve one. See PlayFiller in
+# system/server/sensing/delivery/http/deadair_filler.go.
+OS_FILLER_URL = "http://127.0.0.1:5000/api/sensing/filler"
 
 
 # ---------------------------------------------------------------------------

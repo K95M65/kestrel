@@ -997,6 +997,14 @@ REALTIME_REPLY_SYNC_MAX_CHARS: int = int(os.environ.get("HAL_REALTIME_REPLY_SYNC
 # later turn until recycle; Gemini only needs the gist to avoid repeating
 # itself.
 REALTIME_TTS_HISTORY_MAX_CHARS: int = int(os.environ.get("HAL_REALTIME_TTS_HISTORY_MAX_CHARS", "300"))
+# Dead air while the realtime model works on a committed turn. Chit-chat answers
+# start in ~1s and need nothing, but a turn the model grounds with Google Search
+# emits no token until the search returns — 3-6s of a device that looks awake and
+# sounds dead. After this many seconds with no output yet, HAL asks os-server to
+# speak one opening filler ("one sec", "let me check"); the model's own first
+# sentence interrupts it. Set high enough that a normal answer never races it.
+# 0 disables.
+REALTIME_FILLER_DELAY_S: float = float(os.environ.get("HAL_REALTIME_FILLER_DELAY_S", "1.5"))
 
 # --- Realtime: Summarizer (Anthropic Messages API) ---
 REALTIME_SUMMARIZER_ENABLED: bool = os.environ.get("HAL_REALTIME_SUMMARIZER_ENABLED", "true").lower() in ("1", "true", "yes")
