@@ -291,7 +291,7 @@ See [emotion-led-mapping.md](emotion-led-mapping.md) for the full emotion → LE
 
 ### Unknown emotion names
 
-`POST /emotion` (`hal/routes/emotion.py`) never rejects a non-empty emotion name. Names are lowercased/trimmed; anything not in `EMOTION_PRESETS` falls back to `curious` (a neutral, always-safe expression) with a warning logged — callers are AI agents that sometimes invent emotion names, and a 400 would waste their turn with nothing showing on the device. Exception: while the device is sleeping, an unknown name is **ignored** (`status: ignored`) instead of falling back — `curious` is a wake emotion, so the fallback would let an invented name bypass the sleep gate and wake the device. Otherwise everything downstream (servo, LED) uses the resolved emotion.
+`POST /emotion` (`hal/routes/emotion.py`) never rejects a non-empty emotion name. Names are lowercased/trimmed; anything not in `EMOTION_PRESETS` falls back to `curious` (a neutral, always-safe expression) with a warning logged — callers are AI agents that sometimes invent emotion names, and a 400 would waste their turn with nothing showing on the device. Exception: while the device is sleeping, an unknown name is **ignored** (`status: ignored`) instead of falling back. `curious` no longer wakes (see `_SLEEP_GATE_ALLOWED` below), so the fallback could not lift the sleep gate anyway — but it would still resolve to a servo/LED-bearing emotion that the gate then drops, and logging it as `curious` would hide which invented name the agent actually sent. Otherwise everything downstream (servo, LED) uses the resolved emotion.
 
 ## Per-device preset overrides
 

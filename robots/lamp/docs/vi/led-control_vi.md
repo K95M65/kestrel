@@ -292,7 +292,7 @@ Mỗi emotion preset có LED color riêng:
 
 ### Tên emotion không nhận diện được
 
-`POST /emotion` (`hal/routes/emotion.py`) không bao giờ từ chối tên emotion khác rỗng. Tên được lowercase/trim; tên nào không có trong `EMOTION_PRESETS` sẽ fallback về `curious` (biểu cảm trung tính, luôn an toàn) kèm log warning — caller là AI agent đôi khi bịa tên emotion, trả 400 sẽ phí lượt mà thiết bị không hiển thị gì. Ngoại lệ: khi thiết bị đang ngủ, tên lạ bị **ignore** (`status: ignored`) thay vì fallback — `curious` là wake emotion, nên fallback sẽ cho tên bịa vượt sleep gate và đánh thức thiết bị. Ngoài trường hợp đó, downstream (servo, LED) dùng emotion đã resolve.
+`POST /emotion` (`hal/routes/emotion.py`) không bao giờ từ chối tên emotion khác rỗng. Tên được lowercase/trim; tên nào không có trong `EMOTION_PRESETS` sẽ fallback về `curious` (biểu cảm trung tính, luôn an toàn) kèm log warning — caller là AI agent đôi khi bịa tên emotion, trả 400 sẽ phí lượt mà thiết bị không hiển thị gì. Ngoại lệ: khi thiết bị đang ngủ, tên lạ bị **ignore** (`status: ignored`) thay vì fallback. `curious` không còn đánh thức (xem `_SLEEP_GATE_ALLOWED`), nên fallback cũng không vượt được sleep gate — nhưng nó vẫn resolve thành một emotion có servo/LED để rồi bị gate chặn, và log ra `curious` sẽ che mất tên bịa mà agent thực sự gửi. Ngoài trường hợp đó, downstream (servo, LED) dùng emotion đã resolve.
 
 ## Override preset theo từng thiết bị
 
