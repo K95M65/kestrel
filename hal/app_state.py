@@ -24,6 +24,7 @@ from hal.presets import (
     EMOTION_PRESETS,
     FX_SPEAKING_WAVE,
     FX_SPEAKING_WAVE_RAINBOW,
+    LED_BACKEND_ERROR_FLASH,
     LST_EFFECT,
     LST_OFF,
     LST_PAINT,
@@ -848,7 +849,7 @@ def _flash_backend_error():
     def _run_then_settle():
         from hal.drivers.rgb.effects import notification_flash
 
-        color = (255, 191, 0)  # amber-yellow, distinct from statusled hardware fault
+        color = LED_BACKEND_ERROR_FLASH
         local_stop = threading.Event()
         try:
             notification_flash(color, 1.0, local_stop, rgb_service)

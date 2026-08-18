@@ -346,6 +346,12 @@ LED_SLEEP_WARN = (8, 5, 16)         # sleepy purple (blinking) — hold 2-5s
 LED_SHUTDOWN_WARN = (16, 0, 0)      # red (blinking) — hold 5-10s
 LED_FACTORY_RESET = (16, 0, 0)      # red (solid) — hold 10s+
 
+# Backend-error flash (app_state._flash_backend_error) — one notification_flash
+# when an agent API call fails. Amber-yellow, deliberately a different hue from
+# the statusled "hardware" fault cue so the two do not read as the same thing.
+# Same peak budget as everything else here (12, green-dominant).
+LED_BACKEND_ERROR_FLASH = (12, 9, 0)
+
 # Ambient resting look — what the strip settles into when no user LED state
 # exists. MUST mirror the Go ambient fallback (system/ambient/service.go
 # `ambientRestingColor`) so a HAL-side settle (e.g. mic unmute with no saved
