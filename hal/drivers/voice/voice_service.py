@@ -990,6 +990,28 @@ class VoiceService:
             wake_partial_hypothesis[0] = ""
             return wake_final_hypothesis[0]
 
+        def fire_listening_cue() -> None:
+            """Show the listening cue, once per session, only when this turn is
+            actually addressed to the device.
+
+            The cue is not free: it paints the strip AND holds the body still
+            (a preset with servo=None halts the animation loop — see
+            routes/emotion.py). With a wake word configured, firing it on any
+            partial means every conversation happening in the room lights the
+            lamp up and freezes it, which reads as the device butting in.
+            So: wake word heard, or an open follow-up window. Without a wake
+            word configured every utterance IS addressed to the device, so the
+            cue fires on the first partial as before.
+            """
+            if listening_emotion_sent[0]:
+                return
+            if hal_config.WAKEWORD_ENABLED and not (
+                wake_word_detected.is_set() or wakeword_followup_active
+            ):
+                return
+            listening_emotion_sent[0] = True
+            self._set_emotion_local(presets.EMO_LISTENING)
+
         def open_wake_word_gate(candidate: str, source: str) -> None:
             if (
                 hal_config.WAKEWORD_ENABLED
@@ -1001,6 +1023,10 @@ class VoiceService:
                 logger.info(
                     "Wake-word gate opened by STT %s: '%s'", source, candidate
                 )
+                # Fire here too, not just from the partial below: the gate can
+                # open on a later partial (or on the final), and the cue should
+                # land the moment the device knows it is being addressed.
+                fire_listening_cue()
 
         def confirm_wake_word_gate(candidate: str) -> None:
             if (
@@ -1023,9 +1049,7 @@ class VoiceService:
                     open_wake_word_gate(candidate, "partial")
                 last_partial[0] = text
                 self._backchannel.on_partial(text)
-                if not listening_emotion_sent[0]:
-                    listening_emotion_sent[0] = True
-                    self._set_emotion_local(presets.EMO_LISTENING)
+                fire_listening_cue()
                 return
             # Accumulate final segments — don't send yet, wait for session close.
             # Flux model fires multiple EndOfTurn events for natural pauses within
