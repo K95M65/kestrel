@@ -1,7 +1,7 @@
 """Shared button/touch actions.
 
 Reused by any input device that maps to the same three gestures:
-- single_click_action(): stop speaker / unmute mic + speaker + announce listening
+- single_click_action(): stop object tracking and speaker / unmute mic + speaker + announce listening
 - triple_click_action(): reboot OS
 - long_press_action():  shutdown OS
 
@@ -199,10 +199,29 @@ def announce_listening_cue(source: str = "button"):
         ).start()
 
 
+def _stop_active_tracking(source: str):
+    """Stop object tracking when a single click asks the device for attention."""
+    tracker = state.tracker_service
+    if not tracker or not tracker.is_tracking:
+        return
+    try:
+        logger.info("%s single click -- stopping object tracking", source)
+        tracker.stop()
+    except Exception as e:
+        # A tracker failure must not block the click's microphone/speaker action.
+        logger.warning("%s single click -- failed to stop object tracking: %s", source, e)
+
+
 def single_click_action(source: str = "button", announce: bool = True, chime: bool = True):
-    """Stop in-flight speech / unmute mic + speaker, then announce listening cue.
+    """Stop active tracking and in-flight speech / unmute mic + speaker.
+
+    Then announce the listening cue.
     announce=False skips the cue (caller fires announce_listening_cue later).
     chime=False skips the ack ping (caller already chimed at gesture start)."""
+    # Stopping movement is safe even with the hardware mic kill switch off: it
+    # does not wake or unmute the microphone, but still lets the user cancel an
+    # active follow session with the same direct-attention gesture.
+    _stop_active_tracking(source)
     # Hardware mic-mute switch is the authority: while it is physically off,
     # taps on the GPIO button / TTP223 touchpad must NOT wake, unmute, or
     # announce — the whole gesture flow would violate the kill-switch promise.
