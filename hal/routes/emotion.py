@@ -38,7 +38,7 @@ _WAKE_EMOTIONS = {
 
 # Auto-release the servo shortly after *continuous* sleepy so the animation
 # can settle before torque is disabled.
-SLEEPY_AUTO_RELEASE_SECONDS = 2
+SLEEPY_AUTO_RELEASE_SECONDS = 1.0
 
 router = APIRouter(tags=["Emotion"])
 
@@ -125,7 +125,7 @@ def express_emotion(req: EmotionRequest):
                 with state._sleep_servo_lock:
                     state._sleep_servo_released = True
                     state.logger.info(
-                        "Auto-release: sleepy held >= %ds, releasing servo",
+                        "Auto-release: sleepy held >= %.1fs, releasing servo",
                         SLEEPY_AUTO_RELEASE_SECONDS,
                     )
                     release_servos()
