@@ -464,13 +464,25 @@ turn ("hello") right after a restart would leak to the main agent.
    re-engages only when a `*native-audio*` model is configured.
 4. **Commit.** At session end, if enabled + `available` + audio buffered,
    `commit_audio()` fires. A `thinking` emotion cue fires with the commit
-   (face + servo + a FORCED purple LED pulse — `thinking` is normally a
+   (face + servo + a FORCED LED pulse — `thinking` is normally a
    background emotion whose LED yields to the user's saved color; the
    realtime cue bypasses only that guard, user-LED-off still wins) and is
    cleared back to `idle` at the first output (first TTS sentence or first
    native audio frame) or when the turn dies with no output — unless the
    model already expressed its own emotion. This fills the 1-3s
    model-latency gap where the device otherwise looked frozen.
+
+   The same commit arms the **dead-air filler** (`_WaitFiller`), the audible
+   half of that cue. After `HAL_REALTIME_FILLER_DELAY_S` (default 1.5 s) with
+   still no output, HAL calls `POST /api/sensing/filler` and os-server speaks
+   one opening filler from its cache — os-server owns the phrase pools, the
+   language, and the WAV cache, so the realtime wait and the main-agent wait
+   sound alike. A normal chit-chat reply (~1 s) never reaches the timer; a turn
+   the model grounds with Google Search, which emits no token until the search
+   returns, does. The filler is interruptible, so the model's first sentence
+   cuts it off; every exit path (reply, delegate, empty turn, exception)
+   cancels the timer, and delegate cancels explicitly because the main-agent
+   hop that follows fires its own filler. `0` disables.
 5. **Consume.** `for output in stream_output()`:
    - `TextOutput` → sentences are flushed to TTS (`speak` / `speak_queue`).
      If `speak` returns busy (another non-interruptible TTS holds the

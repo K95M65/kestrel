@@ -446,12 +446,24 @@ sớm ("hello") ngay sau khi restart sẽ rớt xuống main agent.
    bật lại khi ai đó cấu hình một model `*native-audio*`.
 4. **Commit.** Cuối session, nếu enabled + `available` + có audio buffer, gọi
    `commit_audio()`. Cue emotion `thinking` fire cùng lúc commit (mặt + servo +
-   LED pulse tím ÉP HIỆN — `thinking` vốn là background emotion có LED nhường
+   LED pulse ÉP HIỆN — `thinking` vốn là background emotion có LED nhường
    màu user đã set; cue realtime bypass đúng guard đó, còn user tắt đèn thì vẫn
    tắt) và được clear về `idle` khi có output đầu tiên (câu TTS đầu hoặc frame
    audio native đầu) hoặc khi turn chết không output — trừ khi model đã tự
    express emotion riêng. Lấp khoảng 1-3s latency của model mà trước đây device
    nhìn như đứng hình.
+
+   Cùng lúc commit cũng arm **dead-air filler** (`_WaitFiller`) — nửa phần tiếng
+   của chính cue đó. Sau `HAL_REALTIME_FILLER_DELAY_S` (mặc định 1.5s) mà vẫn
+   chưa có output nào, HAL gọi `POST /api/sensing/filler` và os-server phát một
+   câu filler mở đầu từ cache — pool phrase, ngôn ngữ và WAV cache đều nằm ở
+   os-server, nên khoảng chờ realtime và khoảng chờ main agent nghe giống nhau.
+   Câu chit-chat bình thường (~1s) không bao giờ chạm timer; lượt model dùng
+   Google Search — không ra token nào cho tới khi search xong — thì có. Filler
+   phát interruptible nên câu đầu tiên của model cắt ngang nó; mọi đường thoát
+   (trả lời, delegate, turn rỗng, exception) đều cancel timer, riêng delegate
+   cancel tường minh vì chặng main agent ngay sau đó tự bắn filler của nó. `0`
+   để tắt.
 5. **Tiêu thụ.** `for output in stream_output()`:
    - `TextOutput` → các câu được flush sang TTS (`speak` / `speak_queue`).
      Nếu `speak` báo busy (TTS khác đang giữ loa non-interruptible, ví dụ

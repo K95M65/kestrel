@@ -373,6 +373,8 @@ func (s *Server) Serve(closeFn func()) error {
 	sensing.GET("snapshot/:category/:name", s.sensingHandler.GetSnapshot)
 	sensing.GET("agent-snapshot/:runtime/:source/:name", s.sensingHandler.GetAgentSnapshot)
 	sensing.GET("audio/:name", s.sensingHandler.GetAudio)
+	// HAL-driven dead-air filler for the realtime wait (see PlayFiller).
+	sensing.POST("filler", s.sensingHandler.PlayFiller)
 
 	// Voice file delete (filesystem orchestration on Pi). Voice enroll
 	// itself lives on hal at /hw/speaker/record-enroll because hardware
