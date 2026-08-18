@@ -29,7 +29,12 @@ import threading
 import time
 
 import hal.app_state as state
-from hal.presets import RGB_CMD_SOLID
+from hal.presets import (
+    LED_FACTORY_RESET,
+    LED_SHUTDOWN_WARN,
+    LED_SLEEP_WARN,
+    RGB_CMD_SOLID,
+)
 from hal.board.board import board_profile
 from hal.drivers.base import Priority
 from hal.drivers.button_actions import (
@@ -52,9 +57,9 @@ logger = logging.getLogger(__name__)
 # tells them shutdown is armed. Red solid at 10s+ means factory-reset.
 # Both dispatch at HIGH priority so they preempt the current emotion LED.
 # The purple comes from sleepy's previous display preset.
-LED_SLEEP_WARN = (60, 40, 120)      # sleepy purple (blinking)
-LED_SHUTDOWN_WARN = (255, 0, 0)     # red (blinking)
-LED_FACTORY_RESET = (255, 0, 0)     # red (solid)
+# The three warn colors live in hal/presets.py (LED_SLEEP_WARN /
+# LED_SHUTDOWN_WARN / LED_FACTORY_RESET) alongside the other LED presets —
+# this file owns the staging (when to blink, when to go solid), not the look.
 LED_OFF = (0, 0, 0)
 # Blink: 0.25 s on + 0.25 s off = 2 Hz full cycle.
 LED_BLINK_HALF_PERIOD_S = 0.25

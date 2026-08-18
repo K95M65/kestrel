@@ -29,7 +29,7 @@ Board detection in both handlers reads `/proc/device-tree/model`:
 | **1 tap** | Stop speaker / unmute mic + speaker + ack chime (~120 ms ping) — all fire immediately on release (no click-window wait); the "Listening" cue plays once the 0.4 s click window resolves | Same, split the same way — in-flight TTS is cut and the ack chime plays ~0.2 s after the finger lifts (first session end); unmute + cue wait for the 1.2 s decision window (tap-vs-pet cost, see below) |
 | **2 taps** (≤ 0.4 s apart, button) / (≤ 1.2 s apart, TTP223) | Nothing beyond the single-click already fired on tap 1 (panic-click guard) | Pet response — TTS picks a random phrase from the language pool |
 | **3 taps** (≤ 0.4 s apart, button) | Reboot OS (TTS announce → `sudo reboot`) | n/a — TTP223 stops at 2 (any further taps absorbed by cooldown) |
-| **Hold 2–5 s, then release** | Speak the localized sleep announcement, then enter `sleepy`: LED off, camera/mic/speaker off; servo releases after 1 s. LED blinks sleepy purple while held. | n/a — TTP223 hardware cannot reliably hold (see "FastMode" below) |
+| **Hold 2–5 s, then release** | Speak the localized sleep announcement, then enter `sleepy`: LED drops to a dim indigo breathing, camera/mic/speaker off; servo releases after 1 s. LED blinks sleepy purple while held. | n/a — TTP223 hardware cannot reliably hold (see "FastMode" below) |
 | **Hold 5–10 s, then release** | Shutdown OS (TTS announce → release servos → `sudo shutdown -h now`). LED blinks red while armed. | n/a — TTP223 hardware cannot reliably hold (see "FastMode" below) |
 | **Hold 10 s+, then release** | Factory-reset: wipe device state + reboot into AP setup (TTS announce → release servos → POST `/api/system/factory-reset` on the OS server). LED goes solid red while armed. | n/a |
 
@@ -75,7 +75,7 @@ The watcher thread polls the hold duration and drives the RGB LED at HIGH priori
 | Hold elapsed | LED | Meaning |
 |---|---|---|
 | < 2 s | unchanged | a short tap |
-| 2–5 s | sleepy purple, blinking 2 Hz | sleepy is armed; releasing enters sleep (LED then turns off) |
+| 2–5 s | sleepy purple, blinking 2 Hz | sleepy is armed; releasing enters sleep (LED then drops to dim indigo breathing) |
 | 5–10 s | red, blinking 2 Hz | shutdown armed — releasing now shuts down |
 | 10 s+ | red, solid | factory-reset armed — releasing now wipes + reboots |
 
