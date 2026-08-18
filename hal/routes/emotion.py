@@ -8,32 +8,31 @@ import hal.app_state as state
 from hal.models import EmotionRequest, EmotionResponse
 from hal.presets import (
     EMOTION_PRESETS,
-    EMO_CARING,
-    EMO_CONFUSED,
     EMO_CURIOUS,
-    EMO_EXCITED,
     EMO_GREETING,
-    EMO_HAPPY,
     EMO_IDLE,
-    EMO_LAUGH,
     EMO_LISTENING,
-    EMO_SAD,
     EMO_SHOCK,
-    EMO_SHY,
     EMO_SLEEPY,
     EMO_STRETCHING,
     LST_OFF,
     SERVO_CMD_PLAY,
 )
 
-# Emotions that can wake the device from sleep.
-# greeting/stretching/sleepy = direct wake triggers.
-# happy/excited/caring/laugh/curious/sad/shy/shock/confused = agent responding to user interaction.
-# thinking/idle/acknowledge/nod/headshake/scan/music_* do NOT wake (background processing).
-_WAKE_EMOTIONS = {
+# Emotions allowed through the sleep gate. Not all of them wake: greeting and
+# stretching flip `_sleeping` back to False, while sleepy passes so a repeat
+# (night scene, presence.away) can re-arm the auto-release timer and re-apply
+# the sleepy peripheral state on an already-sleeping device.
+#
+# The expressive set (happy/excited/caring/laugh/curious/sad/shy/shock/
+# confused) used to wake too, on the theory that an emotional reply means the
+# agent is responding to a live user. It does not: an emotion name carries no
+# evidence of who caused it, so an agent finishing a stale background task
+# would light the strip and move the body on a sleeping device. Sleep is a
+# do-not-disturb state — the way back out is a physical tap on the button, or
+# presence.enter → greeting when the user walks back in.
+_SLEEP_GATE_ALLOWED = {
     EMO_GREETING, EMO_STRETCHING, EMO_SLEEPY,
-    EMO_HAPPY, EMO_EXCITED, EMO_CARING, EMO_LAUGH, EMO_CURIOUS,
-    EMO_SAD, EMO_SHY, EMO_SHOCK, EMO_CONFUSED,
 }
 
 # Auto-release the servo shortly after *continuous* sleepy so the animation
@@ -75,9 +74,10 @@ def express_emotion(req: EmotionRequest):
         # Callers are AI agents that sometimes invent emotion names — a 400
         # wastes their turn and nothing shows on the device. Fall back to
         # curious (a neutral, always-safe expression) instead of rejecting.
-        # While sleeping, ignore instead: curious is a wake emotion, so the
-        # fallback would let an invented name bypass the sleep gate and wake
-        # the device (servo curious → idle, never returns to sleepy).
+        # While sleeping, ignore instead. `curious` no longer wakes, so the
+        # fallback would not lift the sleep gate — but it would still resolve
+        # to a servo/LED-bearing emotion that the gate below then drops, and
+        # logging it as "curious" hides which invented name the agent sent.
         if state._sleeping:
             state.logger.info(
                 "POST /emotion: ignored unknown '%s' while sleeping", req.emotion
@@ -95,7 +95,7 @@ def express_emotion(req: EmotionRequest):
                        state._user_led_state.get("type") if state._user_led_state else None,
                        state._sleeping)
 
-    if state._sleeping and req.emotion not in _WAKE_EMOTIONS:
+    if state._sleeping and req.emotion not in _SLEEP_GATE_ALLOWED:
         state.logger.info("POST /emotion: ignored %s while sleeping", req.emotion)
         return {"status": "ignored", "emotion": req.emotion, "servo": None, "led": None}
 
