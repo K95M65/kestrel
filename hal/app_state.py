@@ -1298,8 +1298,8 @@ def _read_agent_name() -> str:
     # No IDENTITY.md name → use the device type (lamp/dog/intern) so an unnamed
     # device is addressed by its class instead of a hardcoded "lamp".
     try:
-        from hal.config import _os_cfg_get
-        device_type = (_os_cfg_get("device_type") or "").strip().lower()
+        from hal.config import resolve_device_type
+        device_type = resolve_device_type()
         if device_type:
             return device_type
     except Exception:

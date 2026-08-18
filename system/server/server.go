@@ -172,6 +172,18 @@ func (s *Server) Serve(closeFn func()) error {
 	if deviceType == "" {
 		log.Fatal("[config] device_type unresolved — set DEVICE_TYPE env (provisioning) or config.json device_type; refusing to assume 'lamp'")
 	}
+	// Persist the resolved class so config.json actually carries device_type, the
+	// key HAL and software-update read. Provisioning only writes the DEVICE_TYPE
+	// env, so without this seed the key never exists on a provisioned device and
+	// every config.json reader silently falls back (HAL's wake words resolved to
+	// "friend", making the device-type wake phrases the web UI advertises dead).
+	// Idempotent — only the first start after upgrade writes.
+	if s.config.DeviceType != deviceType {
+		s.config.DeviceType = deviceType
+		if err := s.config.Save(); err != nil {
+			slog.Error("seed device_type failed", "component", "config", "error", err)
+		}
+	}
 
 	// Set GELF host to device_id + stamp device class for centralized logging
 	if s.config.DeviceID != "" {

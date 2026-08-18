@@ -161,6 +161,26 @@ def _os_cfg_get(key: str, default: str = "") -> str:
     except Exception:
         return default
 
+def resolve_device_type(default: str = "") -> str:
+    """Return the device class (lamp/dog/intern): DEVICE_TYPE env, then config.json.
+
+    Provisioning writes DEVICE_TYPE into /opt/hal/.env and the os-server unit;
+    config.json normally carries NO device_type key at all (it is only a manual
+    fallback for dev machines). So a bare _os_cfg_get("device_type") resolves to
+    the caller's fallback on every provisioned device — anything deriving
+    behaviour from the device class must go through here instead. Same order as
+    server._resolve_device_type / mic_button._resolve_device_type, without the
+    fail-loud: callers here have a usable default.
+    """
+    dev = os.environ.get("DEVICE_TYPE")
+    if dev:
+        return dev.strip().lower()
+    cfg = _os_cfg_get("device_type")
+    if cfg:
+        return str(cfg).strip().lower()
+    return default
+
+
 DL_BACKEND_URL = _os_cfg_get("llm_base_url") or os.environ.get("DL_BACKEND_URL", "")
 DL_API_KEY = _os_cfg_get("llm_api_key") or os.environ.get("DL_API_KEY", "")
 # Device-internal auth token — the secret a caller presents to reach this HAL,

@@ -202,8 +202,11 @@ type Config struct {
 	// DeviceType is the device class/profile id — the folder name under robots/
 	// (e.g. "lamp", "intern-v2", "unitree-go2w"). Selects which ROBOT.md/SOUL.md the
 	// runtime loads. Empty resolves to "" — no "lamp" fallback (see DeviceTypeOrDefault;
-	// the Serve startup guard fail-louds). HAL reads the same key from config.json via
-	// _os_cfg_get("device_type").
+	// the Serve startup guard fail-louds). Provisioning supplies the class via the
+	// DEVICE_TYPE env, not this key — Serve seeds the resolved value back here on
+	// startup so config.json readers that have no env (HAL's wake words,
+	// software-update) find it. Those readers must still prefer the env: see
+	// hal/config.py resolve_device_type.
 	DeviceType string `json:"device_type,omitempty" yaml:"deviceType"`
 
 	// MQTT (optional): empty broker URL means MQTT disabled

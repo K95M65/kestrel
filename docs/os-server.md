@@ -354,6 +354,7 @@ HAL (Python): FastAPI standard JSON responses.
 
 1. OS Server starts Gin on :5000
 2. Reads `config/config.json`
+   - Seeds `device_type` from the resolved device class (`DEVICE_TYPE` env, else the existing key) so config.json carries it for readers that have no env — HAL's wake words and `software-update`. Provisioning only writes the env, so without this seed the key never exists on a provisioned device. Written once, when the stored value differs
    - Seeds `tts_provider` + `tts_voice` from ROBOT.md `voice:` block when the user hasn't chosen them (persisted once; the user's saved choice always wins; provider absent/unknown → `openai`). When the seeded provider is `elevenlabs` and no voice is declared, picks a language-aware default (`vi`→Ngan, `zh`→Amy, else Rachel)
 3. If `SetUpCompleted`:
    - Connect OpenClaw WebSocket

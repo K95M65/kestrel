@@ -119,7 +119,7 @@ SPEECH_EMOTION_ENABLED = _hal_config.SPEECH_EMOTION_ENABLED
 # IDENTITY.md name is set, so an unnamed device isn't hardcoded to "lamp".
 # Last resort "friend" when device_type is also unavailable.
 # ---------------------------------------------------------------------------
-_wake_name = (_hal_config._os_cfg_get("device_type") or "friend").strip().lower()
+_wake_name = _hal_config.resolve_device_type("friend")
 WAKE_WORD_PREFIXES = ("hello", "hey", "hi", "alo", "okay", "ok", "wake up")
 DEFAULT_WAKE_WORDS = [
     *(f"{prefix} autonomous" for prefix in WAKE_WORD_PREFIXES),
