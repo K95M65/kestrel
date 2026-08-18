@@ -7,12 +7,12 @@ Source: `hal/presets.py` — `EMOTION_PRESETS`
 | `curious` | 12, 8, 0 | `#0c0800` vàng ấm | candle | 0.3 | curious |
 | `happy` | 12, 9, 1 | `#0c0901` vàng | candle | 0.2 | happy_wiggle |
 | `sad` | 16, 8, 8 | `#100808` đỏ thẫm | breathing | 0.4 | sad |
-| `thinking` | 6, 12, 4 | `#060c04` xanh chìm | pulse | 0.3 | thinking_deep |
+| `thinking` | 6, 12, 4 | `#060c04` xanh chìm | pulse | 0.3 | — (xem ghi chú) |
 | `idle` | 12, 8, 1 | `#0c0801` vàng dim | breathing | 0.2 | idle |
 | `excited` | 12, 8, 12 | `#0c080c` hồng tím | candle | 0.5 | excited |
 | `shy` | 16, 7, 2 | `#100702` hồng | breathing | 0.3 | shy |
 | `shock` | 12, 12, 12 | `#0c0c0c` trắng dịu | notification_flash | 1.0 | shock |
-| `listening` | 4, 8, 16 | `#040810` xanh dương | breathing | 1.2 | listening |
+| `listening` | 4, 8, 16 | `#040810` xanh dương | breathing | 1.2 | — (xem ghi chú) |
 | `laugh` | 12, 8, 1 | `#0c0801` vàng sẫm | candle | 0.2 | laugh |
 | `confused` | 16, 9, 3 | `#100903` cam đậm | candle | 0.2 | confused |
 | `sleepy` | 0, 0, 0 | `#000000` đen (tắt) | solid | — | sleepy |
@@ -26,6 +26,17 @@ Source: `hal/presets.py` — `EMOTION_PRESETS`
 | `scan` | 5, 12, 3 | `#050c03` xanh nhạt | pulse | 0.3 | scanning |
 | `nod` | 12, 8, 1 | `#0c0801` cam đất | breathing | 0.5 | nod |
 | `headshake` | 16, 6, 1 | `#100601` amber | breathing | 0.5 | headshake |
+
+## `thinking` và `listening` không có servo
+
+Hai emotion này để `"servo": None` — chỉ LED, đèn đứng yên:
+
+- `listening` chạy đúng lúc user đang nói, tiếng servo cộng rung thân máy lọt thẳng vào mic và làm bẩn STT.
+- `thinking` bị hook emotion-ack bắn ở **mỗi** message preprocessed, nên có servo là giật liên tục suốt cuộc hội thoại (cũng chính là lý do LED của nó nằm trong `_BACKGROUND_EMOTIONS` guard ở `hal/app_state.py`).
+
+Hai recording `listening.csv` và `thinking_deep.csv` vẫn giữ trong `hal/recordings/`: `/servo/play` gọi tay được, và Reachy vẫn map chúng (`hal/drivers/motors/reachy_service.py`).
+
+Đường code chịu `servo: None` bình thường — `hal/routes/emotion.py` bỏ qua nhánh play, `POST /emotion` trả `"servo": null`. Khác biệt duy nhất: `thinking` dùng LED-restore mặc định 3.5s thay vì tính theo độ dài recording (`listening` vốn không schedule restore).
 
 ## Ngân sách độ sáng (peak budget)
 

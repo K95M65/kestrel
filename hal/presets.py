@@ -153,7 +153,10 @@ EMOTION_PRESETS = {
     EMO_CURIOUS: {"servo": SERVO_CURIOUS, "color": [12, 8, 0], "effect": FX_CANDLE, "speed": 0.3, "camera": "on"},
     EMO_HAPPY: {"servo": SERVO_HAPPY_WIGGLE, "color": [12, 9, 1], "effect": FX_CANDLE, "speed": 0.2, "camera": "on"},
     EMO_SAD: {"servo": SERVO_SAD, "color": [16, 8, 8], "effect": FX_BREATHING, "speed": 0.4, "camera": "on"},
-    EMO_THINKING: {"servo": SERVO_THINKING_DEEP, "color": [6, 12, 4], "effect": FX_PULSE, "speed": 0.3,
+    EMO_THINKING: {"servo": None,  # SERVO_THINKING_DEEP,
+                   "color": [6, 12, 4],
+                   "effect": FX_PULSE,
+                   "speed": 0.3,
                    "camera": "on"},
     EMO_IDLE: {"servo": SERVO_IDLE, "color": [12, 8, 1], "effect": FX_BREATHING, "speed": 0.2},
     EMO_EXCITED: {"servo": SERVO_EXCITED, "color": [12, 8, 12], "effect": FX_CANDLE, "speed": 0.5, "camera": "on"},
@@ -168,7 +171,10 @@ EMOTION_PRESETS = {
     # Breathing, not pulse: listening stays lit for as long as the user is
     # talking, and pulse's dark gap between beats reads as an alert on a cue
     # that long. A smooth breath says "open, waiting for you".
-    EMO_LISTENING: {"servo": SERVO_LISTENING, "color": [4, 8, 16], "effect": FX_BREATHING, "speed": 1.2,
+    EMO_LISTENING: {"servo": None,  # SERVO_LISTENING,
+                    "color": [4, 8, 16],
+                    "effect": FX_BREATHING,
+                    "speed": 1.2,
                     "camera": "on"},
     EMO_LAUGH: {"servo": SERVO_LAUGH, "color": [12, 8, 1], "effect": FX_CANDLE, "speed": 0.2, "camera": "on"},
     EMO_CONFUSED: {"servo": SERVO_CONFUSED, "color": [16, 9, 3], "effect": FX_CANDLE, "speed": 0.2, "camera": "on"},
@@ -184,7 +190,8 @@ EMOTION_PRESETS = {
     EMO_MUSIC_CHILL: {"servo": SERVO_MUSIC_ROCK, "color": [16, 9, 0], "effect": FX_BREATHING, "speed": 0.3},
     EMO_SCAN: {"servo": SERVO_SCANNING, "color": [5, 12, 3], "effect": FX_PULSE, "speed": 0.3, "camera": "on"},
     EMO_NOD: {"servo": SERVO_NOD, "color": [12, 8, 1], "effect": FX_BREATHING, "speed": 0.5, "camera": "on"},
-    EMO_HEADSHAKE: {"servo": SERVO_HEADSHAKE, "color": [16, 6, 1], "effect": FX_BREATHING, "speed": 0.5, "camera": "on"},
+    EMO_HEADSHAKE: {"servo": SERVO_HEADSHAKE, "color": [16, 6, 1], "effect": FX_BREATHING, "speed": 0.5,
+                    "camera": "on"},
 }
 
 # Lighting scene presets — simulated color temperature via RGB mixing.
@@ -342,9 +349,9 @@ STATUS_LED_PRESETS = {
 # color's PEAK up to the light.max_brightness ceiling (lamp: 120), so dimming
 # has to happen here. Purple identifies the sleep tier; blink vs solid separates
 # shutdown from factory-reset, so those two share a color on purpose.
-LED_SLEEP_WARN = (8, 5, 16)         # sleepy purple (blinking) — hold 2-5s
-LED_SHUTDOWN_WARN = (16, 0, 0)      # red (blinking) — hold 5-10s
-LED_FACTORY_RESET = (16, 0, 0)      # red (solid) — hold 10s+
+LED_SLEEP_WARN = (8, 5, 16)  # sleepy purple (blinking) — hold 2-5s
+LED_SHUTDOWN_WARN = (16, 0, 0)  # red (blinking) — hold 5-10s
+LED_FACTORY_RESET = (16, 0, 0)  # red (solid) — hold 10s+
 
 # Backend-error flash (app_state._flash_backend_error) — one notification_flash
 # when an agent API call fails. Amber-yellow, deliberately a different hue from
