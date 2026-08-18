@@ -1316,6 +1316,34 @@ def _build_wake_words(name: str) -> list[str]:
     ]
 
 
+def _stt_boost_terms() -> list[str]:
+    """Names STT must not mangle: everything that can open the wake-word gate.
+
+    STT decides whether a turn is heard at all, and it mis-hears proper nouns it
+    has no reason to expect — "hi lamp" came back as "hi lance", "hello rachel"
+    as "hello risa", and each miss silently drops the whole turn. Boosting only
+    the agent name is not enough: the device type and the permanent "autonomous"
+    alias arm the same gate (see _build_wake_words and the DEFAULT_WAKE_WORDS
+    the voice service merges in).
+
+    Returned in Deepgram's `keyword:intensifier` form. The Flux and nova-3 paths
+    strip the weight — their `keyterm` parameter takes plain terms. Duplicates
+    are dropped so an unnamed device, whose agent name falls back to the device
+    type, does not boost the same word twice.
+    """
+    from hal.config import resolve_device_type
+
+    seen: set[str] = set()
+    terms: list[str] = []
+    for name in (_read_agent_name(), resolve_device_type(), "autonomous"):
+        name = (name or "").strip().lower()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        terms.append(f"{name}:3")
+    return terms
+
+
 def _find_audio_device(output: bool = True) -> Optional[int]:
     """Find audio device index by known hardware names, with USB fallback."""
     try:

@@ -54,6 +54,12 @@ device type (`lamp`), or the agent name from IDENTITY.md — HAL resolves the
 device type from the `DEVICE_TYPE` env first, then `config.json`, so the
 runtime list matches the one Settings advertises.
 
+All three names are sent to STT as boost terms (`_stt_boost_terms`), because a
+mis-heard name silently drops the whole turn — "hi lamp" transcribed as "hi
+lance" never arms the gate. Flux takes them as repeated `keyterm` parameters
+with no weights; nova-3 uses `keyterm` too; older nova models use `keywords`
+with the `:3` intensifier.
+
 Every STT-final-confirmed wake-word turn reaches dispatch. It opens a 20-second
 follow-up focus window (reset after every authorized turn), so the next spoken
 turn can omit the wake phrase and is sent as `voice_followup`. A follow-up has

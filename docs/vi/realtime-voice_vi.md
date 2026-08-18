@@ -52,6 +52,11 @@ device type (`lamp`), hoặc tên agent trong IDENTITY.md — HAL resolve device
 theo env `DEVICE_TYPE` trước rồi mới tới `config.json`, nên danh sách runtime
 khớp với danh sách Settings hiển thị.
 
+Cả ba tên đều được gửi cho STT làm boost term (`_stt_boost_terms`), vì nghe sai
+tên là mất trắng cả lượt — "hi lamp" ra "hi lance" thì gate không bao giờ mở.
+Flux nhận chúng dưới dạng param `keyterm` lặp lại, không trọng số; nova-3 cũng
+dùng `keyterm`; các model nova cũ hơn dùng `keywords` kèm intensifier `:3`.
+
 Mọi lượt wake-word đã được STT final xác nhận đều đi qua dispatch. Nó mở một
 cửa sổ focus follow-up 20 giây (reset sau mỗi lượt được phép), nên câu nói kế
 tiếp có thể bỏ wake phrase và được gửi với type `voice_followup`. Follow-up có
