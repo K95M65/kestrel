@@ -1389,9 +1389,24 @@ class VoiceService:
                 and wake_word_detected.is_set()
                 and not wake_word_confirmed.is_set()
             ):
-                logger.info(
-                    "Wake-word partial rejected — no matching final STT result; dropping turn"
-                )
+                # Last look, on the ASSEMBLED transcript. The per-segment checks
+                # above run on wake_final_candidate(), which passes through
+                # merge_stt_hypothesis() — and that keeps only \w+ tokens, so
+                # sentence punctuation is gone by then. A wake phrase opening a
+                # LATER sentence ("Is that match playing tonight? Hello lamp,
+                # let's check it out.") therefore looked mid-sentence and the
+                # whole turn was dropped, wake word and all (device-observed
+                # 18/08/2026). `combined` is the real transcript with its
+                # punctuation intact, which is what the sentence rule needs.
+                if self._decorator.starts_with_wake_word(combined):
+                    wake_word_confirmed.set()
+                    logger.info(
+                        "Wake-word confirmed on assembled transcript: %r", combined
+                    )
+                else:
+                    logger.info(
+                        "Wake-word partial rejected — no matching final STT result; dropping turn"
+                    )
 
             # Noise guard for empty-STT turns: a session can open on a noise blip
             # that fools the entry VAD, then STT finds no words. Re-check the FULL
