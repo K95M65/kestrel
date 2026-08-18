@@ -4,28 +4,28 @@ Source: `hal/presets.py` — `EMOTION_PRESETS`
 
 | Emotion | Color (RGB) | Hex | Effect | Speed | Servo Animation |
 |---|---|---|---|---|---|
-| `curious` | 12, 8, 0 | `#0c0800` amber | breathing | 1.0 | curious |
-| `happy` | 12, 10, 0 | `#0c0a00` vàng | candle | 1.0 | happy_wiggle |
-| `sad` | 4, 4, 16 | `#040410` xanh trầm | breathing | 0.8 | sad |
-| `thinking` | 10, 4, 16 | `#0a0410` tím lavender | pulse | 1.5 | thinking_deep |
-| `idle` | 9, 12, 12 | `#090c0c` xanh nhạt | breathing | 0.8 | idle |
-| `excited` | 16, 2, 16 | `#100210` hồng tím | blink | 0.5 | excited |
-| `shy` | 12, 6, 7 | `#0c0607` hồng | blink | 0.25 | shy |
-| `shock` | 12, 12, 12 | `#0c0c0c` trắng dịu | notification_flash | 2.0 | shock |
-| `listening` | 2, 7, 16 | `#020710` xanh dương | breathing | 1.2 | listening |
-| `laugh` | 12, 9, 2 | `#0c0902` vàng sẫm | blink | 0.4 | laugh |
-| `confused` | 16, 3, 1 | `#100301` cam đậm | candle | 0.6 | confused |
-| `sleepy` | 3, 2, 9 | `#030209` chàm rất tối | breathing | 0.5 | sleepy |
-| `greeting` | 12, 7, 3 | `#0c0703` vàng nhạt | blink | 0.3 | greeting | wake_up |
-| `goodbye` | 12, 7, 3 | `#0c0703` vàng nhạt | breathing | 0.5 | goodbye |
-| `caring` | 12, 6, 4 | `#0c0604` cam hồng | breathing | 0.4 | nod |
-| `acknowledge` | 1, 8, 4 | `#010804` xanh lá | blink | 0.3 | acknowledge |
-| `stretching` | 12, 12, 11 | `#0c0c0b` trắng ngà | breathing | 0.6 | stretching |
-| `music_strong` | 8, 12, 8 | `#080c08` xanh lá nhạt | rainbow | 1.5 | music_rock |
-| `music_chill` | 16, 6, 0 | `#100600` cam | breathing | 0.5 | music_rock | music_groove | music_jazz | music_waltz |
-| `scan` | 1, 9, 12 | `#01090c` cyan | pulse | 2.0 | scanning |
-| `nod` | 1, 8, 4 | `#010804` xanh lá | blink | 0.3 | nod |
-| `headshake` | 16, 2, 2 | `#100202` đỏ | blink | 0.35 | headshake |
+| `curious` | 12, 8, 0 | `#0c0800` vàng ấm | candle | 0.3 | curious |
+| `happy` | 12, 9, 1 | `#0c0901` vàng | candle | 0.2 | happy_wiggle |
+| `sad` | 16, 8, 8 | `#100808` đỏ thẫm | breathing | 0.4 | sad |
+| `thinking` | 6, 12, 4 | `#060c04` xanh chìm | pulse | 0.3 | thinking_deep |
+| `idle` | 12, 8, 1 | `#0c0801` vàng dim | breathing | 0.2 | idle |
+| `excited` | 12, 8, 12 | `#0c080c` hồng tím | candle | 0.5 | excited |
+| `shy` | 16, 7, 2 | `#100702` hồng | breathing | 0.3 | shy |
+| `shock` | 12, 12, 12 | `#0c0c0c` trắng dịu | notification_flash | 1.0 | shock |
+| `listening` | 4, 8, 16 | `#040810` xanh dương | breathing | 1.2 | listening |
+| `laugh` | 12, 8, 1 | `#0c0801` vàng sẫm | candle | 0.2 | laugh |
+| `confused` | 16, 9, 3 | `#100903` cam đậm | candle | 0.2 | confused |
+| `sleepy` | 0, 0, 0 | `#000000` đen (tắt) | solid | — | sleepy |
+| `greeting` | 12, 8, 5 | `#0c0805` vàng nhạt | breathing | 0.3 | greeting | wake_up |
+| `goodbye` | 12, 8, 5 | `#0c0805` vàng nhạt | breathing | 0.5 | goodbye |
+| `caring` | 12, 8, 6 | `#0c0806` cam hồng | breathing | 0.4 | nod |
+| `acknowledge` | 3, 12, 4 | `#030c04` xanh lá | breathing | 0.5 | acknowledge |
+| `stretching` | 12, 12, 2 | `#0c0c02` xanh lá nhạt | breathing | 0.6 | stretching |
+| `music_strong` | 8, 12, 8 | `#080c08` xanh lá nhạt | rainbow | 1.0 | music_rock |
+| `music_chill` | 16, 9, 0 | `#100900` cam | breathing | 0.3 | music_rock | music_groove | music_jazz | music_waltz |
+| `scan` | 5, 12, 3 | `#050c03` xanh nhạt | pulse | 0.3 | scanning |
+| `nod` | 12, 8, 1 | `#0c0801` cam đất | breathing | 0.5 | nod |
+| `headshake` | 16, 6, 1 | `#100601` amber | breathing | 0.5 | headshake |
 
 ## Ngân sách độ sáng (peak budget)
 
@@ -33,15 +33,14 @@ Emotion LED là **chỉ báo**, không phải chiếu sáng — dùng chung ngâ
 
 - hue thiên xanh lá (xanh lá / vàng / cyan / trắng) → peak channel **12**
 - ít hoặc không có xanh lá (đỏ / tím / cam / xanh dương) → peak channel **16**
-- `sleepy` là ngoại lệ ở peak 9 (cố ý mờ nhất dàn, vẫn trên sàn 8)
 
-Gate `light.max_brightness` (lamp: 120) chỉ scale peak **LÊN** tới trần chứ không làm dim, nên hạ sáng phải làm ngay trong preset. Chỉnh xong phải nhìn bằng mắt trên device thật — số nhìn trên màn hình không phản ánh đúng.
+Mỗi màu được hạ bằng cách **scale tỉ lệ RGB gốc** xuống tier tương ứng, nên hue của từng emotion giữ y như trước. Hạ sáng phải làm bằng scale, không phải chọn màu mới — hue là thứ agent muốn nói, độ sáng chỉ là nói to hay nhỏ.
 
-## Tốc độ blink
+Gate `light.max_brightness` (lamp: 120) chỉ scale peak **LÊN** tới trần chứ không làm dim, nên hạ sáng phải làm ngay trong preset. Chỉnh xong phải nhìn bằng mắt trên device thật.
 
-`blink()` map speed 1.0 → **~3 Hz** (`hal/drivers/rgb/effects.py`), đủ nhanh để gây nhức mắt khi strip nằm ngang tầm mắt. Giữ mọi cue blink ở **≤ 0.5** (~1.5 Hz trở xuống): blink đã đọc ra là "đang chớp" từ rất lâu trước khi đủ nhanh để khó chịu, và cái phân biệt nó với breathing/pulse là **hình dạng**, không phải tần số.
+`listening` dùng breathing chứ không phải pulse: nó sáng suốt lúc user nói, mà khoảng tối giữa các nhịp của pulse đọc thành cảnh báo khi kéo dài.
 
-`listening` dùng breathing chứ không phải pulse: nó sáng suốt lúc user nói, mà khoảng tối giữa các nhịp của pulse đọc thành cảnh báo khi kéo dài. Phân biệt với `idle` bằng hue (xanh dương vs xanh nhạt) + nhịp nhanh hơn (1.2 vs 0.8).
+Nếu sau này dùng `blink`: `blink()` map speed 1.0 → **~3 Hz** (`hal/drivers/rgb/effects.py`), đủ nhanh để nhức mắt. Giữ ≤ 0.5 (~1.5 Hz trở xuống).
 
 ## LED Restore Behavior
 

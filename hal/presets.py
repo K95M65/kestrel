@@ -141,52 +141,50 @@ EMO_HEADSHAKE = "headshake"
 # called glaring, and being an emotion rather than a status does not change how
 # the strip meets the eye. Keep both dicts on one budget.
 #
-# BLINK SPEED — blink() maps speed 1.0 to ~3 Hz (drivers/rgb/effects.py), which
-# is fast enough to be actively unpleasant on a strip sitting in the user's
-# eyeline; excited previously ran at 2.5 (~7.5 Hz). Keep every blink cue at
-# 0.5 or below (~1.5 Hz and slower) — a blink reads as "blinking" long before
-# it gets fast enough to hurt, and the shape, not the rate, is what
-# distinguishes it from breathing/pulse.
+# Each color was dimmed by scaling its ORIGINAL channel ratios down to the tier
+# above, so every emotion keeps the hue it has always had. Dim these by scaling,
+# never by picking a new color — the hue is what the agent means, the level is
+# only how loudly it says it.
+#
+# If you ever put a cue on FX_BLINK: blink() maps speed 1.0 to ~3 Hz
+# (drivers/rgb/effects.py), fast enough to be actively unpleasant on a strip in
+# the user's eyeline. Keep blink at 0.5 or below (~1.5 Hz and slower).
 EMOTION_PRESETS = {
-    EMO_CURIOUS: {"servo": SERVO_CURIOUS, "color": [12, 8, 0], "effect": FX_BREATHING, "speed": 1.0, "camera": "on"},
-    EMO_HAPPY: {"servo": SERVO_HAPPY_WIGGLE, "color": [12, 10, 0], "effect": FX_CANDLE, "speed": 1.0, "camera": "on"},
-    EMO_SAD: {"servo": SERVO_SAD, "color": [4, 4, 16], "effect": FX_BREATHING, "speed": 0.8, "camera": "on"},
-    EMO_THINKING: {"servo": SERVO_THINKING_DEEP, "color": [10, 4, 16], "effect": FX_PULSE, "speed": 1.5,
+    EMO_CURIOUS: {"servo": SERVO_CURIOUS, "color": [12, 8, 0], "effect": FX_CANDLE, "speed": 0.3, "camera": "on"},
+    EMO_HAPPY: {"servo": SERVO_HAPPY_WIGGLE, "color": [12, 9, 1], "effect": FX_CANDLE, "speed": 0.2, "camera": "on"},
+    EMO_SAD: {"servo": SERVO_SAD, "color": [16, 8, 8], "effect": FX_BREATHING, "speed": 0.4, "camera": "on"},
+    EMO_THINKING: {"servo": SERVO_THINKING_DEEP, "color": [6, 12, 4], "effect": FX_PULSE, "speed": 0.3,
                    "camera": "on"},
-    EMO_IDLE: {"servo": SERVO_IDLE, "color": [9, 12, 12], "effect": FX_BREATHING, "speed": 0.8},
-    EMO_EXCITED: {"servo": SERVO_EXCITED, "color": [16, 2, 16], "effect": FX_BLINK, "speed": 0.5, "camera": "on"},
-    EMO_SHY: {"servo": SERVO_SHY, "color": [12, 6, 7], "effect": FX_BLINK, "speed": 0.25, "camera": "on"},
+    EMO_IDLE: {"servo": SERVO_IDLE, "color": [12, 8, 1], "effect": FX_BREATHING, "speed": 0.2},
+    EMO_EXCITED: {"servo": SERVO_EXCITED, "color": [12, 8, 12], "effect": FX_CANDLE, "speed": 0.5, "camera": "on"},
+    EMO_SHY: {"servo": SERVO_SHY, "color": [16, 7, 2], "effect": FX_BREATHING, "speed": 0.3, "camera": "on"},
     # White flash held at the same peak as STATUS_LED_PRESETS["ready_flash"]:
     # full-value white is the harshest thing the strip can do, and being a brief
-    # flash does not soften it (tested by eye on a lamp). Keep these two in step
-    # — same visual cue.
-    EMO_SHOCK: {"servo": SERVO_SHOCK, "color": [12, 12, 12], "effect": FX_NOTIFICATION_FLASH, "speed": 2.0,
+    # flash does not soften it (tested by eye on a lamp). White is
+    # green-dominant, so it takes the 12 tier of the peak budget documented at
+    # STATUS_LED_PRESETS. Keep these two in step — same visual cue.
+    EMO_SHOCK: {"servo": SERVO_SHOCK, "color": [12, 12, 12], "effect": FX_NOTIFICATION_FLASH, "speed": 1.0,
                 "camera": "on"},
     # Breathing, not pulse: listening stays lit for as long as the user is
     # talking, and pulse's dark gap between beats reads as an alert on a cue
-    # that long. A smooth breath says "open, waiting for you" and is separated
-    # from idle by hue (blue vs pale aqua) plus a slightly quicker cadence.
-    EMO_LISTENING: {"servo": SERVO_LISTENING, "color": [2, 7, 16], "effect": FX_BREATHING, "speed": 1.2,
+    # that long. A smooth breath says "open, waiting for you".
+    EMO_LISTENING: {"servo": SERVO_LISTENING, "color": [4, 8, 16], "effect": FX_BREATHING, "speed": 1.2,
                     "camera": "on"},
-    EMO_LAUGH: {"servo": SERVO_LAUGH, "color": [12, 9, 2], "effect": FX_BLINK, "speed": 0.4, "camera": "on"},
-    EMO_CONFUSED: {"servo": SERVO_CONFUSED, "color": [16, 3, 1], "effect": FX_CANDLE, "speed": 0.6, "camera": "on"},
-    # Peak 9, below the 12/16 tiers: sleepy is the dimmest cue by design (the
-    # device is going to sleep) but stays above the peak-8 floor, under which
-    # the effect loop's per-frame truncation makes breathing visibly step.
-    EMO_SLEEPY: {"servo": SERVO_SLEEPY, "color": [3, 2, 9], "effect": FX_BREATHING, "speed": 0.5, "camera": "off",
-                 "mic": "off", "speaker": "off"},
-    EMO_GREETING: {"servo": SERVO_GREETING, "color": [12, 7, 3], "effect": FX_BLINK, "speed": 0.3, "camera": "on"},
-    EMO_GOODBYE: {"servo": SERVO_GOODBYE, "color": [12, 7, 3], "effect": FX_BREATHING, "speed": 0.5},
-    EMO_CARING: {"servo": SERVO_NOD, "color": [12, 6, 4], "effect": FX_BREATHING, "speed": 0.4, "camera": "on"},
-    EMO_ACKNOWLEDGE: {"servo": SERVO_ACKNOWLEDGE, "color": [1, 8, 4], "effect": FX_BLINK, "speed": 0.3,
+    EMO_LAUGH: {"servo": SERVO_LAUGH, "color": [12, 8, 1], "effect": FX_CANDLE, "speed": 0.2, "camera": "on"},
+    EMO_CONFUSED: {"servo": SERVO_CONFUSED, "color": [16, 9, 3], "effect": FX_CANDLE, "speed": 0.2, "camera": "on"},
+    EMO_SLEEPY: {"servo": SERVO_SLEEPY, "color": [0, 0, 0], "camera": "off", "mic": "off", "speaker": "off"},
+    EMO_GREETING: {"servo": SERVO_GREETING, "color": [12, 8, 5], "effect": FX_BREATHING, "speed": 0.3, "camera": "on"},
+    EMO_GOODBYE: {"servo": SERVO_GOODBYE, "color": [12, 8, 5], "effect": FX_BREATHING, "speed": 0.5},
+    EMO_CARING: {"servo": SERVO_NOD, "color": [12, 8, 6], "effect": FX_BREATHING, "speed": 0.4, "camera": "on"},
+    EMO_ACKNOWLEDGE: {"servo": SERVO_ACKNOWLEDGE, "color": [3, 12, 4], "effect": FX_BREATHING, "speed": 0.5,
                       "camera": "on"},
-    EMO_STRETCHING: {"servo": SERVO_STRETCHING, "color": [12, 12, 11], "effect": FX_BREATHING, "speed": 0.6,
+    EMO_STRETCHING: {"servo": SERVO_STRETCHING, "color": [12, 12, 2], "effect": FX_BREATHING, "speed": 0.6,
                      "camera": "on"},
-    EMO_MUSIC_STRONG: {"servo": SERVO_MUSIC_ROCK, "color": [8, 12, 8], "effect": FX_RAINBOW, "speed": 1.5},
-    EMO_MUSIC_CHILL: {"servo": SERVO_MUSIC_ROCK, "color": [16, 6, 0], "effect": FX_BREATHING, "speed": 0.5},
-    EMO_SCAN: {"servo": SERVO_SCANNING, "color": [1, 9, 12], "effect": FX_PULSE, "speed": 2.0, "camera": "on"},
-    EMO_NOD: {"servo": SERVO_NOD, "color": [1, 8, 4], "effect": FX_BLINK, "speed": 0.3, "camera": "on"},
-    EMO_HEADSHAKE: {"servo": SERVO_HEADSHAKE, "color": [16, 2, 2], "effect": FX_BLINK, "speed": 0.35, "camera": "on"},
+    EMO_MUSIC_STRONG: {"servo": SERVO_MUSIC_ROCK, "color": [8, 12, 8], "effect": FX_RAINBOW, "speed": 1.0},
+    EMO_MUSIC_CHILL: {"servo": SERVO_MUSIC_ROCK, "color": [16, 9, 0], "effect": FX_BREATHING, "speed": 0.3},
+    EMO_SCAN: {"servo": SERVO_SCANNING, "color": [5, 12, 3], "effect": FX_PULSE, "speed": 0.3, "camera": "on"},
+    EMO_NOD: {"servo": SERVO_NOD, "color": [12, 8, 1], "effect": FX_BREATHING, "speed": 0.5, "camera": "on"},
+    EMO_HEADSHAKE: {"servo": SERVO_HEADSHAKE, "color": [16, 6, 1], "effect": FX_BREATHING, "speed": 0.5, "camera": "on"},
 }
 
 # Lighting scene presets — simulated color temperature via RGB mixing.
