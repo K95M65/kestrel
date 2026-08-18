@@ -294,7 +294,6 @@ func Load() (*Config, error) {
 }
 
 func Default() Config {
-	wakeWord := false
 	return Config{
 		HttpPort: 5000,
 
@@ -321,7 +320,7 @@ func Default() Config {
 		// Seed the realtime block so a fresh config.json always carries an editable
 		// realtime config (HAL reads it from there). See DefaultRealtimeConfig.
 		Realtime: DefaultRealtimeConfig(),
-		WakeWord: &wakeWord,
+		// WakeWord stays nil — Serve seeds it from ROBOT.md voice.wakeword.
 
 		notify: make(chan bool, 1),
 	}
@@ -402,15 +401,6 @@ func ProvideConfig() *Config {
 	cfg.OTAMetadataURL = otaMetadataURLFromBootstrap()
 
 	return &cfg
-}
-
-// ResetToDefault resets all config fields to default values (keeps notify channel) and saves.
-// Used e.g. by the physical reset button (press-and-hold >= 10s).
-func (c *Config) ResetToDefault() error {
-	notify := c.notify
-	*c = Default()
-	c.notify = notify
-	return c.Save()
 }
 
 // WithLockSave is the canonical way to mutate config fields and persist them.

@@ -254,6 +254,24 @@ func (s *Server) Serve(closeFn func()) error {
 		}
 	}
 
+	// Wake-word gate: adopt the body's declared default (ROBOT.md voice.wakeword)
+	// while config.json still has no wakeword key. Only a config.json os-server
+	// just created reaches here with nil — one loaded from disk without the key
+	// is a device provisioned before the switch existed, and ProvideConfig has
+	// already pinned it to false so an OTA cannot make a device in use stop
+	// answering. Once written, Settings owns the value; this never runs again.
+	if s.config.WakeWord == nil {
+		if v, declared := device.WakeWordDefault(deviceType); declared {
+			if err := s.config.WithLockSave(func(c *config.Config) {
+				c.WakeWord = &v
+			}); err != nil {
+				slog.Warn("seed wakeword default from ROBOT.md failed", "component", "server", "wakeword", v, "error", err)
+			} else {
+				slog.Info("seeded wakeword default from ROBOT.md", "component", "server", "wakeword", v)
+			}
+		}
+	}
+
 	s.handleSetUpCompleteChange(s.config.SetUpCompleted)
 	s.handleDeviceIDChange(s.config.DeviceID)
 	s.handleMQTTConfigChange()

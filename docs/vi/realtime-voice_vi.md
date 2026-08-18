@@ -40,6 +40,18 @@ HAL tự phát câu trả lời đã nhận nên kết thúc consumer turn ngay 
 còn chờ silent-watchdog vô ích sau khi đã trả lời; `turn_complete` đến muộn sẽ
 được bỏ trước lượt sau.
 
+Bản thân cổng này là `wakeword` trong `config.json` (Settings → "Require a wake
+word before handling speech"). Thiết bị được set up lần đầu lấy giá trị khởi
+tạo từ `voice.wakeword` của body trong `robots/<type>/ROBOT.md` — lamp khai báo
+`true`; body không khai báo gì thì giữ always-listening. Thiết bị đã provision
+từ trước khi có key này vẫn giữ always-listening qua các bản upgrade: os-server
+chỉ lấy default từ ROBOT.md khi `config.json` hoàn toàn chưa có key `wakeword`.
+
+Các phrase được chấp nhận là `hello|hey|hi|alo|okay|ok|wake up` + `autonomous`,
+device type (`lamp`), hoặc tên agent trong IDENTITY.md — HAL resolve device type
+theo env `DEVICE_TYPE` trước rồi mới tới `config.json`, nên danh sách runtime
+khớp với danh sách Settings hiển thị.
+
 Mọi lượt wake-word đã được STT final xác nhận đều đi qua dispatch. Nó mở một
 cửa sổ focus follow-up 20 giây (reset sau mỗi lượt được phép), nên câu nói kế
 tiếp có thể bỏ wake phrase và được gửi với type `voice_followup`. Follow-up có
