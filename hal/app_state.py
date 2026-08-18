@@ -247,6 +247,10 @@ _current_emotion: Optional[str] = None
 # Fires release_servos after sleepy stays active continuously. Cancelled
 # the moment the emotion changes away from sleepy (see routes/emotion.py).
 _sleepy_release_timer: Optional[threading.Timer] = None
+# Fires idle again after a still emotion (a preset with servo=None) halted the
+# animation loop, so the body never stays frozen once the moment has passed.
+# Cancelled on every /emotion (see routes/emotion.py).
+_still_idle_timer: Optional[threading.Timer] = None
 # Set once sleepy has released torque. Servo routes honor this lock until a
 # wake emotion explicitly resumes the motion service.
 _sleep_servo_released = False

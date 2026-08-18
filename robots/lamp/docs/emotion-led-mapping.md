@@ -38,6 +38,19 @@ Hai recording `listening.csv` và `thinking_deep.csv` vẫn giữ trong `hal/rec
 
 Đường code chịu `servo: None` bình thường — `hal/routes/emotion.py` bỏ qua nhánh play, `POST /emotion` trả `"servo": null`. Khác biệt duy nhất: `thinking` dùng LED-restore mặc định 3.5s thay vì tính theo độ dài recording (`listening` vốn không schedule restore).
 
+### `servo: None` một mình KHÔNG làm đèn đứng yên
+
+Không phát recording mới không có nghĩa là đèn im. Idle loop chạy từ lúc boot và lặp vô hạn (`_continue_playback` trong `hal/drivers/motors/animation_service.py`), mà `idle.csv` không hề nhẹ — mỗi vòng 10s nó quét wrist_roll ~32°, wrist_pitch ~26°, base_pitch ~17°. Tệ hơn: emotion vừa chạy xong sẽ **interpolate ngược về idle** trong vài giây, nên cú vung to nhất rơi đúng lúc user đang nói.
+
+Nên với emotion `servo: None`, route gọi `svc.halt()`: drop recording đang chạy, ghim pose hiện tại, torque vẫn ON. Không cần un-halt tường minh — emotion/`/servo/play` kế tiếp gọi `_begin_motion()` và tự xoá cờ.
+
+Hai chốt chặn kèm theo:
+
+- **Music được miễn**: đang phát nhạc thì groove quan trọng hơn, cue listening không được dừng nhảy.
+- **Auto-resume idle sau 10s** (`STILL_IDLE_RESUME_SECONDS` trong `hal/routes/emotion.py`): nếu turn không sinh ra emotion nào (LLM lỗi, im lặng sau partial đầu), body tự trở lại idle thay vì đứng chết ở tư thế dở. Bất kỳ `POST /emotion` nào cũng huỷ timer này. Safety net 8s của `voice_service` chỉ dọn LED, không đụng servo — nên timer này là thứ duy nhất lo phần thân.
+
+Đo trên lamp-0c89: sau `listening`, 5 góc servo đứng nguyên ở T+2s / T+5s / T+8s, tới ~T+13s idle chạy lại; `happy` gửi giữa lúc halt thì phát bình thường.
+
 ## Ngân sách độ sáng (peak budget)
 
 Emotion LED là **chỉ báo**, không phải chiếu sáng — dùng chung ngân sách với `STATUS_LED_PRESETS`:

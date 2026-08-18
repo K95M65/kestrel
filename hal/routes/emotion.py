@@ -17,6 +17,7 @@ from hal.presets import (
     EMO_STRETCHING,
     LST_OFF,
     SERVO_CMD_PLAY,
+    SERVO_IDLE,
 )
 
 # Emotions allowed through the sleep gate. Not all of them wake: greeting and
@@ -38,6 +39,14 @@ _SLEEP_GATE_ALLOWED = {
 # Auto-release the servo shortly after *continuous* sleepy so the animation
 # can settle before torque is disabled.
 SLEEPY_AUTO_RELEASE_SECONDS = 1.0
+
+# How long a still emotion (preset with servo=None) keeps the body frozen
+# before idle breathing resumes. A following emotion clears the halt on its
+# own (_handle_play calls _begin_motion), so this only covers the turn that
+# never produces one: an LLM error, or silence after the first partial.
+# Roughly matches the voice-service listening safety net (8s) with headroom
+# for the reply to arrive first.
+STILL_IDLE_RESUME_SECONDS = 10.0
 
 router = APIRouter(tags=["Emotion"])
 
@@ -104,6 +113,13 @@ def express_emotion(req: EmotionRequest):
     state._current_emotion = req.emotion
     if was_sleeping and not state._sleeping:
         state._wake_sleepy_peripherals()
+
+    # Any emotion cancels a pending still-emotion idle resume: either it plays
+    # a recording (which clears the halt itself) or it is another still
+    # emotion that re-arms the timer below.
+    if state._still_idle_timer is not None:
+        state._still_idle_timer.cancel()
+        state._still_idle_timer = None
 
     # Sleepy auto-release: fires only if sleepy stays continuous for the
     # full window. Any other emotion (including a wake) cancels the timer.
@@ -189,6 +205,47 @@ def express_emotion(req: EmotionRequest):
     elif servo_blocked:
         reason = "tracking active" if tracking_active else "hold mode"
         state.logger.info("POST /emotion: servo suppressed (%s) -- %s", req.emotion, reason)
+    elif svc and preset.get("servo") is None:
+        # Still emotion (listening, thinking): the point is a body that does
+        # not move, and leaving the servo alone does NOT achieve that. The
+        # idle recording loops forever once it settles (animation_service
+        # _continue_playback), and idle is not a subtle breath — it swings
+        # wrist_roll ~32 deg and base_pitch ~17 deg per cycle. Worse, an
+        # emotion that just finished interpolates BACK to idle over several
+        # seconds, so the biggest movement of all lands exactly while the
+        # user is talking. halt() drops whatever is playing and pins the
+        # current pose with torque on; the next play clears it via
+        # _begin_motion, so nothing has to un-halt explicitly.
+        # Music is exempt: the groove is the point of that moment, and a
+        # listening cue must not stop the dance.
+        if getattr(svc, "_music_playing", False):
+            state.logger.info("POST /emotion: still emotion (%s) -- music playing, body keeps moving", req.emotion)
+        else:
+            try:
+                svc.halt()
+                state.logger.info("POST /emotion: still emotion (%s) -- body halted, idle in %.1fs",
+                                  req.emotion, STILL_IDLE_RESUME_SECONDS)
+
+                def _resume_idle_after_still(held=req.emotion):
+                    # Only resume if the device is still in the same still
+                    # emotion: any newer emotion already owns the body.
+                    if state._current_emotion != held:
+                        return
+                    try:
+                        svc.ensure_running()
+                        svc.dispatch(SERVO_CMD_PLAY, SERVO_IDLE)
+                        state.logger.info("Still emotion %s held >= %.1fs -- idle resumed",
+                                          held, STILL_IDLE_RESUME_SECONDS)
+                    except Exception as e:
+                        state.logger.warning("Still-emotion idle resume failed: %s", e)
+
+                state._still_idle_timer = threading.Timer(
+                    STILL_IDLE_RESUME_SECONDS, _resume_idle_after_still
+                )
+                state._still_idle_timer.daemon = True
+                state._still_idle_timer.start()
+            except Exception as e:
+                state.logger.warning("Still-emotion halt failed: %s", e)
 
     # LED behavior:
     #   - tracking_active: LED still updates so the user sees emotion
