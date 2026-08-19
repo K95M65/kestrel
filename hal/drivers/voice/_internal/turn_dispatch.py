@@ -8,6 +8,7 @@ the utterance for speech-emotion recognition.
 import logging
 
 from hal import config as hal_config
+from hal.drivers.voice._internal import mac_talk
 from hal.drivers.voice.speech_emotion.constants import UNKNOWN_USER_LABEL
 
 logger = logging.getLogger("hal.voice")
@@ -104,6 +105,19 @@ def dispatch_turn(
             )
         user = se_user if se_user else UNKNOWN_USER_LABEL
         logger.info("Final message → OS server (%s): %r", event_type, final_msg)
+
+        if not rt.handled and not rt.delegated:
+            spoken = mac_talk.try_talk(final_text or combined)
+            if spoken:
+                if sensing_sender._tts is not None:
+                    sensing_sender._tts.speak(spoken, interruptible=False)
+                sensing_sender.send(
+                    f"[skills: input-branching]\n[HANDLED] {final_msg}\n[REPLY] {spoken}",
+                    event_type="voice_agent_handled",
+                    skip_echo=True,
+                )
+                decorator.submit_speech_emotion_from_session(ser_audio_buffer, user=user)
+                return
 
         if rt.handled:
             # Realtime already spoke — send as "voice_handled" to skip dead-air filler.

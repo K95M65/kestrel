@@ -47,6 +47,9 @@ var cotTriggerRe = regexp.MustCompile(
 		`|asked|insists?|insisted|seems?|seemed|says?|said|repeats?|repeated` +
 		`|claims?|claimed|mentions?|mentioned|requests?|requested|greets?|greeted` +
 		`|needs?|needed)\b` +
+		`|\bi(?:'| a)?ll (?:check|look|remember|search|see if|greet)\b` +
+		`|\bjust introduced (?:him|her|them)self\b` +
+		`|\bthen greet\b` +
 		`|phrasing draft|delivery guidance|spoken delivery` +
 		`|\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b)`,
 )

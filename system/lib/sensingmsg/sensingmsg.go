@@ -44,8 +44,10 @@ func Build(eventType, message, currentUser, guardTag string) string {
 	switch eventType {
 	case "voice_command", "voice_followup":
 		// Wake word confirmed or an authorized follow-up. `[user]` lifts to top
-		// priority in batched turns.
-		return domain.AppendEnrollNudge("[user] " + message)
+		// priority in batched turns. `[spoken]` is the live-speaker contract:
+		// answer out loud now, no tool round-trips unless they asked for
+		// hardware (see AGENTS.md LIVE VOICE).
+		return domain.AppendEnrollNudge("[user] [spoken] " + message)
 	case "voice":
 		// Ambient speech — no wake word. `[user]` for batched-turn priority,
 		// `[ambient]` for voice/SKILL.md's overheard-audio mute guard.

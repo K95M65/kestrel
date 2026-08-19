@@ -7,6 +7,7 @@ recognition service, kept next to the rest of that code.
 
 import asyncio
 import json
+import os
 import threading
 import time
 from typing import Optional
@@ -71,10 +72,22 @@ def start_voice(req: VoiceStartRequest):
     instructions = req.tts_instructions or TTS_INSTRUCTIONS or None
     # Resolve per-role credentials with fallback to the LLM defaults so
     # households with one shared credential keep working.
-    tts_api_key = req.tts_api_key or req.llm_api_key
-    tts_base_url = req.tts_base_url or req.llm_base_url
-    stt_api_key = req.stt_api_key or req.llm_api_key
-    stt_base_url = req.stt_base_url or req.llm_base_url
+    os_cfg = {}
+    try:
+        from hal.config import OS_CONFIG_PATH
+        with open(OS_CONFIG_PATH) as f:
+            os_cfg = json.load(f)
+    except Exception:
+        os_cfg = {}
+    tts_api_key = req.tts_api_key or os_cfg.get("tts_api_key") or req.llm_api_key
+    tts_base_url = (req.tts_base_url or os_cfg.get("tts_base_url") or "").strip()
+    stt_api_key = req.stt_api_key or os_cfg.get("stt_api_key") or req.llm_api_key
+    stt_base_url = (req.stt_base_url or os_cfg.get("stt_base_url") or "").strip()
+    if not req.deepgram_api_key and not stt_base_url:
+        raise HTTPException(
+            503,
+            "No STT provider available (set stt_base_url or deepgram_api_key)",
+        )
 
     need_tts = TTSService and (
         not (state.tts_service and state.tts_service.available)
@@ -135,19 +148,20 @@ def start_voice(req: VoiceStartRequest):
         stt_keywords = state._stt_boost_terms()
         if req.deepgram_api_key and DeepgramSTT:
             stt_provider = DeepgramSTT(api_key=req.deepgram_api_key, keywords=stt_keywords)
-        elif AutonomousSTT:
+        elif AutonomousSTT and stt_base_url:
             stt_provider = AutonomousSTT(
                 api_key=stt_api_key, base_url=stt_base_url, keywords=stt_keywords
             )
         if not stt_provider:
             raise HTTPException(503, "No STT provider available")
-        wake_words = state._build_wake_words(state._read_agent_name())
+        wake_words, exclusive_wake = state._resolve_wake_words(state._read_agent_name())
         state.voice_service = VoiceService(
             stt_provider=stt_provider,
             input_device=state.audio_input_device,
             tts_service=state.tts_service,
             music_service=state.music_service,
             wake_words=wake_words,
+            merge_wake_aliases=not exclusive_wake,
             alsa_device=AUDIO_INPUT_ALSA,
         )
         if state._mic_muted:
@@ -285,6 +299,13 @@ def speak_text(req: SpeakRequest):
         req.cached,
         req.prerender,
     )
+    # Dead-air fillers are always interruptible. They are the "ok / one
+    # moment / still digging" chatter in the middle of a turn.
+    if req.interruptible and os.environ.get(
+        "HAL_DROP_DEAD_AIR_FILLERS", "true"
+    ).lower() in {"1", "true", "yes"}:
+        state.logger.info("Dropping dead-air filler: %r", (req.text or "")[:80])
+        return {"status": "suppressed"}
     if req.cached or req.prerender:
         started = state.tts_service.speak_cached(
             req.text,

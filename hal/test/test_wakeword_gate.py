@@ -102,3 +102,23 @@ def test_wake_word_still_rejects_mid_sentence_mentions():
     assert not decorator.starts_with_wake_word("I said hey lamp earlier and nothing happened")
     assert not decorator.starts_with_wake_word("this hi lamp thing is broken")
     assert not decorator.starts_with_wake_word("Nice weather. I bought a lamp yesterday.")
+
+
+def test_wake_word_strips_leading_ambient():
+    decorator = _decorator(["hey reachy"])
+
+    assert decorator.classify_wake_word(
+        "And here he is getting a new file. Hey, reachy. My name is Chris."
+    ) == ("Hey, reachy. My name is Chris.", "voice_command")
+
+
+def test_hyphenated_name_matches_flux_mashups():
+    """Flux often drops the hyphen or inserts a vowel: reachy-mini → reyeachymini."""
+    decorator = _decorator(["hey reachy-mini", "hello reachy-mini", "hey reachy"])
+
+    assert decorator.starts_with_wake_word("Hey, reyeachymini. What time is it?")
+    assert decorator.starts_with_wake_word("hey reachymini what time is it")
+    assert decorator.starts_with_wake_word("hey reachy mini, can you hear me")
+    assert decorator.starts_with_wake_word("hey reachy, what time is it")
+    assert not decorator.starts_with_wake_word("I told reachy-mini earlier")
+    assert not decorator.starts_with_wake_word("hey rachel, what time is it")

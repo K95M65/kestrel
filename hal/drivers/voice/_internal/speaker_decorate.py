@@ -15,6 +15,7 @@ import os
 import re
 import threading
 import time
+from difflib import SequenceMatcher
 from typing import Optional
 
 from hal.drivers.voice._internal.config import (
@@ -30,6 +31,46 @@ logger = logging.getLogger("hal.voice")
 def _normalize(text: str) -> str:
     """Lowercase, strip punctuation, collapse whitespace."""
     return " ".join(re.sub(r"[^\w\s]", "", text.casefold()).split())
+
+
+# Flux / Nova often mash a hyphenated name ("reachy-mini" → "reyeachymini")
+# or drop the hyphen. Exact string match then silently drops the turn.
+_NAME_FUZZ = 0.78
+
+
+def _name_close(got: str, want: str) -> bool:
+    if not got or not want:
+        return False
+    if got == want:
+        return True
+    shorter, longer = (got, want) if len(got) <= len(want) else (want, got)
+    if len(shorter) >= 5 and longer.startswith(shorter):
+        return True
+    return SequenceMatcher(None, got, want).ratio() >= _NAME_FUZZ
+
+
+def _phrase_hits_sentence(phrase: str, sentence: str) -> bool:
+    """True if ``phrase`` opens or closes ``sentence``, allowing mashed names."""
+    if (
+        sentence == phrase
+        or sentence.startswith(phrase + " ")
+        or sentence.endswith(" " + phrase)
+    ):
+        return True
+    pw = phrase.split()
+    sw = sentence.split()
+    if len(pw) < 2 or len(sw) < 2:
+        return False
+    prefix, want_name = pw[0], "".join(pw[1:])
+    if sw[0] == prefix:
+        for n in range(1, min(4, len(sw))):
+            if _name_close("".join(sw[1 : 1 + n]), want_name):
+                return True
+    for n in range(1, min(4, len(sw))):
+        tail = sw[-(n + 1) :]
+        if tail[0] == prefix and _name_close("".join(tail[1:]), want_name):
+            return True
+    return False
 
 
 def _sentences(transcript: str) -> list[str]:
@@ -201,21 +242,30 @@ class SpeakerDecorator:
             return False
         for sentence in _sentences(transcript):
             for phrase in phrases:
-                if (
-                    sentence == phrase
-                    or sentence.startswith(phrase + " ")
-                    or sentence.endswith(" " + phrase)
-                ):
+                if _phrase_hits_sentence(phrase, sentence):
                     return True
         return False
 
+    def text_from_wake_word(self, transcript: str) -> str:
+        """Drop ambient speech before the wake sentence; keep the rest."""
+        phrases = self._normalized_wake_phrases()
+        if not phrases or not transcript.strip():
+            return transcript
+        sentences = [p for p in re.split(r"(?<=[.!?])\s+", transcript.strip()) if p.strip()]
+        if not sentences:
+            return transcript
+        for i, sentence in enumerate(sentences):
+            norm = _normalize(sentence)
+            if any(_phrase_hits_sentence(phrase, norm) for phrase in phrases):
+                return " ".join(sentences[i:]).strip()
+        return transcript
+
     def classify_wake_word(self, combined: str) -> tuple[str, str]:
-        """Classify a leading wake phrase without modifying the transcript.
+        """Classify a wake phrase and trim leading ambient speech.
 
         Returns (final_text, event_type):
-          * final_text — original text sent to the OS server, including the
-            wake phrase.
-          * event_type — "voice_command" if a wake word matched at the start,
+          * final_text — wake sentence and everything after it.
+          * event_type — "voice_command" if a wake word matched,
                          else "voice".
 
         Empty combined → ("", "voice"); caller typically skips the POST then.
@@ -224,7 +274,7 @@ class SpeakerDecorator:
             return "", "voice"
 
         if self.starts_with_wake_word(combined):
-            return combined, "voice_command"
+            return self.text_from_wake_word(combined), "voice_command"
         return combined, "voice"
 
     # ------------------------------------------------------------------
@@ -337,10 +387,8 @@ class SpeakerDecorator:
         vp_hash = result.get("voiceprint_hash")
         if err:
             logger.warning("Speaker ID skipped — embedding server issue: %s", err)
-            if audio_path:
-                return self._format_unknown_speaker_message(
-                    transcript, audio_path, duration_s, vp_hash,
-                ), None, None
+            # A 404 / STOI reject must not rewrite the user's utterance into an
+            # enrollment essay — that hijacks the next Grok turn.
             return transcript, None, None
 
         name = result.get("name", "unknown")

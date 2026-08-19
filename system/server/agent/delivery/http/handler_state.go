@@ -262,8 +262,20 @@ func hasPartialHWLinkMarker(text string) bool {
 // followed by whitespace, or -1 if none. The trailing-whitespace requirement
 // confirms the next token has begun (so we're not splitting an abbreviation
 // or version number mid-formation). Decimal patterns "5. 5" are also skipped.
+//
+// A complete sentence that already ends the buffer (".?!" at EOF, at least
+// 16 runes) also counts: voice turns often emit one sentence then go silent
+// for a tool loop, and waiting for a following token never comes.
 func findSentenceFlushBoundary(s string) int {
 	n := len(s)
+	if n >= 16 {
+		last := s[n-1]
+		if last == '.' || last == '?' || last == '!' {
+			if n < 2 || !isAsciiDigit(s[n-2]) {
+				return n - 1
+			}
+		}
+	}
 	for i := n - 2; i >= 0; i-- {
 		c := s[i]
 		if c != '.' && c != '?' && c != '!' {

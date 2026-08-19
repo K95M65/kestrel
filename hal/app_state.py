@@ -7,6 +7,7 @@ from server; server imports routes).
 """
 
 import csv
+import json
 import logging
 import os
 import threading
@@ -1021,6 +1022,9 @@ def _on_tts_speak_start():
     """Called by TTSService when TTS playback begins."""
     global _tts_speaking, _effect_thread, _effect_name, _effect_base_color
     global _restore_timer
+    vs = voice_service
+    if vs is not None and getattr(vs, "_wakeword_focus", None) is not None:
+        vs._wakeword_focus.hold()
     if not rgb_service:
         return
     if _sleeping:
@@ -1057,6 +1061,9 @@ def _on_tts_speak_start():
 def _on_tts_speak_end():
     """Called by TTSService when TTS playback finishes or is interrupted."""
     global _tts_speaking
+    vs = voice_service
+    if vs is not None and getattr(vs, "_wakeword_focus", None) is not None:
+        vs._wakeword_focus.release()
     if not _tts_speaking:
         return
 
@@ -1309,11 +1316,55 @@ def _read_agent_name() -> str:
 
 def _build_wake_words(name: str) -> list[str]:
     """Generate wake word variants from agent name."""
-    n = name.lower()
-    return [
-        f"{prefix} {n}"
-        for prefix in ("hello", "hey", "hi", "alo", "okay", "ok", "wake up")
-    ]
+    n = name.lower().strip()
+    names = [n]
+    if "-" in n:
+        names.append(n.split("-", 1)[0])
+        names.append(n.replace("-", " "))
+        names.append(n.replace("-", ""))
+    prefixes = ("hello", "hey", "hi", "alo", "okay", "ok", "wake up")
+    return [f"{prefix} {nm}" for prefix in prefixes for nm in names]
+
+
+def _parse_wake_word_list(raw) -> list[str]:
+    if isinstance(raw, str):
+        items = raw.split(",")
+    elif isinstance(raw, list):
+        items = raw
+    else:
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        word = str(item).strip().lower()
+        if word and word not in seen:
+            seen.add(word)
+            out.append(word)
+    return out
+
+
+def _exclusive_wake_words() -> list[str]:
+    """Optional exclusive list: HAL_WAKE_WORDS or config.json wake_words.
+
+    When set, the device listens only for these phrases — no autonomous /
+    device-type aliases are merged in.
+    """
+    env = os.environ.get("HAL_WAKE_WORDS", "").strip()
+    if env:
+        return _parse_wake_word_list(env)
+    try:
+        with open(config.OS_CONFIG_PATH) as f:
+            return _parse_wake_word_list(json.load(f).get("wake_words"))
+    except Exception:
+        return []
+
+
+def _resolve_wake_words(agent_name: str) -> tuple[list[str], bool]:
+    """Return (phrases, exclusive). exclusive=True means do not merge aliases."""
+    exclusive = _exclusive_wake_words()
+    if exclusive:
+        return exclusive, True
+    return _build_wake_words(agent_name), False
 
 
 def _stt_boost_terms() -> list[str]:
@@ -1324,7 +1375,7 @@ def _stt_boost_terms() -> list[str]:
     as "hello risa", and each miss silently drops the whole turn. Boosting only
     the agent name is not enough: the device type and the permanent "autonomous"
     alias arm the same gate (see _build_wake_words and the DEFAULT_WAKE_WORDS
-    the voice service merges in).
+    the voice service merges in) unless an exclusive wake list is configured.
 
     Returned in Deepgram's `keyword:intensifier` form. The Flux and nova-3 paths
     strip the weight — their `keyterm` parameter takes plain terms. Duplicates
@@ -1333,9 +1384,15 @@ def _stt_boost_terms() -> list[str]:
     """
     from hal.config import resolve_device_type
 
+    exclusive = _exclusive_wake_words()
+    if exclusive:
+        names = [phrase.split()[-1] for phrase in exclusive if phrase.split()]
+    else:
+        names = [_read_agent_name(), resolve_device_type(), "autonomous"]
+
     seen: set[str] = set()
     terms: list[str] = []
-    for name in (_read_agent_name(), resolve_device_type(), "autonomous"):
+    for name in names:
         name = (name or "").strip().lower()
         if not name or name in seen:
             continue

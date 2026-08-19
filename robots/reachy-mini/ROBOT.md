@@ -20,6 +20,9 @@ capabilities:
   lifelike:     { required: false }
   media:        { routes: [music], required: true }
   companion:    { routes: [buddy], required: false }
+voice:
+  tts_provider: openai
+  tts_voice: af_heart
 soul_ref:   SOUL.md
 safety_ref: SAFETY.md
 memory:     { backend: local }

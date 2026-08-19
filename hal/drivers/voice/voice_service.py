@@ -51,6 +51,7 @@ from hal.drivers.voice._internal.speaker_decorate import (
 from hal.drivers.voice._internal.turn_dispatch import dispatch_turn
 from hal.drivers.voice._internal.vad_filters import SileroVADFilter, WebRTCVADFilter
 from hal.drivers.voice._internal.wakeword_focus import WakeWordFocus
+from hal.drivers.voice._internal import activity_sink
 from hal.drivers.voice.backchannel import Backchannel
 from hal.drivers.voice.stt import STTProvider
 
@@ -128,6 +129,7 @@ class VoiceService:
         alsa_device: Optional[str] = None,
         enable_people_perception: bool = True,
         enable_expression: bool = False,
+        merge_wake_aliases: bool = True,
     ):
         self._stt = stt_provider
         self._input_device = input_device
@@ -197,10 +199,21 @@ class VoiceService:
         # "Autonomous" and device type are permanent spoken aliases ("hey
         # autonomous", "hey lamp"); the runtime's current agent name is an
         # additional alias ("hey Luna"). Runtime rename updates must never
-        # replace the permanent aliases.
-        self._device_wake_words = list(voice_cfg.DEFAULT_WAKE_WORDS)
+        # replace the permanent aliases — unless an exclusive wake list is
+        # configured (HAL_WAKE_WORDS / config.json wake_words).
+        self._merge_wake_aliases = merge_wake_aliases
+        self._exclusive_wake_words: list = []
+        if merge_wake_aliases:
+            self._device_wake_words = list(voice_cfg.DEFAULT_WAKE_WORDS)
+            combined_wake_words = merge_wake_words(
+                self._device_wake_words, wake_words or []
+            )
+        else:
+            self._device_wake_words = []
+            self._exclusive_wake_words = list(wake_words or [])
+            combined_wake_words = list(self._exclusive_wake_words)
         self._decorator = SpeakerDecorator(
-            wake_words=merge_wake_words(self._device_wake_words, wake_words or []),
+            wake_words=combined_wake_words,
             nudge_cooldown_s=voice_cfg.ENROLL_NUDGE_COOLDOWN_S,
             enable_people_perception=enable_people_perception,
         )
@@ -256,9 +269,14 @@ class VoiceService:
 
     def set_wake_words(self, words: list) -> None:
         """Update wake word list at runtime (called when agent is renamed)."""
-        self._decorator.set_wake_words(
-            merge_wake_words(self._device_wake_words, words)
-        )
+        if self._merge_wake_aliases:
+            self._decorator.set_wake_words(
+                merge_wake_words(self._device_wake_words, words)
+            )
+        else:
+            # Keep the configured exclusive list. os-server rename events
+            # send the full prefix family and must not reopen the gate.
+            self._decorator.set_wake_words(list(self._exclusive_wake_words))
 
     @staticmethod
     def _set_emotion_local(emotion: str) -> None:
@@ -961,6 +979,7 @@ class VoiceService:
             pre_frames_from_vad,
             device_rate,
         )
+        activity_sink.emit("hearing", detail="Capturing speech")
         # A partial match is provisional: STT can correct a name in its final
         # result ("Moon" → "Mom"). It improves observability while the user is
         # speaking, but a turn is not dispatched or committed to realtime until
@@ -1010,7 +1029,14 @@ class VoiceService:
             ):
                 return
             listening_emotion_sent[0] = True
-            self._set_emotion_local(presets.EMO_LISTENING)
+            # Reachy's "listening" preset freezes the head (servo=None →
+            # halt). On wake we want the opposite: an animated look-over so
+            # the user sees it heard them. Follow-up turns skip the freeze.
+            if wake_word_detected.is_set() and not wakeword_followup_active:
+                logger.info("Wake-word ack: playing curious head move")
+                self._set_emotion_local(presets.EMO_CURIOUS)
+            elif not hal_config.WAKEWORD_ENABLED:
+                self._set_emotion_local(presets.EMO_LISTENING)
 
         def open_wake_word_gate(candidate: str, source: str) -> None:
             if (
@@ -1585,12 +1611,27 @@ class VoiceService:
                     identity=turn_identity,
                 )
                 if combined and hal_config.WAKEWORD_ENABLED and wakeword_authorized:
+                    activity_sink.emit(
+                        "thinking",
+                        heard=combined,
+                        detail="Grok is working — this can take a while",
+                    )
                     if self._wakeword_focus.refresh():
                         logger.info(
                             "Wake-word follow-up focus refreshed for %.0fs",
                             hal_config.WAKEWORD_FOLLOWUP_TIMEOUT_S,
                         )
+                    # Freeze expiry while Grok thinks. TTS start/end hold the
+                    # same latch so a long reply cannot drop the next sentence.
+                    self._wakeword_focus.hold()
             else:
+                if combined:
+                    activity_sink.emit(
+                        "dropped",
+                        heard=combined,
+                        note="no Hey Reachy",
+                        detail="Heard speech, ignored (no Hey Reachy)",
+                    )
                 self._decorator.submit_speech_emotion_from_session(ser_audio_buffer)
                 # A rejected utterance deliberately has no downstream agent to
                 # replace the listening cue with thinking or TTS. Restore the

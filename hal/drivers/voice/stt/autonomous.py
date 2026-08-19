@@ -125,6 +125,7 @@ class AutonomousSTTSession(STTSession):
         self._ws_url = ws_url
         self._api_key = api_key
         self._sample_rate = sample_rate
+        self._flux = "model=flux" in ws_url or "/flux" in ws_url
         self._ws = None
         self._recv_thread: Optional[threading.Thread] = None
         self._closed = threading.Event()
@@ -184,12 +185,21 @@ class AutonomousSTTSession(STTSession):
                             continue
                         self._on_transcript_cb(transcript, msg.get("is_final", False))
 
-                    elif msg_type == "TurnInfo":
+                    elif msg_type == "TurnInfo" or msg.get("event") in (
+                        "Update",
+                        "StartOfTurn",
+                        "EagerEndOfTurn",
+                        "TurnResumed",
+                        "EndOfTurn",
+                    ):
                         transcript = msg.get("transcript", "").strip()
                         ev = msg.get("event", "")
                         if not transcript:
                             logger.debug("Autonomous STT: TurnInfo — empty transcript (event=%r)", ev)
                             continue
+                        # Only EndOfTurn is a confirmed utterance. EagerEndOfTurn
+                        # is a hint and often fires mid-sentence; treating it as
+                        # final splits one thought into two Grok turns.
                         self._on_transcript_cb(transcript, ev == "EndOfTurn")
             except Exception as e:
                 if not self._closed.is_set():
@@ -234,23 +244,36 @@ class AutonomousSTTSession(STTSession):
         pre-connect goes stale, the next turn cold-reconnects (~1s) and the short
         utterance lands in the pre-roll then closes before a transcript finalizes →
         empty STT. KeepAlive is a control frame, not counted as audio."""
-        if self._ws and not self._closed.is_set():
+        if not self._ws or self._closed.is_set():
+            return
+        if self._flux:
+            # Flux has no KeepAlive control message; a JSON frame 1011s the
+            # socket. Silence bytes keep the TCP/WS alive without looking
+            # like speech.
             try:
-                self._ws.send(json.dumps({"type": "KeepAlive"}))
+                self._ws.send(b"\x00" * 320)
             except Exception as e:
-                logger.debug("Autonomous STT: keepalive send failed: %s", e)
+                logger.debug("Autonomous STT: flux keepalive send failed: %s", e)
+            return
+        try:
+            self._ws.send(json.dumps({"type": "KeepAlive"}))
+        except Exception as e:
+            logger.debug("Autonomous STT: keepalive send failed: %s", e)
 
     def close(self):
         if self._closed.is_set():
             return
-        # Send CloseStream so server flushes final transcript before closing.
-        # ws.close() terminates immediately (close_timeout=5s handshake) and
-        # recv_loop exits before the transcript arrives (~10s for flux batch).
-        # CloseStream lets the server close the WS naturally after flushing.
+        # Nova/Deepgram v1: CloseStream flushes the final transcript before
+        # the server hangs up. Flux has no CloseStream — sending one 1011s
+        # the socket and we lose the last turn. Just close the WS.
         if self._ws:
             try:
-                self._ws.send(json.dumps({"type": "CloseStream"}))
-                logger.info("Autonomous STT: sent CloseStream — waiting for final transcript")
+                if self._flux:
+                    self._ws.close()
+                    logger.info("Autonomous STT: flux close — no CloseStream")
+                else:
+                    self._ws.send(json.dumps({"type": "CloseStream"}))
+                    logger.info("Autonomous STT: sent CloseStream — waiting for final transcript")
             except Exception:
                 try:
                     self._ws.close()

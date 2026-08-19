@@ -5,6 +5,17 @@ import (
 	"testing"
 )
 
+func TestFindSentenceFlushBoundaryAllowsTerminalPunctuation(t *testing.T) {
+	s := "Hey Chris, nice to meet you."
+	got := findSentenceFlushBoundary(s)
+	if got != len(s)-1 {
+		t.Fatalf("eof sentence boundary = %d, want %d (%q)", got, len(s)-1, s)
+	}
+	if findSentenceFlushBoundary("Hi.") != -1 {
+		t.Fatal("short fragment must not flush")
+	}
+}
+
 func TestExtractHWCallsCanonical(t *testing.T) {
 	calls, rest := extractHWCalls(`[HW:/led/off:{}] LEDs off.`)
 	if len(calls) != 1 || calls[0].path != "/led/off" || calls[0].body != "{}" {
