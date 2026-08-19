@@ -4,6 +4,8 @@
 
 When the OS server is not yet configured (`SetUpCompleted = false`), the device runs in AP mode, serving a Web UI for user setup.
 
+Provider login is still **API key + URL + model**. Planned OpenCode-parity OAuth (Grok, Cloudflare Workers AI / Kimi, …) and the Buddy Mac download link are tracked in [`setup-integrations.md`](setup-integrations.md).
+
 ## Flow
 
 ```

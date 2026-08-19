@@ -357,6 +357,67 @@ export async function getTTSProviders(): Promise<string[]> {
   return apiRequest<string[]>(`${API_BASE}/api/device/tts-providers`);
 }
 
+export type LLMAuthKind = "api_key" | "device_code" | "byo";
+
+export interface LLMProviderField {
+  key: string;
+  label: string;
+  placeholder?: string;
+  secret?: boolean;
+}
+
+export interface LLMProvider {
+  key: string;
+  name: string;
+  auth: LLMAuthKind;
+  base_url?: string;
+  default_model?: string;
+  docs_url?: string;
+  hint?: string;
+  fields?: LLMProviderField[];
+  openclaw_api?: string;
+}
+
+export async function getLLMProviders(): Promise<LLMProvider[]> {
+  return apiRequest<LLMProvider[]>(`${API_BASE}/api/device/llm-providers`);
+}
+
+export interface LLMOAuthStart {
+  provider: string;
+  user_code: string;
+  device_code: string;
+  verification_uri: string;
+  verification_uri_complete?: string;
+  expires_in: number;
+  interval: number;
+  base_url: string;
+  default_model: string;
+}
+
+export interface LLMOAuthPoll {
+  pending: boolean;
+  provider?: string;
+  access_token?: string;
+  base_url?: string;
+  default_model?: string;
+}
+
+export async function startLLMOAuth(provider: string): Promise<LLMOAuthStart> {
+  return apiRequest<LLMOAuthStart>(`${API_BASE}/api/device/llm-oauth/start`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ provider }),
+  });
+}
+
+export async function pollLLMOAuth(provider: string, deviceCode: string): Promise<LLMOAuthPoll> {
+  return apiRequest<LLMOAuthPoll>(`${API_BASE}/api/device/llm-oauth/poll`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ provider, device_code: deviceCode }),
+  });
+}
+
 export interface RealtimeOptions {
   providers: string[];
   voices: Record<string, string[]>;
