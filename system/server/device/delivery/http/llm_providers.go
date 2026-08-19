@@ -57,6 +57,7 @@ func (h *DeviceHandler) StartLLMOAuth(c *gin.Context) {
 		c.JSON(http.StatusNotImplemented, serializers.ResponseError("device login for this provider is not implemented yet"))
 		return
 	}
+	pruneExpiredLLMLogins()
 	dc, err := grokClient.RequestDeviceCode()
 	if err != nil {
 		slog.Warn("llm oauth start failed", "component", "device", "provider", p.Key, "error", err)
@@ -121,6 +122,22 @@ func (h *DeviceHandler) PollLLMOAuth(c *gin.Context) {
 		"base_url":      p.BaseURL,
 		"default_model": p.DefaultModel,
 	}))
+}
+
+func pruneExpiredLLMLogins() {
+	now := time.Now()
+	llmLogins.Range(func(k, v any) bool {
+		p, ok := v.(pendingLLMLogin)
+		if ok && now.After(p.Expires) {
+			llmLogins.Delete(k)
+		}
+		return true
+	})
+}
+
+// GetCompanionApps returns downloadable pairing apps for onboarding.
+func (h *DeviceHandler) GetCompanionApps(c *gin.Context) {
+	c.JSON(http.StatusOK, serializers.ResponseSuccess(domain.CompanionApps()))
 }
 
 func writeGrokTokens(path string, tok grokauth.Tokens) error {

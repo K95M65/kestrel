@@ -12,7 +12,8 @@ import { TTSSection } from "@/components/setup/TTSSection";
 // faceOwners list + reload fn; these components own their own enroll state.
 import { VoiceSection } from "@/pages/settings/VoiceSection";
 import { FaceSection } from "@/pages/settings/FaceSection";
-import { Wifi, Brain, Volume2, MessageSquare, UserCircle, Mic, Globe, Check } from "lucide-react";
+import { AppsSection } from "@/components/setup/AppsSection";
+import { Wifi, Brain, Volume2, MessageSquare, UserCircle, Mic, Globe, Check, Laptop } from "lucide-react";
 import type { SetupMode } from "./helpers";
 import { useSetupController } from "./useSetupController";
 import { SetupProgressScreen } from "./SetupProgressScreen";
@@ -28,6 +29,7 @@ const SECTION_ICONS: Partial<Record<SectionId, React.ReactNode>> = {
   tts: <Volume2 size={15} />,
   voice: <Mic size={15} />,
   face: <UserCircle size={15} />,
+  apps: <Laptop size={15} />,
 };
 
 interface SetupProps {
@@ -308,6 +310,8 @@ export default function Setup({ mode = "initial" }: SetupProps = {}) {
                       ttsVoices={ttsVoices}
                       sttLanguage={sttLanguage}
                     />
+
+                    <AppsSection active={activeSection === "apps"} />
                   </div>
 
                   {/* Mounted only when the device declares the hardware each

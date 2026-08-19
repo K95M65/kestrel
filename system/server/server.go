@@ -345,6 +345,7 @@ func (s *Server) Serve(closeFn func()) error {
 	device.GET("voices", s.deviceHandler.GetVoices)
 	device.GET("tts-providers", s.deviceHandler.GetTTSProviders)
 	device.GET("llm-providers", s.deviceHandler.GetLLMProviders)
+	device.GET("companion-apps", s.deviceHandler.GetCompanionApps)
 	device.POST("llm-oauth/start", setupOrAdminMiddleware(s.config), s.deviceHandler.StartLLMOAuth)
 	device.POST("llm-oauth/poll", setupOrAdminMiddleware(s.config), s.deviceHandler.PollLLMOAuth)
 	device.GET("realtime-options", s.deviceHandler.GetRealtimeOptions)

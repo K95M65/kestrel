@@ -286,6 +286,7 @@ export function useSetupController(mode: SetupMode) {
     tts: !!ttsVoice,
     voice: faceOwners.some((p) => (p.voice_samples?.length ?? 0) > 0),
     face: faceOwners.some((p) => p.photo_count > 0),
+    apps: true,
     deepgram: true,
     mqtt: true,
     stt: true, // EditConfig's alias for language; not rendered in Setup.
@@ -650,11 +651,19 @@ export function useSetupController(mode: SetupMode) {
     // (see handler.Setup). Device ID / MAC remain read-only metadata carried
     // through submit via component state (no DOM section needed).
     { id: "wifi", label: "Wi-Fi" },
+    // Phone-app provision already pushes a key. Self-serve (Kestrel) needs
+    // the AI Brain step without ?debug=true so Grok/Kimi login is reachable.
+    ...(!devicePushedConfig && !urlParams.llmApiKey && !debug ? [
+      { id: "llm" as SectionId, label: "AI Brain" },
+    ] : []),
     ...(debug ? [
       { id: "llm" as SectionId, label: "AI Brain" },
       { id: "channel" as SectionId, label: "Channels", optional: true },
       { id: "language" as SectionId, label: "Language" },
       { id: "tts" as SectionId, label: "Voice" },
+    ] : []),
+    ...(!devicePushedConfig ? [
+      { id: "apps" as SectionId, label: "Apps", optional: true },
     ] : []),
     // Voice / Face appear in continue mode only — they need the device's
     // hardware + backend, both unavailable while we're still on the AP. Both
@@ -749,7 +758,7 @@ export function useSetupController(mode: SetupMode) {
   // (Voice/Face) always pass. Back never validates.
   const STEP_BLOCK_HINTS: Partial<Record<SectionId, string>> = {
     wifi: "Choose a Wi-Fi network and enter its password before continuing.",
-    llm: "Add the AI Brain API key before continuing.",
+    llm: "Sign in with Grok or paste an API key before continuing.",
   };
   const goNext = () => {
     if (isLastStep) return;

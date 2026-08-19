@@ -410,6 +410,22 @@ export async function startLLMOAuth(provider: string): Promise<LLMOAuthStart> {
   });
 }
 
+export interface CompanionApp {
+  id: string;
+  name: string;
+  platform: string;
+  version?: string;
+  summary: string;
+  hint?: string;
+  download_url: string;
+  direct_url?: string;
+  source_url: string;
+}
+
+export async function getCompanionApps(): Promise<CompanionApp[]> {
+  return apiRequest<CompanionApp[]>(`${API_BASE}/api/device/companion-apps`);
+}
+
 export async function pollLLMOAuth(provider: string, deviceCode: string): Promise<LLMOAuthPoll> {
   return apiRequest<LLMOAuthPoll>(`${API_BASE}/api/device/llm-oauth/poll`, {
     method: "POST",

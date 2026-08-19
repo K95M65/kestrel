@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Laptop } from "lucide-react";
 import { S } from "./styles";
 import { API } from "./types";
+import { getCompanionApps, type CompanionApp } from "@/lib/api";
 
 interface BuddyStatus {
   paired: boolean;
@@ -37,6 +38,7 @@ export function BuddyCard() {
   const [codeExpiresAt, setCodeExpiresAt] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
   const [busy, setBusy] = useState(false);
+  const [app, setApp] = useState<CompanionApp | null>(null);
   const codeBox = useRef<HTMLDivElement | null>(null);
 
   const fetchStatus = useCallback(async () => {
@@ -60,6 +62,12 @@ export function BuddyCard() {
     const id = setInterval(fetchStatus, 5000);
     return () => clearInterval(id);
   }, [fetchStatus]);
+
+  useEffect(() => {
+    getCompanionApps()
+      .then((apps) => setApp(apps.find((a) => a.id === "autonomous-buddy") ?? apps[0] ?? null))
+      .catch(() => {});
+  }, []);
 
   // Tick once per second while a code is active (drives countdown + auto-expire UI).
   useEffect(() => {
@@ -211,15 +219,17 @@ export function BuddyCard() {
           >
             Revoke pairing
           </button>
+          <DownloadLinks app={app} />
         </div>
       )}
 
       {/* Not-paired state — show pair button OR active code */}
       {status && !status.paired && !code && (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <span style={{ fontSize: 12, color: "var(--lm-text-dim)" }}>
-            No Mac paired. Install Autonomous Buddy on your Mac then click below to start pairing.
+          <span style={{ fontSize: 12, color: "var(--lm-text-dim)", lineHeight: 1.45 }}>
+            No Mac paired. Download Autonomous Buddy, install it, then pair with a code.
           </span>
+          <DownloadLinks app={app} />
           <button
             type="button"
             onClick={handlePair}
@@ -292,6 +302,36 @@ export function BuddyCard() {
       {error && (
         <div style={{ marginTop: 8, fontSize: 11, color: "var(--lm-red)" }}>{error}</div>
       )}
+    </div>
+  );
+}
+
+function DownloadLinks({ app }: { app: CompanionApp | null }) {
+  if (!app) return null;
+  const link = (href: string, label: string, primary?: boolean) => (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      style={{
+        fontSize: 11,
+        fontWeight: 600,
+        textDecoration: "none",
+        padding: "4px 8px",
+        borderRadius: 4,
+        border: primary ? "1px solid rgba(52,211,153,0.4)" : "1px solid rgba(255,255,255,0.1)",
+        color: primary ? "var(--lm-green)" : "var(--lm-text-dim)",
+        background: primary ? "rgba(52,211,153,0.08)" : "transparent",
+      }}
+    >
+      {label}
+    </a>
+  );
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
+      {link(app.direct_url || app.download_url, "Download Mac app", true)}
+      {link(app.download_url, "Releases")}
+      {link(app.source_url, "Source")}
     </div>
   );
 }
