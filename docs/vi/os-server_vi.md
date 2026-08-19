@@ -32,6 +32,10 @@
 |--------|----------|-------|
 | GET | `/api/device/timezone` | IANA zone hiện tại + danh sách zone chọn được (admin-gated) |
 | POST | `/api/device/timezone` | Áp dụng một IANA zone (admin-gated) |
+| GET | `/api/device/sleep` | Trạng thái quiet hours + lịch đã lưu (admin-gated) |
+| PUT | `/api/device/sleep` | Lưu lịch `{enabled,sleep_at,wake_at,days}` (admin-gated) |
+| POST | `/api/device/sleep/now` | HAL sleepy ngay (admin-gated) |
+| POST | `/api/device/sleep/wake` | Đánh thức đến lần ngủ kế (admin-gated) |
 
 **GET response** (`data`):
 ```json

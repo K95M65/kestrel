@@ -362,6 +362,48 @@ func (h *DeviceHandler) SetTimezone(c *gin.Context) {
 	c.JSON(http.StatusOK, serializers.ResponseSuccess(true))
 }
 
+// GetSleep returns quiet-hours status plus the saved schedule.
+func (h *DeviceHandler) GetSleep(c *gin.Context) {
+	c.JSON(http.StatusOK, serializers.ResponseSuccess(h.service.GetSleepStatus()))
+}
+
+// SetSleep saves the quiet-hours schedule and applies it if the window is open.
+func (h *DeviceHandler) SetSleep(c *gin.Context) {
+	var req domain.SleepSchedule
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, serializers.ResponseError(err.Error()))
+		return
+	}
+	if err := h.service.SetSleepSchedule(config.SleepSchedule{
+		Enabled: req.Enabled,
+		SleepAt: req.SleepAt,
+		WakeAt:  req.WakeAt,
+		Days:    req.Days,
+	}); err != nil {
+		c.JSON(http.StatusBadRequest, serializers.ResponseError(err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, serializers.ResponseSuccess(h.service.GetSleepStatus()))
+}
+
+// SleepNow puts the body into HAL sleepy immediately.
+func (h *DeviceHandler) SleepNow(c *gin.Context) {
+	if err := h.service.SleepNow(); err != nil {
+		c.JSON(http.StatusBadGateway, serializers.ResponseError(err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, serializers.ResponseSuccess(h.service.GetSleepStatus()))
+}
+
+// WakeNow lifts quiet hours until the next scheduled sleep (or indefinitely).
+func (h *DeviceHandler) WakeNow(c *gin.Context) {
+	if err := h.service.WakeNow(); err != nil {
+		c.JSON(http.StatusBadGateway, serializers.ResponseError(err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, serializers.ResponseSuccess(h.service.GetSleepStatus()))
+}
+
 // ChangeChannel godoc
 //
 //	@Summary	change messaging channel

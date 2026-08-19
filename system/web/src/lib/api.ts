@@ -497,6 +497,42 @@ export async function setTimezone(timezone: string): Promise<boolean> {
   });
 }
 
+export interface SleepSchedule {
+  enabled: boolean;
+  sleep_at: string;
+  wake_at: string;
+  days?: number[];
+}
+
+export interface SleepStatus {
+  sleeping: boolean;
+  scheduled: boolean;
+  emotion?: string;
+  schedule: SleepSchedule;
+  next_transition?: string;
+  next_transition_kind?: "sleep" | "wake";
+}
+
+export async function getSleep(): Promise<SleepStatus> {
+  return apiRequest<SleepStatus>(`${API_BASE}/api/device/sleep`);
+}
+
+export async function setSleepSchedule(sched: SleepSchedule): Promise<SleepStatus> {
+  return apiRequest<SleepStatus>(`${API_BASE}/api/device/sleep`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(sched),
+  });
+}
+
+export async function sleepNow(): Promise<SleepStatus> {
+  return apiRequest<SleepStatus>(`${API_BASE}/api/device/sleep/now`, { method: "POST" });
+}
+
+export async function wakeNow(): Promise<SleepStatus> {
+  return apiRequest<SleepStatus>(`${API_BASE}/api/device/sleep/wake`, { method: "POST" });
+}
+
 export interface TestTTSOptions {
   text?: string;
   /** BCP-47 stt_language code; picks a friendly demo phrase in that language. */

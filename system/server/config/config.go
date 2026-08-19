@@ -199,6 +199,10 @@ type Config struct {
 	// sets one; the device then keeps whatever the OS image shipped with.
 	Timezone string `json:"timezone,omitempty" yaml:"timezone"`
 
+	// SleepSchedule is quiet hours: HAL sleepy at SleepAt, greeting at WakeAt,
+	// in the device timezone. Nil / Enabled=false means no clock-driven sleep.
+	SleepSchedule *SleepSchedule `json:"sleep_schedule,omitempty" yaml:"sleepSchedule"`
+
 	// DeviceType is the device class/profile id — the folder name under robots/
 	// (e.g. "lamp", "intern-v2", "unitree-go2w"). Selects which ROBOT.md/SOUL.md the
 	// runtime loads. Empty resolves to "" — no "lamp" fallback (see DeviceTypeOrDefault;
@@ -324,6 +328,22 @@ func Default() Config {
 
 		notify: make(chan bool, 1),
 	}
+}
+
+// SleepSchedule is one quiet-hours block. Times are "HH:MM" in the device zone.
+// Days are Go weekday numbers (0=Sunday … 6=Saturday); empty means every day.
+type SleepSchedule struct {
+	Enabled bool   `json:"enabled"`
+	SleepAt string `json:"sleep_at"`
+	WakeAt  string `json:"wake_at"`
+	Days    []int  `json:"days,omitempty"`
+}
+
+func (c *Config) SleepScheduleOrZero() SleepSchedule {
+	if c == nil || c.SleepSchedule == nil {
+		return SleepSchedule{}
+	}
+	return *c.SleepSchedule
 }
 
 // WakeWordEnabled reports whether STT must first recognize a wake phrase

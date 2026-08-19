@@ -76,13 +76,14 @@ type SensingHandler struct {
 	config           *config.Config
 	statusLED        *statusled.Service
 	voiceActiveUntil atomic.Int64 // unix ms; set on voice_listening, extended on voice_listening_end
-	isSleeping       func() bool  // returns true when agent last expressed "sleepy" emotion
+	isSleeping       func() bool  // agent sleepy or os-server quiet hours
+	deviceService    *device.Service
 	lastNotReadyTTS  atomic.Int64 // unix ms; cooldown for "brain restarting" TTS
 	lastAgentTurn    atomic.Int64 // unix ms of the last agent turn created here — ambient floor reference
 }
 
 // ProvideSensingHandler constructs a SensingHandler.
-func ProvideSensingHandler(gw domain.AgentGateway, bus *monitor.Bus, cfg *config.Config, sled *statusled.Service, isSleeping func() bool) *SensingHandler {
+func ProvideSensingHandler(gw domain.AgentGateway, bus *monitor.Bus, cfg *config.Config, sled *statusled.Service, isSleeping func() bool, ds *device.Service) *SensingHandler {
 	// Gate local intent rules to what this device's body can do — set once here.
 	intent.Configure(device.Capabilities(cfg.DeviceTypeOrDefault()))
 	// Social talk belongs to whoever answers first. With the realtime agent on,
@@ -93,11 +94,12 @@ func ProvideSensingHandler(gw domain.AgentGateway, bus *monitor.Bus, cfg *config
 	// the model. Re-evaluated on every config change (see runConfigChangeListener).
 	intent.SetChitchatEnabled(!cfg.RealtimeEnabled())
 	return &SensingHandler{
-		agentGateway: gw,
-		monitorBus:   bus,
-		config:       cfg,
-		statusLED:    sled,
-		isSleeping:   isSleeping,
+		agentGateway:  gw,
+		monitorBus:    bus,
+		config:        cfg,
+		statusLED:     sled,
+		deviceService: ds,
+		isSleeping:    isSleeping,
 	}
 }
 
@@ -217,6 +219,7 @@ func (h *SensingHandler) PostEvent(c *gin.Context) {
 	isVoice := req.Type == "voice" || req.Type == "voice_command" || req.Type == "voice_followup"
 	isVoiceCommand := req.Type == "voice_command" || req.Type == "voice_followup"
 	isChat := sensingmsg.IsChat(req.Type)
+	scheduledQuiet := h.deviceService != nil && h.deviceService.IsQuiet()
 	// A realtime-handled turn is user-initiated by definition: the user spoke and
 	// the realtime agent ALREADY replied out loud. That exchange happens entirely
 	// in HAL and never consults this sleep flag, so the device can be "asleep"
@@ -227,6 +230,17 @@ func (h *SensingHandler) PostEvent(c *gin.Context) {
 	// the realtime agent already answered (the run is MarkSilentRun).
 	isRealtimeHandled := req.Type == "voice_agent_handled"
 	isPassive := !isVoiceCommand
+	if scheduledQuiet && req.Type != "fire_hazard.detected" && !isChat {
+		slog.Info("INBOUND from HAL → SLEEP-DROPPED (quiet hours)",
+			"component", "sensing", "backend", h.agentGateway.Name(), "type", req.Type)
+		h.monitorBus.Push(domain.MonitorEvent{
+			Type:    "sensing_drop",
+			Summary: "[" + req.Type + "] " + req.Message,
+			Detail:  map[string]any{"type": req.Type, "reason": "quiet_hours"},
+		})
+		c.JSON(http.StatusOK, serializers.ResponseSuccess(map[string]string{"handler": "dropped_quiet_hours"}))
+		return
+	}
 	if isPassive && !isVoice && !isRealtimeHandled && !isChat && req.Type != "presence.enter" && req.Type != "fire_hazard.detected" && h.isSleeping != nil && h.isSleeping() {
 		slog.Info("INBOUND from HAL → SLEEP-DROPPED (lamp sleeping)",
 			"component", "sensing", "backend", h.agentGateway.Name(), "type", req.Type)
@@ -272,7 +286,7 @@ func (h *SensingHandler) PostEvent(c *gin.Context) {
 	// to HAL so it wakes up (LED + servo) before the agent processes the turn.
 	// Without this, the agent's emotion:thinking would be blocked by HAL's wake guard.
 	// web_chat skips wake — typing in the monitor isn't a request for physical interaction.
-	if isVoiceCommand && h.isSleeping != nil && h.isSleeping() && device.Has(h.config.DeviceTypeOrDefault(), device.CapExpression) {
+	if isVoiceCommand && !scheduledQuiet && h.isSleeping != nil && h.isSleeping() && device.Has(h.config.DeviceTypeOrDefault(), device.CapExpression) {
 		slog.Info("voice wake — firing greeting to wake HAL", "component", "sensing")
 		go func() {
 			if err := hal.SetEmotion("greeting", 0.8); err != nil {

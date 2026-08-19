@@ -22,6 +22,8 @@ func provideStatusLEDHasLight(cfg *config.Config) bool {
 // func() bool dependency SensingHandler declares. SensingHandler takes a
 // closure rather than the handler itself so the sensing package does not
 // import the agent delivery package.
-func provideAgentIsSleeping(h *_agentHttp.AgentHandler) func() bool {
-	return h.IsSleeping
+func provideAgentIsSleeping(h *_agentHttp.AgentHandler, ds *device.Service) func() bool {
+	return func() bool {
+		return h.IsSleeping() || ds.IsQuiet()
+	}
 }

@@ -1191,6 +1191,24 @@ type TimezoneSetData struct {
 	Timezone string `json:"timezone" validate:"required"`
 }
 
+// SleepSchedule is the operator-facing quiet-hours block (same shape as config).
+type SleepSchedule struct {
+	Enabled bool   `json:"enabled"`
+	SleepAt string `json:"sleep_at"`
+	WakeAt  string `json:"wake_at"`
+	Days    []int  `json:"days,omitempty"`
+}
+
+// SleepStatus is GET /api/device/sleep.
+type SleepStatus struct {
+	Sleeping           bool          `json:"sleeping"`
+	Scheduled          bool          `json:"scheduled"`
+	Emotion            string        `json:"emotion,omitempty"`
+	Schedule           SleepSchedule `json:"schedule"`
+	NextTransition     string        `json:"next_transition,omitempty"`
+	NextTransitionKind string        `json:"next_transition_kind,omitempty"`
+}
+
 // MQTTTimezoneSetAck is published to fd_channel after applying (or failing) a
 // timezone.set downlink. status: "starting" | "success" | "failure". Mirrors
 // MQTTRealtimeSetAck.

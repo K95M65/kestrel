@@ -14,6 +14,7 @@ import { TTSSection } from "@/pages/settings/TTSSection";
 import { RealtimeSection } from "@/pages/settings/RealtimeSection";
 import { AgentRuntimeSection } from "@/pages/settings/AgentRuntimeSection";
 import { TimezoneSection } from "@/pages/settings/TimezoneSection";
+import { SleepSection } from "@/pages/settings/SleepSection";
 import { STTSection, type SttProvider } from "@/pages/settings/STTSection";
 import { ChannelSection } from "@/pages/settings/ChannelSection";
 import { MqttSection } from "@/pages/settings/MqttSection";
@@ -24,7 +25,7 @@ import { PluginsSection } from "@/pages/settings/PluginsSection";
 // page shell owns the sidebar / active-section state). `stt` is the Language
 // section (rendered under id="stt"), matching the legacy /edit layout. `runtime`
 // is the agent-backend switch (its own Switch button, not part of Save).
-export type SettingsSectionId = "device" | "wifi" | "llm" | "runtime" | "voice" | "face" | "tts" | "realtime" | "stt" | "channel" | "mqtt" | "mcp" | "plugins" | "timezone";
+export type SettingsSectionId = "device" | "wifi" | "llm" | "runtime" | "voice" | "face" | "tts" | "realtime" | "stt" | "channel" | "mqtt" | "mcp" | "plugins" | "timezone" | "sleep";
 
 // Header-row label lookup. Kept local so the panel can render the active-section
 // title above the form without depending on the page's NAV_GROUPS config.
@@ -43,6 +44,7 @@ const SECTION_LABELS: Record<SettingsSectionId, string> = {
   mcp: "MCP Tools",
   plugins: "Plugins",
   timezone: "Timezone",
+  sleep: "Quiet hours",
 };
 
 // Field / LockedField / LockedPasswordField / SectionCard live in
@@ -485,7 +487,7 @@ export function SettingsPanel({ activeSection }: { activeSection: SettingsSectio
 
   // Save is hidden for sections that aren't part of the form's PUT flow: Face/My
   // Voice enroll via their own buttons, and Runtime switches via its own action.
-  const showSave = activeSection !== "face" && activeSection !== "voice" && activeSection !== "runtime" && activeSection !== "timezone";
+  const showSave = activeSection !== "face" && activeSection !== "voice" && activeSection !== "runtime" && activeSection !== "timezone" && activeSection !== "sleep";
 
   return (
     <div className="lm-fade-in lm-settings-panel" style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
@@ -564,6 +566,7 @@ export function SettingsPanel({ activeSection }: { activeSection: SettingsSectio
             <AgentRuntimeSection active={activeSection === "runtime"} />
 
             <TimezoneSection active={activeSection === "timezone"} />
+            <SleepSection active={activeSection === "sleep"} />
 
             <EditVoiceSection
               active={activeSection === "voice"}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { Satellite, Globe, Eye, Volume2, Cpu, Drama, Clapperboard, Bot, Tag, Wifi, LayoutDashboard } from "lucide-react";
+import { Satellite, Globe, Eye, Volume2, Cpu, Drama, Clapperboard, Bot, Tag, Wifi, LayoutDashboard, Moon } from "lucide-react";
+import { getSleep, sleepNow, wakeNow, type SleepStatus } from "@/lib/api";
 import { S } from "./styles";
 import { HW } from "./types";
 
@@ -487,6 +488,7 @@ export function OverviewSection({
 
         {/* Compact status cards — painted on the LEFT via order: 1 */}
         <div className="lm-cluster-col" style={{ order: 1 }}>
+        <QuietHoursCard />
         {/* Hardware */}
         <div className="lm-mon-card" style={monCard}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
@@ -675,6 +677,45 @@ function HeroChip({ icon, label, value, tone }: {
       <span style={{ display: "flex", color }} aria-hidden>{icon}</span>
       <span style={{ fontSize: 10, color: "var(--lm-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</span>
       <span style={{ fontSize: 12.5, fontWeight: 700, color, fontFamily: label === "IP" ? "monospace" : undefined }}>{value}</span>
+    </div>
+  );
+}
+
+function QuietHoursCard() {
+  const [st, setSt] = useState<SleepStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    getSleep().then(setSt).catch(() => {});
+  }, []);
+  async function act(kind: "sleep" | "wake") {
+    setBusy(true);
+    try {
+      setSt(kind === "sleep" ? await sleepNow() : await wakeNow());
+    } catch {
+      /* toast lives on Settings; overview stays quiet */
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="lm-mon-card" style={{ ...S.card, boxShadow: undefined }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <CardLabel icon={<Moon size={13} />} text="Quiet hours" />
+        <span style={{ fontSize: 11, color: st?.sleeping ? "var(--lm-amber)" : "var(--lm-text-muted)" }}>
+          {st?.sleeping ? "quiet" : "awake"}
+        </span>
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button type="button" className="lm-u-btn" disabled={busy} onClick={() => void act("sleep")}
+          style={{ fontSize: 11, padding: "4px 10px" }}>Sleep now</button>
+        <button type="button" className="lm-u-btn" disabled={busy} onClick={() => void act("wake")}
+          style={{ fontSize: 11, padding: "4px 10px" }}>Wake now</button>
+      </div>
+      {st?.schedule?.enabled && (
+        <div style={{ fontSize: 11, color: "var(--lm-text-muted)", marginTop: 8 }}>
+          Schedule {st.schedule.sleep_at} → {st.schedule.wake_at}
+        </div>
+      )}
     </div>
   );
 }

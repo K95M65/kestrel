@@ -40,7 +40,8 @@ func InitializeServer() (*Server, error) {
 	agentGateway := agent.ProvideGateway(configConfig, bus, statusledService)
 	healthHandler := http.ProvideHealthHandler(configConfig, service, agentGateway)
 	client := beclient.ProvideClient(configConfig)
-	deviceService := device.ProvideService(configConfig, service, agentGateway, client, statusledService)
+	pluginService := plugin.ProvideService()
+	deviceService := device.ProvideService(configConfig, service, agentGateway, client, statusledService, pluginService)
 	networkHandler := http2.ProvideNetworkHandler(configConfig, service, deviceService)
 	deviceHandler := http3.ProvideDeviceHandler(deviceService, service, configConfig)
 	mqttConfig := config.ProvideMQTTConfig(configConfig)
@@ -51,14 +52,13 @@ func InitializeServer() (*Server, error) {
 	chatStream := mqtthandler.ProvideChatStream(configConfig, factory, bus)
 	deviceMQTTHandler := mqtthandler.ProvideDeviceMQTTHandler(configConfig, factory, deviceService, service, agentGateway, chatStream)
 	agentHandler := http4.ProvideAgentHandler(agentGateway, bus, statusledService, configConfig)
-	v := provideAgentIsSleeping(agentHandler)
-	sensingHandler := http5.ProvideSensingHandler(agentGateway, bus, configConfig, statusledService, v)
+	v := provideAgentIsSleeping(agentHandler, deviceService)
+	sensingHandler := http5.ProvideSensingHandler(agentGateway, bus, configConfig, statusledService, v, deviceService)
 	buddyService, err := buddy.ProvideService()
 	if err != nil {
 		return nil, err
 	}
 	buddyHandler := http6.ProvideBuddyHandler(configConfig, buddyService)
-	pluginService := plugin.ProvideService()
 	pluginHandler := http7.ProvidePluginHandler(pluginService)
 	personaMigration := agent.ProvidePersonaMigration(configConfig)
 	configMigration := agent.ProvideConfigMigration(configConfig, agentGateway)

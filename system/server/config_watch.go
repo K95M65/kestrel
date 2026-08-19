@@ -171,6 +171,8 @@ func (s *Server) handleSetUpCompleteChange(setupCompleted bool) {
 		// SuperGrok access tokens last hours; refresh_token lives in grok-oauth.json.
 		safego.Go("grok-refresh", func() { s.deviceHandler.StartGrokRefreshLoop(s.monitorCtx) })
 
+		safego.Go("sleep-schedule", func() { s.deviceService.StartSleepLoop(s.monitorCtx) })
+
 		s.restartMQTT()
 
 		safego.Go("startup-sequence", func() {

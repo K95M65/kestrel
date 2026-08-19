@@ -252,6 +252,18 @@ func (s *Service) List() []domain.Plugin {
 	return plugins
 }
 
+// StopRunning stops every plugin whose unit is currently active.
+func (s *Service) StopRunning() {
+	for _, p := range s.List() {
+		if p.Status != "running" {
+			continue
+		}
+		if err := s.Stop(p.Name); err != nil {
+			slog.Warn("[plugins] stop-running failed", "component", "plugin", "name", p.Name, "err", err)
+		}
+	}
+}
+
 // Start starts a plugin's systemd unit.
 func (s *Service) Start(name string) error {
 	if err := validatePluginExists(name); err != nil {

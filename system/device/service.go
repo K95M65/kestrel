@@ -15,6 +15,7 @@ import (
 	"go.autonomous.ai/os/system/beclient"
 	"go.autonomous.ai/os/system/domain"
 	"go.autonomous.ai/os/system/network"
+	"go.autonomous.ai/os/system/plugin"
 	"go.autonomous.ai/os/system/server/config"
 	"go.autonomous.ai/os/system/statusled"
 )
@@ -29,11 +30,14 @@ type Service struct {
 	agentGateway    domain.AgentGateway
 	beClient        *beclient.Client
 	statusLED       *statusled.Service
+	plugins         *plugin.Service
 	setupState      setupState
 	runtimeSwitchMu sync.Mutex
+	sleepMu         sync.Mutex
+	sleep           sleepRuntime
 }
 
-func ProvideService(config *config.Config, ns *network.Service, gw domain.AgentGateway, be *beclient.Client, sled *statusled.Service) *Service {
+func ProvideService(config *config.Config, ns *network.Service, gw domain.AgentGateway, be *beclient.Client, sled *statusled.Service, ps *plugin.Service) *Service {
 	SeedAgentRuntimeFromGateway(config)
 	return &Service{
 		config:         config,
@@ -41,6 +45,7 @@ func ProvideService(config *config.Config, ns *network.Service, gw domain.AgentG
 		agentGateway:   gw,
 		beClient:       be,
 		statusLED:      sled,
+		plugins:        ps,
 		setupState:     setupState{phase: SetupPhaseIdle},
 	}
 }

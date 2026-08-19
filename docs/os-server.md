@@ -32,6 +32,10 @@
 |--------|----------|-------------|
 | GET | `/api/device/timezone` | Active IANA zone + selectable zone list (admin-gated) |
 | POST | `/api/device/timezone` | Apply an IANA zone (admin-gated) |
+| GET | `/api/device/sleep` | Quiet-hours status + saved schedule (admin-gated) |
+| PUT | `/api/device/sleep` | Save schedule `{enabled,sleep_at,wake_at,days}` (admin-gated) |
+| POST | `/api/device/sleep/now` | HAL sleepy now: mute, stop plugins, ignore presence (admin-gated) |
+| POST | `/api/device/sleep/wake` | Wake now until the next scheduled sleep (admin-gated) |
 
 **GET response** (`data`):
 ```json
