@@ -78,7 +78,7 @@ On Reachy we had to: clone/build Swift, ad-hoc sign, copy to `/Applications`, th
 
 Add on the card (unpaired state):
 
-- **Download for Mac** → a real artifact (GitHub Release `/latest` or CDN), not “build from `integrations/companions/autonomous-buddy`”.
+- **Download for Mac** → Setup Apps step + Buddy card (`GET /api/device/companion-apps`). Direct zip URL expects a GitHub Release asset `AutonomousBuddy.zip` on `K95M65/kestrel` (override with `KESTREL_GITHUB_REPO`).
 - Short “how to pair”: install → Accessibility + Screen Recording if you want click/type → click Pair here → enter the code in the app.
 - Optional: `reachy-xxxx.local` / LAN IP pre-filled copy button so the app does not have to discover via mDNS only.
 - After pair: keep CONNECTED / OFFLINE; do not hide the download (reinstall / second Mac later).
