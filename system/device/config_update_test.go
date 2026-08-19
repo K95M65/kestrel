@@ -38,7 +38,7 @@ func TestApplyUpdateEmptyRequestChangesNothing(t *testing.T) {
 	c := baseConfig()
 	ch := applyUpdate(c, domain.UpdateConfigRequest{}, "")
 
-	if ch.model || ch.thinking || ch.baseURL || ch.wifi || ch.lang || ch.voice || ch.realtime || ch.channel {
+	if ch.model || ch.thinking || ch.baseURL || ch.apiKey || ch.wifi || ch.lang || ch.voice || ch.realtime || ch.channel {
 		t.Fatalf("empty request set flags: %+v", ch)
 	}
 	if c.LLMAPIKey != "key-llm" || c.TTSVoice != "alloy" || c.TelegramBotToken != "tg-token" ||
@@ -71,6 +71,9 @@ func TestApplyUpdateLLMKeyTriggersVoiceRestart(t *testing.T) {
 	ch := applyUpdate(c, domain.UpdateConfigRequest{LLMAPIKey: "key-new"}, "")
 	if !ch.voice {
 		t.Fatal("llm_api_key change must flag voice (hal reads it at boot)")
+	}
+	if !ch.apiKey {
+		t.Fatal("llm_api_key change must flag gateway credential sync")
 	}
 	if ch.model || ch.baseURL {
 		t.Fatalf("llm_api_key change set unrelated flags: %+v", ch)

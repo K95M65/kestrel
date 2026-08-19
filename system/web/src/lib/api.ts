@@ -396,6 +396,7 @@ export interface LLMOAuthStart {
 
 export interface LLMOAuthPoll {
   pending: boolean;
+  interval?: number;
   provider?: string;
   access_token?: string;
   base_url?: string;
@@ -584,15 +585,6 @@ export interface Plugin { name: string; version: string; description: string; st
 /** GET /api/plugin */
 export async function listPlugins(): Promise<Plugin[]> {
   return apiRequest<Plugin[]>(`${API_BASE}/api/plugin`);
-}
-
-/** POST /api/plugin/install */
-export async function installPlugin(url: string): Promise<boolean> {
-  return apiRequest<boolean>(`${API_BASE}/api/plugin/install`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ url }),
-  });
 }
 
 /** POST /api/plugin/:name/start */

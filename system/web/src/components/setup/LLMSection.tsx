@@ -107,7 +107,13 @@ export function LLMSection({
       try {
         const r = await pollLLMOAuth("xai", oauth.deviceCode);
         if (stop) return;
-        if (r.pending) return;
+        if (r.pending) {
+          const next = Math.max(3, r.interval || oauth.interval);
+          if (next !== oauth.interval) {
+            setOauth({ ...oauth, interval: next });
+          }
+          return;
+        }
         if (r.access_token) {
           setLlmApiKey(r.access_token);
           if (r.base_url) setLlmUrl(r.base_url);

@@ -361,8 +361,10 @@ func (s *Server) Serve(closeFn func()) error {
 	// PARKED with the handler (#213): plugin discovery moves from Hugging Face
 	// Spaces to our own catalog. Uncomment when the catalog has `plugins`.
 	// pluginGroup.GET("browse", adminAuthMiddleware(s.config), s.pluginHandler.Browse)
-	pluginGroup.POST("install", adminAuthMiddleware(s.config), s.pluginHandler.Install)
-	pluginGroup.GET("", adminAuthMiddleware(s.config), s.pluginHandler.List)
+	// Install/list use setupOrAdmin so the first-run Apps step can clone
+	// example plugins before llm_api_key / the session cookie exist.
+	pluginGroup.POST("install", setupOrAdminMiddleware(s.config), s.pluginHandler.Install)
+	pluginGroup.GET("", setupOrAdminMiddleware(s.config), s.pluginHandler.List)
 	pluginGroup.POST(":name/start", adminAuthMiddleware(s.config), s.pluginHandler.Start)
 	pluginGroup.POST(":name/stop", adminAuthMiddleware(s.config), s.pluginHandler.Stop)
 	pluginGroup.DELETE(":name", adminAuthMiddleware(s.config), s.pluginHandler.Uninstall)

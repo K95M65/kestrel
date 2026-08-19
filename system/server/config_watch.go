@@ -168,6 +168,9 @@ func (s *Server) handleSetUpCompleteChange(setupCompleted bool) {
 		// refresh:true (with a refresh_token) are rotated before they lapse.
 		safego.Go("connector-refresh", func() { s.deviceMQTTHandler.StartConnectorRefreshLoop(s.monitorCtx) })
 
+		// SuperGrok access tokens last hours; refresh_token lives in grok-oauth.json.
+		safego.Go("grok-refresh", func() { s.deviceHandler.StartGrokRefreshLoop(s.monitorCtx) })
+
 		s.restartMQTT()
 
 		safego.Go("startup-sequence", func() {

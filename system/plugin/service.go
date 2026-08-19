@@ -4,10 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"sync"
 
 	"go.autonomous.ai/os/system/domain"
 )
@@ -18,6 +21,8 @@ const (
 	systemdDir = "/etc/systemd/system"
 )
 
+var pluginNameRe = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$`)
+
 // manifest is the parsed plugin.json.
 type manifest struct {
 	Name        string `json:"name"`
@@ -27,10 +32,24 @@ type manifest struct {
 	Oneshot     bool   `json:"oneshot"`
 }
 
-type Service struct{}
+type installJob struct {
+	URL    string
+	Subdir string
+	Name   string
+	Status string
+	Err    string
+}
+
+type Service struct {
+	jobs sync.Map // installKey → installJob
+}
 
 func ProvideService() *Service {
 	return &Service{}
+}
+
+func installKey(url, subdir string) string {
+	return url + "\n" + subdir
 }
 
 // Install clones a git repo, sets up a venv, and creates a systemd unit.
@@ -40,25 +59,37 @@ func (s *Service) Install(url string) (*domain.Plugin, error) {
 
 // InstallFrom clones url (optionally one subdir) and installs the plugin.
 func (s *Service) InstallFrom(req domain.PluginInstallRequest) (*domain.Plugin, error) {
-	url := strings.TrimSpace(req.URL)
+	rawURL := strings.TrimSpace(req.URL)
 	subdir := strings.Trim(strings.TrimSpace(req.Subdir), "/")
-	if url == "" {
-		return nil, fmt.Errorf("plugin url is required")
+	if err := validGitURL(rawURL); err != nil {
+		return nil, err
 	}
-	if strings.Contains(subdir, "..") {
-		return nil, fmt.Errorf("invalid subdir")
+	if err := validSubdir(subdir); err != nil {
+		return nil, err
+	}
+
+	key := installKey(rawURL, subdir)
+	job := installJob{URL: rawURL, Subdir: subdir, Status: "installing"}
+	if _, loaded := s.jobs.LoadOrStore(key, job); loaded {
+		return nil, fmt.Errorf("install already in progress")
+	}
+	fail := func(err error) (*domain.Plugin, error) {
+		job.Status = "failed"
+		job.Err = err.Error()
+		s.jobs.Store(key, job)
+		return nil, err
 	}
 
 	// Clone to a temp dir first, then read plugin.json to get the name.
 	tmpDir, err := os.MkdirTemp("", "os-plugin-clone-*")
 	if err != nil {
-		return nil, fmt.Errorf("create temp dir: %w", err)
+		return fail(fmt.Errorf("create temp dir: %w", err))
 	}
 	defer os.RemoveAll(tmpDir)
 
-	slog.Info("[plugins] cloning", "component", "plugin", "url", url, "subdir", subdir)
-	if err := cloneRepo(url, subdir, tmpDir); err != nil {
-		return nil, err
+	slog.Info("[plugins] cloning", "component", "plugin", "url", rawURL, "subdir", subdir)
+	if err := cloneRepo(rawURL, subdir, tmpDir); err != nil {
+		return fail(err)
 	}
 
 	src := tmpDir
@@ -69,35 +100,43 @@ func (s *Service) InstallFrom(req domain.PluginInstallRequest) (*domain.Plugin, 
 	// Parse plugin.json.
 	m, err := readManifest(src)
 	if err != nil {
-		return nil, fmt.Errorf("read plugin.json: %w", err)
+		return fail(fmt.Errorf("read plugin.json: %w", err))
 	}
-	if m.Name == "" {
-		return nil, fmt.Errorf("plugin.json: name is required")
+	if !validPluginName(m.Name) {
+		return fail(fmt.Errorf("plugin.json: invalid name"))
 	}
 	if m.Entry == "" {
 		m.Entry = "main.py"
 	}
+	if !validEntry(m.Entry) {
+		return fail(fmt.Errorf("plugin.json: invalid entry"))
+	}
+	job.Name = m.Name
+	s.jobs.Store(key, job)
 
 	// Ensure plugins dir exists.
 	if err := os.MkdirAll(pluginsDir, 0o755); err != nil {
-		return nil, fmt.Errorf("create plugins dir: %w", err)
+		return fail(fmt.Errorf("create plugins dir: %w", err))
 	}
 
-	dest := filepath.Join(pluginsDir, m.Name)
+	dest, err := pluginDir(m.Name)
+	if err != nil {
+		return fail(err)
+	}
 	if _, err := os.Stat(dest); err == nil {
-		return nil, fmt.Errorf("plugin %q already installed", m.Name)
+		return fail(fmt.Errorf("plugin %q already installed", m.Name))
 	}
 
 	// Move the plugin tree (whole clone, or just the subdir) into place.
 	if out, err := exec.Command("mv", src, dest).CombinedOutput(); err != nil {
-		return nil, fmt.Errorf("move plugin: %s: %w", strings.TrimSpace(string(out)), err)
+		return fail(fmt.Errorf("move plugin: %s: %w", strings.TrimSpace(string(out)), err))
 	}
 
 	// Create Python venv.
 	slog.Info("[plugins] creating venv", "component", "plugin", "name", m.Name)
 	if out, err := exec.Command("python3", "-m", "venv", filepath.Join(dest, ".venv")).CombinedOutput(); err != nil {
 		os.RemoveAll(dest)
-		return nil, fmt.Errorf("create venv: %s: %w", strings.TrimSpace(string(out)), err)
+		return fail(fmt.Errorf("create venv: %s: %w", strings.TrimSpace(string(out)), err))
 	}
 
 	// Install requirements if present.
@@ -107,14 +146,14 @@ func (s *Service) InstallFrom(req domain.PluginInstallRequest) (*domain.Plugin, 
 		pip := filepath.Join(dest, ".venv", "bin", "pip")
 		if out, err := exec.Command(pip, "install", "-r", reqFile).CombinedOutput(); err != nil {
 			os.RemoveAll(dest)
-			return nil, fmt.Errorf("pip install: %s: %w", strings.TrimSpace(string(out)), err)
+			return fail(fmt.Errorf("pip install: %s: %w", strings.TrimSpace(string(out)), err))
 		}
 	}
 
 	// Generate systemd unit.
 	if err := writeSystemdUnit(m.Name, dest, m.Entry, m.Oneshot); err != nil {
 		os.RemoveAll(dest)
-		return nil, fmt.Errorf("write systemd unit: %w", err)
+		return fail(fmt.Errorf("write systemd unit: %w", err))
 	}
 
 	// Reload systemd.
@@ -123,8 +162,9 @@ func (s *Service) InstallFrom(req domain.PluginInstallRequest) (*domain.Plugin, 
 	}
 
 	// Write source URL for later reference.
-	os.WriteFile(filepath.Join(dest, ".source_url"), []byte(url), 0o644)
+	_ = os.WriteFile(filepath.Join(dest, ".source_url"), []byte(rawURL), 0o644)
 
+	s.jobs.Delete(key)
 	slog.Info("[plugins] installed", "component", "plugin", "name", m.Name, "version", m.Version)
 
 	return &domain.Plugin{
@@ -133,7 +173,7 @@ func (s *Service) InstallFrom(req domain.PluginInstallRequest) (*domain.Plugin, 
 		Description: m.Description,
 		Entry:       m.Entry,
 		Status:      "stopped",
-		URL:         url,
+		URL:         rawURL,
 	}, nil
 }
 
@@ -141,12 +181,16 @@ func (s *Service) InstallFrom(req domain.PluginInstallRequest) (*domain.Plugin, 
 func (s *Service) List() []domain.Plugin {
 	entries, err := os.ReadDir(pluginsDir)
 	if err != nil {
-		return []domain.Plugin{}
+		entries = nil
 	}
 
+	seen := map[string]bool{}
 	var plugins []domain.Plugin
 	for _, e := range entries {
 		if !e.IsDir() {
+			continue
+		}
+		if !validPluginName(e.Name()) {
 			continue
 		}
 		dir := filepath.Join(pluginsDir, e.Name())
@@ -162,8 +206,13 @@ func (s *Service) List() []domain.Plugin {
 			url = strings.TrimSpace(string(data))
 		}
 
+		name := m.Name
+		if !validPluginName(name) {
+			name = e.Name()
+		}
+		seen[name] = true
 		plugins = append(plugins, domain.Plugin{
-			Name:        m.Name,
+			Name:        name,
 			Version:     m.Version,
 			Description: m.Description,
 			Entry:       m.Entry,
@@ -171,6 +220,32 @@ func (s *Service) List() []domain.Plugin {
 			URL:         url,
 		})
 	}
+
+	s.jobs.Range(func(_, v any) bool {
+		job, ok := v.(installJob)
+		if !ok {
+			return true
+		}
+		if job.Name != "" && seen[job.Name] {
+			return true
+		}
+		name := job.Name
+		if name == "" {
+			name = "(installing)"
+		}
+		desc := job.Err
+		if desc == "" {
+			desc = job.URL
+		}
+		plugins = append(plugins, domain.Plugin{
+			Name:        name,
+			Description: desc,
+			Status:      job.Status,
+			URL:         job.URL,
+		})
+		return true
+	})
+
 	if plugins == nil {
 		return []domain.Plugin{}
 	}
@@ -183,7 +258,8 @@ func (s *Service) Start(name string) error {
 		return err
 	}
 	unit := unitPrefix + name + ".service"
-	if out, err := exec.Command("systemctl", "start", unit).CombinedOutput(); err != nil {
+	// --no-block so a leftover Type=oneshot unit cannot stall the HTTP handler.
+	if out, err := exec.Command("systemctl", "start", "--no-block", unit).CombinedOutput(); err != nil {
 		return fmt.Errorf("start %s: %s: %w", unit, strings.TrimSpace(string(out)), err)
 	}
 	slog.Info("[plugins] started", "component", "plugin", "name", name)
@@ -213,7 +289,7 @@ func (s *Service) Uninstall(name string) error {
 	unitPath := filepath.Join(systemdDir, unit)
 
 	// Stop if running.
-	exec.Command("systemctl", "stop", unit).Run()
+	_ = exec.Command("systemctl", "stop", unit).Run()
 
 	// Remove systemd unit.
 	if err := os.Remove(unitPath); err != nil && !os.IsNotExist(err) {
@@ -221,10 +297,12 @@ func (s *Service) Uninstall(name string) error {
 	}
 
 	// Reload systemd.
-	exec.Command("systemctl", "daemon-reload").Run()
+	_ = exec.Command("systemctl", "daemon-reload").Run()
 
-	// Remove plugin directory.
-	dir := filepath.Join(pluginsDir, name)
+	dir, err := pluginDir(name)
+	if err != nil {
+		return err
+	}
 	if err := os.RemoveAll(dir); err != nil {
 		return fmt.Errorf("remove plugin dir: %w", err)
 	}
@@ -266,49 +344,135 @@ func unitStatus(name string) string {
 
 // validatePluginExists checks that a plugin directory exists.
 func validatePluginExists(name string) error {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return fmt.Errorf("plugin name is required")
+	dir, err := pluginDir(name)
+	if err != nil {
+		return err
 	}
-	dir := filepath.Join(pluginsDir, name)
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		return fmt.Errorf("plugin %q not found", name)
 	}
 	return nil
 }
 
-// writeSystemdUnit generates and writes a systemd service unit file.
-func cloneRepo(url, subdir, dest string) error {
-	args := []string{"clone", "--depth=1", "--filter=blob:none"}
+func validPluginName(name string) bool {
+	return pluginNameRe.MatchString(strings.TrimSpace(name))
+}
+
+func validEntry(entry string) bool {
+	entry = strings.TrimSpace(entry)
+	if entry == "" || strings.HasPrefix(entry, "-") {
+		return false
+	}
+	if filepath.IsAbs(entry) || strings.ContainsAny(entry, "\x00\n\r") {
+		return false
+	}
+	clean := filepath.ToSlash(filepath.Clean(entry))
+	if clean == ".." || strings.HasPrefix(clean, "../") {
+		return false
+	}
+	return true
+}
+
+func validSubdir(subdir string) error {
+	if subdir == "" {
+		return nil
+	}
+	if strings.Contains(subdir, "..") || filepath.IsAbs(subdir) || strings.ContainsAny(subdir, "\\\x00\n\r") {
+		return fmt.Errorf("invalid subdir")
+	}
+	for _, p := range strings.Split(subdir, "/") {
+		if p == "" || p == "." || p == ".." {
+			return fmt.Errorf("invalid subdir")
+		}
+	}
+	return nil
+}
+
+func validGitURL(raw string) error {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return fmt.Errorf("plugin url is required")
+	}
+	if strings.HasPrefix(raw, "-") || strings.ContainsAny(raw, "\x00\n\r") {
+		return fmt.Errorf("invalid plugin url")
+	}
+	if strings.HasPrefix(raw, "git@") {
+		host, path, ok := strings.Cut(raw[4:], ":")
+		if !ok || host == "" || path == "" || strings.Contains(host, "/") {
+			return fmt.Errorf("invalid plugin url")
+		}
+		return nil
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return fmt.Errorf("invalid plugin url")
+	}
+	switch strings.ToLower(u.Scheme) {
+	case "https", "http", "ssh", "git":
+		return nil
+	default:
+		return fmt.Errorf("plugin url must be http(s), ssh, or git")
+	}
+}
+
+func pluginDir(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if !validPluginName(name) {
+		return "", fmt.Errorf("invalid plugin name")
+	}
+	dir := filepath.Join(pluginsDir, name)
+	rel, err := filepath.Rel(pluginsDir, filepath.Clean(dir))
+	if err != nil || rel == "." || strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) {
+		return "", fmt.Errorf("invalid plugin name")
+	}
+	if rel != name {
+		return "", fmt.Errorf("invalid plugin name")
+	}
+	return dir, nil
+}
+
+func gitCloneArgs(url, subdir, dest string) []string {
+	args := []string{
+		"-c", "filter.lfs.required=false",
+		"-c", "filter.lfs.smudge=",
+		"-c", "filter.lfs.process=",
+		"clone", "--depth=1", "--filter=blob:none",
+	}
 	if subdir != "" {
 		args = append(args, "--sparse")
 	}
-	args = append(args, url, dest)
-	if out, err := exec.Command("git", args...).CombinedOutput(); err != nil {
+	args = append(args, "--", url, dest)
+	return args
+}
+
+func cloneRepo(url, subdir, dest string) error {
+	if out, err := exec.Command("git", gitCloneArgs(url, subdir, dest)...).CombinedOutput(); err != nil {
 		return fmt.Errorf("git clone: %s: %w", strings.TrimSpace(string(out)), err)
 	}
 	if subdir == "" {
 		return nil
 	}
-	if out, err := exec.Command("git", "-C", dest, "sparse-checkout", "set", "--cone", subdir).CombinedOutput(); err != nil {
+	if out, err := exec.Command("git", "-C", dest, "sparse-checkout", "set", "--cone", "--", subdir).CombinedOutput(); err != nil {
 		return fmt.Errorf("git sparse-checkout: %s: %w", strings.TrimSpace(string(out)), err)
 	}
 	return nil
 }
 
-func writeSystemdUnit(name, dir, entry string, oneshot bool) error {
+func systemdUnitBody(name, dir, entry string, oneshot bool) string {
 	restart := "Restart=on-failure\nRestartSec=5"
-	svcType := "simple"
+	// Finite "oneshot" apps (dance, phrase teacher) must be Type=simple so
+	// systemctl start returns immediately and is-active is "running" while
+	// they work. Type=oneshot blocks Start for the whole routine and reports
+	// "activating", which the UI maps to stopped.
 	if oneshot {
 		restart = "Restart=no"
-		svcType = "oneshot"
 	}
-	unit := fmt.Sprintf(`[Unit]
+	return fmt.Sprintf(`[Unit]
 Description=Autonomous Plugin: %s
 After=network.target
 
 [Service]
-Type=%s
+Type=simple
 WorkingDirectory=%s
 ExecStart=%s %s
 Environment=HAL_URL=http://localhost:5001
@@ -317,8 +481,10 @@ MemoryMax=256M
 
 [Install]
 WantedBy=multi-user.target
-`, name, svcType, dir, filepath.Join(dir, ".venv", "bin", "python"), entry, restart)
+`, name, dir, filepath.Join(dir, ".venv", "bin", "python"), entry, restart)
+}
 
+func writeSystemdUnit(name, dir, entry string, oneshot bool) error {
 	unitPath := filepath.Join(systemdDir, unitPrefix+name+".service")
-	return os.WriteFile(unitPath, []byte(unit), 0o644)
+	return os.WriteFile(unitPath, []byte(systemdUnitBody(name, dir, entry, oneshot)), 0o644)
 }

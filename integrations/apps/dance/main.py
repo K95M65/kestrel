@@ -21,7 +21,10 @@ def post(path: str, body: dict | None = None) -> None:
 
 def main() -> None:
     music = os.environ.get("DANCE_MUSIC", "").strip()
-    seconds = int(os.environ.get("DANCE_SECONDS", "45"))
+    try:
+        seconds = int(os.environ.get("DANCE_SECONDS", "45"))
+    except ValueError:
+        seconds = 45
     if music:
         post("/voice/speak", {"text": "Let's dance!"})
         post("/audio/play", {"query": music})

@@ -5,14 +5,12 @@ description: Follow a face with the camera/head. Use when they say follow me, ke
 
 # Cameraman
 
-If the `cameraman` plugin is installed:
-`POST http://127.0.0.1:5000/api/plugin/cameraman/start`
+Drive HAL directly. Do not POST `/api/plugin/...` (admin auth).
 
-Otherwise:
 ```
 [HW:/emotion:{"emotion":"curious","intensity":0.7}]
 [HW:/servo/track:{"target":"face"}]
 ```
 
-Stop with `POST /api/plugin/cameraman/stop` or `[HW:/servo/track/stop]`.
+If face tracking fails, try `[HW:/servo/track:{"target":"person"}]`. Stop with `[HW:/servo/track/stop]`.
 One short spoken line, then track. Do not narrate PID or cameras.

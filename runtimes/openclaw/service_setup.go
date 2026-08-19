@@ -531,6 +531,9 @@ func (s *OpenclawService) RefreshModelsConfig() error {
 				if currentBaseURL != "" {
 					providerEntry["baseUrl"] = currentBaseURL
 				}
+				if key := strings.TrimSpace(s.config.LLMAPIKey); key != "" {
+					providerEntry["apiKey"] = key
+				}
 				if modelsList, ok := providerEntry["models"].([]any); ok {
 					for _, entry := range modelsList {
 						if m, ok := entry.(map[string]any); ok {

@@ -10,6 +10,7 @@ package grokauth
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,21 +20,31 @@ import (
 	"time"
 )
 
+var (
+	errDeviceDenied  = errors.New("xAI device authorization was denied")
+	errDeviceExpired = errors.New("xAI device code expired — please re-run login")
+)
+
+// TerminalDeviceError reports a device-code outcome that should not be retried.
+func TerminalDeviceError(err error) bool {
+	return errors.Is(err, errDeviceDenied) || errors.Is(err, errDeviceExpired)
+}
+
 const (
 	// ClientID is the public desktop OAuth client used by the Grok CLI and by
 	// OpenCode's SuperGrok login. It is not a secret.
 	ClientID = "b1a00492-073a-47ea-816f-4c329264a828"
 
-	TokenURL                = "https://auth.x.ai/oauth2/token"
-	DeviceAuthorizationURL  = "https://auth.x.ai/oauth2/device/code"
-	DeviceCodeGrantType     = "urn:ietf:params:oauth:grant-type:device_code"
-	Scope                   = "openid profile email offline_access grok-cli:access api:access"
-	APIBaseURL              = "https://api.x.ai/v1"
-	DefaultModel            = "grok-4.6"
-	Referrer                = "autonomous-os"
-	UserAgent               = "autonomous-os-grokauth/1"
+	TokenURL               = "https://auth.x.ai/oauth2/token"
+	DeviceAuthorizationURL = "https://auth.x.ai/oauth2/device/code"
+	DeviceCodeGrantType    = "urn:ietf:params:oauth:grant-type:device_code"
+	Scope                  = "openid profile email offline_access grok-cli:access api:access"
+	APIBaseURL             = "https://api.x.ai/v1"
+	DefaultModel           = "grok-4.6"
+	Referrer               = "autonomous-os"
+	UserAgent              = "autonomous-os-grokauth/1"
 
-	AccessTokenRefreshSkew  = 2 * time.Minute
+	AccessTokenRefreshSkew    = 2 * time.Minute
 	DeviceCodeDefaultInterval = 5 * time.Second
 	DeviceCodeMinInterval     = 1 * time.Second
 	DeviceCodeSlowDownStep    = 5 * time.Second
@@ -63,12 +74,12 @@ type DeviceCode struct {
 
 // Client talks to xAI's OAuth endpoints. Tests inject a custom HTTPDoer.
 type Client struct {
-	HTTP       HTTPDoer
-	TokenURL   string
-	DeviceURL  string
-	Referrer   string
-	Now        func() time.Time
-	Sleep      func(time.Duration)
+	HTTP      HTTPDoer
+	TokenURL  string
+	DeviceURL string
+	Referrer  string
+	Now       func() time.Time
+	Sleep     func(time.Duration)
 }
 
 // HTTPDoer is the subset of http.Client used here.
@@ -208,9 +219,9 @@ func (c *Client) Exchange(dc DeviceCode) (tok Tokens, pending string, err error)
 	case "authorization_pending", "slow_down":
 		return Tokens{}, terr.Error, nil
 	case "access_denied", "authorization_denied":
-		return Tokens{}, "", fmt.Errorf("xAI device authorization was denied")
+		return Tokens{}, "", errDeviceDenied
 	case "expired_token":
-		return Tokens{}, "", fmt.Errorf("xAI device code expired — please re-run login")
+		return Tokens{}, "", errDeviceExpired
 	default:
 		detail := terr.ErrorDescription
 		if detail == "" {

@@ -7,9 +7,7 @@ description: Teach hello, yes, no, thank you, and happy using Reachy's body. Use
 
 Reachy has no hands. Teach five phrases only: hello (greeting), yes (nod), no (headshake), thank you (caring), happy (happy).
 
-If the plugin is installed: `POST /api/plugin/asl-teacher/start`
-
-Otherwise speak one line and play the matching emotion:
+Do not POST `/api/plugin/...` (admin auth). Speak one line and play the matching emotion:
 ```
 [HW:/emotion:{"emotion":"nod","intensity":0.9}] Yes. A nod means yes.
 ```

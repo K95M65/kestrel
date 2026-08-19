@@ -23,6 +23,15 @@ def post(path: str, body: dict | None = None) -> requests.Response | None:
         return None
 
 
+def tracking(resp: requests.Response | None) -> bool:
+    if resp is None:
+        return False
+    try:
+        return bool(resp.json().get("tracking"))
+    except Exception:
+        return False
+
+
 def stop(*_args: object) -> None:
     post("/servo/track/stop")
     post("/emotion", {"emotion": "idle", "intensity": 0.4})
@@ -34,9 +43,13 @@ def main() -> None:
     signal.signal(signal.SIGINT, stop)
     post("/emotion", {"emotion": "curious", "intensity": 0.7})
     post("/voice/speak", {"text": "I'll keep you in the shot."})
-    started = post("/servo/track", {"target": "face"})
-    if started is None or started.status_code >= 400:
-        post("/servo/track", {"target": "person"})
+    ok = tracking(post("/servo/track", {"target": "face"}))
+    if not ok:
+        ok = tracking(post("/servo/track", {"target": "person"}))
+    if not ok:
+        post("/voice/speak", {"text": "I can't see anyone to follow."})
+        post("/emotion", {"emotion": "confused", "intensity": 0.6})
+        sys.exit(1)
     while True:
         time.sleep(2)
 

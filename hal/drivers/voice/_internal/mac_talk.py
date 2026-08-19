@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from typing import Optional
 
 import requests
@@ -14,12 +15,17 @@ _URL = os.environ.get("HAL_TALK_URL", "").strip()
 _TOKEN = os.environ.get("HAL_ACTIVITY_TOKEN", "").strip() or os.environ.get(
     "HAL_TALK_TOKEN", ""
 ).strip()
-_TIMEOUT = float(os.environ.get("HAL_TALK_TIMEOUT_S", "6"))
+_TIMEOUT = float(os.environ.get("HAL_TALK_TIMEOUT_S", "2"))
+_COOLDOWN = float(os.environ.get("HAL_TALK_COOLDOWN_S", "20"))
+_fail_until = 0.0
 
 
 def try_talk(transcript: str) -> Optional[str]:
     """Return a spoken reply, or None to fall through to OpenClaw/Grok."""
+    global _fail_until
     if not _URL or not (transcript or "").strip():
+        return None
+    if time.monotonic() < _fail_until:
         return None
     try:
         headers = {"Content-Type": "application/json"}
@@ -33,6 +39,7 @@ def try_talk(transcript: str) -> Optional[str]:
         )
         if resp.status_code != 200:
             logger.warning("mac talk HTTP %s", resp.status_code)
+            _fail_until = time.monotonic() + _COOLDOWN
             return None
         data = resp.json()
         if data.get("escalate"):
@@ -49,5 +56,6 @@ def try_talk(transcript: str) -> Optional[str]:
         )
         return speak
     except Exception as exc:
+        _fail_until = time.monotonic() + _COOLDOWN
         logger.warning("mac talk failed: %s", exc)
         return None

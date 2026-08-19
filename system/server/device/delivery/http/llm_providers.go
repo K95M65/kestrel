@@ -1,11 +1,13 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -102,17 +104,28 @@ func (h *DeviceHandler) PollLLMOAuth(c *gin.Context) {
 	}
 	tok, wait, err := grokClient.Exchange(pending.DC)
 	if err != nil {
-		llmLogins.Delete(req.DeviceCode)
+		if grokauth.TerminalDeviceError(err) {
+			llmLogins.Delete(req.DeviceCode)
+		}
 		c.JSON(http.StatusBadGateway, serializers.ResponseError(err.Error()))
 		return
 	}
 	if wait != "" {
-		c.JSON(http.StatusOK, serializers.ResponseSuccess(gin.H{"pending": true}))
+		if wait == "slow_down" {
+			pending.DC.Interval += grokauth.DeviceCodeSlowDownStep
+			llmLogins.Store(req.DeviceCode, pending)
+		}
+		c.JSON(http.StatusOK, serializers.ResponseSuccess(gin.H{
+			"pending":  true,
+			"interval": int(pending.DC.Interval.Seconds()),
+		}))
 		return
 	}
 	llmLogins.Delete(req.DeviceCode)
 	if err := writeGrokTokens(grokTokFile, tok); err != nil {
 		slog.Warn("grok oauth persist failed", "component", "device", "error", err)
+		c.JSON(http.StatusInternalServerError, serializers.ResponseError("could not save Grok login"))
+		return
 	}
 	p, _ := domain.LookupLLMProvider(pending.Provider)
 	c.JSON(http.StatusOK, serializers.ResponseSuccess(gin.H{
@@ -140,6 +153,17 @@ func (h *DeviceHandler) GetCompanionApps(c *gin.Context) {
 	c.JSON(http.StatusOK, serializers.ResponseSuccess(domain.CompanionApps()))
 }
 
+const grokRefreshInterval = 5 * time.Minute
+
+type grokTokRecord struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	ExpiresIn    int    `json:"expires_in"`
+	ExpiresAt    int64  `json:"expires_at"`
+	SavedAt      string `json:"saved_at"`
+	TokenType    string `json:"token_type"`
+}
+
 func writeGrokTokens(path string, tok grokauth.Tokens) error {
 	if path == "" {
 		return nil
@@ -147,15 +171,103 @@ func writeGrokTokens(path string, tok grokauth.Tokens) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
+	now := time.Now().UTC()
+	expiresIn := int(tok.ExpiresIn.Seconds())
+	if expiresIn <= 0 {
+		expiresIn = int(time.Hour.Seconds())
+	}
 	body, err := json.MarshalIndent(map[string]any{
 		"access_token":  tok.AccessToken,
 		"refresh_token": tok.RefreshToken,
-		"expires_in":    int(tok.ExpiresIn.Seconds()),
+		"expires_in":    expiresIn,
+		"expires_at":    now.Add(time.Duration(expiresIn) * time.Second).Unix(),
 		"token_type":    tok.TokenType,
-		"saved_at":      time.Now().UTC().Format(time.RFC3339),
+		"saved_at":      now.Format(time.RFC3339),
 	}, "", "  ")
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(path, body, 0o600)
+}
+
+func readGrokTokens(path string) (grokTokRecord, error) {
+	var rec grokTokRecord
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return rec, err
+	}
+	if err := json.Unmarshal(data, &rec); err != nil {
+		return rec, err
+	}
+	return rec, nil
+}
+
+func (r grokTokRecord) expiry() time.Time {
+	if r.ExpiresAt > 0 {
+		return time.Unix(r.ExpiresAt, 0)
+	}
+	if r.SavedAt != "" && r.ExpiresIn > 0 {
+		if t, err := time.Parse(time.RFC3339, r.SavedAt); err == nil {
+			return t.Add(time.Duration(r.ExpiresIn) * time.Second)
+		}
+	}
+	return time.Time{}
+}
+
+func (r grokTokRecord) needsRefresh(now time.Time) bool {
+	if grokauth.AccessTokenIsExpiring(r.AccessToken, grokauth.AccessTokenRefreshSkew, now) {
+		return true
+	}
+	if exp := r.expiry(); !exp.IsZero() {
+		return now.After(exp.Add(-grokauth.AccessTokenRefreshSkew))
+	}
+	if r.SavedAt != "" {
+		if t, err := time.Parse(time.RFC3339, r.SavedAt); err == nil {
+			return now.Sub(t) > 50*time.Minute
+		}
+	}
+	return false
+}
+
+// StartGrokRefreshLoop rotates SuperGrok tokens before the access token dies.
+func (h *DeviceHandler) StartGrokRefreshLoop(ctx context.Context) {
+	h.refreshGrokTokens()
+	t := time.NewTicker(grokRefreshInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			h.refreshGrokTokens()
+		}
+	}
+}
+
+func (h *DeviceHandler) refreshGrokTokens() {
+	defer func() {
+		if rec := recover(); rec != nil {
+			slog.Error("grok-refresh panic", "component", "device", "panic", rec)
+		}
+	}()
+	rec, err := readGrokTokens(grokTokFile)
+	if err != nil || strings.TrimSpace(rec.RefreshToken) == "" {
+		return
+	}
+	if !rec.needsRefresh(time.Now()) {
+		return
+	}
+	tok, err := grokClient.Refresh(rec.RefreshToken)
+	if err != nil {
+		slog.Warn("grok token refresh failed", "component", "device", "error", err)
+		return
+	}
+	if err := writeGrokTokens(grokTokFile, tok); err != nil {
+		slog.Warn("grok oauth persist failed", "component", "device", "error", err)
+	}
+	if h.service != nil {
+		if err := h.service.ApplyRotatedLLMAPIKey(rec.AccessToken, tok.AccessToken); err != nil {
+			slog.Warn("grok token apply failed", "component", "device", "error", err)
+		}
+	}
 }
