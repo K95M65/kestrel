@@ -1,0 +1,9 @@
+{
+  "name": "asl-teacher",
+  "version": "1.0.0",
+  "description": "Teach hello, yes, no, thank you, happy with Reachy's body",
+  "entry": "main.py",
+  "oneshot": true,
+  "kind": "app",
+  "capabilities": ["motion", "audio"]
+}

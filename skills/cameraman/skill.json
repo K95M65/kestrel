@@ -1,0 +1,4 @@
+{
+  "name": "cameraman",
+  "capabilities": ["motion", "vision"]
+}

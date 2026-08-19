@@ -1,0 +1,9 @@
+{
+  "name": "emotions",
+  "version": "1.0.0",
+  "description": "Walk through Reachy's expressions out loud",
+  "entry": "main.py",
+  "oneshot": true,
+  "kind": "app",
+  "capabilities": ["motion", "audio"]
+}

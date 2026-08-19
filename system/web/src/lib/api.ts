@@ -420,10 +420,21 @@ export interface CompanionApp {
   download_url: string;
   direct_url?: string;
   source_url: string;
+  kind?: string;
+  install_url?: string;
+  subdir?: string;
 }
 
 export async function getCompanionApps(): Promise<CompanionApp[]> {
   return apiRequest<CompanionApp[]>(`${API_BASE}/api/device/companion-apps`);
+}
+
+export async function installPlugin(url: string, subdir?: string): Promise<boolean> {
+  return apiRequest<boolean>(`${API_BASE}/api/plugin/install`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url, subdir: subdir || undefined }),
+  });
 }
 
 export async function pollLLMOAuth(provider: string, deviceCode: string): Promise<LLMOAuthPoll> {

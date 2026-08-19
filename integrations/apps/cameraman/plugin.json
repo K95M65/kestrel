@@ -1,0 +1,9 @@
+{
+  "name": "cameraman",
+  "version": "1.0.0",
+  "description": "Keep a face in frame — Reachy follows you",
+  "entry": "main.py",
+  "oneshot": false,
+  "kind": "app",
+  "capabilities": ["motion", "vision"]
+}

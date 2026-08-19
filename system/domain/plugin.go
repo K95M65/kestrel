@@ -12,5 +12,6 @@ type Plugin struct {
 
 // PluginInstallRequest is the payload for POST /api/plugin/install.
 type PluginInstallRequest struct {
-	URL string `json:"url" validate:"required"`
+	URL    string `json:"url" validate:"required"`
+	Subdir string `json:"subdir,omitempty"`
 }

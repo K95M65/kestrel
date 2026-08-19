@@ -24,6 +24,7 @@ type manifest struct {
 	Version     string `json:"version"`
 	Description string `json:"description"`
 	Entry       string `json:"entry"`
+	Oneshot     bool   `json:"oneshot"`
 }
 
 type Service struct{}
@@ -34,9 +35,18 @@ func ProvideService() *Service {
 
 // Install clones a git repo, sets up a venv, and creates a systemd unit.
 func (s *Service) Install(url string) (*domain.Plugin, error) {
-	url = strings.TrimSpace(url)
+	return s.InstallFrom(domain.PluginInstallRequest{URL: url})
+}
+
+// InstallFrom clones url (optionally one subdir) and installs the plugin.
+func (s *Service) InstallFrom(req domain.PluginInstallRequest) (*domain.Plugin, error) {
+	url := strings.TrimSpace(req.URL)
+	subdir := strings.Trim(strings.TrimSpace(req.Subdir), "/")
 	if url == "" {
 		return nil, fmt.Errorf("plugin url is required")
+	}
+	if strings.Contains(subdir, "..") {
+		return nil, fmt.Errorf("invalid subdir")
 	}
 
 	// Clone to a temp dir first, then read plugin.json to get the name.
@@ -46,13 +56,18 @@ func (s *Service) Install(url string) (*domain.Plugin, error) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	slog.Info("[plugins] cloning", "component", "plugin", "url", url)
-	if out, err := exec.Command("git", "clone", "--depth=1", url, tmpDir).CombinedOutput(); err != nil {
-		return nil, fmt.Errorf("git clone: %s: %w", strings.TrimSpace(string(out)), err)
+	slog.Info("[plugins] cloning", "component", "plugin", "url", url, "subdir", subdir)
+	if err := cloneRepo(url, subdir, tmpDir); err != nil {
+		return nil, err
+	}
+
+	src := tmpDir
+	if subdir != "" {
+		src = filepath.Join(tmpDir, subdir)
 	}
 
 	// Parse plugin.json.
-	m, err := readManifest(tmpDir)
+	m, err := readManifest(src)
 	if err != nil {
 		return nil, fmt.Errorf("read plugin.json: %w", err)
 	}
@@ -73,8 +88,8 @@ func (s *Service) Install(url string) (*domain.Plugin, error) {
 		return nil, fmt.Errorf("plugin %q already installed", m.Name)
 	}
 
-	// Move clone to final location.
-	if out, err := exec.Command("mv", tmpDir, dest).CombinedOutput(); err != nil {
+	// Move the plugin tree (whole clone, or just the subdir) into place.
+	if out, err := exec.Command("mv", src, dest).CombinedOutput(); err != nil {
 		return nil, fmt.Errorf("move plugin: %s: %w", strings.TrimSpace(string(out)), err)
 	}
 
@@ -97,7 +112,7 @@ func (s *Service) Install(url string) (*domain.Plugin, error) {
 	}
 
 	// Generate systemd unit.
-	if err := writeSystemdUnit(m.Name, dest, m.Entry); err != nil {
+	if err := writeSystemdUnit(m.Name, dest, m.Entry, m.Oneshot); err != nil {
 		os.RemoveAll(dest)
 		return nil, fmt.Errorf("write systemd unit: %w", err)
 	}
@@ -263,23 +278,46 @@ func validatePluginExists(name string) error {
 }
 
 // writeSystemdUnit generates and writes a systemd service unit file.
-func writeSystemdUnit(name, dir, entry string) error {
+func cloneRepo(url, subdir, dest string) error {
+	args := []string{"clone", "--depth=1", "--filter=blob:none"}
+	if subdir != "" {
+		args = append(args, "--sparse")
+	}
+	args = append(args, url, dest)
+	if out, err := exec.Command("git", args...).CombinedOutput(); err != nil {
+		return fmt.Errorf("git clone: %s: %w", strings.TrimSpace(string(out)), err)
+	}
+	if subdir == "" {
+		return nil
+	}
+	if out, err := exec.Command("git", "-C", dest, "sparse-checkout", "set", "--cone", subdir).CombinedOutput(); err != nil {
+		return fmt.Errorf("git sparse-checkout: %s: %w", strings.TrimSpace(string(out)), err)
+	}
+	return nil
+}
+
+func writeSystemdUnit(name, dir, entry string, oneshot bool) error {
+	restart := "Restart=on-failure\nRestartSec=5"
+	svcType := "simple"
+	if oneshot {
+		restart = "Restart=no"
+		svcType = "oneshot"
+	}
 	unit := fmt.Sprintf(`[Unit]
 Description=Autonomous Plugin: %s
 After=network.target
 
 [Service]
-Type=simple
+Type=%s
 WorkingDirectory=%s
 ExecStart=%s %s
 Environment=HAL_URL=http://localhost:5001
-Restart=on-failure
-RestartSec=5
+%s
 MemoryMax=256M
 
 [Install]
 WantedBy=multi-user.target
-`, name, dir, filepath.Join(dir, ".venv", "bin", "python"), entry)
+`, name, svcType, dir, filepath.Join(dir, ".venv", "bin", "python"), entry, restart)
 
 	unitPath := filepath.Join(systemdDir, unitPrefix+name+".service")
 	return os.WriteFile(unitPath, []byte(unit), 0o644)

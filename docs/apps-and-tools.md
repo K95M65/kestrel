@@ -145,14 +145,24 @@ Lamp-only or no-camera apps off Reachy and vice versa.
 
 ---
 
+## First examples (in-tree)
+
+Under `integrations/apps/`, installable from Setup **Apps** (`subdir` clone):
+
+| App | Plugin name | Behavior |
+|---|---|---|
+| Dance | `dance` | Emotion groove; `DANCE_MUSIC` for a track, empty = silent |
+| Emotions reel | `emotions` | Spoken tour of built-in faces |
+| Cameraman | `cameraman` | `/servo/track` on face until stopped |
+| Phrase teacher | `asl-teacher` | hello / yes / no / thank you / happy with body (no fingers) |
+
+Voice: matching `skills/dance`, `skills/cameraman`, `skills/asl-teacher`.
+
 ## Ship order
 
-1. **Manifest + MCP register on install** (v2, this doc). One weather tool
-   proving Hermes *and* OpenClaw can call it after a runtime switch.
-2. **`start/stop` tools for exclusive apps.** Dance-party as the first app.
-3. **Store tab** that lists `autonomous-os-plugin` *and* a curated
-   Pollen-compatible subset (wrap their MCP Spaces as `tools.json` URLs).
-4. **JS apps** in the dash iframe last.
+1. These four apps + plugin `subdir` install (**done** on Kestrel).
+2. MCP register on install so Hermes and OpenClaw get `start_dance` tools without SKILL.md.
+3. Exclusive-mode park of HAL voice while dance/cameraman runs.
 
 Do not put OAuth, model pickers, or the dash chrome in this system. Those stay
 core OS (see `setup-integrations.md`).

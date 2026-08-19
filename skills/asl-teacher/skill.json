@@ -1,0 +1,4 @@
+{
+  "name": "asl-teacher",
+  "capabilities": ["motion", "audio"]
+}

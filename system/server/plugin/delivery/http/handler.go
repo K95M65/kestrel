@@ -36,8 +36,8 @@ func (h *PluginHandler) Install(c *gin.Context) {
 	}
 
 	go func() {
-		if _, err := h.service.Install(req.URL); err != nil {
-			slog.Error("[plugins] install failed", "component", "plugin-http", "url", req.URL, "error", err)
+		if _, err := h.service.InstallFrom(req); err != nil {
+			slog.Error("[plugins] install failed", "component", "plugin-http", "url", req.URL, "subdir", req.Subdir, "error", err)
 		}
 	}()
 

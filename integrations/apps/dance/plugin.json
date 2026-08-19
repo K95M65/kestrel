@@ -1,0 +1,9 @@
+{
+  "name": "dance",
+  "version": "1.0.0",
+  "description": "Reachy dances — silent groove or with music",
+  "entry": "main.py",
+  "oneshot": true,
+  "kind": "app",
+  "capabilities": ["motion", "audio"]
+}

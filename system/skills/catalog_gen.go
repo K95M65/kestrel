@@ -8,11 +8,14 @@ import "go.autonomous.ai/os/system/device"
 
 // Catalog is every skill folder in skills/, in folder order.
 var Catalog = []string{
+	"asl-teacher",
 	"audio",
 	"camera",
+	"cameraman",
 	"claude-buddy",
 	"computer-use",
 	"connectors",
+	"dance",
 	"display",
 	"emotion",
 	"face-enroll",
@@ -39,12 +42,15 @@ var Catalog = []string{
 // ANY-OF: the skill is kept when the device declares at least one. A skill
 // absent from this map has no hardware dependency and installs everywhere.
 var Capability = map[string][]string{
-	"audio":  {device.CapAudio},
-	"camera": {device.CapVision},
+	"asl-teacher": {device.CapMotion, device.CapAudio},
+	"audio":       {device.CapAudio},
+	"camera":      {device.CapVision},
+	"cameraman":   {device.CapMotion, device.CapVision},
 	// Needs a mic and speaker to ask out loud; harmless on audio devices with no
 	// companion daemon.
 	"claude-buddy": {device.CapAudio},
 	"computer-use": {device.CapCompanion},
+	"dance":        {device.CapMotion, device.CapAudio},
 	"display":      {device.CapDisplay},
 	"emotion":      {device.CapExpression},
 	// Camera people-perception: the ML people-layer over the camera, not the raw
