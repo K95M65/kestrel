@@ -7,17 +7,16 @@ fleet OTA promote.
 **Do not flash a golden image.** Pollen's daemon owns motors. Autonomous OS sits
 on top.
 
-## Current vs target (measured 2026-08-19)
+## Current vs target (measured 2026-08-20)
 
 | Component | On robot | Local tree | Action |
 |-----------|----------|------------|--------|
-| os-server | 0.1.19 | 0.1.20 | Replace binary, restart unit |
-| web | 0.1.17 | 0.1.18 | Replace nginx `setup/` bundle |
-| HAL | 0.1.12 | 0.1.12 | Leave running |
-| bootstrap | 0.0.18 | — | Leave |
+| os-server | **0.1.27** | 0.1.27 | Side-loaded |
+| web | **0.1.36** | 0.1.36 | Side-loaded |
+| HAL | 0.1.17 | — | Leave running |
+| bootstrap | — | — | Leave |
 | OpenClaw | 2026.6.10 | — | Leave |
 | Pollen daemon | active | — | Leave |
-| Device profile | 0.0.10 | — | Leave |
 
 os-server 0.1.20 resets the agent session on rename, surfaces muted/busy Test Voice,
 and publishes name-family wake phrases. Web 0.1.18 is the 8-step guided setup
@@ -47,6 +46,16 @@ Promoting GCS would move the whole fleet. This unit gets a local arm64 build.
    backup back and restart
 
 HAL, OpenClaw, and the Pollen daemon are not restarted.
+
+## Applied 2026-08-20
+
+Side-loaded on `10.10.2.160`:
+
+- os-server **0.1.27** at `/usr/local/bin/os-server` (0.1.23 at `/root/bootstrap/rollback/os-server.0.1.23`)
+- web **0.1.36** at `/usr/share/nginx/html/setup/`
+- Identity **Bobert** via `PUT /api/device/identity` 200
+- Smoke: Home **Bobert is awake**, Talk **Chat with Bobert**, Uses catalog, `GET /api/device/behaviors` 200, HAL `/health` 200, Pollen daemon still active
+- Kestrel Buddy binaries: GitHub release `kestrel-buddy-0.1.0` (Mac zip, Windows exe, Linux)
 
 ## Applied 2026-08-19
 
