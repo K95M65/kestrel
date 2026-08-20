@@ -1,20 +1,85 @@
 # Kestrel
 
-Desk companion OS for robots — Talk, Home, House, Device. A fork of [Autonomous OS](https://github.com/autonomous-ai/autonomous-os).
+Desk companion OS for robots — **Talk, Home, House, Device**. A fork of [Autonomous OS](https://github.com/autonomous-ai/autonomous-os).
 
-Kestrel is this product. Autonomous OS is the upstream stack we forked (HAL, skills, Hermes / OpenClaw, the `ROBOT.md` contract). How this tree differs from stock: [`docs/divergence-from-stock.md`](docs/divergence-from-stock.md).
+Kestrel is this product. Autonomous OS is the upstream stack (HAL, skills, Hermes / OpenClaw, the `ROBOT.md` contract). We keep that contract. We change what a person at the desk actually uses.
 
-Robots have been around for years but have never been autonomous — someone has to drive them with a remote, and they've stopped at scripted demos. Kestrel installs on the body and it comes alive.
+| | |
+|---|---|
+| This repo | [K95M65/kestrel](https://github.com/K95M65/kestrel) |
+| Upstream | [autonomous-ai/autonomous-os](https://github.com/autonomous-ai/autonomous-os) |
+| File-level overlay | [`docs/divergence-from-stock.md`](docs/divergence-from-stock.md) |
+
+---
+
+## What makes this fork different
+
+Stock Autonomous OS is a **device-agnostic robot OS**. Lamp, Intern, and Reachy Mini are bodies. Setup and chrome assume the Autonomous phone app and a Monitor + Settings dump.
+
+Kestrel is a **desk companion** on that same OS. The robot serves its own product. You name it, talk to it, and give it a life at the desk — without flashing the body or joining an Autonomous account.
+
+| Home | Talk |
+| --- | --- |
+| <img src="robots/reachy-mini/images/app/02-home.png" alt="Home — the robot is awake" width="480"> | <img src="robots/reachy-mini/images/app/03-talk.png" alt="Talk with the robot" width="480"> |
+
+| House — People | Guided setup |
+| --- | --- |
+| <img src="robots/reachy-mini/images/app/04-people.png" alt="People — who this robot knows" width="480"> | <img src="robots/reachy-mini/images/app/07-guide-intro.png" alt="Guided setup" width="480"> |
+
+**Rooms, not a dump.** Public chrome is Talk, Home, House, Device. Hardware, runtime, MQTT, and the rest stay behind Advanced / `?debug=true`. Ocean on cream (`#3368A0` / `#F2EFE7`), not stock lamp amber.
+
+**It has a name.** Guided setup names the robot, speaks a hello, and enrolls a face from the live camera. Rename writes `IDENTITY.md` and resets the brain session so the next turn is not still “Reachy.” Wake chips are `hey {name}` — not `hey autonomous`.
+
+**Life, then jobs.** Presets: Just me / Family / Kids / Office. Then an OS-owned **Uses** catalog the brains consume (they do not invent it): chat from your phone (Telegram), websites on your computer, news and weather, music on the speaker vs Spotify on the computer, stories, look, dance. Each use has its own onboarding.
+
+**People is a contact book.** House is who it knows — live add-a-friend, photo and voice on the person — not a Device tab of embeddings.
+
+**Kestrel Buddy on the computer you actually use.** Mac menu bar, plus Windows and Linux desktop. Same pairing code from Home. The robot opens sites and apps *there*. (A phone app is a different job — Talk from elsewhere — and is still Telegram today.)
+
+**Grok as a first-class brain.** Device-code login with a SuperGrok account. Hermes, OpenClaw, Codex, Claude Code, and the others stay swappable.
+
+**Reachy Mini without a flash.** Pollen’s daemon keeps the motors. Kestrel sits beside it. Install is one command; undo is documented. Lamp and Intern keep working on the same contract.
+
+**We do not take Autonomous’s OTA.** A public `software-update` would overwrite this overlay. Side-load this tree. When stock ships a fix, we port it by hand — [`docs/divergence-from-stock.md`](docs/divergence-from-stock.md).
+
+What we did **not** rename: the Go module `go.autonomous.ai/os`, schema `autonomous.device.v1`, Buddy bundle ID and pairing folder, Autonomous Lamp / Intern / the Autonomous phone app. Those are protocol and upstream products.
+
+---
+
+## From Autonomous OS
+
+The rest of this page is the stack we forked — why a robot OS exists, which bodies it already runs on, how the layers fit, how to contribute.
+
+Robots have been around for years but have never been autonomous — someone has to drive them with a remote, and they've stopped at scripted demos. Autonomous OS (and this fork) installs on the body and it comes alive.
 
 - **Your robot thinks.** Everything it sees and hears goes to an agentic reasoning engine running on the robot itself — [Hermes](runtimes/hermes/), [Claude Code](runtimes/claudecode/), or [whichever you choose](runtimes/) — that decides what to do next.
-- **Your robot acts.** It [guards the house](skills/guard/), [knows your face](skills/face-enroll/), [follows you as you move](skills/servo-tracking/), [reads the mood on your face](skills/user-emotion-detection/), [sets the light](skills/scene/) — and does the desk work too: [Gmail, GitHub](skills/connectors/), [your Mac](skills/computer-use/). Each one is a [skill](skills/) — install more from the Skill Store, or write your own.
+- **Your robot acts.** It [guards the house](skills/guard/), [knows your face](skills/face-enroll/), [follows you as you move](skills/servo-tracking/), [reads the mood on your face](skills/user-emotion-detection/), [sets the light](skills/scene/) — and does the desk work too: [Gmail, GitHub](skills/connectors/), [your computer](skills/computer-use/). Each one is a [skill](skills/) — install more from the Skill Store, or write your own.
 - **Your robot grows.** It has a built-in learning loop. It creates skills from experience, sharpens them as it uses them, keeps what it learns, searches its own past conversations, and builds a deeper picture of you with every session.
 
-Kestrel is a fully customizable operating system for robots. Every component is swappable — [engine](runtimes/), [model](docs/hosted.md), [voice](hal/drivers/voice/), [skills](skills/), [board](hal/board/boards.json). Your robot declares what it has in a `ROBOT.md`, and the OS mounts exactly that.
+Every component is swappable — [engine](runtimes/), [model](docs/hosted.md), [voice](hal/drivers/voice/), [skills](skills/), [board](hal/board/boards.json). Your robot declares what it has in a `ROBOT.md`, and the OS mounts exactly that.
+
+---
 
 ## Quick start
 
-The simplest way in is a robot we have already tested it on. What each of them can do: [robot comparison](docs/robot-comparison.md).
+The simplest way in is a robot already tested on this stack. What each of them can do: [robot comparison](docs/robot-comparison.md).
+
+### Reachy Mini
+
+[Reachy Mini](https://huggingface.co/docs/reachy_mini) is Hugging Face / Pollen’s desk robot. Kestrel runs beside Pollen’s own stack. Nothing is flashed; the Reachy daemon keeps the motors.
+
+https://github.com/user-attachments/assets/2f0aaafb-287c-488e-a3b1-a82f0ad9e776
+
+1. **SSH in** — `ssh pollen@reachy-mini.local`.
+2. **Run one command.**
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/K95M65/kestrel/main/robots/reachy-mini/install.sh | sudo bash
+   ```
+3. **Open the robot’s own UI** at `http://reachy-mini.local` (or the LAN IP). Walk Talk / Home / House / Device. The Autonomous phone app can still add a Reachy Mini if you use that path.
+4. **Interact with it.** Say something — the head tilts, the antennas lift, and it answers.
+5. **Install a skill** from the Skill Store, or type what you want it to do and it writes one.
+6. **Give it a character.** Edit `/opt/devices/reachy-mini/SOUL.md`. How to undo the install: [`robots/reachy-mini/README.md`](robots/reachy-mini/README.md).
+7. **Put it next to a Lamp.** Each one hears the other's answer as its next input, so the two of them will hold a conversation until you stop them.
 
 ### Autonomous Lamp
 
@@ -29,23 +94,6 @@ The simplest way in is a robot we have already tested it on. What each of them c
 5. **Build your own skill.** Type what you want it to do in the app and it writes the skill.
 6. **Give it a character.** Edit [`SOUL.md`](robots/lamp/SOUL.md) and it is someone else on the next turn.
 
-### Reachy Mini
-
-[Reachy Mini](https://huggingface.co/docs/reachy_mini) is Hugging Face's desk robot, running our OS beside its own stack.
-
-https://github.com/user-attachments/assets/2f0aaafb-287c-488e-a3b1-a82f0ad9e776
-
-1. **SSH in** — `ssh pollen@reachy-mini.local`.
-2. **Run one command.** Nothing is flashed; the Reachy daemon keeps the motors.
-   ```bash
-   curl -fsSL https://raw.githubusercontent.com/K95M65/kestrel/main/robots/reachy-mini/install.sh | sudo bash
-   ```
-3. **Add it.** In the app, tap **Add robot → Reachy Mini** and give it `reachy-mini.local`.
-4. **Interact with it.** Say something — the head tilts, the antennas lift, and it answers.
-5. **Install a skill** from the Skill Store, or type what you want it to do and it writes one.
-6. **Give it a character.** Edit `/opt/devices/reachy-mini/SOUL.md`. Everything else, including how to undo the install: [`devices/reachy-mini/README.md`](robots/reachy-mini/README.md).
-7. **Put it next to a Lamp.** Each one hears the other's answer as its next input, so the two of them will hold a conversation until you stop them.
-
 ### Autonomous Intern
 
 [Intern](https://www.autonomous.ai/intern) is the always-on desk agent: mic, speaker, LED ring.
@@ -59,6 +107,8 @@ https://github.com/user-attachments/assets/2f0aaafb-287c-488e-a3b1-a82f0ad9e776
 5. **Build your own skill.** Type what you want in the app; it is live on the next conversation.
 6. **Give it a character.** Edit `/opt/devices/intern-v2/SOUL.md`.
 
+---
+
 ## Bring your own robot
 
 Kestrel runs on any robot you can describe in four markdown files.
@@ -69,6 +119,8 @@ Kestrel runs on any robot you can describe in four markdown files.
 - **`SKILL.md`** — the hands: one thing it can do.
 
 Follow **[the full guide](docs/bring-your-own-robot.md)**.
+
+---
 
 ## Platform architecture
 
@@ -122,6 +174,8 @@ Four markdown files and a driver per robot. Declarations, not forks — a body i
 
 Long form: [architecture](docs/architecture/overview.md) · [HAL](docs/architecture/hal.md) · [device spec](robots/contract/ROBOT-SPEC.md) · [capabilities](robots/contract/capabilities.md) · [safety](docs/safety.md) · [developer guide](docs/developer-guide.md).
 
+---
+
 ## Contribute
 
 The easiest way in is a skill: one markdown file, no Go, no hardware, and it lands on every robot that has the parts. PRs welcome. Upstream Autonomous OS issues still live at [autonomous-ai/autonomous-os](https://github.com/autonomous-ai/autonomous-os); this fork is [K95M65/kestrel](https://github.com/K95M65/kestrel).
@@ -144,6 +198,8 @@ make os-build && make os-test          # Go daemon, cross-compiled to linux/arm6
 make web-install && make web-dev       # setup + monitor UI
 make cts                               # is this a valid Kestrel / Autonomous-compatible device?
 ```
+
+---
 
 ## License
 
