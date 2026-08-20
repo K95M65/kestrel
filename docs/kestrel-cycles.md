@@ -32,3 +32,8 @@ Why: the previous conversation asked if OpenClaw/Hermes/etc. are easy to swap; H
 Done: Guide **Brains** page — companion loop vs coding CLIs, what survives a switch.
 What would I do next? Advanced Runtime warns Codex / Claude Code / OpenCode are coding bridges (seed 4).
 Why: the wiki now says it; the switcher itself still looks like a harmless dropdown.
+
+### Cycle 4
+Done: Runtime dropdown shows a coding-CLI / PicoClaw warning before Switch.
+What would I do next? Poll speaker mute whenever audio is present, not only when music is mounted (seed 5).
+Why: kestrel-host may have a speaker without a music route; Home MUTED was already a desk bug.

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { C, SectionCard } from "@/components/setup/shared";
 import { getAgentRuntime, setAgentRuntime } from "@/lib/api";
+import { runtimeSwitchWarning } from "@/lib/agentRuntime";
 
 // Agent-runtime switch (openclaw / hermes / picoclaw / codex / claudecode / opencode).
 // Unlike the rest of EditConfig this is NOT part of the form's "Save Changes"
@@ -138,10 +139,18 @@ export function AgentRuntimeSection({ active }: { active: boolean }) {
           </div>
 
           {RUNTIME_BLURB[selected] && (
-            <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 14 }}>
+            <div style={{ fontSize: 11, color: C.textMuted, marginBottom: runtimeSwitchWarning(selected) ? 8 : 14 }}>
               {RUNTIME_BLURB[selected]}
             </div>
           )}
+          {(() => {
+            const warn = runtimeSwitchWarning(selected);
+            return warn ? (
+              <div style={{ fontSize: 12, color: C.amber, marginBottom: 14, lineHeight: 1.45 }}>
+                {warn}
+              </div>
+            ) : null;
+          })()}
 
           <button
             type="button"
