@@ -7,6 +7,7 @@ import {
 import { API } from "./types";
 import { getDeviceConfig } from "@/lib/api";
 import { talkName, talkNameTitle } from "@/lib/robotName";
+import { useRobotName } from "@/lib/useRobotName";
 import {
   putChatImage, getAllChatImages, deleteChatImages, pruneChatImages, clearChatImages,
 } from "@/lib/chatImageStore";
@@ -664,7 +665,7 @@ export function ChatSection({ events, isActive }: Props) {
   // /api/device/config; the old `${AGENT_API}/config-json` path is now
   // loopback-only (audit local F5c) and unreachable from a browser.
   const [modelLabel, setModelLabel] = useState<string>("");
-  const [agentName, setAgentName] = useState("");
+  const agentName = useRobotName();
   useEffect(() => {
     getDeviceConfig()
       .then((cfg) => {
@@ -672,7 +673,6 @@ export function ChatSection({ events, isActive }: Props) {
         // also sets this on first load; doing it here too covers the case where
         // the chat is reached without that gate having resolved config yet.
         setLanguage(cfg.stt_language);
-        setAgentName(cfg.agent_name ?? "");
         const primary = cfg.llm_model;
         if (!primary) return;
         // Strip provider prefix and collapse Anthropic's trailing version

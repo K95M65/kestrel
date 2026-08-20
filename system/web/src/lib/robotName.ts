@@ -1,7 +1,19 @@
 // Owner-facing robot name. IDENTITY.md / agent_name start as the device class
 // ("lamp", "autonomous"); those are not a chosen name.
+//
+// "Buddy" is the computer companion (Kestrel Buddy), not a default robot name.
 
 const GENERIC = /^(autonomous|friend|lamp|dog|intern|intern-v2|reachy|reachy-mini|reachy mini)$/i;
+
+/** Example on name fields — not Kestrel Buddy, so Talk never looks like the companion. */
+export const EXAMPLE_ROBOT_NAME = "Luna";
+
+export const IDENTITY_EVENT = "kestrel-identity";
+
+export function publishRobotName(name: string) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(IDENTITY_EVENT, { detail: name }));
+}
 
 export function displayRobotName(name?: string | null): string {
   const n = (name ?? "").trim();

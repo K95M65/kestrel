@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { Eye, EyeOff, Copy, Check, Cpu, Fingerprint, Network } from "lucide-react";
 import { SecretUpdateField } from "@/components/SecretUpdateField";
 import { setIdentity, type IdentityPublic } from "@/lib/api";
-import { defaultWakePhrase, isNamedRobot } from "@/lib/robotName";
+import { defaultWakePhrase, EXAMPLE_ROBOT_NAME, isNamedRobot } from "@/lib/robotName";
 import { C, Field, PasswordField, SectionCard, LABEL_STYLE, INPUT_STYLE, INPUT_READONLY_STYLE, INPUT_PAD_ONE_ICON, FIELD_GAP, ADMIN_PASSWORD_MIN } from "./shared";
 
 // Read-only MAC field masked behind ••••, with an eye toggle to reveal. The
@@ -379,13 +379,13 @@ function IdentityEditor({
         }
       }}
     >
-      <Field label="Name" id="robot_name" value={name} onChange={onNameChange} placeholder="e.g. Buddy" />
+      <Field label="Name" id="robot_name" value={name} onChange={onNameChange} placeholder={`e.g. ${EXAMPLE_ROBOT_NAME}`} />
       <Field
         label="Wake phrase"
         id="robot_wake"
         value={wake}
         onChange={setWake}
-        placeholder="e.g. hey buddy"
+        placeholder={`e.g. ${defaultWakePhrase(EXAMPLE_ROBOT_NAME)}`}
       />
       <div style={{ marginTop: -6, marginBottom: 12, fontSize: 11.5, lineHeight: 1.45, color: C.textMuted }}>
         Leave as “hey {name.trim() || "name"}” to keep the usual aliases, or type one custom phrase.

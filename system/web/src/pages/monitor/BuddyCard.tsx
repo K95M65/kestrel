@@ -199,7 +199,7 @@ export function BuddyCard() {
           )}
           {status.buddyId && (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ fontSize: 12.5, color: "var(--lm-text-dim)" }}>Buddy ID</span>
+              <span style={{ fontSize: 12.5, color: "var(--lm-text-dim)" }}>Companion ID</span>
               <span style={{ fontSize: 11, fontWeight: 500, color: "var(--lm-text-dim)", fontFamily: "monospace" }}>{status.buddyId}</span>
             </div>
           )}

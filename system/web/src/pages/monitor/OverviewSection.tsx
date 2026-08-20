@@ -2,8 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { Satellite, Globe, Eye, Volume2, Cpu, Drama, Clapperboard, Bot, Tag, Moon, Sparkles, Library } from "lucide-react";
-import { getSleep, sleepNow, wakeNow, getBehaviors, setMeeting, fireBriefNow, getDeviceConfig, type SleepStatus, type BehaviorsStatus } from "@/lib/api";
+import { getSleep, sleepNow, wakeNow, getBehaviors, setMeeting, fireBriefNow, type SleepStatus, type BehaviorsStatus } from "@/lib/api";
 import { displayRobotName } from "@/lib/robotName";
+import { useRobotName } from "@/lib/useRobotName";
 import { isRobotQuiet, sleepToggleKind, sleepToggleLabel, withSleeping } from "@/lib/sleepToggle";
 import { formatNext } from "@/lib/behaviorsModel";
 import { ReachyMark } from "@/components/ReachyMark";
@@ -634,13 +635,12 @@ function HomeHero({
   const navigate = useNavigate();
   const [sleep, setSleep] = useState<SleepStatus | null>(null);
   const [beh, setBeh] = useState<BehaviorsStatus | null>(null);
-  const [agentName, setAgentName] = useState("");
+  const agentName = useRobotName();
   const [busy, setBusy] = useState<string | null>(null);
   const busyRef = useRef<string | null>(null);
   useEffect(() => { busyRef.current = busy; }, [busy]);
 
   useEffect(() => {
-    getDeviceConfig().then((c) => setAgentName(c.agent_name ?? "")).catch(() => {});
     const refresh = () => {
       if (busyRef.current) return;
       getSleep().then(setSleep).catch(() => {});

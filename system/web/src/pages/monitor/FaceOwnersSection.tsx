@@ -4,6 +4,7 @@ import { S } from "./styles";
 import { useTheme } from "@/lib/useTheme";
 import { getBehaviors, getDeviceConfig, hwUrl, setMe } from "@/lib/api";
 import { talkName } from "@/lib/robotName";
+import { useRobotName } from "@/lib/useRobotName";
 import { useFaceEnroll } from "@/hooks/setup/useFaceEnroll";
 import { FriendPhotoModal } from "./face-owners/FriendPhotoModal";
 import { mainFacePhoto } from "@/lib/facePhoto";
@@ -32,7 +33,7 @@ export function FaceOwnersSection({
   const [, , themeClass] = useTheme();
   const { loadFaceOwners } = useFaceEnroll();
   const [sttLanguage, setSttLanguage] = useState("en");
-  const [agentName, setAgentName] = useState("");
+  const agentName = useRobotName();
   const [meLabel, setMeLabel] = useState("");
   const [settingMe, setSettingMe] = useState(false);
   const [claimAsMe, setClaimAsMe] = useState(false);
@@ -56,7 +57,6 @@ export function FaceOwnersSection({
     getDeviceConfig()
       .then((c) => {
         setSttLanguage(c.stt_language || "en");
-        setAgentName(c.agent_name ?? "");
       })
       .catch(() => {});
     getBehaviors()

@@ -13,7 +13,7 @@ import {
   clampBehaviors, type ExtraChip,
 } from "@/lib/guideWalk";
 import { useCapabilities } from "@/hooks/useCapabilities";
-import { defaultWakePhrase } from "@/lib/robotName";
+import { defaultWakePhrase, EXAMPLE_ROBOT_NAME } from "@/lib/robotName";
 import { useTheme } from "@/lib/useTheme";
 import { GuideTalkStep } from "@/pages/settings/guide/GuideTalkStep";
 import { GuideSeeStep } from "@/pages/settings/guide/GuideSeeStep";
@@ -246,7 +246,7 @@ export function BehaviorsOnboarding({
                     setWakePhrase(defaultWakePhrase(v));
                   }
                 }}
-                placeholder="e.g. Buddy"
+                placeholder={`e.g. ${EXAMPLE_ROBOT_NAME}`}
                 autoComplete="off"
                 style={{ ...INPUT_STYLE, marginBottom: 12 }}
               />
@@ -255,7 +255,7 @@ export function BehaviorsOnboarding({
                 id="guide-wake"
                 value={wakePhrase}
                 onChange={(e) => { setWakePhrase(e.target.value); setIdentitySaved(false); }}
-                placeholder="e.g. hey buddy"
+                placeholder={`e.g. ${defaultWakePhrase(EXAMPLE_ROBOT_NAME)}`}
                 autoComplete="off"
                 style={INPUT_STYLE}
               />

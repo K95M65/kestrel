@@ -10,7 +10,7 @@ const LOG_SOURCES: { id: LogSource; label: string; debugLabel?: string; color: s
   { id: "os-server",        label: "App",    debugLabel: "OS",         color: "var(--lm-amber)" },
   { id: "openclaw",         label: "Brain",  debugLabel: "Agent",      color: "var(--lm-blue)" },
   { id: "openclaw-service", label: "Agent Service", color: "var(--lm-purple)" },
-  { id: "buddy",            label: "Claude Desktop Buddy", color: "var(--lm-cyan)" },
+  { id: "buddy",            label: "Kestrel Buddy", color: "var(--lm-cyan)" },
 ];
 const PUBLIC_LOG_SOURCES = new Set<LogSource>(["hal", "os-server", "openclaw"]);
 

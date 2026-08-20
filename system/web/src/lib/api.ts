@@ -1,5 +1,6 @@
 import camelcaseKeys from "camelcase-keys";
 import type { NetworkItem, SetupRequest } from "@/types";
+import { publishRobotName } from "./robotName";
 
 const API_BASE =
   import.meta.env.VITE_API_BASE ??
@@ -803,11 +804,13 @@ export interface IdentityPublic {
 
 /** PUT /api/device/identity — name + optional exclusive wake phrase. */
 export async function setIdentity(body: { name: string; wake_phrase?: string }): Promise<IdentityPublic> {
-  return apiRequest<IdentityPublic>(`${API_BASE}/api/device/identity`, {
+  const saved = await apiRequest<IdentityPublic>(`${API_BASE}/api/device/identity`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+  publishRobotName(saved.name || body.name);
+  return saved;
 }
 
 /** POST /api/login — server validates bcrypt(password) against
