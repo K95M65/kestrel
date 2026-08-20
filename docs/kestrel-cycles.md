@@ -37,3 +37,8 @@ Why: the wiki now says it; the switcher itself still looks like a harmless dropd
 Done: Runtime dropdown shows a coding-CLI / PicoClaw warning before Switch.
 What would I do next? Poll speaker mute whenever audio is present, not only when music is mounted (seed 5).
 Why: kestrel-host may have a speaker without a music route; Home MUTED was already a desk bug.
+
+### Cycle 5
+Done: `/voice/status` reports `speaker_muted`; Home reads it even without music.
+What would I do next? Device → Wi-Fi shows the connected SSID (seed 6).
+Why: product queue P1 Device Wi-Fi; next small home-user honesty.

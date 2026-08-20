@@ -21,6 +21,7 @@ import { API, HW, HISTORY_LEN, FLOW_EVENTS_MAX, NAV, isNavGroup, isNavLink, Cap,
 import { scenariosMatching } from "@/lib/scenarios";
 import type { Section, Area, SystemInfo, NetworkInfo, HWHealth, OCStatus, PresenceInfo, VoiceStatus, ServoState, DisplayState, AudioVolume, LEDColor, SceneInfo, MonitorEvent, DisplayEvent, NavEntry } from "./types";
 import { OverviewSection } from "./OverviewSection";
+import { speakerMutedFromVoice } from "@/lib/speakerMute";
 import { CameraSection } from "./CameraSection";
 import { LogsSection } from "./LogsSection";
 import { ChatSection } from "./ChatSection";
@@ -579,7 +580,13 @@ export default function Monitor() {
         fetch(`${HW}/health`, { signal }).then(json).then((hwR) => {
           setHw(hwR);
           const peripherals: Promise<unknown>[] = [];
-          if (hwR.voice) peripherals.push(fetch(`${HW}/voice/status`, { signal }).then(json).then((r) => { if (r) setVoice(r); }).catch(() => {}));
+          if (hwR.voice) peripherals.push(fetch(`${HW}/voice/status`, { signal }).then(json).then((r) => {
+            if (r) {
+              setVoice(r);
+              const muted = speakerMutedFromVoice(r);
+              if (muted !== undefined) setSpeakerMuted(muted);
+            }
+          }).catch(() => {}));
           if (hwR.audio) peripherals.push(fetch(`${HW}/audio/volume`, { signal }).then(json).then((r) => { if (r) setAudio(r); }).catch(() => {}));
           if (hwR.music) peripherals.push(fetch(`${HW}/audio/status`, { signal }).then(json).then((r) => {
             if (r?.playing !== undefined) setMusicPlaying(r.playing);

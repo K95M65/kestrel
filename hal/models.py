@@ -488,6 +488,9 @@ class VoiceStatusResponse(BaseModel):
     # hint entirely. True/False mirrors the physical throw and is the authority:
     # while True, /voice/unmute rejects with 409 and the touchpad ignores taps.
     hw_mic_switch_muted: Optional[bool] = None
+    # Loudspeaker mute (same flag as GET /audio/status). On voice so Home can
+    # show MUTED when the body has audio but no music route.
+    speaker_muted: bool = False
 
 
 class HealthResponse(BaseModel):

@@ -92,6 +92,7 @@ export interface VoiceStatus {
   // without the switch (Lamp) → UI hides the "HW-locked" hint. When true,
   // /voice/unmute returns 409 so the UI must disable the Unmute button.
   hw_mic_switch_muted?: boolean | null;
+  speaker_muted?: boolean;
 }
 export interface ServoState {
   available_recordings: string[];

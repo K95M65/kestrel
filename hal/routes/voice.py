@@ -586,4 +586,5 @@ def voice_status():
         "tts_detail": tts_detail,
         "mic_muted": state._mic_muted,
         "hw_mic_switch_muted": state._hw_mic_switch_muted,
+        "speaker_muted": state._speaker_muted,
     }
