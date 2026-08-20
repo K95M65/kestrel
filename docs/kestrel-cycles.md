@@ -42,3 +42,8 @@ Why: kestrel-host may have a speaker without a music route; Home MUTED was alrea
 Done: `/voice/status` reports `speaker_muted`; Home reads it even without music.
 What would I do next? Device → Wi-Fi shows the connected SSID (seed 6).
 Why: product queue P1 Device Wi-Fi; next small home-user honesty.
+
+### Cycle 6
+Done: Device → Wi-Fi shows live station SSID, signal, and link rate.
+What would I do next? Guide page for identity layers (seed 7).
+Why: the earlier identity question (name, soul, people) still has no handbook page.

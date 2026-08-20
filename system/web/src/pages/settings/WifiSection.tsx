@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Wifi, Pencil, X, RefreshCw } from "lucide-react";
 import { C, FIELD_GAP, LABEL_STYLE, INPUT_STYLE, LockedPasswordField, SectionCard } from "@/components/setup/shared";
-import { getNetworks } from "@/lib/api";
+import { getCurrentNetwork, getNetworks, type CurrentNetwork } from "@/lib/api";
 import type { NetworkItem } from "@/types";
+import { formatWifiNow } from "@/lib/wifiNow";
 
 export interface WifiLoadedState {
   ssid: boolean;
@@ -38,6 +39,14 @@ export function WifiSection({
   const [networks, setNetworks] = useState<NetworkItem[]>([]);
   const [loadingList, setLoadingList] = useState(false);
   const [scanErr, setScanErr] = useState<string | null>(null);
+  const [live, setLive] = useState<CurrentNetwork | null>(null);
+
+  useEffect(() => {
+    if (!active) return;
+    getCurrentNetwork()
+      .then((n) => setLive(n))
+      .catch(() => setLive(null));
+  }, [active]);
 
   const runScan = useCallback(async () => {
     setLoadingList(true);
@@ -82,6 +91,9 @@ export function WifiSection({
         : "The network this robot uses. Pencil to join one."}
       icon={<Wifi size={17} />}
     >
+      <p style={{ margin: "0 0 12px", fontSize: 12.5, color: C.textDim, lineHeight: 1.45 }}>
+        Now: {formatWifiNow(live)}
+      </p>
       <div style={{ marginBottom: FIELD_GAP }}>
         <label htmlFor="ssid" style={LABEL_STYLE}>Wi-Fi network</label>
         {readOnly ? (
