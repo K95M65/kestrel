@@ -8,7 +8,8 @@ This Mac already has [Lima](https://lima-vm.io) (`limactl`). That is the VM.
 ## Once — Linux VM
 
 ```bash
-limactl start --name kestrel template://ubuntu
+# Ubuntu 24.04 Server cloud image (no desktop). Headless — Talk/Home is the Mac browser.
+limactl start --name kestrel template://ubuntu-24.04
 limactl shell kestrel
 ```
 
