@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -29,6 +30,14 @@ func (s *Server) voicePreview(c *gin.Context) {
 	apiKey := s.config.GetTTSAPIKey()
 	baseURL := s.config.GetTTSBaseURL()
 	if err := hal.SpeakPreview(body.Text, body.Voice, body.Provider, apiKey, baseURL); err != nil {
+		if errors.Is(err, hal.ErrSpeakerMuted) {
+			c.JSON(http.StatusConflict, serializers.ResponseError("speaker muted"))
+			return
+		}
+		if strings.Contains(err.Error(), "returned 409") {
+			c.JSON(http.StatusConflict, serializers.ResponseError("robot is busy speaking — try again in a moment"))
+			return
+		}
 		slog.Warn("voice preview failed", "component", "voice", "error", err)
 		c.JSON(http.StatusBadGateway, serializers.ResponseError("preview failed: "+err.Error()))
 		return

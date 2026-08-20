@@ -38,12 +38,12 @@ func (s *HermesService) PairWhatsapp(_ context.Context) <-chan domain.PairingEve
 // RestartAgent for Hermes lives in onboarding.go — it restarts hermes-gateway
 // via restartHermesGateway, mirroring openclaw's RestartAgent.
 
-// RefreshModelsConfig — Hermes config (~/.hermes/...) is owned externally; we
-// don't patch it from Device. Returns ErrNotSupportedByRuntime so the caller
-// knows nothing was applied (it falls back to EnsureOnboarding, whose presync
-// re-syncs llm_base_url/llm_api_key from config.json).
+// RefreshModelsConfig re-runs presync so llm_api_key / llm_base_url in
+// config.json land in ~/.hermes/.env and config.yaml now, not at the next
+// switch. Grok token rotation and Settings → AI Brain both hit this while
+// Hermes is already the active brain.
 func (s *HermesService) RefreshModelsConfig() error {
-	return domain.ErrNotSupportedByRuntime
+	return s.EnsureOnboarding()
 }
 
 // EnsureOnboarding for Hermes lives in onboarding.go — it runs the embedded

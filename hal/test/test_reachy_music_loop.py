@@ -8,6 +8,7 @@ the rest of the track — where the feetech backend loops the groove
 The reachy_mini SDK is not installed on dev machines, so it is stubbed here;
 numpy/scipy come from hal's venv (imported at module level by the driver).
 """
+import math
 import os
 import sys
 import threading
@@ -29,18 +30,25 @@ def _install_sdk_stub():
     motion = types.ModuleType("reachy_mini.motion")
     recorded = types.ModuleType("reachy_mini.motion.recorded_move")
     recorded.RecordedMoves = object
+    core = types.ModuleType("reachy_mini.reachy_mini")
+    core.SLEEP_ANTENNAS_JOINT_POSITIONS = [-3.05, 3.05]
+    core.SLEEP_HEAD_POSE = "sleep-head"
     sys.modules.update({
         "reachy_mini": pkg,
         "reachy_mini.utils": utils,
         "reachy_mini.motion": motion,
         "reachy_mini.motion.recorded_move": recorded,
+        "reachy_mini.reachy_mini": core,
     })
 
 
 _install_sdk_stub()
 
 import hal.presets as P  # noqa: E402
-from hal.drivers.motors.reachy_service import ReachyMotionService  # noqa: E402
+import hal.drivers.motors.reachy_service as reachy_service  # noqa: E402
+from hal.drivers.motors.reachy_service import ReachyMotionService, _TimeScaledMove  # noqa: E402
+
+reachy_service._SLEEP_SETTLE_S = 0.0
 
 _MOVE_DURATION_S = 0.02
 
@@ -52,7 +60,13 @@ class FakeMini:
         self.played = []
         self.ramps = []
         self.gotos = []
+        self.sleeps = 0
+        self.wakes = 0
+        self.enables = 0
         self.cancels = 0
+        self.head_pose = None
+        self.head_joints = None
+        self.antennas = None
         self.max_concurrent_plays = 0
         self._playing = 0
         self._lock = threading.Lock()
@@ -77,16 +91,26 @@ class FakeMini:
         self._cancel.set()
 
     def enable_motors(self):
-        pass
+        self.enables += 1
 
     def disable_motors(self):
         pass
 
     def wake_up(self):
-        pass
+        self.wakes += 1
+
+    def get_current_head_pose(self):
+        if self.head_pose is None:
+            raise RuntimeError("no pose read in tests — driver falls back to _target")
+        return self.head_pose
+
+    def get_current_joint_positions(self):
+        if self.head_joints is None:
+            raise RuntimeError("no joint read in tests")
+        return list(self.head_joints), list(self.antennas)
 
     def goto_sleep(self):
-        pass
+        self.sleeps += 1
 
     def goto_target(self, **kwargs):
         self.gotos.append(kwargs)
@@ -94,11 +118,13 @@ class FakeMini:
     def set_target(self, **kwargs):
         self.gotos.append(kwargs)
 
-    def get_current_head_pose(self):
-        raise RuntimeError("no pose read in tests — driver falls back to _target")
+    class _Client:
+        def disconnect(self):
+            pass
 
-    def get_current_joint_positions(self):
-        raise RuntimeError("no joint read in tests")
+    @property
+    def client(self):
+        return self._Client()
 
     def play_count(self, name=None):
         with self._lock:
@@ -281,6 +307,79 @@ class TestPlayRamp(unittest.TestCase):
         svc._play_thread.join(timeout=2.0)
         # 90° of yaw at 60 deg/s cannot be done in the 0.5s default ramp.
         self.assertGreaterEqual(svc._mini.ramps[0], 90.0 / 60.0 - 0.01)
+
+    class _SweepMoves(FakeMoves):
+        """A 90° yaw sweep in 0.2s — 450 deg/s, well above a 30 deg/s ceiling.
+
+        evaluate raises on t >= duration, matching Pollen RecordedMove
+        (HF emotions start at 0, so duration == timestamps[-1]).
+        """
+
+        duration = 0.2
+        delta_deg = 90.0
+
+        def get(self, name):
+            name = super().get(name)
+            import numpy as np
+            from scipy.spatial.transform import Rotation
+
+            dur = self.duration
+            delta = self.delta_deg
+            evaluated_at = []
+
+            def evaluate(t):
+                t = float(t)
+                evaluated_at.append(t)
+                if t < 0 or t >= dur:
+                    raise ValueError(
+                        f"t={t} outside [0, {dur}) — RecordedMove.evaluate contract"
+                    )
+                frac = t / dur
+                pose = np.eye(4)
+                pose[:3, :3] = Rotation.from_euler(
+                    "xyz", [0, 0, delta * frac], degrees=True
+                ).as_matrix()
+                return pose, np.array([0.0, 0.0]), 0.0
+
+            move = types.SimpleNamespace(
+                name=name, duration=dur, evaluate=evaluate, evaluated_at=evaluated_at
+            )
+            return move
+
+    def test_fast_recorded_play_is_stretched_by_the_speed_gate(self):
+        """dispatch → play_move is the emotion path. Peak 90° in 0.2s at 30 deg/s
+        needs >= 3.0s; the wrapper's duration is that stretch. Sampling must
+        not evaluate t == duration (that raise used to fail-open the gate)."""
+        from hal.safety.policy import MotionBounds, SafetyPolicy
+
+        max_speed = 30
+        policy = SafetyPolicy(
+            schema="autonomous.safety.v1", motion=MotionBounds(max_speed=max_speed)
+        )
+        svc = self._svc(policy)
+        svc._moves = self._SweepMoves()
+        svc.dispatch(P.SERVO_CMD_PLAY, P.SERVO_CURIOUS)
+        svc._play_thread.join(timeout=2.0)
+        self.assertTrue(svc._mini.played, "play_move was not the play entry")
+        played = svc._mini.played[0]
+        self.assertIsInstance(played, _TimeScaledMove)
+        needed = self._SweepMoves.delta_deg / max_speed
+        self.assertGreaterEqual(float(played.duration), needed - 0.05)
+        inner = played._inner
+        self.assertTrue(inner.evaluated_at, "speed gate never sampled the move")
+        self.assertLess(
+            max(inner.evaluated_at),
+            self._SweepMoves.duration,
+            "sampler evaluated t >= duration (RecordedMove would raise)",
+        )
+        self.assertEqual(svc._mini.sleeps, 0)
+
+    def test_recorded_play_passthrough_without_a_speed_bound(self):
+        svc = self._svc()
+        svc._moves = self._SweepMoves()
+        svc.dispatch(P.SERVO_CMD_PLAY, P.SERVO_CURIOUS)
+        svc._play_thread.join(timeout=2.0)
+        self.assertAlmostEqual(float(svc._mini.played[0].duration), self._SweepMoves.duration, places=3)
 
 
 class SlowMoves(FakeMoves):
@@ -491,6 +590,136 @@ class TestAvailableRecordings(unittest.TestCase):
     def test_no_move_library_returns_empty(self):
         self.svc._moves = False
         self.assertEqual(self.svc.get_available_recordings(), [])
+
+
+def _antenna_gotos(gotos):
+    return [g for g in gotos if g.get("antennas") is not None]
+
+
+class TestReachySleepFoldsAntennas(unittest.TestCase):
+    """Sleep must fold the ears down and must not call SDK goto_sleep()."""
+
+    def setUp(self):
+        self.svc = ReachyMotionService()
+        self.mini = FakeMini()
+        self.svc._mini = self.mini
+        self.svc._moves = FakeMoves()
+
+    def tearDown(self):
+        self.svc._music_playing = False
+        thread = self.svc._play_thread
+        if thread:
+            thread.join(timeout=2.0)
+
+    def test_release_parks_antennas_and_skips_sdk_goto_sleep(self):
+        self.svc.release()
+        self.assertEqual(self.mini.sleeps, 0)
+        folded = _antenna_gotos(self.mini.gotos)
+        self.assertTrue(folded, "release() did not command the antennas")
+        last = folded[-1]["antennas"]
+        self.assertAlmostEqual(float(last[0]), -3.05, places=2)
+        self.assertAlmostEqual(float(last[1]), 3.05, places=2)
+
+    def test_sleepy_play_folds_antennas_instead_of_tired1(self):
+        self.svc.dispatch(P.SERVO_CMD_PLAY, P.SERVO_SLEEPY)
+        thread = self.svc._play_thread
+        self.assertIsNotNone(thread)
+        thread.join(timeout=2.0)
+        self.assertEqual(self.mini.play_count(), 0)
+        self.assertEqual(self.mini.sleeps, 0)
+        folded = _antenna_gotos(self.mini.gotos)
+        self.assertTrue(folded, "sleepy play did not command the antennas")
+        last = folded[-1]["antennas"]
+        self.assertAlmostEqual(float(last[0]), -3.05, places=2)
+        self.assertAlmostEqual(float(last[1]), 3.05, places=2)
+
+    def test_stop_parks_without_sdk_goto_sleep(self):
+        self.svc.stop(timeout=0.1)
+        self.assertEqual(self.mini.sleeps, 0)
+        self.assertTrue(_antenna_gotos(self.mini.gotos))
+
+
+def _sleep_to_init_antenna_delta_deg():
+    """Largest INIT-bound antenna travel, from the shipped sleep/INIT constants."""
+    return abs(
+        math.degrees(reachy_service._SLEEP_ANTENNAS_RAD[0])
+        - math.degrees(reachy_service._INIT_ANTENNAS_RAD[0])
+    )
+
+
+class TestReachyWakeSpeedGate(unittest.TestCase):
+    """resume/start must stretch INIT from a folded pose; SDK wake_up is a snap."""
+
+    def setUp(self):
+        from hal.safety.policy import MotionBounds, SafetyPolicy
+
+        self.max_speed = 30
+        self.delta = _sleep_to_init_antenna_delta_deg()
+        self.needed = self.delta / self.max_speed
+        self.policy = SafetyPolicy(
+            schema="autonomous.safety.v1",
+            motion=MotionBounds(max_speed=self.max_speed),
+        )
+
+    def _sleep_pose_mini(self):
+        import numpy as np
+
+        mini = FakeMini()
+        mini.head_pose = np.eye(4)
+        mini.head_joints = [0.0] * 7
+        mini.antennas = list(reachy_service._SLEEP_ANTENNAS_RAD)
+        return mini
+
+    def _assert_stretched_init(self, mini):
+        self.assertEqual(mini.wakes, 0, "SDK wake_up() is the ungated snap")
+        self.assertGreaterEqual(mini.enables, 1, "wake did not enable motors")
+        gotos = _antenna_gotos(mini.gotos)
+        self.assertTrue(gotos, "wake never commanded a goto")
+        last = gotos[-1]
+        self.assertGreaterEqual(float(last["duration"]), self.needed - 0.05)
+        ants = last["antennas"]
+        self.assertAlmostEqual(float(ants[0]), reachy_service._INIT_ANTENNAS_RAD[0], places=2)
+        self.assertAlmostEqual(float(ants[1]), reachy_service._INIT_ANTENNAS_RAD[1], places=2)
+
+    def test_resume_from_sleep_fold_is_stretched_by_the_speed_gate(self):
+        svc = ReachyMotionService(safety_policy=self.policy)
+        mini = self._sleep_pose_mini()
+        svc._mini = mini
+        svc._released = True
+        svc.resume()
+        self._assert_stretched_init(mini)
+        self.assertFalse(svc._released)
+
+    def test_resume_without_live_pose_does_not_snap(self):
+        """Unreadable pose must not fall back to the vendor 2s INIT snap."""
+        svc = ReachyMotionService(safety_policy=self.policy)
+        mini = FakeMini()  # pose reads raise
+        svc._mini = mini
+        svc._released = True
+        svc.resume()
+        self._assert_stretched_init(mini)
+
+    def test_start_from_sleep_fold_is_stretched_by_the_speed_gate(self):
+        mini = self._sleep_pose_mini()
+        orig = reachy_service.ReachyMini
+        reachy_service.ReachyMini = lambda **kwargs: mini
+        try:
+            svc = ReachyMotionService(safety_policy=self.policy)
+            svc.start()
+        finally:
+            reachy_service.ReachyMini = orig
+        self._assert_stretched_init(mini)
+
+    def test_resume_passthrough_without_a_speed_bound(self):
+        svc = ReachyMotionService()
+        mini = self._sleep_pose_mini()
+        svc._mini = mini
+        svc.resume()
+        self.assertEqual(mini.wakes, 0)
+        last = _antenna_gotos(mini.gotos)[-1]
+        self.assertAlmostEqual(
+            float(last["duration"]), reachy_service._WAKE_GOTO_S, places=3
+        )
 
 
 if __name__ == "__main__":

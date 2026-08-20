@@ -313,6 +313,7 @@ export interface DeviceConfig {
   tts_voice: string;
   wakeword: boolean;
   agent_name: string;
+  wake_phrase?: string;
   wake_phrases: string[];
   realtime?: {
     enabled?: boolean;
@@ -533,6 +534,219 @@ export async function wakeNow(): Promise<SleepStatus> {
   return apiRequest<SleepStatus>(`${API_BASE}/api/device/sleep/wake`, { method: "POST" });
 }
 
+export interface FeatureFlag {
+  enabled: boolean;
+}
+
+export interface BehaviorsConfig {
+  onboarded?: boolean;
+  /** Household member who is the operator — People card "Me". */
+  me?: string;
+  morning_brief: {
+    enabled: boolean;
+    at: string;
+    days?: number[];
+    speak: boolean;
+    telegram: boolean;
+    weather: boolean;
+    calendar: boolean;
+    email: boolean;
+    habits: boolean;
+    max_seconds: number;
+  };
+  remember: { enabled: boolean; max_items: number };
+  dance: { enabled: boolean; default_query: string };
+  privacy: { camera_on_demand: boolean; face_follow_after_wake: boolean };
+  connectors: { draft_not_send: boolean };
+  presence: { idle_motion: boolean };
+  doa: FeatureFlag;
+  layered_motion: FeatureFlag;
+  focus: { enabled: boolean; phone_nag: boolean; cooldown_min: number };
+  kids: { enabled: boolean; session_min: number };
+  greeter: { enabled: boolean; named_only: boolean };
+  look: { enabled: boolean };
+  kitchen: {
+    enabled: boolean;
+    lunch_start: string;
+    lunch_end: string;
+    dinner_start: string;
+    dinner_end: string;
+  };
+  home_assistant: { enabled: boolean; url: string; token?: string };
+  marionette: FeatureFlag;
+  tools: { weather: boolean; time: boolean; search: boolean };
+  hand_track: FeatureFlag;
+  radio: FeatureFlag;
+  telepresence: FeatureFlag;
+  stories: { enabled: boolean; max_min: number };
+  pomodoro: { enabled: boolean; work_min: number; break_min: number };
+  wearables: { enabled: boolean; provider?: string };
+}
+
+export interface PomodoroStatus {
+  running: boolean;
+  phase?: string;
+  ends_at?: string;
+  remain_sec?: number;
+}
+
+export interface BehaviorsStatus {
+  config: BehaviorsConfig;
+  ha_token_set: boolean;
+  meeting: boolean;
+  last_brief?: string;
+  next_brief?: string;
+  memory_count: number;
+  pomodoro: PomodoroStatus;
+}
+
+export interface MemoryItem {
+  id: string;
+  text: string;
+  created_at: string;
+}
+
+export function defaultBehaviors(): BehaviorsConfig {
+  return {
+    morning_brief: {
+      enabled: false, at: "07:30", speak: true, telegram: true,
+      weather: true, calendar: true, email: true, habits: true, max_seconds: 40,
+    },
+    remember: { enabled: true, max_items: 200 },
+    dance: { enabled: true, default_query: "upbeat dance pop" },
+    privacy: { camera_on_demand: true, face_follow_after_wake: true },
+    connectors: { draft_not_send: true },
+    presence: { idle_motion: true },
+    doa: { enabled: false },
+    layered_motion: { enabled: false },
+    focus: { enabled: false, phone_nag: true, cooldown_min: 15 },
+    kids: { enabled: false, session_min: 30 },
+    greeter: { enabled: true, named_only: false },
+    look: { enabled: true },
+    kitchen: {
+      enabled: true,
+      lunch_start: "11:30", lunch_end: "13:30",
+      dinner_start: "18:30", dinner_end: "20:30",
+    },
+    home_assistant: { enabled: false, url: "" },
+    marionette: { enabled: false },
+    tools: { weather: true, time: true, search: true },
+    hand_track: { enabled: false },
+    radio: { enabled: false },
+    telepresence: { enabled: false },
+    stories: { enabled: false, max_min: 10 },
+    pomodoro: { enabled: false, work_min: 25, break_min: 5 },
+    wearables: { enabled: false, provider: "none" },
+  };
+}
+
+export async function getBehaviors(): Promise<BehaviorsStatus> {
+  return apiRequest<BehaviorsStatus>(`${API_BASE}/api/device/behaviors`);
+}
+
+export async function setMe(label: string): Promise<BehaviorsStatus> {
+  return apiRequest<BehaviorsStatus>(`${API_BASE}/api/device/me`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ label }),
+  });
+}
+
+export async function setBehaviors(cfg: BehaviorsConfig): Promise<BehaviorsStatus> {
+  return apiRequest<BehaviorsStatus>(`${API_BASE}/api/device/behaviors`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(cfg),
+  });
+}
+
+export interface ServiceStatus {
+  id: string;
+  kind: string;
+  connected: boolean;
+  auth_type?: string;
+  user_email?: string;
+  label?: string;
+  connect_how?: string;
+}
+
+export async function getServices(): Promise<ServiceStatus[]> {
+  const raw = await apiRequest<ServiceStatus[]>(`${API_BASE}/api/device/services`);
+  return Array.isArray(raw) ? raw : [];
+}
+
+export async function setCalendarICS(url: string): Promise<ServiceStatus[]> {
+  const raw = await apiRequest<ServiceStatus[]>(`${API_BASE}/api/device/connectors/google_calendar`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  });
+  return Array.isArray(raw) ? raw : [];
+}
+
+export async function setGmailPAT(email: string, apiKey: string): Promise<ServiceStatus[]> {
+  const raw = await apiRequest<ServiceStatus[]>(`${API_BASE}/api/device/connectors/gmail`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, api_key: apiKey }),
+  });
+  return Array.isArray(raw) ? raw : [];
+}
+
+export async function removeConnector(code: string): Promise<ServiceStatus[]> {
+  const raw = await apiRequest<ServiceStatus[]>(`${API_BASE}/api/device/connectors/${encodeURIComponent(code)}`, {
+    method: "DELETE",
+  });
+  return Array.isArray(raw) ? raw : [];
+}
+
+export async function setTelegramChannel(token: string, userId: string): Promise<ServiceStatus[]> {
+  const raw = await apiRequest<ServiceStatus[]>(`${API_BASE}/api/device/services/telegram`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ telegram_bot_token: token, telegram_user_id: userId }),
+  });
+  return Array.isArray(raw) ? raw : [];
+}
+
+export async function fireBriefNow(): Promise<BehaviorsStatus> {
+  return apiRequest<BehaviorsStatus>(`${API_BASE}/api/device/behaviors/brief`, { method: "POST" });
+}
+
+export async function setMeeting(on: boolean): Promise<BehaviorsStatus> {
+  return apiRequest<BehaviorsStatus>(`${API_BASE}/api/device/behaviors/meeting`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ on }),
+  });
+}
+
+export async function startPomodoro(): Promise<BehaviorsStatus> {
+  return apiRequest<BehaviorsStatus>(`${API_BASE}/api/device/behaviors/pomodoro/start`, { method: "POST" });
+}
+
+export async function stopPomodoro(): Promise<BehaviorsStatus> {
+  return apiRequest<BehaviorsStatus>(`${API_BASE}/api/device/behaviors/pomodoro/stop`, { method: "POST" });
+}
+
+export async function listMemories(): Promise<MemoryItem[]> {
+  return apiRequest<MemoryItem[]>(`${API_BASE}/api/device/behaviors/memory`);
+}
+
+export async function addMemory(text: string): Promise<MemoryItem> {
+  return apiRequest<MemoryItem>(`${API_BASE}/api/device/behaviors/memory`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+}
+
+export async function deleteMemory(id: string): Promise<boolean> {
+  return apiRequest<boolean>(`${API_BASE}/api/device/behaviors/memory/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+}
+
 export interface TestTTSOptions {
   text?: string;
   /** BCP-47 stt_language code; picks a friendly demo phrase in that language. */
@@ -574,6 +788,22 @@ export async function getDeviceConfig(): Promise<DeviceConfig> {
 
 export async function updateDeviceConfig(body: Partial<Record<string, unknown>>): Promise<boolean> {
   return apiRequest<boolean>(`${API_BASE}/api/device/config`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export interface IdentityPublic {
+  name: string;
+  wake_phrase: string;
+  wake_phrases: string[];
+  wakeword: boolean;
+}
+
+/** PUT /api/device/identity — name + optional exclusive wake phrase. */
+export async function setIdentity(body: { name: string; wake_phrase?: string }): Promise<IdentityPublic> {
+  return apiRequest<IdentityPublic>(`${API_BASE}/api/device/identity`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -661,7 +891,7 @@ export async function uninstallPlugin(name: string): Promise<boolean> {
 //   return apiRequest<HFSpace[]>(`${API_BASE}/api/plugin/browse`);
 // }
 
-// Autonomous Agent Skills catalog — proxied through the backend (avoids CORS
+// Agent Skills catalog — proxied through the backend (avoids CORS
 // and keeps the catalog host server-side).
 // Shapes mirror system/domain/skillstore.go.
 export interface StoreSkill {

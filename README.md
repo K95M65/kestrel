@@ -1,12 +1,16 @@
-## Autonomous OS: The "Android" for Robots
+# Kestrel
 
-Robots have been around for years but have never been autonomous — someone has to drive them with a remote, and they've stopped at scripted demos. Autonomous OS brings autonomy to robots: install it on your robot and it comes alive.
+Desk companion OS for robots — Talk, Home, House, Device. A fork of [Autonomous OS](https://github.com/autonomous-ai/autonomous-os).
+
+Kestrel is this product. Autonomous OS is the upstream stack we forked (HAL, skills, Hermes / OpenClaw, the `ROBOT.md` contract). How this tree differs from stock: [`docs/divergence-from-stock.md`](docs/divergence-from-stock.md).
+
+Robots have been around for years but have never been autonomous — someone has to drive them with a remote, and they've stopped at scripted demos. Kestrel installs on the body and it comes alive.
 
 - **Your robot thinks.** Everything it sees and hears goes to an agentic reasoning engine running on the robot itself — [Hermes](runtimes/hermes/), [Claude Code](runtimes/claudecode/), or [whichever you choose](runtimes/) — that decides what to do next.
 - **Your robot acts.** It [guards the house](skills/guard/), [knows your face](skills/face-enroll/), [follows you as you move](skills/servo-tracking/), [reads the mood on your face](skills/user-emotion-detection/), [sets the light](skills/scene/) — and does the desk work too: [Gmail, GitHub](skills/connectors/), [your Mac](skills/computer-use/). Each one is a [skill](skills/) — install more from the Skill Store, or write your own.
 - **Your robot grows.** It has a built-in learning loop. It creates skills from experience, sharpens them as it uses them, keeps what it learns, searches its own past conversations, and builds a deeper picture of you with every session.
 
-Autonomous OS is a fully customizable operating system for robots. Every component is swappable — [engine](runtimes/), [model](docs/hosted.md), [voice](hal/drivers/voice/), [skills](skills/), [board](hal/board/boards.json). Your robot declares what it has in a `ROBOT.md`, and the OS mounts exactly that. When a better one ships, your robot gets it the same day — and gets better without new hardware.
+Kestrel is a fully customizable operating system for robots. Every component is swappable — [engine](runtimes/), [model](docs/hosted.md), [voice](hal/drivers/voice/), [skills](skills/), [board](hal/board/boards.json). Your robot declares what it has in a `ROBOT.md`, and the OS mounts exactly that.
 
 ## Quick start
 
@@ -14,11 +18,11 @@ The simplest way in is a robot we have already tested it on. What each of them c
 
 ### Autonomous Lamp
 
-[Lamp](https://www.autonomous.ai/lamp) is the robot that shows the whole OS — it sees, hears, speaks, moves, and ships with Autonomous OS on it.
+[Lamp](https://www.autonomous.ai/lamp) is Autonomous's own desk robot — it sees, hears, speaks, and moves. Stock images ship **Autonomous OS**. This fork runs **Kestrel** on the same contract.
 
 <img src="robots/lamp/images/lamp-hero.webp" alt="Autonomous Lamp on a desk, ring lit">
 
-1. **Add it.** In the Autonomous app ([iOS](https://apps.apple.com/app/id6744885683) | [Android](https://play.google.com/store/apps/details?id=ai.autonomous.connect.wifi)), tap **Add robot → Lamp**.
+1. **Add it.** In the Autonomous phone app ([iOS](https://apps.apple.com/app/id6744885683) | [Android](https://play.google.com/store/apps/details?id=ai.autonomous.connect.wifi)), tap **Add robot → Lamp**. Or open the robot's own setup UI.
 2. **Set up Wi-Fi.** Pick your network in the app; it joins the robot's hotspot and hands over the keys and pairing.
 3. **Interact with Lamp.** Say something, it turns to look at you, the ring lights up, and it answers.
 4. **Install a skill** from the Skill Store — one tap, live on the next conversation.
@@ -34,7 +38,7 @@ https://github.com/user-attachments/assets/2f0aaafb-287c-488e-a3b1-a82f0ad9e776
 1. **SSH in** — `ssh pollen@reachy-mini.local`.
 2. **Run one command.** Nothing is flashed; the Reachy daemon keeps the motors.
    ```bash
-   curl -fsSL https://raw.githubusercontent.com/autonomous-ai/autonomous-os/main/robots/reachy-mini/install.sh | sudo bash
+   curl -fsSL https://raw.githubusercontent.com/K95M65/kestrel/main/robots/reachy-mini/install.sh | sudo bash
    ```
 3. **Add it.** In the app, tap **Add robot → Reachy Mini** and give it `reachy-mini.local`.
 4. **Interact with it.** Say something — the head tilts, the antennas lift, and it answers.
@@ -57,7 +61,7 @@ https://github.com/user-attachments/assets/2f0aaafb-287c-488e-a3b1-a82f0ad9e776
 
 ## Bring your own robot
 
-Autonomous OS runs on any robot you can describe in four markdown files.
+Kestrel runs on any robot you can describe in four markdown files.
 
 - **`ROBOT.md`** — the body: the board and the hardware it has.
 - **`SOUL.md`** — the self: who it is and how it talks.
@@ -68,13 +72,13 @@ Follow **[the full guide](docs/bring-your-own-robot.md)**.
 
 ## Platform architecture
 
-Autonomous OS is a software stack. Each layer uses only the layer below it, so any layer can be replaced without touching the others. Every layer is a folder in this repo.
+Kestrel is a software stack (the Autonomous OS architecture). Each layer uses only the layer below it, so any layer can be replaced without touching the others. Every layer is a folder in this repo.
 
-![Autonomous OS stack, top down: apps, skills, the agentic runtime, the Go system services, the realtime voice agent, the capabilities a robot declares, the safety gate, drivers, boards, the vendor Linux kernel, and the bodies — one colour per layer, and the rows you can extend yourself drawn dashed](docs/architecture/autonomous-stack.png)
+![Kestrel / Autonomous OS stack, top down: apps, skills, the agentic runtime, the Go system services, the realtime voice agent, the capabilities a robot declares, the safety gate, drivers, boards, the vendor Linux kernel, and the bodies](docs/architecture/autonomous-stack.png)
 
 ### [Apps](system/web/)
 
-What a person touches. The Autonomous app adds a robot, sets up Wi-Fi, installs skills from the Skill Store and switches brains; the robot also serves its own setup and monitor UI from `system/web/`. Both talk to os-server on :5000.
+What a person touches. The robot serves its own setup and monitor UI from `system/web/` (Kestrel: Talk, Home, House, Device). The original Autonomous phone app still talks to os-server on :5000.
 
 ### [Skills](skills/)
 
@@ -120,12 +124,12 @@ Long form: [architecture](docs/architecture/overview.md) · [HAL](docs/architect
 
 ## Contribute
 
-The easiest way in is a skill: one markdown file, no Go, no hardware, and it lands on every robot that has the parts. PRs welcome, vibe-coded ones included. Questions, half-built ports and show-and-tell go in [Discussions](https://github.com/autonomous-ai/autonomous-os/discussions); gaps we would love help with are labelled [`claim-me`](https://github.com/autonomous-ai/autonomous-os/issues?q=is%3Aissue+is%3Aopen+label%3Aclaim-me) — comment to take one.
+The easiest way in is a skill: one markdown file, no Go, no hardware, and it lands on every robot that has the parts. PRs welcome. Upstream Autonomous OS issues still live at [autonomous-ai/autonomous-os](https://github.com/autonomous-ai/autonomous-os); this fork is [K95M65/kestrel](https://github.com/K95M65/kestrel).
 
 | You want to… | You write… | Start from |
 |---|---|---|
 | Teach every robot something new | `skills/<name>/SKILL.md` (+ `skill.json` if it needs hardware) | [`skills/guard/`](skills/guard/) · [`skill-creator`](skills/skill-creator/) |
-| Run Autonomous on your robot | `robots/<id>/ROBOT.md` + `SAFETY.md` + `SOUL.md` | [`robots/reachy-mini/`](robots/reachy-mini/) — a third-party port, end to end |
+| Run Kestrel on your robot | `robots/<id>/ROBOT.md` + `SAFETY.md` + `SOUL.md` | [`robots/reachy-mini/`](robots/reachy-mini/) — a third-party port, end to end |
 | Support new hardware | a class in `hal/drivers/<subsystem>/` + one factory line | [`reachy_service.py`](hal/drivers/motors/reachy_service.py) |
 | Support a new board | one entry in `hal/board/boards.json` | [`boards.json`](hal/board/boards.json) |
 | Add a brain | an `AgentGateway` implementation in `runtimes/<name>/` | [`adding-agent-runtime.md`](docs/agentic/adding-agent-runtime.md) |
@@ -138,10 +142,12 @@ Build locally:
 make os-build && make os-test          # Go daemon, cross-compiled to linux/arm64
 (cd hal && uv sync) && make hal-dev    # HAL on :5001 with reload
 make web-install && make web-dev       # setup + monitor UI
-make cts                               # is this a valid Autonomous device?
+make cts                               # is this a valid Kestrel / Autonomous-compatible device?
 ```
 
 ## License
+
+Kestrel is a fork of **Autonomous OS**. Original work: the Autonomous OS authors ([autonomous-ai/autonomous-os](https://github.com/autonomous-ai/autonomous-os)). See [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
 
 Everything outside `hal/` is Apache-2.0. `hal/` is GPL-3.0, kept that way by choice so the tree has one license per top-level folder; a driver you commit there is GPL, so a closed vendor SDK wraps out of process.
 

@@ -27,58 +27,60 @@
 
 @layer base {
   /*
-   * ── Unified palette: Amber (primary) + Teal (accent) ──
-   * Hue anchors:  amber ≈ 70 (oklch),  teal ≈ 180 (oklch),  warm-neutral ≈ 70 chroma~0.01.
-   * Two surfaces only need to be defined here — `.dark` (default) and `:root` (light).
-   * The Lamp Monitor `--lm-*` scope is derived from these tokens further down so the
-   * whole app shares one source of truth. Default theme is DARK (see theme-provider).
+   * ── Brand palette (light-first) ──
+   *   #3368A0  deep ocean   primary
+   *   #66A3BF  sky          accent
+   *   #C8DFDB  seafoam      tint only (borders, washes) — never a field fill
+   *   #F2EFE7  cream        canvas
+   * shadcn tokens (:root / .dark) and the Lamp `--lm-*` block stay in lockstep.
+   * Default theme is LIGHT so the cream canvas is the product surface.
    */
 
-  /* Light theme */
+  /* Light theme — DEFAULT */
   :root {
-    --background: oklch(0.985 0.004 80);          /* warm white  #FAFAF8 */
-    --foreground: oklch(0.205 0.01 60);           /* warm near-black #1C1917 */
-    --card: oklch(1 0 0);                          /* #FFFFFF */
-    --card-foreground: oklch(0.205 0.01 60);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.205 0.01 60);
-    --primary: oklch(0.68 0.165 60);              /* amber  #D97706 */
-    --primary-foreground: oklch(0.99 0.01 90);    /* near-white on amber */
-    --secondary: oklch(0.955 0.008 80);           /* warm surface #F5F4F0 */
-    --secondary-foreground: oklch(0.30 0.01 60);
-    --muted: oklch(0.955 0.008 80);
-    --muted-foreground: oklch(0.50 0.01 60);      /* #57534E */
-    --accent: oklch(0.70 0.12 185);               /* teal  #0D9488 */
-    --accent-foreground: oklch(0.99 0.01 90);
-    --destructive: oklch(0.58 0.21 27);           /* red  #DC2626 */
-    --destructive-foreground: oklch(0.99 0.01 90);
-    --border: oklch(0.90 0.006 80);               /* #E0DED6 */
-    --input: oklch(0.90 0.006 80);
-    --ring: oklch(0.68 0.165 60);                 /* amber */
+    --background: #F2EFE7;
+    --foreground: #1E3A54;
+    --card: #FFFcf7;
+    --card-foreground: #1E3A54;
+    --popover: #FFFcf7;
+    --popover-foreground: #1E3A54;
+    --primary: #3368A0;
+    --primary-foreground: #F2EFE7;
+    --secondary: #E8E4D8;
+    --secondary-foreground: #1E3A54;
+    --muted: #E8E4D8;
+    --muted-foreground: #3368A0;
+    --accent: #66A3BF;
+    --accent-foreground: #F2EFE7;
+    --destructive: #C23B3B;
+    --destructive-foreground: #F2EFE7;
+    --border: color-mix(in srgb, #C8DFDB 70%, #D9D4C8);
+    --input: #FFFcf7;
+    --ring: #3368A0;
     --radius: 1rem;
   }
 
-  /* Dark theme — DEFAULT */
+  /* Dark theme — same family, navy canvas */
   .dark {
-    --background: oklch(0.16 0.006 70);           /* warm near-black #0C0B09 */
-    --foreground: oklch(0.95 0.008 80);           /* #F0EEE8 */
-    --card: oklch(0.205 0.006 70);                /* #17160F */
-    --card-foreground: oklch(0.95 0.008 80);
-    --popover: oklch(0.24 0.007 70);              /* #1E1D14 */
-    --popover-foreground: oklch(0.95 0.008 80);
-    --primary: oklch(0.78 0.165 65);              /* amber  #F59E0B */
-    --primary-foreground: oklch(0.18 0.02 60);    /* dark text on amber */
-    --secondary: oklch(0.255 0.006 70);           /* #1E1D14 */
-    --secondary-foreground: oklch(0.95 0.008 80);
-    --muted: oklch(0.255 0.006 70);
-    --muted-foreground: oklch(0.66 0.012 80);     /* #9A9080 */
-    --accent: oklch(0.80 0.13 185);               /* teal  #2DD4BF */
-    --accent-foreground: oklch(0.18 0.02 185);
-    --destructive: oklch(0.70 0.18 25);           /* red  #F87171 */
-    --destructive-foreground: oklch(0.18 0.02 25);
-    --border: oklch(0.30 0.008 70);               /* #2A2820 */
-    --input: oklch(0.30 0.008 70);
-    --ring: oklch(0.78 0.165 65);                 /* amber */
+    --background: #152536;
+    --foreground: #F2EFE7;
+    --card: #1B354C;
+    --card-foreground: #F2EFE7;
+    --popover: #21415C;
+    --popover-foreground: #F2EFE7;
+    --primary: #66A3BF;
+    --primary-foreground: #152536;
+    --secondary: #21415C;
+    --secondary-foreground: #F2EFE7;
+    --muted: #21415C;
+    --muted-foreground: #C8DFDB;
+    --accent: #C8DFDB;
+    --accent-foreground: #152536;
+    --destructive: #E07070;
+    --destructive-foreground: #152536;
+    --border: #2C5470;
+    --input: #2C5470;
+    --ring: #66A3BF;
   }
   /* Select / popover: solid background, no transparency */
   [data-slot="select-content"],
@@ -106,116 +108,108 @@
   }
 }
 
-/* ── Lamp Monitor — dark theme scope ── */
+/* ── Lamp Monitor — light (cream) is the product default ── */
 .lm-root {
-  --lm-bg:          #0C0B09;
-  --lm-sidebar:     #111009;
-  --lm-card:        #17160F;
-  --lm-surface:     #1E1D14;
-  --lm-border:      #2A2820;
-  --lm-border-hi:   #3A3828;
+  --lm-bg:          #F2EFE7;
+  --lm-sidebar:     #EDEAE2;
+  --lm-card:        #FFFcf7;
+  --lm-surface:     #E8E4D8;
+  --lm-border:      color-mix(in srgb, #C8DFDB 65%, #D4CFC4);
+  --lm-border-hi:   #66A3BF;
 
-  --lm-amber:       #F59E0B;
-  --lm-amber-dim:   rgba(245,158,11,0.12);
-  --lm-amber-glow:  rgba(245,158,11,0.35);
-  --lm-teal:        #2DD4BF;
-  --lm-teal-dim:    rgba(45,212,191,0.12);
-  --lm-teal-glow:   rgba(45,212,191,0.35);
-  --lm-green:       #34D399;
-  --lm-green-dim:   rgba(52,211,153,0.12);
-  --lm-green-glow:  rgba(52,211,153,0.35);
-  --lm-red:         #F87171;
-  --lm-red-dim:     rgba(248,113,113,0.10);
-  --lm-red-glow:    rgba(248,113,113,0.22);
-  --lm-blue:        #60A5FA;
-  --lm-purple:      #A78BFA;
-  --lm-cyan:        #22D3EE;
-  --lm-orange:      #FB923C;
-  --lm-yellow:      #FCD34D;
+  /* `--lm-amber` is the brand fill (ocean). Kept the name so existing
+     var(--lm-amber) call-sites restyle without a thousand-line rename. */
+  --lm-amber:       #3368A0;
+  --lm-amber-dim:   rgba(51,104,160,0.12);
+  --lm-amber-glow:  rgba(51,104,160,0.28);
+  --lm-teal:        #66A3BF;
+  --lm-teal-dim:    rgba(102,163,191,0.14);
+  --lm-teal-glow:   rgba(102,163,191,0.30);
+  --lm-green:       #2F8F78;
+  --lm-green-dim:   rgba(47,143,120,0.12);
+  --lm-green-glow:  rgba(47,143,120,0.28);
+  --lm-red:         #C23B3B;
+  --lm-red-dim:     rgba(194,59,59,0.10);
+  --lm-red-glow:    rgba(194,59,59,0.22);
+  --lm-blue:        #3368A0;
+  --lm-purple:      #5B6EA6;
+  --lm-cyan:        #66A3BF;
+  --lm-orange:      #D0894A;
+  --lm-yellow:      #66A3BF;
 
-  --lm-text:        #F0EEE8;
-  --lm-text-dim:    #9A9080;
-  --lm-text-muted:  #504A3C;
+  --lm-text:        #1E3A54;
+  --lm-text-dim:    #3368A0;
+  --lm-text-muted:  #66A3BF;
+  --lm-on-amber:    #F2EFE7;
 
-  /* Text colour that sits ON the amber fill (Save button / primary CTA). Kept
-     identical in dark + light on purpose: the text always rests on the amber
-     surface, which is dark enough (#F59E0B dark / #D97706 light) for a near-
-     black ink to read well in both themes. A theme-flipping value would break
-     contrast on the light theme's near-white background if the fill were ever
-     removed, so we pin it. */
-  --lm-on-amber:    #1A1206;
-
-  background: var(--lm-bg);
+  background:
+    radial-gradient(900px 480px at 8% -8%, color-mix(in srgb, #C8DFDB 70%, transparent), transparent 55%),
+    radial-gradient(700px 420px at 110% 0%, color-mix(in srgb, #66A3BF 18%, transparent), transparent 50%),
+    var(--lm-bg);
   color: var(--lm-text);
 }
 
-/* ── Light theme — toggled via .lm-light class or system preference ── */
-.lm-root.lm-light {
-  --lm-bg:          #FAFAF8;
-  --lm-sidebar:     #F0EFEB;
-  --lm-card:        #FFFFFF;
-  --lm-surface:     #F5F4F0;
-  --lm-border:      #E0DED6;
-  --lm-border-hi:   #D0CEC6;
+/* Dark — same family, navy canvas. `.lm-dark` wins over system preference. */
+.lm-root.lm-dark {
+  --lm-bg:          #152536;
+  --lm-sidebar:     #122233;
+  --lm-card:        #1B354C;
+  --lm-surface:     #21415C;
+  --lm-border:      #2C5470;
+  --lm-border-hi:   #66A3BF;
 
-  --lm-amber:       #D97706;
-  --lm-amber-dim:   rgba(217,119,6,0.10);
-  --lm-amber-glow:  rgba(217,119,6,0.25);
-  --lm-teal:        #0D9488;
-  --lm-teal-dim:    rgba(13,148,136,0.10);
-  --lm-teal-glow:   rgba(13,148,136,0.28);
-  --lm-green:       #059669;
-  --lm-green-dim:   rgba(5,150,105,0.10);
-  --lm-green-glow:  rgba(5,150,105,0.28);
-  --lm-red:         #DC2626;
-  --lm-red-dim:     rgba(220,38,38,0.08);
-  --lm-red-glow:    rgba(220,38,38,0.18);
-  --lm-blue:        #2563EB;
-  --lm-purple:      #7C3AED;
-  --lm-cyan:        #0891B2;
-  --lm-orange:      #EA580C;
-  --lm-yellow:      #CA8A04;
+  --lm-amber:       #66A3BF;
+  --lm-amber-dim:   rgba(102,163,191,0.14);
+  --lm-amber-glow:  rgba(102,163,191,0.32);
+  --lm-teal:        #C8DFDB;
+  --lm-teal-dim:    rgba(200,223,219,0.12);
+  --lm-teal-glow:   rgba(200,223,219,0.28);
+  --lm-green:       #5BC4A8;
+  --lm-green-dim:   rgba(91,196,168,0.12);
+  --lm-green-glow:  rgba(91,196,168,0.28);
+  --lm-red:         #E07070;
+  --lm-red-dim:     rgba(224,112,112,0.12);
+  --lm-red-glow:    rgba(224,112,112,0.24);
+  --lm-blue:        #66A3BF;
+  --lm-purple:      #8AA0C8;
+  --lm-cyan:        #C8DFDB;
+  --lm-orange:      #E0A36A;
+  --lm-yellow:      #C8DFDB;
 
-  --lm-text:        #1C1917;
-  --lm-text-dim:    #57534E;
-  --lm-text-muted:  #A8A29E;
-
-  /* Theme-constant — see the dark-block note. */
-  --lm-on-amber:    #1A1206;
+  --lm-text:        #F2EFE7;
+  --lm-text-dim:    #C8DFDB;
+  --lm-text-muted:  #66A3BF;
+  --lm-on-amber:    #152536;
 }
-@media (prefers-color-scheme: light) {
-  .lm-root:not(.lm-dark) {
-    --lm-bg:          #FAFAF8;
-    --lm-sidebar:     #F0EFEB;
-    --lm-card:        #FFFFFF;
-    --lm-surface:     #F5F4F0;
-    --lm-border:      #E0DED6;
-    --lm-border-hi:   #D0CEC6;
-
-    --lm-amber:       #D97706;
-    --lm-amber-dim:   rgba(217,119,6,0.10);
-    --lm-amber-glow:  rgba(217,119,6,0.25);
-    --lm-teal:        #0D9488;
-    --lm-teal-dim:    rgba(13,148,136,0.10);
-    --lm-teal-glow:   rgba(13,148,136,0.28);
-    --lm-green:       #059669;
-    --lm-green-dim:   rgba(5,150,105,0.10);
-    --lm-green-glow:  rgba(5,150,105,0.28);
-    --lm-red:         #DC2626;
-    --lm-red-dim:     rgba(220,38,38,0.08);
-    --lm-red-glow:    rgba(220,38,38,0.18);
-    --lm-blue:        #2563EB;
-    --lm-purple:      #7C3AED;
-    --lm-cyan:        #0891B2;
-    --lm-orange:      #EA580C;
-    --lm-yellow:      #CA8A04;
-
-    --lm-text:        #1C1917;
-    --lm-text-dim:    #57534E;
-    --lm-text-muted:  #A8A29E;
-
-    /* Theme-constant — see the dark-block note. */
-    --lm-on-amber:    #1A1206;
+@media (prefers-color-scheme: dark) {
+  .lm-root:not(.lm-light) {
+    --lm-bg:          #152536;
+    --lm-sidebar:     #122233;
+    --lm-card:        #1B354C;
+    --lm-surface:     #21415C;
+    --lm-border:      #2C5470;
+    --lm-border-hi:   #66A3BF;
+    --lm-amber:       #66A3BF;
+    --lm-amber-dim:   rgba(102,163,191,0.14);
+    --lm-amber-glow:  rgba(102,163,191,0.32);
+    --lm-teal:        #C8DFDB;
+    --lm-teal-dim:    rgba(200,223,219,0.12);
+    --lm-teal-glow:   rgba(200,223,219,0.28);
+    --lm-green:       #5BC4A8;
+    --lm-green-dim:   rgba(91,196,168,0.12);
+    --lm-green-glow:  rgba(91,196,168,0.28);
+    --lm-red:         #E07070;
+    --lm-red-dim:     rgba(224,112,112,0.12);
+    --lm-red-glow:    rgba(224,112,112,0.24);
+    --lm-blue:        #66A3BF;
+    --lm-purple:      #8AA0C8;
+    --lm-cyan:        #C8DFDB;
+    --lm-orange:      #E0A36A;
+    --lm-yellow:      #C8DFDB;
+    --lm-text:        #F2EFE7;
+    --lm-text-dim:    #C8DFDB;
+    --lm-text-muted:  #66A3BF;
+    --lm-on-amber:    #152536;
   }
 }
 
@@ -282,12 +276,12 @@
 .lm-root .lm-u-btn-primary {
   background: var(--lm-amber);
   border-color: var(--lm-amber);
-  color: var(--lm-bg);
+  color: var(--lm-on-amber);
   font-weight: 600;
 }
 .lm-root .lm-u-btn-primary:hover {
-  background: var(--lm-yellow);
-  border-color: var(--lm-yellow);
+  background: var(--lm-teal);
+  border-color: var(--lm-teal);
   box-shadow: 0 0 14px var(--lm-amber-glow);
 }
 .lm-root .lm-u-btn-primary:focus-visible {
@@ -786,6 +780,35 @@
 /* Sidebar footer logout — quiet by default, turns red on hover to signal it
    ends the session. Mirrors the nav item's gap/radius so it reads as part of
    the same rail. */
+.lm-adv-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 9px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--lm-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--lm-text-muted);
+  font-size: 12px;
+  font-weight: 550;
+  cursor: pointer;
+}
+.lm-adv-toggle--on { color: var(--lm-amber); border-color: color-mix(in srgb, var(--lm-amber) 45%, var(--lm-border)); }
+.lm-adv-knob {
+  width: 30px; height: 16px; padding: 2px; border-radius: 999px;
+  display: flex; align-items: center; justify-content: flex-start;
+  background: var(--lm-border);
+  box-sizing: border-box;
+}
+.lm-adv-toggle--on .lm-adv-knob { justify-content: flex-end; background: var(--lm-amber); }
+.lm-adv-knob::after {
+  content: "";
+  width: 12px; height: 12px; border-radius: 50%;
+  background: var(--lm-card);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+}
 .lm-logout-btn {
   display: flex;
   align-items: center;
@@ -895,7 +918,7 @@
   padding: 9px 32px 9px 34px;
   border-radius: 10px;
   border: 1px solid var(--lm-border);
-  background: var(--lm-surface);
+  background: var(--lm-card);
   color: var(--lm-text);
   font-size: 13px;
   outline: none;
@@ -905,7 +928,7 @@
 .lm-snav-search-input:focus {
   border-color: color-mix(in srgb, var(--lm-amber) 55%, transparent);
   box-shadow: 0 0 0 3px var(--lm-amber-dim);
-  background: var(--lm-bg);
+  background: var(--lm-card);
 }
 .lm-snav-search-box:focus-within .lm-snav-search-icon { color: var(--lm-amber); }
 .lm-snav-search-clear {
@@ -1083,7 +1106,7 @@
 }
 .lm-setup .lm-btn:not(:disabled):hover { transform: translateY(-1px); }
 .lm-setup .lm-btn:not(:disabled):active { transform: translateY(0); }
-.lm-setup .lm-btn-primary { background: var(--lm-amber); color: #0C0B09; border: none; }
+.lm-setup .lm-btn-primary { background: var(--lm-amber); color: var(--lm-on-amber); border: none; }
 .lm-setup .lm-btn-primary:not(:disabled):hover { box-shadow: 0 4px 16px -4px var(--lm-amber-glow); }
 .lm-setup .lm-btn-primary:disabled {
   background: var(--lm-surface);
@@ -1505,6 +1528,108 @@
   100%    { transform: translateX(100%); }
 }
 
+/* ── Product Home (Overview) ────────────────────────────────────────────────
+   Cream stage, companion mark as the face, actions instead of a status wall.
+   Diagnostics stay behind ?debug=true. */
+.lm-home {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.lm-home-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 720px;
+}
+.lm-home-hero {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 22px 28px;
+  padding: 28px 28px 24px;
+  position: relative;
+  z-index: 0;
+}
+.lm-home-hero .lm-reachy { position: relative; z-index: 1; }
+.lm-home-copy {
+  position: relative; z-index: 1; flex: 1 1 240px; min-width: 0;
+  display: flex; flex-direction: column; align-items: flex-start;
+}
+.lm-home-kicker {
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--lm-text-muted);
+}
+.lm-home-title {
+  margin: 6px 0 8px;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1.15;
+  color: var(--lm-text);
+}
+.lm-home-meta {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--lm-text-dim);
+  line-height: 1.5;
+}
+.lm-home-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.lm-home-cta, .lm-home-ghost {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 9px 16px; border-radius: 10px;
+  font-size: 13.5px; font-weight: 650; cursor: pointer;
+}
+.lm-home-cta { border: none; background: var(--lm-amber); color: var(--lm-on-amber); }
+.lm-home-cta:hover { filter: brightness(1.06); }
+.lm-home-cta:disabled, .lm-home-ghost:disabled { opacity: 0.55; cursor: wait; }
+.lm-home-ghost {
+  border: 1px solid var(--lm-border);
+  background: var(--lm-card);
+  color: var(--lm-text);
+}
+.lm-home-ghost:hover { border-color: var(--lm-border-hi); }
+.lm-home-setup {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 14px; flex-wrap: wrap;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px dashed color-mix(in srgb, var(--lm-teal) 55%, var(--lm-border));
+  background: color-mix(in srgb, var(--lm-teal) 8%, var(--lm-card));
+}
+.lm-home-setup-title { font-size: 14px; font-weight: 650; color: var(--lm-text); }
+.lm-home-setup-lead { font-size: 12.5px; color: var(--lm-text-dim); margin-top: 2px; line-height: 1.45; }
+.lm-home-uses {
+  border: 1px solid var(--lm-border);
+  border-radius: 14px;
+  padding: 14px 16px;
+  background: var(--lm-card);
+}
+.lm-home-uses-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-bottom: 10px;
+}
+.lm-home-uses-title {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; font-weight: 700; color: var(--lm-text);
+}
+.lm-home-uses-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.lm-home-plant-label {
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--lm-text-muted);
+  margin-top: 8px;
+}
+@media (max-width: 640px) {
+  .lm-home-hero { padding: 20px 16px; }
+  .lm-home-title { font-size: 22px; }
+}
+
 /* ── Card-label icon chip ────────────────────────────────────────────────────
    A small amber-tinted square holding the section glyph next to each card's
    label — same affordance as the setup SectionCard header. */
@@ -1911,6 +2036,307 @@
 }
 .lm-root .lm-chat-panel * { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--lm-text) 14%, transparent) transparent; }
 
+/* ── Behaviors config + guided setup ── */
+.lm-beh-welcome {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 14px 16px; margin-bottom: 16px; border-radius: 12px;
+  background: linear-gradient(135deg, var(--lm-amber-dim), transparent 70%);
+  border: 1px solid color-mix(in srgb, var(--lm-amber) 35%, var(--lm-border));
+}
+.lm-beh-welcome-title { font-size: 14px; font-weight: 700; color: var(--lm-text); }
+.lm-beh-welcome-line { font-size: 12px; color: var(--lm-text-dim); margin-top: 3px; line-height: 1.45; }
+.lm-beh-hero {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+  margin-bottom: 14px;
+}
+.lm-beh-count { font-size: 22px; font-weight: 700; letter-spacing: -0.03em; color: var(--lm-text); }
+.lm-beh-count span { font-size: 13px; font-weight: 500; color: var(--lm-text-dim); margin-left: 4px; }
+.lm-beh-hero-line { font-size: 12.5px; color: var(--lm-text-dim); margin-top: 4px; line-height: 1.5; max-width: 36em; }
+.lm-beh-hero-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.lm-beh-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.lm-preset {
+  padding: 6px 11px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  border: 1px solid var(--lm-border); background: transparent; color: var(--lm-text);
+  cursor: pointer;
+}
+.lm-preset:hover { border-color: var(--lm-amber); color: var(--lm-amber); }
+.lm-beh-status { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+.lm-pill {
+  font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px;
+  border: 1px solid var(--lm-border); color: var(--lm-text-dim);
+}
+.lm-pill--hot { border-color: var(--lm-amber); color: var(--lm-amber); background: var(--lm-amber-dim); }
+.lm-acc { border: 1px solid var(--lm-border); border-radius: 12px; margin-bottom: 10px; overflow: hidden; background: var(--lm-card); }
+.lm-acc-head {
+  width: 100%; display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px; background: transparent; border: none; cursor: pointer;
+  font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--lm-text-dim);
+}
+.lm-acc-meta { display: flex; align-items: center; gap: 6px; font-weight: 600; text-transform: none; letter-spacing: 0; }
+.lm-acc-body { border-top: 1px solid var(--lm-border); }
+.lm-feat { padding: 10px 14px; border-top: 1px solid var(--lm-border); }
+.lm-feat:first-child { border-top: none; }
+.lm-feat--on { background: color-mix(in srgb, var(--lm-amber) 5%, transparent); }
+.lm-feat-row { display: flex; align-items: flex-start; gap: 10px; }
+.lm-feat-main {
+  flex: 1; min-width: 0; text-align: left; background: none; border: none;
+  cursor: pointer; padding: 0; color: inherit;
+}
+.lm-feat-title { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; color: var(--lm-text); }
+.lm-feat-hint { display: block; font-size: 12px; color: var(--lm-text-dim); margin-top: 2px; line-height: 1.45; }
+.lm-feat-badge {
+  font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 6px;
+  border: 1px solid var(--lm-border); color: var(--lm-text-muted);
+}
+.lm-feat-knobs { padding: 10px 0 4px 42px; }
+.lm-switch { position: relative; width: 36px; height: 20px; flex-shrink: 0; margin-top: 2px; }
+.lm-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+.lm-switch span {
+  position: absolute; inset: 0; border-radius: 999px; background: var(--lm-border);
+  transition: background 0.15s;
+}
+.lm-switch span::after {
+  content: ""; position: absolute; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--lm-card); top: 2px; left: 2px; transition: transform 0.15s;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.25);
+}
+.lm-switch input:checked + span { background: var(--lm-amber); }
+.lm-switch input:checked + span::after { transform: translateX(16px); }
+.lm-switch input:focus-visible + span { box-shadow: 0 0 0 3px var(--lm-amber-glow); }
+.lm-chev-open { transform: rotate(180deg); transition: transform 0.15s; }
+
+.lm-guide-overlay {
+  position: fixed; inset: 0; z-index: 80;
+  background: color-mix(in srgb, var(--lm-bg) 72%, transparent);
+  backdrop-filter: blur(8px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px 16px;
+}
+.lm-guide-panel {
+  width: min(520px, 100%);
+  background: var(--lm-card);
+  border: 1px solid var(--lm-border-hi);
+  border-radius: 16px;
+  box-shadow: 0 18px 50px -20px color-mix(in srgb, var(--lm-amber) 45%, transparent);
+  overflow: hidden;
+  outline: none;
+  animation: lm-guide-in 0.22s ease-out;
+}
+.lm-guide-panel--wide { width: min(720px, 100%); }
+.lm-guide-split { display: grid; gap: 14px; }
+@media (min-width: 720px) {
+  .lm-guide-split { grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); align-items: start; }
+}
+.lm-guide-pane {
+  border: 1px solid var(--lm-border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: var(--lm-surface);
+  overflow-x: auto;
+}
+.lm-guide-pane-title { font-size: 13px; font-weight: 700; margin-bottom: 8px; color: var(--lm-text); }
+.lm-guide-compare { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+.lm-guide-compare th, .lm-guide-compare td {
+  text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--lm-border);
+  color: var(--lm-text-dim); white-space: nowrap;
+}
+.lm-guide-compare th:first-child, .lm-guide-compare td:first-child { color: var(--lm-text); font-weight: 600; }
+.lm-guide-compare--on { color: var(--lm-amber) !important; font-weight: 700; }
+.lm-guide-count {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 64px; font-weight: 800; color: #fff;
+  text-shadow: 0 2px 12px rgba(0,0,0,0.55);
+  background: rgba(0,0,0,0.22);
+  pointer-events: none;
+}
+.lm-guide-chat { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; min-height: 72px; }
+.lm-guide-bubble {
+  max-width: 92%; padding: 8px 12px; border-radius: 12px;
+  font-size: 13.5px; line-height: 1.45; color: var(--lm-text);
+}
+.lm-guide-bubble--you {
+  align-self: flex-end; background: var(--lm-amber); color: var(--lm-on-amber);
+  border-bottom-right-radius: 4px;
+}
+.lm-guide-bubble--bot {
+  align-self: flex-start; background: var(--lm-surface); border: 1px solid var(--lm-border);
+  border-bottom-left-radius: 4px;
+}
+.lm-guide-bubble--wait { color: var(--lm-text-muted); font-style: italic; }
+.lm-guide-err { margin-top: 8px; font-size: 12.5px; color: var(--lm-red); line-height: 1.4; }
+.lm-guide-ok { margin-top: 8px; font-size: 12.5px; color: var(--lm-green); line-height: 1.4; }
+.lm-guide-cam-wrap {
+  position: relative;
+  border-radius: 12px; overflow: hidden; border: 1px solid var(--lm-border);
+  background: var(--lm-surface); margin-bottom: 8px; min-height: 160px;
+}
+.lm-guide-cam { display: block; width: 100%; max-height: 220px; object-fit: cover; }
+.lm-guide-cam-empty {
+  min-height: 160px; display: flex; align-items: center; justify-content: center;
+  font-size: 13px; color: var(--lm-text-muted); padding: 16px; text-align: center;
+}
+.lm-guide-seen {
+  font-size: 12.5px; color: var(--lm-text-dim); margin-bottom: 10px;
+}
+@keyframes lm-guide-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+.lm-guide-progress { height: 3px; background: var(--lm-surface); }
+.lm-guide-progress-bar { height: 100%; background: var(--lm-amber); transition: width 0.2s ease; }
+.lm-guide-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 18px 0;
+}
+.lm-guide-kicker {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--lm-amber);
+}
+.lm-guide-x {
+  background: none; border: none; color: var(--lm-text-dim); cursor: pointer;
+  padding: 6px; border-radius: 8px;
+}
+.lm-guide-x:hover { color: var(--lm-text); background: var(--lm-surface); }
+.lm-guide-body { padding: 12px 22px 8px; min-height: 220px; }
+.lm-guide-title {
+  margin: 0 0 8px; font-size: 22px; font-weight: 700; letter-spacing: -0.03em;
+  color: var(--lm-text); line-height: 1.2;
+}
+.lm-guide-lead { margin: 0 0 14px; font-size: 13.5px; color: var(--lm-text-dim); line-height: 1.55; }
+.lm-guide-choices { display: flex; flex-direction: column; gap: 8px; }
+.lm-choice {
+  display: flex; align-items: flex-start; gap: 10px; text-align: left;
+  padding: 11px 12px; border-radius: 12px; cursor: pointer;
+  border: 1px solid var(--lm-border); background: var(--lm-card); color: var(--lm-text);
+}
+.lm-choice:hover { border-color: var(--lm-border-hi); }
+.lm-choice--on { border-color: var(--lm-amber); background: var(--lm-amber-dim); }
+.lm-choice-dot {
+  width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; margin-top: 3px;
+  border: 2px solid var(--lm-border-hi);
+}
+.lm-choice--on .lm-choice-dot { border-color: var(--lm-amber); box-shadow: inset 0 0 0 3px var(--lm-amber); }
+.lm-choice-title { display: block; font-size: 14px; font-weight: 650; }
+.lm-choice-line { display: block; font-size: 12px; color: var(--lm-text-dim); margin-top: 2px; line-height: 1.4; }
+.lm-guide-extra { margin-top: 14px; }
+.lm-guide-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.lm-chip {
+  padding: 6px 11px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  border: 1px solid var(--lm-border); background: transparent; color: var(--lm-text-dim); cursor: pointer;
+}
+.lm-chip--on { border-color: var(--lm-amber); color: var(--lm-amber); background: var(--lm-amber-dim); }
+.lm-guide-summary { margin: 0; padding-left: 18px; color: var(--lm-text); font-size: 14px; line-height: 1.7; }
+.lm-guide-foot {
+  display: flex; justify-content: space-between; gap: 8px;
+  padding: 12px 18px 16px; border-top: 1px solid var(--lm-border);
+}
+.lm-guide-primary, .lm-guide-ghost {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 14px; border-radius: 9px; font-size: 13px; font-weight: 650; cursor: pointer;
+}
+.lm-guide-primary { border: none; background: var(--lm-amber); color: var(--lm-on-amber); }
+.lm-guide-primary:disabled { opacity: 0.6; cursor: wait; }
+.lm-guide-ghost { border: 1px solid var(--lm-border); background: transparent; color: var(--lm-text); }
+.lm-guide-ghost:hover { border-color: var(--lm-border-hi); }
+.lm-feat--na { opacity: 0.58; }
+.lm-feat--na .lm-switch { cursor: not-allowed; }
+.lm-guide-prove { margin: 0 0 8px; padding-left: 18px; color: var(--lm-text); font-size: 13.5px; line-height: 1.6; }
+.lm-guide-prove-row--ok { color: var(--lm-green); }
+.lm-guide-prove-row--bad { color: var(--lm-text-muted); }
+
+.lm-uses-grid {
+  display: grid;
+  gap: 10px;
+}
+@media (min-width: 640px) {
+  .lm-uses-grid { grid-template-columns: 1fr 1fr; }
+}
+.lm-uses-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+  padding: 14px 14px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--lm-border);
+  background: var(--lm-card);
+  color: var(--lm-text);
+  min-height: 148px;
+}
+.lm-uses-card--on { border-color: var(--lm-amber); background: var(--lm-amber-dim); }
+.lm-uses-card--na { opacity: 0.58; }
+.lm-uses-card-kicker {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--lm-text-muted);
+}
+.lm-uses-card-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+.lm-uses-card-line {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--lm-text-dim);
+  line-height: 1.45;
+  flex: 1;
+}
+.lm-uses-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+}
+.lm-uses-status {
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--lm-text-muted);
+}
+.lm-uses-status--ready { color: var(--lm-green); }
+.lm-uses-status--setup, .lm-uses-status--needs-mac { color: var(--lm-amber); }
+.lm-uses-status--kids, .lm-uses-status--unsupported { color: var(--lm-text-muted); }
+
+@media (max-width: 640px) {
+  .lm-beh-hero, .lm-beh-welcome { flex-direction: column; align-items: stretch; }
+  .lm-feat-knobs { padding-left: 0; }
+}
+
+/* CSS-only companion — no three.js / GSAP. GPU-cheap transforms only. */
+.lm-reachy { display: block; overflow: visible; flex-shrink: 0; }
+.lm-reachy rect { fill: var(--lm-amber); }
+.lm-reachy line { stroke: var(--lm-amber); stroke-width: 2.2; stroke-linecap: round; }
+.lm-reachy circle:not(.lm-reachy-eye) { fill: var(--lm-teal); }
+.lm-reachy-eye { fill: var(--lm-on-amber); transform-box: fill-box; transform-origin: center; animation: lm-blink 5.2s step-end infinite; }
+.lm-reachy-smile { fill: none; stroke: var(--lm-on-amber); stroke-width: 2.2; stroke-linecap: round; }
+.lm-reachy-body { transform-origin: 32px 52px; animation: lm-breathe 3.6s ease-in-out infinite; }
+.lm-reachy-ant-l, .lm-reachy-ant-r { transform-origin: 0px 0px; }
+.lm-reachy-ant-l { animation: lm-ant 2.4s ease-in-out infinite; }
+.lm-reachy-ant-r { animation: lm-ant 2.6s ease-in-out infinite reverse; }
+.lm-reachy-brand { display: flex; align-items: center; gap: 10px; padding: 14px 14px 10px; }
+.lm-reachy-brand-name { font-size: 15px; font-weight: 700; color: var(--lm-amber); letter-spacing: -0.02em; }
+.lm-reachy-brand-sub { font-size: 11px; color: var(--lm-text-muted); margin-top: 1px; letter-spacing: 0.01em; }
+@keyframes lm-breathe {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-1.5px); }
+}
+@keyframes lm-ant {
+  0%, 100% { transform: rotate(-9deg); }
+  50% { transform: rotate(11deg); }
+}
+@keyframes lm-blink {
+  0%, 46%, 52%, 100% { transform: scaleY(1); }
+  48%, 50% { transform: scaleY(0.08); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .lm-root .lm-chat-msg,
   .lm-root .lm-assistant-orb.lm-orb-live,
@@ -1919,5 +2345,15 @@
   .lm-root .lm-suggestion-chip:hover,
   .lm-root .lm-send-ready:hover,
   .lm-root .lm-send-ready:active,
-  .lm-root .lm-convo-row:hover { animation: none; transform: none; }
+  .lm-root .lm-convo-row:hover,
+  .lm-guide-panel,
+  .lm-reachy-body,
+  .lm-reachy-ant-l,
+  .lm-reachy-ant-r,
+  .lm-reachy-eye { animation: none; transform: none; }
 }
+html.lm-paused .lm-reachy-body,
+html.lm-paused .lm-reachy-ant-l,
+html.lm-paused .lm-reachy-ant-r,
+html.lm-paused .lm-reachy-eye,
+html.lm-paused .lm-root .lm-mon-hero::after { animation-play-state: paused; }

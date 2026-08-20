@@ -18,17 +18,20 @@ final class PairingWindowController: NSWindowController {
             backing: .buffered,
             defer: false
         )
-        window.title = "Pair with device"
+        window.title = "Pair this computer"
         window.isReleasedWhenClosed = false
+        window.backgroundColor = Brand.cream
         super.init(window: window)
 
         hostField.stringValue = initialHost ?? ""
         hostField.placeholderString = "device-xxxx.local"
-        codeField.placeholderString = "6-digit code from your device's web UI"
+        codeField.placeholderString = "6-digit code from Home or House → Uses"
 
         pairButton.target = self
         pairButton.action = #selector(submit)
         pairButton.keyEquivalent = "\r"
+        pairButton.bezelStyle = .rounded
+        pairButton.title = "Pair this computer"
 
         cancelButton.target = self
         cancelButton.action = #selector(cancel)

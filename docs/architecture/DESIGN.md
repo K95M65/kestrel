@@ -1,6 +1,6 @@
-# Designing Autonomous — an OS for physical AI agents
+# Designing Kestrel — an OS for physical AI agents
 
-Autonomous is an open-source OS that thousands of physical AI devices — different sensors,
+Kestrel is a fork of Autonomous OS. Autonomous OS is an open-source stack that thousands of physical AI devices — different sensors,
 actuators, and boards — can be built on without forking. This document defines the
 architecture and the rules that make that possible. It is grounded in two battle-tested
 systems: **Linux** (one kernel, every piece of hardware) and **Android** (one OS, thousands

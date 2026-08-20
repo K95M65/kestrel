@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { API } from "./types";
 import { getDeviceConfig } from "@/lib/api";
+import { talkName, talkNameTitle } from "@/lib/robotName";
 import {
   putChatImage, getAllChatImages, deleteChatImages, pruneChatImages, clearChatImages,
 } from "@/lib/chatImageStore";
@@ -663,6 +664,7 @@ export function ChatSection({ events, isActive }: Props) {
   // /api/device/config; the old `${AGENT_API}/config-json` path is now
   // loopback-only (audit local F5c) and unreachable from a browser.
   const [modelLabel, setModelLabel] = useState<string>("");
+  const [agentName, setAgentName] = useState("");
   useEffect(() => {
     getDeviceConfig()
       .then((cfg) => {
@@ -670,6 +672,7 @@ export function ChatSection({ events, isActive }: Props) {
         // also sets this on first load; doing it here too covers the case where
         // the chat is reached without that gate having resolved config yet.
         setLanguage(cfg.stt_language);
+        setAgentName(cfg.agent_name ?? "");
         const primary = cfg.llm_model;
         if (!primary) return;
         // Strip provider prefix and collapse Anthropic's trailing version
@@ -1376,7 +1379,7 @@ export function ChatSection({ events, isActive }: Props) {
   const exportConversation = () => {
     if (!active || active.messages.length === 0) return;
     const lines = active.messages.map((m) => {
-      const role = m.role === "user" ? "You" : "Assistant";
+      const role = m.role === "user" ? "You" : talkNameTitle(agentName);
       return `[${m.time}] ${role}: ${m.text}`;
     });
     const blob = new Blob([lines.join("\n")], { type: "text/plain" });
@@ -1893,7 +1896,9 @@ export function ChatSection({ events, isActive }: Props) {
                 color: sending ? "var(--lm-amber)" : "var(--lm-text-dim)",
                 whiteSpace: "nowrap",
               }}>
-                {sending ? t("chat.status.thinking") : t("chat.status.online")}
+                {sending
+                  ? t("chat.status.thinking", { name: talkNameTitle(agentName) })
+                  : t("chat.status.online", { name: talkName(agentName) })}
               </span>
             </div>
           </div>
@@ -1958,7 +1963,7 @@ export function ChatSection({ events, isActive }: Props) {
                 </span>
               </div>
               <div style={{ fontSize: 16, fontWeight: 700, color: "var(--lm-text)", letterSpacing: "-0.01em" }}>
-                {t("chat.empty.title")}
+                {t("chat.empty.title", { name: talkName(agentName) })}
               </div>
               <div style={{ fontSize: 12.5, marginTop: 5, lineHeight: 1.6 }}>
                 {t("chat.empty.subtitle")}
@@ -2027,7 +2032,7 @@ export function ChatSection({ events, isActive }: Props) {
               <div style={{ maxWidth: msg.role === "user" ? "72%" : "85%", display: "flex", flexDirection: "column", alignItems: msg.role === "user" ? "flex-end" : "flex-start", gap: 3 }}>
                 {/* Sender label for first device message or after user message */}
                 {msg.role === "agent" && (i === 0 || messages[i - 1]?.role === "user") && (
-                  <span style={{ fontSize: 11, color: "var(--lm-amber)", fontWeight: 600, letterSpacing: "0.01em", paddingLeft: 4 }}>Assistant</span>
+                  <span style={{ fontSize: 11, color: "var(--lm-amber)", fontWeight: 600, letterSpacing: "0.01em", paddingLeft: 4 }}>{talkNameTitle(agentName)}</span>
                 )}
                 {/* Thinking indicator — shown only for the active pending message */}
                 {msg.pending && msg.role === "agent" && msg.runId === pendingRunIdRef.current && thinkingText && (
@@ -2247,7 +2252,7 @@ export function ChatSection({ events, isActive }: Props) {
                 onKeyDown={onKeyDown}
                 onPaste={onPaste}
                 disabled={sending}
-                placeholder="Message Assistant…"
+                placeholder={`Message ${talkName(agentName)}…`}
                 rows={1}
                 style={{
                   flex: 1, minWidth: 0,

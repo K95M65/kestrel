@@ -35,11 +35,16 @@ type Service struct {
 	runtimeSwitchMu sync.Mutex
 	sleepMu         sync.Mutex
 	sleep           sleepRuntime
+	behaviorsMu     sync.Mutex
+	behaviors       behaviorsRuntime
+
+	sessionResetMu       sync.Mutex
+	sessionResetInFlight bool
 }
 
 func ProvideService(config *config.Config, ns *network.Service, gw domain.AgentGateway, be *beclient.Client, sled *statusled.Service, ps *plugin.Service) *Service {
 	SeedAgentRuntimeFromGateway(config)
-	return &Service{
+	s := &Service{
 		config:         config,
 		networkService: ns,
 		agentGateway:   gw,
@@ -48,6 +53,8 @@ func ProvideService(config *config.Config, ns *network.Service, gw domain.AgentG
 		plugins:        ps,
 		setupState:     setupState{phase: SetupPhaseIdle},
 	}
+	s.initBehaviors()
+	return s
 }
 
 // restartHAL restarts hal in the background so it re-reads config.json — HAL

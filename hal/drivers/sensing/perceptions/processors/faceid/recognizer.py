@@ -175,6 +175,31 @@ class FaceRecognizer:
                 self._stranger_labels = None
                 self._stranger_counter = 0
 
+    def drop_stranger_person(self, person_id: str) -> bool:
+        """Drop one ``stranger_N`` from the live stranger bank and persist.
+
+        ``person_id`` is the unprefixed id the rest of the pipeline uses
+        (``stranger_1``), not the in-bank ``stranger_stranger_1`` label.
+        """
+        with self._lock:
+            if self._stranger_labels is None or self._stranger_embeddings is None:
+                return False
+            keep = [
+                i
+                for i, lbl in enumerate(self._stranger_labels)
+                if str(lbl).removeprefix(self.STRANGER_PREFIX) != person_id
+            ]
+            if len(keep) == len(self._stranger_labels):
+                return False
+            if not keep:
+                self._stranger_embeddings = None
+                self._stranger_labels = None
+            else:
+                self._stranger_embeddings = self._stranger_embeddings[keep]
+                self._stranger_labels = self._stranger_labels[keep]
+            self._save_strangers_state()
+            return True
+
     def register(
         self,
         images: list[cv2.typing.MatLike],

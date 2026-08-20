@@ -3,6 +3,7 @@ import { Laptop } from "lucide-react";
 import { S } from "./styles";
 import { API } from "./types";
 import { getCompanionApps, type CompanionApp } from "@/lib/api";
+import { buddyKind, buddyOSLabel } from "@/lib/buddyLabel";
 
 interface BuddyStatus {
   paired: boolean;
@@ -38,7 +39,7 @@ export function BuddyCard() {
   const [codeExpiresAt, setCodeExpiresAt] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
   const [busy, setBusy] = useState(false);
-  const [app, setApp] = useState<CompanionApp | null>(null);
+  const [apps, setApps] = useState<CompanionApp[]>([]);
   const codeBox = useRef<HTMLDivElement | null>(null);
 
   const fetchStatus = useCallback(async () => {
@@ -65,7 +66,7 @@ export function BuddyCard() {
 
   useEffect(() => {
     getCompanionApps()
-      .then((apps) => setApp(apps.find((a) => a.id === "autonomous-buddy") ?? apps[0] ?? null))
+      .then((list) => setApps(buddyKind(list)))
       .catch(() => {});
   }, []);
 
@@ -113,7 +114,7 @@ export function BuddyCard() {
   };
 
   const handleRevoke = async () => {
-    if (!confirm("Revoke this Mac's pairing? The buddy app will lose access.")) return;
+    if (!confirm("Revoke this computer's pairing? Kestrel Buddy will lose access.")) return;
     setBusy(true);
     setError(null);
     try {
@@ -146,7 +147,7 @@ export function BuddyCard() {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
         <div style={{ ...S.cardLabel, display: "flex", alignItems: "center", gap: 8, marginBottom: 0 }}>
           <span className="lm-mon-chip" aria-hidden><Laptop size={13} /></span>
-          <span>Autonomous Buddy (Mac)</span>
+          <span>Kestrel Buddy</span>
         </div>
         <span
           style={{
@@ -192,7 +193,7 @@ export function BuddyCard() {
           )}
           {status.osVersion && (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ fontSize: 12.5, color: "var(--lm-text-dim)" }}>macOS</span>
+              <span style={{ fontSize: 12.5, color: "var(--lm-text-dim)" }}>{buddyOSLabel(status.osVersion)}</span>
               <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--lm-text)", fontFamily: "monospace" }}>{status.osVersion}</span>
             </div>
           )}
@@ -219,7 +220,7 @@ export function BuddyCard() {
           >
             Revoke pairing
           </button>
-          <DownloadLinks app={app} />
+          <DownloadLinks apps={apps} />
         </div>
       )}
 
@@ -227,9 +228,9 @@ export function BuddyCard() {
       {status && !status.paired && !code && (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <span style={{ fontSize: 12, color: "var(--lm-text-dim)", lineHeight: 1.45 }}>
-            No Mac paired. Download Autonomous Buddy, install it, then pair with a code.
+            No computer paired. Download Kestrel Buddy for this computer, then pair with a code.
           </span>
-          <DownloadLinks app={app} />
+          <DownloadLinks apps={apps} />
           <button
             type="button"
             onClick={handlePair}
@@ -245,7 +246,7 @@ export function BuddyCard() {
               cursor: busy ? "not-allowed" : "pointer",
             }}
           >
-            {busy ? "Generating…" : "Pair new Mac"}
+            {busy ? "Generating…" : "Pair this computer"}
           </button>
         </div>
       )}
@@ -253,7 +254,7 @@ export function BuddyCard() {
       {code && (
         <div ref={codeBox} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <span style={{ fontSize: 11, color: "var(--lm-text-dim)" }}>
-            Enter this code in Autonomous Buddy → <em>Pair with device…</em>
+            Enter this code in Kestrel Buddy → <em>Pair with device…</em>
           </span>
           <button
             type="button"
@@ -306,8 +307,8 @@ export function BuddyCard() {
   );
 }
 
-function DownloadLinks({ app }: { app: CompanionApp | null }) {
-  if (!app) return null;
+function DownloadLinks({ apps }: { apps: CompanionApp[] }) {
+  if (apps.length === 0) return null;
   const link = (href: string, label: string, primary?: boolean) => (
     <a
       href={href}
@@ -319,19 +320,25 @@ function DownloadLinks({ app }: { app: CompanionApp | null }) {
         textDecoration: "none",
         padding: "4px 8px",
         borderRadius: 4,
-        border: primary ? "1px solid rgba(52,211,153,0.4)" : "1px solid rgba(255,255,255,0.1)",
+        border: primary ? "1px solid var(--lm-green)" : "1px solid var(--lm-border)",
         color: primary ? "var(--lm-green)" : "var(--lm-text-dim)",
-        background: primary ? "rgba(52,211,153,0.08)" : "transparent",
+        background: primary ? "var(--lm-green-dim)" : "transparent",
       }}
     >
       {label}
     </a>
   );
+  const short = (p: string) => {
+    const s = p.toLowerCase();
+    if (s.includes("windows")) return "Windows";
+    if (s.includes("linux")) return "Linux";
+    if (s.includes("mac")) return "Mac";
+    return p;
+  };
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
-      {link(app.direct_url || app.download_url, "Download Mac app", true)}
-      {link(app.download_url, "Releases")}
-      {link(app.source_url, "Source")}
+      {apps.map((app, i) => link(app.direct_url || app.download_url, short(app.platform), i === 0))}
+      {apps[0] && link(apps[0].download_url, "Releases")}
     </div>
   );
 }

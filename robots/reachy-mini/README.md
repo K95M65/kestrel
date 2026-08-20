@@ -1,14 +1,37 @@
 # Reachy Mini
 
-Run Autonomous on a [Reachy Mini](https://huggingface.co/blog/reachy-mini) —
-Pollen Robotics' desk robot. Autonomous gives it a voice pipeline, vision,
-sensing, a web UI, an agent runtime and over-the-air updates, driving the body
-through Pollen's own SDK.
+Run **Kestrel** (a fork of [Autonomous OS](https://github.com/autonomous-ai/autonomous-os))
+on a [Reachy Mini](https://huggingface.co/blog/reachy-mini) — Pollen Robotics' desk robot.
+Kestrel gives it a voice pipeline, vision, sensing, a web UI, an agent runtime and
+over-the-air updates, driving the body through Pollen's own SDK.
 
 <p align="center">
   <img src="images/reachy-icon.svg" alt="Reachy Mini" width="480"><br>
   <sub><code>images/reachy-icon.svg</code> is Pollen Robotics' artwork, used with attribution; not covered by this repo's license.</sub>
 </p>
+
+## The app
+
+Kestrel / Desk Companion — Home, Talk, People, Camera, and a guided setup that
+names the robot, talks to it, and tries the camera.
+
+| Home | Talk |
+| --- | --- |
+| <img src="images/app/02-home.png" alt="Home — your robot is awake" width="480"> | <img src="images/app/03-talk.png" alt="Talk with the robot" width="480"> |
+
+| People | Camera |
+| --- | --- |
+| <img src="images/app/04-people.png" alt="People — who this robot knows" width="480"> | <img src="images/app/05-camera.png" alt="Camera — what the robot sees" width="480"> |
+
+| Guided setup | Name |
+| --- | --- |
+| <img src="images/app/07-guide-intro.png" alt="Guided setup intro" width="480"> | <img src="images/app/08-guide-name.png" alt="Name the robot" width="480"> |
+
+More shots: [images/app/](images/app/) (login, General, talk try, camera try).
+
+This unit’s overlay vs stock Autonomous OS is listed in
+[`docs/divergence-from-stock.md`](../../docs/divergence-from-stock.md). Check
+stock for overlapping fixes with `./scripts/check-upstream-divergence.sh`.
 
 ## Install
 

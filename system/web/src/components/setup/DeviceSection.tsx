@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Eye, EyeOff, Copy, Check, Cpu, Fingerprint, Network } from "lucide-react";
 import { SecretUpdateField } from "@/components/SecretUpdateField";
+import { setIdentity, type IdentityPublic } from "@/lib/api";
+import { defaultWakePhrase, isNamedRobot } from "@/lib/robotName";
 import { C, Field, PasswordField, SectionCard, LABEL_STYLE, INPUT_STYLE, INPUT_READONLY_STYLE, INPUT_PAD_ONE_ICON, FIELD_GAP, ADMIN_PASSWORD_MIN } from "./shared";
 
 // Read-only MAC field masked behind ••••, with an eye toggle to reveal. The
@@ -187,7 +189,7 @@ export function DeviceSection({
   adminPasswordConfirm, setAdminPasswordConfirm,
   rotateAdminPassword, setRotateAdminPassword,
   wakeWord, setWakeWord,
-  agentName, wakePhrases,
+  agentName, wakePhrase, wakePhrases, onIdentityApplied,
 }: {
   active: boolean;
   deviceId: string;
@@ -211,7 +213,9 @@ export function DeviceSection({
   // Settings mode receives the effective phrases from the server, including
   // the active runtime's current agent name.
   agentName?: string;
+  wakePhrase?: string;
   wakePhrases?: string[];
+  onIdentityApplied?: (r: IdentityPublic) => void;
 }) {
   const showAdminPasswordFields = setAdminPassword !== undefined;
   const showRotateField = setRotateAdminPassword !== undefined;
@@ -225,9 +229,9 @@ export function DeviceSection({
   // operator clicks the pencil, so its copy points at that.
   const description = showAdminPasswordFields
     ? "Set an admin password — you'll use it to sign in from any browser after setup."
-    : "Your device's identity and admin login.";
+    : "This robot's name, password, and whether it waits to hear its name.";
   return (
-    <SectionCard id="device" title="Device" active={active} description={description} icon={<Cpu size={17} />}>
+    <SectionCard id="device" title={showAdminPasswordFields ? "Device" : "General"} active={active} description={description} icon={<Cpu size={17} />}>
       {/* The admin password is the only thing the operator actively does on
           this step, so it leads. Device ID / MAC are read-only identifiers and
           drop to a compact metadata footer — putting them first made the step
@@ -252,36 +256,27 @@ export function DeviceSection({
           />
         </>
       )}
-      {showRotateField && (
-        <>
-          <SecretUpdateField
-            label="Admin Password"
-            id="admin_password"
-            configured={true}
-            value={rotateAdminPassword ?? ""}
-            onChange={setRotateAdminPassword!}
-            placeholder={`New password (min ${ADMIN_PASSWORD_MIN} chars)`}
-          />
-          {/* Same strength meter as the setup flow — only meaningful once the
-              operator starts typing a new password. Empty (the resting "keep
-              current password" state) renders nothing. */}
-          <PasswordStrength value={rotateAdminPassword ?? ""} />
-        </>
+      {onIdentityApplied && (
+        <IdentityEditor
+          agentName={agentName ?? ""}
+          wakePhrase={wakePhrase ?? ""}
+          onApplied={onIdentityApplied}
+        />
       )}
 
       {setWakeWord && (
         <div style={{ marginTop: 18, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
           <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, color: C.text }}>
             <input type="checkbox" checked={wakeWord ?? false} onChange={(e) => setWakeWord(e.target.checked)} />
-            Require a wake word before handling speech
+            Wait for the wake word before talking
           </label>
           <div style={{ marginTop: 5, marginLeft: 23, fontSize: 11.5, lineHeight: 1.45, color: C.textMuted }}>
-            When off, your device keeps its existing always-listening behavior.
+            When off, the robot listens for speech without waiting for its name.
           </div>
           {!!wakePhrases?.length && (
             <div style={{ marginTop: 10, marginLeft: 23, fontSize: 11.5, lineHeight: 1.45, color: C.textMuted }}>
               <div style={{ marginBottom: 6 }}>
-                Say one of these exact phrases first{agentName ? ` (current agent: ${agentName})` : ""}:
+                Say one of these exact phrases first:
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {wakePhrases.map((phrase) => (
@@ -292,6 +287,20 @@ export function DeviceSection({
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {showRotateField && (
+        <div style={{ marginTop: 18, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
+          <SecretUpdateField
+            label="Admin Password"
+            id="admin_password"
+            configured={true}
+            value={rotateAdminPassword ?? ""}
+            onChange={setRotateAdminPassword!}
+            placeholder={`New password (min ${ADMIN_PASSWORD_MIN} chars)`}
+          />
+          <PasswordStrength value={rotateAdminPassword ?? ""} />
         </div>
       )}
 
@@ -308,5 +317,94 @@ export function DeviceSection({
         </>
       )}
     </SectionCard>
+  );
+}
+
+function IdentityEditor({
+  agentName, wakePhrase, onApplied,
+}: {
+  agentName: string;
+  wakePhrase: string;
+  onApplied: (r: IdentityPublic) => void;
+}) {
+  const named = isNamedRobot(agentName);
+  const [name, setName] = useState(named ? agentName : "");
+  const [wake, setWake] = useState(wakePhrase || (named ? defaultWakePhrase(agentName) : ""));
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    const n = isNamedRobot(agentName) ? agentName : "";
+    setName(n);
+    setWake(wakePhrase || (n ? defaultWakePhrase(n) : ""));
+  }, [agentName, wakePhrase]);
+
+  function onNameChange(v: string) {
+    const prevDefault = defaultWakePhrase(name);
+    setName(v);
+    if (!wake.trim() || wake.trim().toLowerCase() === prevDefault) {
+      setWake(defaultWakePhrase(v));
+    }
+  }
+
+  async function apply() {
+    const n = name.trim();
+    if (!n) {
+      toast.error("Give this robot a name.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const def = defaultWakePhrase(n);
+      const custom = wake.trim().toLowerCase();
+      const saved = await setIdentity({
+        name: n,
+        wake_phrase: custom && custom !== def ? custom : "",
+      });
+      onApplied(saved);
+      toast.success(`${saved.name} will listen for “${saved.wake_phrase || def}”.`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not save the name.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div
+      style={{ marginBottom: 8 }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          if (!busy && name.trim()) void apply();
+        }
+      }}
+    >
+      <Field label="Name" id="robot_name" value={name} onChange={onNameChange} placeholder="e.g. Buddy" />
+      <Field
+        label="Wake phrase"
+        id="robot_wake"
+        value={wake}
+        onChange={setWake}
+        placeholder="e.g. hey buddy"
+      />
+      <div style={{ marginTop: -6, marginBottom: 12, fontSize: 11.5, lineHeight: 1.45, color: C.textMuted }}>
+        Leave as “hey {name.trim() || "name"}” to keep the usual aliases, or type one custom phrase.
+      </div>
+      <button
+        type="button"
+        onClick={() => void apply()}
+        disabled={busy || !name.trim()}
+        style={{
+          padding: "8px 16px", borderRadius: 8, fontSize: 12.5, fontWeight: 600,
+          cursor: busy || !name.trim() ? "not-allowed" : "pointer",
+          border: "none",
+          background: busy || !name.trim() ? C.surface : C.amber,
+          color: busy || !name.trim() ? C.textMuted : "var(--lm-on-amber)",
+          opacity: busy || !name.trim() ? 0.7 : 1,
+        }}
+      >
+        {busy ? "Saving…" : "Apply name"}
+      </button>
+    </div>
   );
 }

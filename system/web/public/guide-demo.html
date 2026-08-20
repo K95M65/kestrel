@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kestrel — guided setup demo</title>
+  <style>
+    :root {
+      --bg: #F2EFE7; --sidebar: #E7F1EE; --card: #FFFcf7; --surface: #C8DFDB;
+      --border: #C8DFDB; --border-hi: #66A3BF;
+      --amber: #3368A0; --amber-dim: rgba(51,104,160,0.12); --amber-glow: rgba(51,104,160,0.28);
+      --text: #1E3A54; --text-dim: #3368A0; --text-muted: #66A3BF; --on-amber: #F2EFE7;
+      --green: #2F8F78;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      -webkit-font-smoothing: antialiased; }
+    .shell { display: flex; min-height: 100%; }
+    .side { width: 220px; background: var(--sidebar); border-right: 1px solid var(--border);
+      padding: 18px 12px; display: flex; flex-direction: column; gap: 4px; }
+    .brand { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+      color: var(--amber); padding: 6px 10px 16px; }
+    .nav { font-size: 13px; padding: 8px 10px; border-radius: 8px; color: var(--text-dim); }
+    .nav.on { background: var(--amber-dim); color: var(--text); }
+    .main { flex: 1; padding: 28px 32px; }
+    .top { font-size: 13px; font-weight: 600; margin-bottom: 22px; color: var(--text); }
+    .grid { display: grid; grid-template-columns: 1fr 280px; gap: 16px; max-width: 920px; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; }
+    .label { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700;
+      letter-spacing: .04em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 10px; }
+    .pill { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px;
+      border: 1px solid var(--border); color: var(--text-dim); }
+    .hero { font-size: 15px; line-height: 1.5; color: var(--text-dim); margin: 8px 0 14px; }
+    .row { display: flex; flex-wrap: wrap; gap: 8px; }
+    button { font-family: inherit; }
+    .btn { padding: 7px 12px; border-radius: 8px; font-size: 12px; font-weight: 650; cursor: pointer;
+      border: 1px solid var(--border); background: transparent; color: var(--text); }
+    .btn-p { border: none; background: var(--amber); color: var(--on-amber); }
+    .muted { font-size: 12px; color: var(--text-dim); }
+    .stat { font-size: 22px; font-weight: 700; color: var(--green); }
+    .overlay { position: fixed; inset: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 72%, transparent);
+      backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; padding: 24px 16px; }
+    .overlay[hidden] { display: none; }
+    .panel { width: min(520px, 100%); background: var(--card); border: 1px solid var(--border-hi);
+      border-radius: 16px; box-shadow: 0 24px 60px rgba(0,0,0,.45); overflow: hidden; outline: none;
+      animation: in .22s ease-out; }
+    @keyframes in { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
+    .prog { height: 3px; background: var(--surface); }
+    .prog > i { display: block; height: 100%; background: var(--amber); width: 16%; transition: width .2s; }
+    .head { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px 0; }
+    .kicker { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--amber); }
+    .x { background: none; border: none; color: var(--text-dim); cursor: pointer; padding: 6px; font-size: 16px; }
+    .body { padding: 12px 22px 8px; min-height: 220px; }
+    h2 { margin: 0 0 8px; font-size: 22px; font-weight: 700; letter-spacing: -.03em; line-height: 1.2; }
+    .lead { margin: 0 0 14px; font-size: 13.5px; color: var(--text-dim); line-height: 1.55; }
+    .choices { display: flex; flex-direction: column; gap: 8px; }
+    .choice { display: flex; align-items: flex-start; gap: 10px; text-align: left; padding: 11px 12px;
+      border-radius: 12px; cursor: pointer; border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+    .choice.on { border-color: var(--amber); background: var(--amber-dim); }
+    .dot { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; margin-top: 3px; border: 2px solid var(--border-hi); }
+    .choice.on .dot { border-color: var(--amber); box-shadow: inset 0 0 0 3px var(--amber); }
+    .ct { display: block; font-size: 14px; font-weight: 650; }
+    .cl { display: block; font-size: 12px; color: var(--text-dim); margin-top: 2px; line-height: 1.4; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    .chip { padding: 6px 11px; border-radius: 999px; font-size: 12px; font-weight: 600; cursor: pointer;
+      border: 1px solid var(--border); background: transparent; color: var(--text-dim); }
+    .chip.on { border-color: var(--amber); color: var(--amber); background: var(--amber-dim); }
+    .extra { margin-top: 14px; }
+    .extra label { display: block; font-size: 13px; color: var(--text-dim); margin-bottom: 6px; }
+    .extra input[type=time] { background: var(--surface); border: 1px solid var(--border); color: var(--text);
+      border-radius: 10px; padding: 10px 13px; font-size: 14px; caret-color: var(--amber); }
+    .sum { margin: 0; padding-left: 18px; font-size: 14px; line-height: 1.7; }
+    .foot { display: flex; justify-content: space-between; gap: 8px; padding: 12px 18px 16px; border-top: 1px solid var(--border); }
+    .gp, .gg { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 9px;
+      font-size: 13px; font-weight: 650; cursor: pointer; }
+    .gp { border: none; background: var(--amber); color: var(--on-amber); }
+    .gg { border: 1px solid var(--border); background: transparent; color: var(--text); }
+    .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--surface);
+      border: 1px solid var(--border-hi); padding: 10px 16px; border-radius: 10px; font-size: 13px; display: none; z-index: 30; }
+    .demo-note { font-size: 11px; color: var(--text-muted); margin-top: 18px; }
+    @media (max-width: 720px) { .side { display: none; } .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="side">
+      <div class="brand">Kestrel<br><span style="font-weight:500;letter-spacing:0;text-transform:none;font-size:11px;color:var(--text-muted)">Desk Companion</span></div>
+      <div class="nav">Chat</div>
+      <div class="nav on">Overview</div>
+      <div class="nav">Settings</div>
+    </aside>
+    <main class="main">
+      <div class="top">Overview</div>
+      <div class="grid">
+        <div class="card" id="beh-card">
+          <div class="label" style="justify-content:space-between">
+            <span>✦ Behaviors</span>
+            <span class="pill" id="status-pill">not set up</span>
+          </div>
+          <div class="hero" id="hero-copy">Two minutes to pick who this desk is for — briefing, privacy, greetings.</div>
+          <div class="row">
+            <button class="btn btn-p" type="button" id="open">Guided setup</button>
+            <button class="btn" type="button">Meeting</button>
+            <button class="btn" type="button">End meeting</button>
+            <button class="btn" type="button">Brief now</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="label">☾ Quiet hours</div>
+          <div class="muted">awake</div>
+          <div class="muted" style="margin-top:8px">Schedule 23:00 → 07:00</div>
+        </div>
+      </div>
+      <p class="demo-note">Demo of the real guided setup. Nothing is saved to the robot.</p>
+    </main>
+  </div>
+
+  <div class="overlay" id="overlay" hidden>
+    <div class="panel" role="dialog" aria-modal="true" aria-labelledby="t">
+      <div class="prog"><i id="bar"></i></div>
+      <div class="head">
+        <span class="kicker" id="kicker">Guided setup · 1 of 6</span>
+        <button class="x" type="button" id="close" aria-label="Close">✕</button>
+      </div>
+      <div class="body" id="body"></div>
+      <div class="foot" id="foot"></div>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const PRESETS = [
+      { id: "desk", title: "Just me", line: "Desk companion — briefing, memory, dance, a hello when you sit down." },
+      { id: "family", title: "Family", line: "Kitchen presence — greet whoever walks in, meals, stories if asked." },
+      { id: "kids", title: "Kids around", line: "Gentle and bounded. No mail, calendar, or the house. Stories on." },
+      { id: "office", title: "Office", line: "Named greetings, morning brief, focus nag, pomodoro. Dance stays off." },
+    ];
+    const state = {
+      step: 0, preset: null,
+      brief: true, at: "07:30", weather: true, calendar: true, email: true, telegram: true,
+      draft: true, snap: true, strangers: true,
+      greet: true, dance: true, remember: true, look: true, kitchen: true,
+      focus: false, pomo: false, stories: false, kids: false,
+    };
+    const overlay = document.getElementById("overlay");
+    const body = document.getElementById("body");
+    const foot = document.getElementById("foot");
+
+    function applyPreset(id) {
+      state.preset = id;
+      state.brief = id !== "kids";
+      state.at = id === "office" ? "08:30" : id === "family" ? "08:00" : "07:30";
+      state.email = id !== "kids";
+      state.calendar = id !== "kids";
+      state.dance = id !== "office";
+      state.greet = true;
+      state.kids = id === "kids";
+      state.stories = id === "kids" || id === "family";
+      state.focus = id === "office";
+      state.pomo = id === "office";
+      state.remember = true;
+      state.look = true;
+      state.kitchen = true;
+    }
+    function summary() {
+      const out = [];
+      if (state.brief) out.push("Morning brief at " + state.at);
+      if (state.remember) out.push("Remembers what you tell it");
+      if (state.dance) out.push("Dances to songs");
+      if (state.greet) out.push(state.preset === "office" ? "Greets named friends" : "Greets people who walk in");
+      if (state.kids) out.push("Kids profile on");
+      if (state.draft) out.push("Drafts mail, never sends");
+      if (state.snap) out.push("Camera is one snapshot");
+      if (state.focus) out.push("Phone / focus nag");
+      if (state.pomo) out.push("Pomodoro timer");
+      if (state.stories) out.push("Stories");
+      if (state.kitchen) out.push("Kitchen / meals");
+      return out;
+    }
+    function choice(on, title, line, fn) {
+      return `<button type="button" class="choice${on ? " on" : ""}" data-fn="${fn}">
+        <span class="dot"></span><span><span class="ct">${title}</span><span class="cl">${line}</span></span></button>`;
+    }
+    function chip(on, label, key) {
+      return `<button type="button" class="chip${on ? " on" : ""}" data-chip="${key}">${label}</button>`;
+    }
+    function render() {
+      document.getElementById("kicker").textContent = "Guided setup · " + (state.step + 1) + " of 6";
+      document.getElementById("bar").style.width = ((state.step + 1) / 6 * 100) + "%";
+      let html = "";
+      if (state.step === 0) {
+        html = `<h2 id="t">How should this robot live on this desk?</h2>
+          <p class="lead">A short walk-through. Each answer turns jobs on or off. You can change anything later, or skip and keep the defaults.</p>`;
+      } else if (state.step === 1) {
+        html = `<h2 id="t">Who is this for?</h2>
+          <p class="lead">Pick a starting personality. Fine-tune on the next screens.</p>
+          <div class="choices">${PRESETS.map(p => choice(state.preset === p.id, p.title, p.line, "p:" + p.id)).join("")}</div>`;
+      } else if (state.step === 2) {
+        html = `<h2 id="t">Mornings</h2>
+          <p class="lead">A spoken briefing before you open five apps — the thing people actually keep.</p>
+          <div class="choices">
+            ${choice(state.brief, "Yes, brief me", "Weather, calendar, overnight mail. Read-only — it never sends.", "brief:1")}
+            ${choice(!state.brief, "Stay quiet until I talk", "No scheduled speech. You can still ask “what's today?”", "brief:0")}
+          </div>
+          ${state.brief ? `<div class="extra"><label for="at">Around</label>
+            <input id="at" type="time" value="${state.at}" />
+            <div class="chips">
+              ${chip(state.weather, "Weather", "weather")}
+              ${chip(state.calendar, "Calendar", "calendar")}
+              ${chip(state.email, "Overnight mail", "email")}
+              ${chip(state.telegram, "Telegram copy", "telegram")}
+            </div></div>` : ""}`;
+      } else if (state.step === 3) {
+        html = `<h2 id="t">How careful?</h2>
+          <p class="lead">These are the defaults operators who kept their inboxes intact actually use.</p>
+          <div class="choices">
+            ${choice(state.draft, "Draft, never send", "Mail and calendar writes stay in chat until you send them yourself.", "draft")}
+            ${choice(state.snap, "One photo, not a stream", "“Look at this” takes a JPEG. The live camera stays off unless you ask.", "snap")}
+            ${choice(state.strangers, "Don't track strangers", "Face-follow only after a wake or a named friend.", "strangers")}
+          </div>`;
+      } else if (state.step === 4) {
+        html = `<h2 id="t">When you're around</h2>
+          <p class="lead">Tap what should be alive. Off stays quiet.</p>
+          <div class="chips">
+            ${chip(state.greet, "Greet people", "greet")}
+            ${chip(state.dance, "Dance to songs", "dance")}
+            ${chip(state.remember, "Remember this", "remember")}
+            ${chip(state.look, "Look at this", "look")}
+            ${chip(state.kitchen, "Meals / kitchen", "kitchen")}
+            ${chip(state.focus, "Phone nag", "focus")}
+            ${chip(state.pomo, "Pomodoro", "pomo")}
+            ${chip(state.stories, "Stories", "stories")}
+            ${chip(state.kids, "Kids profile", "kids")}
+          </div>`;
+      } else {
+        const lines = summary();
+        html = `<h2 id="t">This is the setup</h2>
+          <p class="lead">Save it onto the robot. Settings → Behaviors is always there to tweak.</p>
+          <ul class="sum">${(lines.length ? lines : ["Quiet defaults — talk to it when you want."]).map(l => `<li>${l}</li>`).join("")}</ul>`;
+      }
+      body.innerHTML = html;
+      if (state.step === 0) {
+        foot.innerHTML = `<button type="button" class="gg" data-act="skip">Skip for now</button>
+          <button type="button" class="gp" data-act="next">Start →</button>`;
+      } else {
+        foot.innerHTML = `<button type="button" class="gg" data-act="back">← Back</button>` +
+          (state.step < 5
+            ? `<button type="button" class="gp" data-act="next">Next →</button>`
+            : `<button type="button" class="gp" data-act="save">Save this setup</button>`);
+      }
+    }
+    function toast(msg) {
+      const t = document.getElementById("toast");
+      t.textContent = msg; t.style.display = "block";
+      setTimeout(() => t.style.display = "none", 2200);
+    }
+    function close() { overlay.hidden = true; }
+    function done(skip) {
+      close();
+      document.getElementById("status-pill").textContent = skip ? "skipped" : "set up";
+      document.getElementById("hero-copy").textContent = skip
+        ? "You can run this guide any time from Settings → Behaviors."
+        : summary().slice(0, 3).join(" · ");
+      toast(skip ? "You can run this guide any time." : "This robot is set up.");
+    }
+    document.getElementById("open").onclick = () => { state.step = 0; overlay.hidden = false; render(); };
+    document.getElementById("close").onclick = close;
+    overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) close(); });
+    document.addEventListener("keydown", (e) => {
+      if (overlay.hidden) return;
+      if (e.key === "Escape") close();
+      if (e.key === "Enter" && state.step < 5) { state.step++; render(); }
+    });
+    document.addEventListener("click", (e) => {
+      const act = e.target.closest("[data-act]");
+      if (act) {
+        const a = act.dataset.act;
+        if (a === "next") { state.step++; render(); }
+        if (a === "back") { state.step--; render(); }
+        if (a === "skip") done(true);
+        if (a === "save") done(false);
+      }
+      const fn = e.target.closest("[data-fn]");
+      if (fn) {
+        const v = fn.dataset.fn;
+        if (v.startsWith("p:")) applyPreset(v.slice(2));
+        if (v === "brief:1") state.brief = true;
+        if (v === "brief:0") state.brief = false;
+        if (v === "draft") state.draft = !state.draft;
+        if (v === "snap") state.snap = !state.snap;
+        if (v === "strangers") state.strangers = !state.strangers;
+        render();
+      }
+      const chipEl = e.target.closest("[data-chip]");
+      if (chipEl) { state[chipEl.dataset.chip] = !state[chipEl.dataset.chip]; render(); }
+    });
+    body.addEventListener("change", (e) => {
+      if (e.target.id === "at") state.at = e.target.value;
+    });
+  </script>
+</body>
+</html>

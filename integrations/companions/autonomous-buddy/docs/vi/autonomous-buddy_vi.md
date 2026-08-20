@@ -1,11 +1,11 @@
-# Autonomous Buddy — Remote Computer Use cho thiết bị
+# Kestrel Buddy — Remote Computer Use cho thiết bị
 
 > **Trạng thái:** Đang thiết kế — đang scope MVP
 > **Cập nhật:** 2026-05-21
 > **Owner:** Leo
-> **Liên quan:** [Kế hoạch MVP Autonomous Buddy](./autonomous-buddy-mvp_vi.md)
+> **Liên quan:** [Kế hoạch MVP Kestrel Buddy](./autonomous-buddy-mvp_vi.md)
 
-Tài liệu này lưu lại toàn bộ thảo luận thiết kế tính năng **Autonomous Buddy**: một app native chạy thường trú trên máy tính người dùng, cho phép thiết bị điều khiển desktop (mở app, vào web, gõ text, …) — kiểu TeamViewer nhưng được điều khiển bằng giọng nói/AI thông qua thiết bị.
+Tài liệu này lưu lại toàn bộ thảo luận thiết kế tính năng **Kestrel Buddy** (fork của Autonomous Buddy): một app native chạy thường trú trên máy tính người dùng, cho phép thiết bị điều khiển desktop (mở app, vào web, gõ text, …) — kiểu TeamViewer nhưng được điều khiển bằng giọng nói/AI thông qua thiết bị.
 
 Kế hoạch implement MVP nằm ở [`autonomous-buddy-mvp_vi.md`](./autonomous-buddy-mvp_vi.md). Doc này là tham chiếu dài về *lý do tại sao* kiến trúc lại như vậy.
 

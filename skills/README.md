@@ -72,6 +72,18 @@ System-only skills may be hidden from the default storefront or shown with a
 | `computer-use` | Productivity | macos, browser, desktop, companion | Lamp, Intern v2, Reachy Mini |
 | `claude-buddy` | Productivity | claude-code, approvals, companion, agent | Lamp, Intern v2, Reachy Mini |
 | `connectors` | Productivity | gmail, calendar, drive, notion, github | Lamp, Intern v2, Reachy Mini |
+| `morning-brief` | Productivity | briefing, calendar, weather, cron | Lamp, Intern v2, Reachy Mini |
+| `remember` | Productivity | memory, notes, inbox | Lamp, Intern v2, Reachy Mini |
+| `focus-coach` | Health | phone, focus, coaching | Lamp, Reachy Mini |
+| `greeter` | Home | presence, greeting, receptionist | Lamp, Reachy Mini |
+| `kitchen` | Home | meals, shopping, dinner | Lamp, Intern v2, Reachy Mini |
+| `home-assistant` | Home | lights, climate, smart-home | Lamp, Intern v2, Reachy Mini |
+| `weather` | Productivity | forecast, open-meteo | Lamp, Intern v2, Reachy Mini |
+| `news` | Productivity | headlines, rss, search | Lamp, Intern v2, Reachy Mini |
+| `spotify` | Entertainment | mac, buddy, playback | Lamp, Intern v2, Reachy Mini |
+| `stories` | Entertainment | bedtime, kids, reading | Lamp, Intern v2, Reachy Mini |
+| `pomodoro` | Productivity | timer, focus | Lamp, Intern v2, Reachy Mini |
+| `body-play` | Entertainment | marionette, radio, hands, telepresence | Lamp, Reachy Mini |
 | `input-branching` | Not published | routing, realtime, internal | Lamp, Intern v2, Reachy Mini |
 
 ## Adding a skill

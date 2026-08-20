@@ -193,6 +193,7 @@ func (s *Server) Serve(closeFn func()) error {
 	// i18n device name (wake-words + {name}/{Name} in strings) — device_type as the
 	// startup fallback; WatchIdentity overrides with the agent name once IDENTITY.md loads.
 	i18n.SetDeviceName(deviceType)
+	i18n.SetExclusiveWakeWords(s.config.WakeWords)
 
 	// Register the shared bearer token for outbound HAL HTTP calls.
 	// HAL's local_only_middleware accepts Authorization: Bearer <llm_api_key>
@@ -337,6 +338,11 @@ func (s *Server) Serve(closeFn func()) error {
 	device.POST("setup", setupOrAdminMiddleware(s.config), s.deviceHandler.Setup)
 	device.GET("setup/status", s.deviceHandler.SetupStatus)
 	device.POST("channel", adminAuthMiddleware(s.config), s.deviceHandler.ChangeChannel)
+	device.GET("services", adminAuthMiddleware(s.config), s.deviceHandler.ListServices)
+	device.PUT("services/telegram", adminAuthMiddleware(s.config), s.deviceHandler.SetTelegram)
+	device.PUT("connectors/gmail", adminAuthMiddleware(s.config), s.deviceHandler.SetGmail)
+	device.PUT("connectors/google_calendar", adminAuthMiddleware(s.config), s.deviceHandler.SetCalendar)
+	device.DELETE("connectors/:code", adminAuthMiddleware(s.config), s.deviceHandler.RemoveConnector)
 	// GET config is admin-gated now. Pre-login web can no longer bootstrap
 	// the bearer from here — browser must POST /api/login first (cookie),
 	// scripts/curl must send Authorization: Bearer <llm_api_key>.
@@ -353,10 +359,21 @@ func (s *Server) Serve(closeFn func()) error {
 	device.POST("agent-runtime", adminAuthMiddleware(s.config), s.deviceHandler.SetAgentRuntime)
 	device.GET("timezone", adminAuthMiddleware(s.config), s.deviceHandler.GetTimezone)
 	device.POST("timezone", adminAuthMiddleware(s.config), s.deviceHandler.SetTimezone)
+	device.PUT("identity", adminAuthMiddleware(s.config), s.deviceHandler.SetIdentity)
 	device.GET("sleep", adminAuthMiddleware(s.config), s.deviceHandler.GetSleep)
 	device.PUT("sleep", adminAuthMiddleware(s.config), s.deviceHandler.SetSleep)
 	device.POST("sleep/now", adminAuthMiddleware(s.config), s.deviceHandler.SleepNow)
 	device.POST("sleep/wake", adminAuthMiddleware(s.config), s.deviceHandler.WakeNow)
+	device.PUT("me", adminAuthMiddleware(s.config), s.deviceHandler.SetMe)
+	device.GET("behaviors", adminAuthMiddleware(s.config), s.deviceHandler.GetBehaviors)
+	device.PUT("behaviors", adminAuthMiddleware(s.config), s.deviceHandler.SetBehaviors)
+	device.POST("behaviors/brief", adminAuthMiddleware(s.config), s.deviceHandler.FireBriefNow)
+	device.POST("behaviors/meeting", adminAuthMiddleware(s.config), s.deviceHandler.SetMeeting)
+	device.POST("behaviors/pomodoro/start", adminAuthMiddleware(s.config), s.deviceHandler.StartPomodoro)
+	device.POST("behaviors/pomodoro/stop", adminAuthMiddleware(s.config), s.deviceHandler.StopPomodoro)
+	device.GET("behaviors/memory", adminAuthMiddleware(s.config), s.deviceHandler.ListMemories)
+	device.POST("behaviors/memory", adminAuthMiddleware(s.config), s.deviceHandler.AddMemory)
+	device.DELETE("behaviors/memory/:id", adminAuthMiddleware(s.config), s.deviceHandler.DeleteMemory)
 	device.GET("mcp-tools", adminAuthMiddleware(s.config), s.deviceHandler.ListMCPTools)
 	device.POST("mcp-tools", adminAuthMiddleware(s.config), s.deviceHandler.AddMCPTool)
 	device.DELETE("mcp-tools/:name", adminAuthMiddleware(s.config), s.deviceHandler.RemoveMCPTool)
@@ -412,6 +429,9 @@ func (s *Server) Serve(closeFn func()) error {
 	wellbeingGroup := api.Group("wellbeing")
 	wellbeingGroup.POST("log", sameOriginOrLAN(), s.sensingHandler.PostWellbeingLog)
 
+	behaviorsGroup := api.Group("behaviors")
+	behaviorsGroup.POST("remember", sameOriginOrLAN(), s.deviceHandler.AddMemory)
+
 	postureGroup := api.Group("posture")
 	postureGroup.POST("log", sameOriginOrLAN(), s.sensingHandler.PostPostureLog)
 
@@ -422,7 +442,7 @@ func (s *Server) Serve(closeFn func()) error {
 	monitor := api.Group("monitor")
 	monitor.POST("event", sameOriginOrLAN(), s.sensingHandler.PostMonitorEvent)
 
-	// Autonomous Buddy (macOS companion app for remote computer use):
+	// Kestrel Buddy (companion app for remote computer use):
 	//   - /pair/start, /status, /command, DELETE admin-gated
 	//   - /pair/confirm anonymous (code-based)
 	//   - /ws bearer-token gated (validated in handler against buddies.json)

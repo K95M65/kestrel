@@ -1,97 +1,106 @@
 import type { CSSProperties } from "react";
-import { ScanFace, UserX } from "lucide-react";
+import { ScanFace, UserX, UserPlus, Trash2 } from "lucide-react";
+import { hwUrl } from "@/lib/api";
 import { CardLabel } from "../components";
 import { EmptyState } from "./EmptyState";
 import { fmtIsoAgo } from "./format";
 import { FAMILIAR_VISIT_THRESHOLD } from "./types";
 import type { FaceStrangerStat } from "./types";
 
-// Unknown Faces — visit stats per stranger_id. Read-only card; all data is
-// passed in from already-fetched state.
 export function UnknownFacesCard({
-  faceStrangers, faceStrangersError, monCard, cardHeader,
+  faceStrangers, faceStrangersError, claimingId, forgettingId,
+  onClaim, onForget, monCard, cardHeader,
 }: {
   faceStrangers: FaceStrangerStat[] | null;
   faceStrangersError: boolean;
+  claimingId?: string | null;
+  forgettingId?: string | null;
+  onClaim: (strangerId: string) => void;
+  onForget: (strangerId: string) => void;
   monCard: CSSProperties;
   cardHeader: CSSProperties;
 }) {
   return (
     <div className="lm-mon-card" style={monCard}>
       <div style={cardHeader}>
-        <CardLabel icon={<ScanFace size={13} />} text="Unknown Faces" />
+        <CardLabel icon={<ScanFace size={13} />} text="Unknown faces" />
         <span style={{ fontSize: 10, color: "var(--lm-text-muted)" }}>
-          {faceStrangers ? `${faceStrangers.length} stranger${faceStrangers.length !== 1 ? "s" : ""}` : ""}
+          {faceStrangers ? `${faceStrangers.length} ${faceStrangers.length === 1 ? "face" : "faces"}` : ""}
         </span>
       </div>
 
       {faceStrangersError && (
-        <EmptyState icon={<UserX size={18} />} text="Face stranger stats unavailable (sensing not started?)" />
+        <EmptyState icon={<UserX size={18} />} text="Can't load unknown faces right now." />
       )}
 
       {!faceStrangersError && faceStrangers && faceStrangers.length === 0 && (
-        <EmptyState icon={<ScanFace size={18} />} text="No unknown faces tracked yet." />
+        <EmptyState icon={<ScanFace size={18} />} text="Nobody unrecognized yet." />
       )}
 
       {!faceStrangersError && faceStrangers && faceStrangers.length > 0 && (
-        // Local scroll — list can grow unbounded as new strangers are tracked,
-        // and the surrounding 3-col row should stay aligned with sibling cards.
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 320, overflowY: "auto" }} className="lm-hide-scroll lm-scroll-fade">
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 420, overflowY: "auto" }} className="lm-hide-scroll lm-scroll-fade">
           {faceStrangers.map((s) => {
             const familiar = s.count >= FAMILIAR_VISIT_THRESHOLD;
-            const accent = familiar ? "var(--lm-amber)" : "var(--lm-red)";
-            const accentBg = familiar ? "var(--lm-amber-dim)" : "var(--lm-red-dim)";
+            const busy = claimingId === s.stranger_id || forgettingId === s.stranger_id;
             return (
               <div key={s.stranger_id} className="lm-u-interactive" style={{
-                padding: "8px 12px",
+                padding: "10px 12px",
                 borderRadius: 8,
                 background: "var(--lm-surface)",
-                cursor: "default",
               }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4, gap: 8, flexWrap: "wrap" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                    <span style={{
-                      fontSize: 12,
-                      fontWeight: 700,
-                      color: accent,
-                      fontFamily: "monospace",
-                    }}>
-                      {s.stranger_id}
-                    </span>
-                    <span style={{
-                      fontSize: 10,
-                      padding: "1px 6px",
-                      borderRadius: 4,
-                      background: accentBg,
-                      color: accent,
-                      fontWeight: 600,
-                    }}>
-                      {s.count} visit{s.count !== 1 ? "s" : ""}
-                    </span>
-                    {familiar && (
-                      <span
-                        className="lm-pulse"
-                        title={`Visit count ≥ ${FAMILIAR_VISIT_THRESHOLD} (familiar threshold). The device fires the enroll prompt only on the 1→${FAMILIAR_VISIT_THRESHOLD} transition — strangers whose count was already past the threshold before the trigger code was deployed will NOT have been prompted.`}
-                        style={{
-                          fontSize: 10,
-                          padding: "1px 6px",
-                          borderRadius: 4,
-                          background: "var(--lm-amber-dim)",
-                          color: "var(--lm-amber)",
-                          fontWeight: 700,
-                          letterSpacing: 0.3,
-                        }}
-                      >
-                        ● FAMILIAR
+                <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                  <img
+                    src={hwUrl(`/face/stranger-photo/${encodeURIComponent(s.stranger_id)}`)}
+                    alt=""
+                    style={{
+                      width: 56, height: 56, borderRadius: 8, objectFit: "cover", flexShrink: 0,
+                      background: "var(--lm-bg)", border: "1px solid var(--lm-border)",
+                    }}
+                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = "hidden"; }}
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: "var(--lm-text)" }}>
+                          Unrecognized
+                        </span>
+                        <span style={{
+                          fontSize: 10, padding: "1px 6px", borderRadius: 4, fontWeight: 600,
+                          background: familiar ? "var(--lm-amber-dim)" : "var(--lm-surface)",
+                          color: familiar ? "var(--lm-amber)" : "var(--lm-text-muted)",
+                          border: "1px solid var(--lm-border)",
+                        }}>
+                          {s.count} visit{s.count !== 1 ? "s" : ""}
+                        </span>
+                      </div>
+                      <span style={{ fontSize: 10, color: "var(--lm-text-muted)" }}>
+                        last {s.last_seen ? fmtIsoAgo(s.last_seen) : "?"}
                       </span>
-                    )}
+                    </div>
+                    <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        className="lm-u-btn lm-u-btn-primary"
+                        disabled={busy}
+                        onClick={() => onClaim(s.stranger_id)}
+                        style={{ fontSize: 11, padding: "5px 10px", display: "inline-flex", alignItems: "center", gap: 5 }}
+                      >
+                        <UserPlus size={12} />
+                        {claimingId === s.stranger_id ? "Saving…" : "This is someone I know"}
+                      </button>
+                      <button
+                        type="button"
+                        className="lm-u-btn"
+                        disabled={busy}
+                        onClick={() => onForget(s.stranger_id)}
+                        title="Forget this face"
+                        style={{ fontSize: 11, padding: "5px 10px", display: "inline-flex", alignItems: "center", gap: 5, color: "var(--lm-text-dim)" }}
+                      >
+                        <Trash2 size={12} />
+                        {forgettingId === s.stranger_id ? "…" : "Forget"}
+                      </button>
+                    </div>
                   </div>
-                  <span style={{ fontSize: 10, color: "var(--lm-text-muted)" }}>
-                    last {s.last_seen ? fmtIsoAgo(s.last_seen) : "?"}
-                  </span>
-                </div>
-                <div style={{ fontSize: 10, color: "var(--lm-text-muted)" }}>
-                  first seen {s.first_seen ? fmtIsoAgo(s.first_seen) : "?"}
                 </div>
               </div>
             );

@@ -1,11 +1,11 @@
-# Autonomous Buddy — Remote Computer Use for the device
+# Kestrel Buddy — Remote Computer Use for the device
 
 > **Status:** Design — MVP scoping in progress
 > **Last updated:** 2026-05-21
 > **Owner:** Leo
-> **Related:** [Autonomous Buddy MVP plan](./autonomous-buddy-mvp.md)
+> **Related:** [Kestrel Buddy MVP plan](./autonomous-buddy-mvp.md)
 
-This document captures the full design discussion behind the **Autonomous Buddy** feature: a native companion app on the user's computer that lets the device control the desktop (open apps, navigate browser, type, etc.) — TeamViewer-style but driven by voice/AI through the device.
+This document captures the full design discussion behind the **Kestrel Buddy** feature (fork of Autonomous Buddy): a native companion app on the user's computer that lets the device control the desktop (open apps, navigate browser, type, etc.) — TeamViewer-style but driven by voice/AI through the device.
 
 The MVP-only implementation plan lives in [`autonomous-buddy-mvp.md`](./autonomous-buddy-mvp.md). This doc is the long-form reference for *why* the architecture is what it is.
 

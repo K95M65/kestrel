@@ -20,9 +20,10 @@ final class ActivityWindowController: NSWindowController {
             backing: .buffered,
             defer: false
         )
-        window.title = "Autonomous Buddy — Activity"
+        window.title = "Kestrel Buddy — Activity"
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: 420, height: 240)
+        window.backgroundColor = Brand.cream
         super.init(window: window)
 
         buildLayout()
@@ -58,7 +59,8 @@ final class ActivityWindowController: NSWindowController {
         textView.isSelectable = true
         textView.isRichText = false
         textView.drawsBackground = true
-        textView.backgroundColor = .textBackgroundColor
+        textView.backgroundColor = Brand.card
+        textView.textColor = Brand.ink
         textView.textContainerInset = NSSize(width: 12, height: 10)
         textView.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
         textView.autoresizingMask = [.width]

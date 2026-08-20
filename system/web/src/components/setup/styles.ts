@@ -48,7 +48,7 @@ export const LABEL_STYLE: CSSProperties = {
 export const INPUT_STYLE: CSSProperties = {
   width: "100%",
   boxSizing: "border-box",
-  background: C.surface,
+  background: C.card,
   border: `1px solid ${C.border}`,
   borderRadius: 10,
   padding: "10px 13px",

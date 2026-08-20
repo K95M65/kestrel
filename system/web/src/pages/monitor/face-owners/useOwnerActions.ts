@@ -4,7 +4,10 @@ import { HW } from "../types";
 // Owner-mutation flows for the Users page: enroll a new user, rename, and remove
 // a user / photo / voice sample (each with its themed confirm dialog). Takes the
 // owners-list `refresh` so it can reload after a successful change.
-export function useOwnerActions(refresh: () => void) {
+export function useOwnerActions(refresh: () => void, hooks?: {
+  onRenamed?: (oldLabel: string, newLabel: string) => void;
+  onRemoved?: (label: string) => void;
+}) {
   // Enroll form state
   const [showEnroll, setShowEnroll] = useState(false);
   const [enrollName, setEnrollName] = useState("");
@@ -114,6 +117,7 @@ export function useOwnerActions(refresh: () => void) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ label }),
       });
+      hooks?.onRemoved?.(label);
       refresh();
     } catch {
       // ignore
@@ -155,6 +159,7 @@ export function useOwnerActions(refresh: () => void) {
         return;
       }
       setRenaming(null);
+      hooks?.onRenamed?.(oldLabel, newLabel);
       refresh();
     } catch (e) {
       setRenameError(`Rename failed: ${e instanceof Error ? e.message : String(e)}`);

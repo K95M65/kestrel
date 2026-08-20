@@ -1,14 +1,13 @@
 # Contributing
 
-Autonomous is an open-source OS for physical AI agents — and we'd love your help. PRs welcome,
-vibe-coded ones too. 🤖
+Kestrel is a fork of Autonomous OS for desk companion robots — PRs welcome.
 
 ## What you can build
 
 | You want to… | You write… | Start from |
 |---|---|---|
 | Teach every robot something new | `skills/<name>/SKILL.md` | [`skills/guard/`](skills/guard/) · [`skill-creator`](skills/skill-creator/) |
-| Run Autonomous on your robot | `robots/<id>/ROBOT.md` + `SAFETY.md` + `SOUL.md` | [`robots/reachy-mini/`](robots/reachy-mini/) — a third-party port, end to end |
+| Run Kestrel on your robot | `robots/<id>/ROBOT.md` + `SAFETY.md` + `SOUL.md` | [`robots/reachy-mini/`](robots/reachy-mini/) — a third-party port, end to end |
 | Support new hardware (open SDK) | a class in `hal/drivers/<subsystem>/` + one factory line | [`motors/reachy_service.py`](hal/drivers/motors/reachy_service.py) · [`camera/rpicam_capture_device.py`](hal/drivers/camera/rpicam_capture_device.py) |
 | Support new hardware (closed SDK) | a small HTTP service speaking `MotionService` — [#204](https://github.com/autonomous-ai/autonomous-os/issues/204), not in-tree yet | [`base.py`](hal/drivers/motors/base.py) |
 | Support a new board | one entry in `hal/board/boards.json` | [`boards.json`](hal/board/boards.json) |
@@ -30,4 +29,4 @@ open an issue and let's fix it.
 - Two licenses: everything outside `hal/` is Apache-2.0; `hal/` is GPL-3.0 (see the [License](README.md#license) section). A driver under `hal/` ships GPL-3.0.
 - Be kind.
 
-Questions, half-built ports and show-and-tell go in [Discussions](https://github.com/autonomous-ai/autonomous-os/discussions); bugs and claims in [Issues](https://github.com/autonomous-ai/autonomous-os/issues). Open gaps are labelled [`claim-me`](https://github.com/autonomous-ai/autonomous-os/issues?q=is%3Aissue+is%3Aopen+label%3Aclaim-me) — comment to take one.
+This fork: [K95M65/kestrel](https://github.com/K95M65/kestrel). Upstream Autonomous OS: [autonomous-ai/autonomous-os](https://github.com/autonomous-ai/autonomous-os).

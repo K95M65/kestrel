@@ -47,11 +47,11 @@ func Build(eventType, message, currentUser, guardTag string) string {
 		// priority in batched turns. `[spoken]` is the live-speaker contract:
 		// answer out loud now, no tool round-trips unless they asked for
 		// hardware (see AGENTS.md LIVE VOICE).
-		return domain.AppendEnrollNudge("[user] [spoken] " + message)
+		return domain.AppendEnrollNudge("[user] [spoken] "+message) + skillcontext.BuildBehaviorsContext()
 	case "voice":
 		// Ambient speech — no wake word. `[user]` for batched-turn priority,
 		// `[ambient]` for voice/SKILL.md's overheard-audio mute guard.
-		return domain.AppendEnrollNudge("[user] [ambient] " + message)
+		return domain.AppendEnrollNudge("[user] [ambient] "+message) + skillcontext.BuildBehaviorsContext()
 	case "web_chat", "mqtt_chat":
 		// Typed text from a chat UI (monitor composer or MQTT chat.send). The
 		// agent sees identical text either way — only the Monitor badge differs.
@@ -61,7 +61,7 @@ func Build(eventType, message, currentUser, guardTag string) string {
 		if strings.HasPrefix(message, "/") {
 			return message
 		}
-		return "[user] " + message
+		return "[user] " + message + skillcontext.BuildBehaviorsContext()
 	}
 
 	if guardTag != "" {
@@ -127,5 +127,6 @@ func Build(eventType, message, currentUser, guardTag string) string {
 	// Inject device locale once per passive-sensing turn — sensor events
 	// carry no user text, so SOUL.md would otherwise default to English.
 	msg += i18n.LangContextTag()
+	msg += skillcontext.BuildBehaviorsContext()
 	return msg
 }

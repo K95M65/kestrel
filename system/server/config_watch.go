@@ -172,6 +172,7 @@ func (s *Server) handleSetUpCompleteChange(setupCompleted bool) {
 		safego.Go("grok-refresh", func() { s.deviceHandler.StartGrokRefreshLoop(s.monitorCtx) })
 
 		safego.Go("sleep-schedule", func() { s.deviceService.StartSleepLoop(s.monitorCtx) })
+		safego.Go("behaviors-loop", func() { s.deviceService.StartBehaviorsLoop(s.monitorCtx) })
 
 		s.restartMQTT()
 

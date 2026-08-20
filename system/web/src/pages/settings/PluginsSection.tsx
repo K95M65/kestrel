@@ -133,7 +133,7 @@ export function PluginsSection({ active }: { active: boolean }) {
   return (
     <SectionCard id="plugins" title="Plugins" icon={<Blocks size={17} />} active={active}>
       <div style={{ fontSize: 12.5, color: C.textDim, marginBottom: 14, lineHeight: 1.6 }}>
-        Standalone Python apps that extend device capabilities via HAL.
+        Install extra abilities for this robot. They stay on the device.
       </div>
 
       {loading ? (

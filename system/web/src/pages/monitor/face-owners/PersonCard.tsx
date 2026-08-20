@@ -1,6 +1,7 @@
 import type { CSSProperties, Dispatch, SetStateAction } from "react";
-import { Pencil, Trash2, History, ChevronDown, ChevronRight, X } from "lucide-react";
+import { Pencil, Trash2, History, ChevronDown, ChevronRight, X, Mic, Camera, Star } from "lucide-react";
 import { hwUrl } from "@/lib/api";
+import { mainFacePhoto } from "@/lib/facePhoto";
 import type { FaceOwnerDetail } from "../types";
 
 // One enrolled-person card. All state and handlers stay in the parent
@@ -8,13 +9,14 @@ import type { FaceOwnerDetail } from "../types";
 export function PersonCard({
   person, idx, currentUser,
   expandedPerson, setExpandedPerson,
-  hoveredPerson, setHoveredPerson,
+  hoveredPerson: _hoveredPerson, setHoveredPerson,
   hoveredPhoto, setHoveredPhoto,
   expanded, toggleDir,
   deleting, deletingPhoto,
   preview, previewLoading, setPreview,
   playingAudio,
   onRename, onRemove, onRemovePhoto, onRemoveVoiceFile, onOpenFile, onTimeline,
+  onRecordVoice, onAddPhoto, onSetMe, isMe, settingMe,
   monCard, iconBtnStyle,
 }: {
   person: FaceOwnerDetail;
@@ -40,10 +42,16 @@ export function PersonCard({
   onRemoveVoiceFile: (label: string, filename: string) => void;
   onOpenFile: (label: string, filepath: string) => void;
   onTimeline: (label: string) => void;
+  onRecordVoice?: (label: string) => void;
+  onAddPhoto?: (label: string) => void;
+  onSetMe?: (label: string) => void;
+  isMe?: boolean;
+  settingMe?: boolean;
   monCard: CSSProperties;
   iconBtnStyle: CSSProperties;
 }) {
   const isCurrent = !!currentUser && currentUser === person.label;
+  const facePhoto = mainFacePhoto(person.photos);
   // Expand active user by default so the most-relevant card is open;
   // others stay collapsed until clicked.
   const isExpanded = expandedPerson[person.label] ?? isCurrent;
@@ -81,12 +89,10 @@ export function PersonCard({
           borderTopRightRadius: 12,
         }}
       >
-        {/* Avatar — first enrolled photo as a round thumbnail; falls back
-            to the capitalized initial on an amber chip when there's no
-            photo (e.g. the "unknown" bucket). Active user gets a teal ring. */}
+        {/* Avatar — newest enrolled photo (retakes land last). Falls back
+            to the capitalized initial when there's no photo. */}
         {(() => {
           const avatarBorder = isCurrent ? "var(--lm-teal)" : "var(--lm-border)";
-          const firstPhoto = person.photos?.[0];
           return (
             <div style={{
               width: 42, height: 42, borderRadius: "50%", flexShrink: 0,
@@ -97,9 +103,9 @@ export function PersonCard({
               overflow: "hidden",
               boxShadow: isCurrent ? "0 0 8px var(--lm-teal-glow)" : "none",
             }}>
-              {firstPhoto ? (
+              {facePhoto ? (
                 <img
-                  src={hwUrl(`/face/photo/${encodeURIComponent(person.label)}/${encodeURIComponent(firstPhoto)}`)}
+                  src={hwUrl(`/face/photo/${encodeURIComponent(person.label)}/${encodeURIComponent(facePhoto)}`)}
                   alt=""
                   style={{ width: "100%", height: "100%", objectFit: "cover" }}
                   onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
@@ -110,11 +116,26 @@ export function PersonCard({
         })()}
         <div style={{
           fontSize: 13, fontWeight: 700,
-          color: "var(--lm-amber)",
+          color: "var(--lm-text)",
           textTransform: "capitalize",
         }}>
           {person.label}
         </div>
+        {isMe && (
+          <span style={{
+            fontSize: 10, padding: "2px 6px", borderRadius: 4,
+            background: "var(--lm-amber)", color: "var(--lm-on-amber)",
+            fontWeight: 700, letterSpacing: 0.4,
+          }}>Me</span>
+        )}
+        {person.label !== "unknown" && !isMe && (
+          <span style={{
+            fontSize: 10, padding: "2px 6px", borderRadius: 4,
+            background: "var(--lm-surface)", color: "var(--lm-text-muted)",
+            border: "1px solid var(--lm-border)",
+            fontWeight: 600, letterSpacing: 0.3,
+          }}>Friend</span>
+        )}
         {isCurrent && (
           <span className="lm-pulse" style={{
             fontSize: 10, padding: "2px 6px", borderRadius: 4,
@@ -122,32 +143,63 @@ export function PersonCard({
             // amber CTA) so it stays legible on teal in both themes.
             background: "var(--lm-teal)", color: "var(--lm-on-amber)",
             fontWeight: 700, letterSpacing: 0.5,
-          }}>● HERE NOW</span>
+          }}>Here</span>
         )}
         <span style={{ flex: 1 }} />
         {/* Actions: Delete / Edit / Timeline / expand toggle.
             Edit is hidden for the special "unknown" bucket since it
             isn't a real user that can be renamed. */}
         {(() => {
-          const isHovered = hoveredPerson === person.label;
-          // Keep hovered buttons fully visible; fade out (but keep
-          // interactive) when not hovered so the row stays the same
-          // height — avoids layout shift.
           const hoverStyle: React.CSSProperties = {
-            opacity: isHovered ? 1 : 0,
-            pointerEvents: isHovered ? "auto" : "none",
-            transition: "opacity 0.15s ease",
+            opacity: 1,
+            pointerEvents: "auto",
           };
           return (
             <>
               {person.label !== "unknown" && (
-                <button
-                  onClick={(e) => { e.stopPropagation(); onRename(person.label); }}
-                  title="Rename"
-                  aria-label="Rename"
-                  className="lm-u-btn"
-                  style={{ ...iconBtnStyle, ...hoverStyle }}
-                ><Pencil size={14} /></button>
+                <>
+                  {onAddPhoto && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onAddPhoto(person.label); }}
+                      title="Retake or pick a photo"
+                      aria-label="Retake or pick a photo"
+                      className="lm-u-btn"
+                      style={{ ...iconBtnStyle, ...hoverStyle }}
+                    ><Camera size={14} /></button>
+                  )}
+                  {onRecordVoice && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onRecordVoice(person.label); }}
+                      title="Record voice"
+                      aria-label="Record voice"
+                      className="lm-u-btn"
+                      style={{ ...iconBtnStyle, ...hoverStyle }}
+                    ><Mic size={14} /></button>
+                  )}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onRename(person.label); }}
+                    title="Rename"
+                    aria-label="Rename"
+                    className="lm-u-btn"
+                    style={{ ...iconBtnStyle, ...hoverStyle }}
+                  ><Pencil size={14} /></button>
+                  {onSetMe && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onSetMe(isMe ? "" : person.label); }}
+                      disabled={settingMe}
+                      title={isMe ? "This is me — click to make a friend" : "This is me"}
+                      aria-label={isMe ? "Mark as friend" : "This is me"}
+                      className="lm-u-btn"
+                      style={{
+                        ...iconBtnStyle, ...hoverStyle, width: "auto", padding: "0 7px", gap: 4,
+                        background: isMe ? "var(--lm-amber-dim)" : undefined,
+                        color: isMe ? "var(--lm-amber)" : "var(--lm-text-dim)",
+                        border: isMe ? "1px solid var(--lm-amber)" : undefined,
+                        fontSize: 10, fontWeight: 700,
+                      }}
+                    ><Star size={12} fill={isMe ? "currentColor" : "none"} />{isMe ? "Friend" : "This is me"}</button>
+                  )}
+                </>
               )}
               <button
                 onClick={(e) => { e.stopPropagation(); onTimeline(person.label); }}
@@ -164,17 +216,16 @@ export function PersonCard({
               <button
                 onClick={(e) => { e.stopPropagation(); onRemove(person.label); }}
                 disabled={deleting === person.label}
-                title="Delete user"
-                aria-label="Delete user"
+                title="Remove"
+                aria-label="Remove"
                 style={{
                   ...iconBtnStyle,
                   background: "color-mix(in srgb, var(--lm-red) 12%, transparent)",
                   color: "var(--lm-red)",
                   border: "1px solid color-mix(in srgb, var(--lm-red) 35%, transparent)",
                   cursor: deleting === person.label ? "not-allowed" : "pointer",
-                  opacity: deleting === person.label ? 0.5 : (isHovered ? 1 : 0),
-                  pointerEvents: isHovered ? "auto" : "none",
-                  transition: "opacity 0.15s ease",
+                  opacity: deleting === person.label ? 0.5 : 1,
+                  ...hoverStyle,
                 }}
               >{deleting === person.label ? "…" : <Trash2 size={14} />}</button>
               {/* Inline chevron indicator — non-interactive, just a visual
@@ -254,10 +305,11 @@ export function PersonCard({
               const delKey = `${person.label}/${photo}`;
               const isDeleting = deletingPhoto === delKey;
               const isHovered = hoveredPhoto === delKey;
+              const isMain = photo === facePhoto;
               return (
                 <div
                   key={photo}
-                  title={photo}
+                  title={isMain ? "This is their photo" : photo}
                   onMouseEnter={() => setHoveredPhoto(delKey)}
                   onMouseLeave={() => setHoveredPhoto((cur) => (cur === delKey ? null : cur))}
                   style={{ position: "relative", width: 56, height: 56 }}
@@ -268,7 +320,7 @@ export function PersonCard({
                       width: "100%", height: "100%",
                       objectFit: "cover",
                       borderRadius: 6,
-                      border: "1px solid var(--lm-border)",
+                      border: `2px solid ${isMain ? "var(--lm-amber)" : "var(--lm-border)"}`,
                       display: "block",
                       cursor: "pointer",
                     }}

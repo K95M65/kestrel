@@ -272,6 +272,9 @@ func timeOfDayLabel(now time.Time) string {
 // respective meal-reminder window, or "" otherwise. Windows are
 // minute-precise (lunch 11:30-13:30, dinner 18:30-20:30).
 func mealWindowFor(now time.Time) string {
+	if w, ok := KitchenWindowFor(now); ok {
+		return w
+	}
 	mins := now.Hour()*60 + now.Minute()
 	switch {
 	case mins >= lunchWindowStartHour*60+30 && mins < (lunchWindowEndHour+0)*60+30:

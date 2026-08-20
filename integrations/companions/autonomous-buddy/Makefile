@@ -1,4 +1,5 @@
-# Autonomous Buddy — macOS build/run shortcuts.
+# Kestrel Buddy — macOS build/run shortcuts.
+# Binary/app bundle stay AutonomousBuddy so existing installs keep pairing.
 # Run from this directory: `make <target>`. `make help` for the list.
 
 APP_NAME   := AutonomousBuddy
@@ -24,12 +25,12 @@ AUDIT_LOG  := $(HOME)/Library/Application Support/AutonomousBuddy/audit.log
 
 MOCK_DIR := mock-device
 
-.PHONY: help run build release app install open clean audit kill all check mock mock-build dmg icon app-signed dmg-signed notarize
+.PHONY: help run build release app install open clean audit kill all check mock mock-build dmg icon app-signed dmg-signed notarize desktop desktop-windows desktop-linux
 
 .DEFAULT_GOAL := help
 
 help: ## Show this help
-	@echo "Autonomous Buddy — make targets:"
+	@echo "Kestrel Buddy — make targets:"
 	@echo ""
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*##/ {printf "  \033[1m%-12s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 	@echo ""
@@ -38,6 +39,18 @@ help: ## Show this help
 	@echo "  make app && make open"
 	@echo ""
 	@echo "Right-click → Open is needed the first time (no code signing yet)."
+
+desktop: ## Build Go desktop buddy for this OS into dist/
+	mkdir -p $(DIST_DIR)
+	cd desktop && go test ./... && go build -o ../$(DIST_DIR)/autonomous-buddy .
+
+desktop-windows: ## Cross-compile Windows amd64 exe
+	mkdir -p $(DIST_DIR)
+	cd desktop && GOOS=windows GOARCH=amd64 go build -o ../$(DIST_DIR)/autonomous-buddy.exe .
+
+desktop-linux: ## Cross-compile Linux amd64
+	mkdir -p $(DIST_DIR)
+	cd desktop && GOOS=linux GOARCH=amd64 go build -o ../$(DIST_DIR)/autonomous-buddy-linux .
 
 run: ## Run buddy in dev mode (foreground)
 	cd $(MACOS_DIR) && swift run

@@ -1,0 +1,14 @@
+Kestrel
+https://github.com/K95M65/kestrel
+
+This product includes software from Autonomous OS
+https://github.com/autonomous-ai/autonomous-os
+Copyright the Autonomous OS authors.
+
+Kestrel is a fork. We keep the Autonomous OS name, URLs, and copyright in
+this file and in README.md so the origin of the work stays visible.
+
+Licensed under the Apache License, Version 2.0, except the contents of
+hal/, which are licensed under GPL-3.0.
+
+Third-party components on a running robot are listed in CREDITS.md.

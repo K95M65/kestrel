@@ -1,4 +1,4 @@
-# Autonomous Buddy — release signing & notarization
+# Kestrel Buddy — release signing & notarization
 
 This is the handover doc for whoever owns the Apple Developer enrolment. Once the one-time setup is done, every release boils down to:
 

@@ -18,7 +18,7 @@ The server listens on `127.0.0.1:8765` and prints a 6-digit code:
 
 ```
 [mock-device] listening on http://127.0.0.1:8765
-[hint] In Autonomous Buddy: menu → 'Pair with device…' → host: localhost:8765 + code below
+[hint] In Kestrel Buddy: menu → 'Pair with device…' → host: localhost:8765 + code below
 
 ┌─────────────────────────────────────────────┐
 │  Pairing code:  123456                      │

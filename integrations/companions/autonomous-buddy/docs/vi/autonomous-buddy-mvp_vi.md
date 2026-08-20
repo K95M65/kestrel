@@ -1,11 +1,11 @@
-# Autonomous Buddy MVP — Kế hoạch implement
+# Kestrel Buddy MVP — Kế hoạch implement
 
 > **Trạng thái:** Sẵn sàng execute
 > **Cập nhật:** 2026-05-21
 > **Design doc:** [autonomous-buddy_vi.md](./autonomous-buddy_vi.md)
 > **Mục tiêu hoàn thành:** ~2 tuần (1 dev)
 
-Đây là plan action cho **MVP của Autonomous Buddy** — app companion macOS cho phép thiết bị điều khiển máy tính qua voice. Lý do thiết kế đầy đủ ở [autonomous-buddy_vi.md](./autonomous-buddy_vi.md). Doc này liệt kê *build cái gì, thứ tự nào, accept ra sao*.
+Đây là plan action cho **MVP của Kestrel Buddy** — app companion cho phép thiết bị điều khiển máy tính qua voice. Lý do thiết kế đầy đủ ở [autonomous-buddy_vi.md](./autonomous-buddy_vi.md). Doc này liệt kê *build cái gì, thứ tự nào, accept ra sao*.
 
 ---
 
@@ -55,7 +55,7 @@ Mỗi phase ship & review độc lập được.
 - `autonomous-buddy/macos/Sources/AutonomousBuddy/MenuBarController.swift`
 - `autonomous-buddy/.gitignore`
 
-**Acceptance:** `cd autonomous-buddy/macos && swift run` hiện icon trên status bar. Menu có "About Autonomous Buddy", "Quit". Không crash. Activation policy là `.accessory` (không có Dock icon).
+**Acceptance:** `cd autonomous-buddy/macos && swift run` hiện icon trên status bar. Menu có "About Kestrel Buddy", "Quit". Không crash. Activation policy là `.accessory` (không có Dock icon).
 
 ### Phase 1B — Discovery lamp (mDNS)
 

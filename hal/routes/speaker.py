@@ -18,6 +18,7 @@ Routes:
     GET    /speaker/list                         — list users with registered voice
     GET    /voice/strangers                      — list unknown-voice clusters + samples
     GET    /voice/strangers/audio/{hash}/{file}  — stream a cluster sample WAV
+    POST   /voice/strangers/{hash}/claim         — enroll a cluster as a named person
 """
 
 from __future__ import annotations
@@ -656,6 +657,43 @@ class StrangerDeleteResponse(BaseModel):
     hash: str
     filename: Optional[str] = None
     cluster_removed: bool = False
+
+
+class VoiceStrangerClaimRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+
+
+@router.post("/voice/strangers/{hash}/claim", response_model=EnrollResponse)
+def voice_stranger_claim(hash: str, req: VoiceStrangerClaimRequest) -> EnrollResponse:
+    """Enroll this unknown-voice cluster as a named person.
+
+    Uses the cluster's saved WAVs as the enrollment samples, then drops the
+    cluster so it leaves the Unknown Voices list.
+    """
+    if not _STRANGER_HASH_RE.match(hash):
+        raise HTTPException(status_code=400, detail="invalid cluster hash")
+    root = Path(config.SPEAKER_UNKNOWN_AUDIO_DIR) / hash
+    wavs = sorted(p for p in root.glob("*.wav") if p.is_file()) if root.is_dir() else []
+    if not wavs:
+        raise HTTPException(status_code=404, detail="no samples in this cluster")
+    sr = get_speaker_recognizer()
+    try:
+        meta = sr.enroll(
+            req.name,
+            [str(p) for p in wavs],
+            source_type="filepath",
+            origin="other",
+        )
+    except EmbeddingAPIUnavailableError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"embedding service unavailable — please try again: {e}",
+        ) from e
+    except SpeakerRecognizerError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    sr.drop_stranger_cluster(hash)
+    logger.info("POST /voice/strangers/%s/claim -> %s", hash, req.name)
+    return EnrollResponse(status="ok", meta=SpeakerMeta(**meta))
 
 
 @router.delete("/voice/strangers/{hash}", response_model=StrangerDeleteResponse)

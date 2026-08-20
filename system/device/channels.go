@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"go.autonomous.ai/os/system/domain"
 	"go.autonomous.ai/os/system/server/config"
@@ -86,6 +87,20 @@ func (s *Service) AddChannel(ctx context.Context, data domain.AddChannelRequest)
 		return ch, nil
 	}
 	return s.agentGateway.PairWhatsapp(ctx), nil
+}
+
+// SetTelegram persists bot token + user id and applies them on the active brain.
+func (s *Service) SetTelegram(ctx context.Context, token, userID string) error {
+	req := domain.AddChannelRequest{
+		Channel:          domain.ChannelTelegram,
+		TelegramBotToken: strings.TrimSpace(token),
+		TelegramUserID:   strings.TrimSpace(userID),
+	}
+	if err := req.ValidateChannel(); err != nil {
+		return err
+	}
+	_, err := s.AddChannel(ctx, req)
+	return err
 }
 
 // RefreshChannelConfig re-applies the canonical channel config block to

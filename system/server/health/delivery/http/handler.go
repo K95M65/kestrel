@@ -66,6 +66,7 @@ func (h *HealthHandler) SystemInfo(c *gin.Context) {
 		"goRoutines":    runtime.NumGoroutine(),
 		"version":       config.OSVersion,
 		"deviceId":      h.config.DeviceID,
+		"deviceType":    h.config.DeviceTypeOrDefault(),
 		"capabilities":  h.deviceCapabilities(),
 		"agent":         h.agentInfo(),
 	}

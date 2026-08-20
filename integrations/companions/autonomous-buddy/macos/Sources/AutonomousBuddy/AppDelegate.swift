@@ -107,12 +107,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func showAbout() {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
-        alert.messageText = "Autonomous Buddy"
+        alert.messageText = "Kestrel Buddy"
         alert.informativeText = """
-            Native macOS companion that lets your device control this Mac \
-            via voice commands processed by OpenClaw.
+            Native macOS companion that lets your robot control this Mac \
+            via voice. Fork of Autonomous Buddy from Autonomous OS.
 
-            MVP build: pairing, persistent WebSocket, command execution. \
+            Pairing, persistent WebSocket, command execution. \
             Device-side Go endpoints are required for end-to-end use; see \
             autonomous-buddy/docs/autonomous-buddy-mvp.md.
             """

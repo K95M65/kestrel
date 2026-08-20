@@ -1,60 +1,62 @@
 declare const __WEB_VERSION__: string;
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { logout } from "@/lib/api";
 import { useTheme } from "@/lib/useTheme";
 import { usePolling } from "../../hooks/usePolling";
 import { useEventSource } from "../../hooks/useEventSource";
 import { useDocumentTitle } from "../../hooks/useDocumentTitle";
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler,
-} from "chart.js";
 
 import {
   MessageCircle, Settings, Cpu, Wifi, Brain, Globe, Volume2, MicVocal,
-  UserCircle, MessageSquare, Link as LinkIcon, MonitorSmartphone, LayoutGrid,
+  UserCircle, MessageSquare, Link as LinkIcon, MonitorSmartphone,
   Workflow, Users, Camera, Radar, ChartColumn, Move3d, Bluetooth, ScrollText,
   Terminal, FileCode, Hexagon, ExternalLink, SlidersHorizontal, ChevronRight,
-  Server, Zap, LogOut, Clock, Search, X, CornerDownLeft, Plug, Blocks, Moon,
+  Server, Zap, LogOut, Clock, Search, X, CornerDownLeft, Plug, Blocks, Moon, Sparkles, Home, Sofa, Library,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { S } from "./styles";
 import { API, HW, HISTORY_LEN, FLOW_EVENTS_MAX, NAV, isNavGroup, isNavLink, Cap, areaPath, sectionArea, sectionToHash, hashToSection } from "./types";
+import { scenariosMatching } from "@/lib/scenarios";
 import type { Section, Area, SystemInfo, NetworkInfo, HWHealth, OCStatus, PresenceInfo, VoiceStatus, ServoState, DisplayState, AudioVolume, LEDColor, SceneInfo, MonitorEvent, DisplayEvent, NavEntry } from "./types";
 import { OverviewSection } from "./OverviewSection";
-import { SystemSection } from "./SystemSection";
-import { FlowSection } from "./FlowSection";
-import { SensingSection } from "./SensingSection";
 import { CameraSection } from "./CameraSection";
-import { ServoSection } from "./ServoSection";
-import { AnalyticsSection } from "./AnalyticsSection";
 import { LogsSection } from "./LogsSection";
 import { ChatSection } from "./ChatSection";
 import { FaceOwnersSection } from "./FaceOwnersSection";
-import { BluetoothSection } from "./BluetoothSection";
-import { CliSection } from "./CliSection";
 import { ConfirmDialog } from "./components";
 import { SettingsPanel } from "@/pages/settings/SettingsPanel";
+import { ReachyMark } from "@/components/ReachyMark";
 import type { SettingsSectionId } from "@/pages/settings/SettingsPanel";
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Title, Tooltip, Legend, Filler);
+// Debug-only sections stay off the product bundle until opened.
+const SystemSection = lazy(() => import("./SystemSection").then((m) => ({ default: m.SystemSection })));
+const FlowSection = lazy(() => import("./FlowSection").then((m) => ({ default: m.FlowSection })));
+const SensingSection = lazy(() => import("./SensingSection").then((m) => ({ default: m.SensingSection })));
+const ServoSection = lazy(() => import("./ServoSection").then((m) => ({ default: m.ServoSection })));
+const AnalyticsSection = lazy(() => import("./AnalyticsSection").then((m) => ({ default: m.AnalyticsSection })));
+const BluetoothSection = lazy(() => import("./BluetoothSection").then((m) => ({ default: m.BluetoothSection })));
+const CliSection = lazy(() => import("./CliSection").then((m) => ({ default: m.CliSection })));
+
+function SectionFallback() {
+  return <div style={{ padding: 28, color: "var(--lm-text-muted)", fontSize: 13 }}>Loading…</div>;
+}
 
 // Sections rendered as full-bleed iframes — they need their own padding/overflow override.
 const EMBED_SECTIONS = new Set<Section>(["api-docs", "agent-config"]);
 
 // Sections shown to non-debug users. Append `?debug=true` to the URL to reveal
 // the rest of the menu (Sensing, Analytics, Servo, API Docs, Agent gateway).
-const PUBLIC_SECTIONS = new Set<Section>(["chat", "overview", "system", "flow", "camera", "face-owners", "bluetooth", "logs", "cli", "settings:device", "settings:wifi", "settings:voice", "settings:face", "settings:mcp", "settings:plugins", "settings:timezone", "settings:sleep"]);
+// Home-user rooms only. Add a face (`settings:face`) and My Voice
+// (`settings:voice`) are person actions on House → People, not public Device
+// leaves. Tweaker pages stay behind ?debug=true.
+const PUBLIC_SECTIONS = new Set<Section>([
+  "chat", "overview",
+  "settings:behaviors", "settings:uses", "settings:sleep", "face-owners",
+  "camera", "settings:tts", "settings:device", "settings:wifi",
+  "settings:timezone", "settings:channel", "settings:plugins",
+]);
 
 // The capability a section requires, read from its NAV leaf (single source: the
 // nav definition itself declares `cap`). undefined → no hardware dependency, the
@@ -84,7 +86,8 @@ const iframeStyle: React.CSSProperties = {
 const NAV_ICONS: Record<string, LucideIcon> = {
   // top-level leaf
   chat: MessageCircle,
-  // group headers
+  overview: Home,
+  house: Sofa,
   settings: Settings,
   device: MonitorSmartphone,
   // settings children
@@ -103,8 +106,9 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   "settings:plugins": Blocks,
   "settings:timezone": Clock,
   "settings:sleep": Moon,
+  "settings:behaviors": Sparkles,
+  "settings:uses": Library,
   // device children
-  overview: LayoutGrid,
   system: Cpu,
   flow: Workflow,
   "face-owners": Users,
@@ -144,7 +148,7 @@ function allNavLeaves(): { id: Section; label: string; icon: string }[] {
 // Flat, searchable list of nav leaves carrying their parent-group label (so a
 // result can show "Voice · Settings" for context). Top-level leaves (e.g. Chat)
 // carry no group. Order follows NAV; the sidebar search filters this list.
-type SearchLeaf = { id: Section; label: string; group: string | null };
+type SearchLeaf = { id: Section; label: string; group: string | null; use?: string; terms?: string };
 function searchableLeaves(): SearchLeaf[] {
   const out: SearchLeaf[] = [];
   for (const entry of NAV) {
@@ -165,12 +169,12 @@ function SidebarSearch({ query, setQuery, results, section, setSection, closeSid
   setQuery: (q: string) => void;
   results: SearchLeaf[];
   section: Section;
-  setSection: (s: Section) => void;
+  setSection: (s: Section, opts?: { use?: string }) => void;
   closeSidebar: () => void;
-  leafHref: (id: Section) => string;
+  leafHref: (id: Section, use?: string) => string;
   onEnter: () => void;
 }) {
-  const go = (id: Section) => { setSection(id); setQuery(""); closeSidebar(); };
+  const go = (r: SearchLeaf) => { setSection(r.id, r.use ? { use: r.use } : undefined); setQuery(""); closeSidebar(); };
   return (
     <div className={"lm-snav-search" + (query ? " lm-snav-search--active" : "")}>
       <div className="lm-snav-search-box">
@@ -208,10 +212,10 @@ function SidebarSearch({ query, setQuery, results, section, setSection, closeSid
           ) : (
             results.map((r, i) => (
               <a
-                key={r.id}
-                href={leafHref(r.id)}
-                className={"lm-snav-item lm-snav-result" + (section === r.id ? " lm-snav-item--active" : "")}
-                onClick={(e) => { e.preventDefault(); go(r.id); }}
+                key={`${r.id}:${r.use ?? r.label}`}
+                href={leafHref(r.id, r.use)}
+                className={"lm-snav-item lm-snav-result" + (section === r.id && !r.use ? " lm-snav-item--active" : "")}
+                onClick={(e) => { e.preventDefault(); go(r); }}
               >
                 <NavIcon id={r.id} size={16} />
                 <span className="lm-snav-result-label">{r.label}</span>
@@ -351,15 +355,15 @@ function AgentGWMenu({ section, setSection, closeSidebar }: {
 }
 
 // Resolve the initial / location-derived section for an area. Falls back to the
-// area default ("overview" for monitor, "settings:device" for setting) when the
-// hash is empty or unknown, and to "overview" when a non-debug user deep-links a
-// private section.
+// area default ("overview"/Home for monitor, "settings:behaviors" for setting)
+// when the hash is empty or unknown, and to that default when a non-debug user
+// deep-links a private section.
 function resolveSection(area: Area, hash: string, isDebug: boolean): Section {
   const parsed = hashToSection(hash, area);
-  if (parsed === null) return area === "setting" ? "settings:device" : "overview";
+  if (parsed === null) return area === "setting" ? "settings:behaviors" : "overview";
   const known = allNavLeaves().some((n) => n.id === parsed);
-  if (!known) return area === "setting" ? "settings:device" : "overview";
-  if (!isDebug && !PUBLIC_SECTIONS.has(parsed)) return area === "setting" ? "settings:device" : "overview";
+  if (!known) return area === "setting" ? "settings:behaviors" : "overview";
+  if (!isDebug && !PUBLIC_SECTIONS.has(parsed)) return area === "setting" ? "settings:behaviors" : "overview";
   return parsed;
 }
 
@@ -392,16 +396,18 @@ export default function Monitor() {
   // setSection switches BOTH the in-memory section and the URL. When the target
   // section's area differs from the current path, navigate to the other route
   // (no remount — see App.tsx layout route); the hash is always the area's
-  // serialized form (short label in the setting area, e.g. /setting#general).
-  const setSection = useCallback((s: Section) => {
+  // serialized form (short label in the setting area, e.g. /setting#behaviors).
+  const setSection = useCallback((s: Section, opts?: { use?: string }) => {
     const targetArea = sectionArea(s);
     const hash = sectionToHash(s, targetArea);
     const path = areaPath(targetArea);
-    if (targetArea !== area) {
-      // Preserve the query string (?debug=true, etc.) across the area switch —
-      // dropping it would, e.g., hide every debug-only Settings leaf the moment
-      // you cross from /monitor into /setting.
-      navigate(`${path}${location.search}#${hash}`);
+    const params = new URLSearchParams(location.search);
+    if (opts?.use) params.set("use", opts.use);
+    else params.delete("use");
+    const qs = params.toString();
+    const nextSearch = qs ? `?${qs}` : "";
+    if (targetArea !== area || nextSearch !== (location.search || "")) {
+      navigate(`${path}${nextSearch}#${hash}`);
     } else {
       window.location.hash = hash;
     }
@@ -410,12 +416,12 @@ export default function Monitor() {
 
   // React to location changes (back/forward, deep-links, path switches): keep
   // the in-memory section in sync with pathname + hash. Also normalize an empty
-  // setting hash to /setting#general so the URL is always explicit.
+  // setting hash to /setting#behaviors so the URL is always explicit.
   const search = location.search;
   useEffect(() => {
     if (area === "setting" && !location.hash) {
-      navigate("/setting#general" + search, { replace: true });
-      setSectionRaw("settings:device");
+      navigate(`/setting${search}#behaviors`, { replace: true });
+      setSectionRaw("settings:behaviors");
       return;
     }
     setSectionRaw(resolveSection(area, location.hash, isDebug));
@@ -439,9 +445,13 @@ export default function Monitor() {
   // Build the real href for a nav leaf (path + serialized hash) so middle-click
   // / open-in-new-tab land on the correct URL. Carry the current query string so
   // ?debug=true (and friends) survive an open-in-new-tab across areas.
-  const leafHref = (id: Section): string => {
+  const leafHref = (id: Section, use?: string): string => {
     const a = sectionArea(id);
-    return `${areaPath(a)}${location.search}#${sectionToHash(id, a)}`;
+    const params = new URLSearchParams(location.search);
+    if (use) params.set("use", use);
+    else params.delete("use");
+    const qs = params.toString();
+    return `${areaPath(a)}${qs ? `?${qs}` : ""}#${sectionToHash(id, a)}`;
   };
 
   const [sys, setSys] = useState<SystemInfo | null>(null);
@@ -614,14 +624,30 @@ export default function Monitor() {
   // to the first result.
   const [navQuery, setNavQuery] = useState("");
   const q = navQuery.trim().toLowerCase();
+  const fold = (s: string) => s.toLowerCase().replace(/[-–—\s]/g, "");
   const searchResults = q
-    ? searchableLeaves().filter((leaf) => {
-        if (!isDebug && !PUBLIC_SECTIONS.has(leaf.id)) return false;
-        if (!sectionVisible(leaf.id)) return false;
-        return leaf.label.toLowerCase().includes(q) || (leaf.group?.toLowerCase().includes(q) ?? false);
-      })
+    ? [
+        ...searchableLeaves().filter((leaf) => {
+          if (!isDebug && !PUBLIC_SECTIONS.has(leaf.id)) return false;
+          if (!sectionVisible(leaf.id)) return false;
+          const nq = fold(q);
+          return fold(leaf.label).includes(nq) || (leaf.group ? fold(leaf.group).includes(nq) : false);
+        }),
+        ...(!isDebug && !PUBLIC_SECTIONS.has("settings:uses") ? [] : scenariosMatching(q).map((s) => ({
+          id: "settings:uses" as Section,
+          label: s.title,
+          group: "Uses",
+          use: s.id,
+        }))),
+      ]
     : [];
-  const gotoFirstResult = () => { if (searchResults.length > 0) { setSection(searchResults[0].id); setNavQuery(""); closeSidebar(); } };
+  const gotoFirstResult = () => {
+    const first = searchResults[0];
+    if (!first) return;
+    setSection(first.id, first.use ? { use: first.use } : undefined);
+    setNavQuery("");
+    closeSidebar();
+  };
 
   return (
     <div className={`lm-root ${themeClass}`} style={S.root}>
@@ -633,6 +659,13 @@ export default function Monitor() {
 
       {/* Sidebar */}
       <aside style={S.sidebar} className={`lm-sidebar${sidebarOpen ? " lm-sidebar--open" : ""}`}>
+        <div className="lm-reachy-brand">
+          <ReachyMark size={36} />
+          <div>
+            <div className="lm-reachy-brand-name">Kestrel</div>
+            <div className="lm-reachy-brand-sub">Desk Companion</div>
+          </div>
+        </div>
         <SidebarSearch
           query={navQuery}
           setQuery={setNavQuery}
@@ -646,9 +679,11 @@ export default function Monitor() {
         {/* When a search query is active the grouped nav is replaced by the flat
             result list rendered inside SidebarSearch, so skip the normal tree. */}
         <nav style={{ padding: "10px 0", flex: 1, display: navQuery.trim() ? "none" : undefined }}>
-          {/* Order: Chat → Device → Settings → Agent Gateway → (other groups) */}
-          {NAV.filter((e) => !isNavGroup(e) && e.id === "chat").map((entry) => {
+          {/* Talk, Home, then House / Device groups. Remaining leaves (none today)
+              and debug Agent gateway follow. */}
+          {NAV.filter((e) => !isNavGroup(e)).map((entry) => {
             const leaf = entry as Extract<NavEntry, { id: Section }>;
+            if (!isDebug && !PUBLIC_SECTIONS.has(leaf.id)) return null;
             return (
               <a
                 key={leaf.id}
@@ -661,26 +696,16 @@ export default function Monitor() {
               </a>
             );
           })}
-          {/* Device and Settings rendered explicitly here (Device above
-              Settings, both before Agent) so the visible order stays
-              Chat → Device → Settings → Agent → (other groups). Their children
-              come from NAV; the generic groups loop below excludes both to
-              avoid a duplicate render. */}
           {NAV
-            .filter((e) => isNavGroup(e) && (e.group === "device" || e.group === "settings"))
-            // Force Device before Settings regardless of NAV declaration order.
-            .sort((a, b) => {
-              const rank = (e: NavEntry) => ((e as Extract<NavEntry, { group: string }>).group === "device" ? 0 : 1);
-              return rank(a) - rank(b);
-            })
+            .filter((e) => isNavGroup(e) && (e.group === "house" || e.group === "device"))
             .map((entry) => {
               const group = entry as Extract<NavEntry, { group: string }>;
               const filtered = {
                 ...group,
                 children: group.children.filter((c) => {
-                  if (isNavLink(c)) return isDebug; // external links: debug only
+                  if (isNavLink(c)) return isDebug;
                   if (!isDebug && !PUBLIC_SECTIONS.has(c.id)) return false;
-                  return sectionVisible(c.id); // hide tabs for absent hardware; settings leaves have no cap
+                  return sectionVisible(c.id);
                 }),
               };
               if (filtered.children.length === 0) return null;
@@ -688,7 +713,7 @@ export default function Monitor() {
             })}
           {isDebug && <AgentGWMenu section={section} setSection={setSection} closeSidebar={closeSidebar} />}
           {NAV
-            .filter((e) => (isNavGroup(e) ? (e.group !== "settings" && e.group !== "device") : e.id !== "chat"))
+            .filter((e) => (isNavGroup(e) ? (e.group !== "house" && e.group !== "device") : false))
             .map((entry) => {
               if (isNavGroup(entry)) {
                 const filtered = {
@@ -726,6 +751,16 @@ export default function Monitor() {
           gap: 8,
         }}>
           <button
+            onClick={toggleDebug}
+            className={"lm-adv-toggle" + (isDebug ? " lm-adv-toggle--on" : "")}
+            title={isDebug ? "Hide advanced tools" : "Show advanced tools"}
+            role="switch"
+            aria-checked={isDebug}
+          >
+            <span>Advanced</span>
+            <span className="lm-adv-knob" aria-hidden />
+          </button>
+          <button
             onClick={() => setShowLogoutConfirm(true)}
             className="lm-logout-btn"
             title="Log out of this device"
@@ -755,25 +790,6 @@ export default function Monitor() {
             <span>{sectionLabel}</span>
           </span>
           <span style={{ flex: 1 }} />
-          <button onClick={toggleDebug} style={{
-            display: "flex", alignItems: "center", gap: 6, background: "none",
-            border: "1px solid var(--lm-border)", borderRadius: 6, cursor: "pointer", fontSize: 12,
-            color: isDebug ? "var(--lm-amber)" : "var(--lm-text-muted)", padding: "4px 10px", marginRight: 8,
-          }} title={isDebug ? "Disable debug mode" : "Enable debug mode"} role="switch" aria-checked={isDebug}>
-            <span>Debug</span>
-            <span style={{
-              width: 30, height: 16, padding: 2, borderRadius: 999,
-              display: "flex", alignItems: "center",
-              justifyContent: isDebug ? "flex-end" : "flex-start",
-              background: isDebug ? "var(--lm-amber)" : "var(--lm-border)",
-              transition: "background 150ms ease, justify-content 150ms ease",
-            }}>
-              <span style={{
-                width: 12, height: 12, borderRadius: "50%", background: "var(--lm-card)",
-                boxShadow: "0 1px 2px rgba(0,0,0,0.25)", transition: "transform 150ms ease",
-              }} />
-            </span>
-          </button>
           <button onClick={toggleTheme} style={{
             background: "none", border: "1px solid var(--lm-border)", cursor: "pointer",
             fontSize: 12, color: "var(--lm-text-muted)", padding: "4px 10px",
@@ -812,6 +828,8 @@ export default function Monitor() {
               sceneInfo={sceneInfo}
               hasEmotion={hasCap(Cap.Expression)}
               hasMotion={hasCap(Cap.Motion)}
+              hasLight={hasCap(Cap.Light)}
+              hasVision={hasCap(Cap.Vision)}
               webVersion={__WEB_VERSION__}
               halVersion={sys?.halVersion ?? null}
               onSceneActivate={(scene) => {
@@ -876,8 +894,10 @@ export default function Monitor() {
                   if (r.ok) setServo((prev) => (prev ? { ...prev, current: null } : prev));
                 }).catch(() => {});
               }}
+              onTalk={() => setSection("chat")}
             />
           )}
+          <Suspense fallback={<SectionFallback />}>
           {section === "system" && (
             <SystemSection
               sys={sys}
@@ -887,14 +907,17 @@ export default function Monitor() {
             />
           )}
           {section === "flow"      && <FlowSection events={events} onClearEvents={clearFlowEvents} />}
-          {section === "camera"    && <CameraSection displayTs={displayTs} />}
+          {section === "camera"    && <CameraSection displayTs={displayTs} isDebug={isDebug} />}
           {section === "sensing"   && <SensingSection />}
           {section === "servo"     && <ServoSection />}
           {section === "bluetooth" && <BluetoothSection />}
-          {section === "face-owners" && <FaceOwnersSection />}
+          {section === "face-owners" && (
+            <FaceOwnersSection isDebug={isDebug} />
+          )}
           {section === "analytics" && <AnalyticsSection />}
-          {section === "logs"      && <LogsSection />}
+          {section === "logs"      && <LogsSection isDebug={isDebug} />}
           {section === "cli" && <CliSection />}
+          </Suspense>
           {section === "api-docs" && (
             <iframe
               title="API Docs"

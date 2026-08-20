@@ -8,7 +8,7 @@ import { ModalShell } from "./ModalShell";
 import { SkillFilesView } from "./SkillFilesView";
 import { inputStyle, btnStyle, applyCardHover } from "./styles";
 
-// "Browse skills" — the Autonomous Agent Skills catalog, two views in one modal:
+// "Browse skills" — the Agent Skills catalog, two views in one modal:
 //
 //   list   → GET /api/agent/skills/browse   (catalog listing, keyword-searchable)
 //   detail → GET /api/agent/skills/bundle   (device downloads the .skill archive
@@ -69,7 +69,7 @@ function SkillList({
   useEffect(() => { void load(keyword); }, [load, keyword]);
 
   const subtitle = useMemo(() => {
-    if (loading || error) return "Autonomous skill store";
+    if (loading || error) return "Skill store";
     const shown = skills.length;
     return total > shown ? `${shown} of ${total} skills` : `${shown} skill${shown === 1 ? "" : "s"}`;
   }, [loading, error, skills.length, total]);

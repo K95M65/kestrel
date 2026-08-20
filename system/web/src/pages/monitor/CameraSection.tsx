@@ -13,8 +13,10 @@ interface TrackStatus {
 
 export function CameraSection({
   displayTs: _displayTs,
+  isDebug = false,
 }: {
   displayTs: number;
+  isDebug?: boolean;
 }) {
   // Lazy initializer: the clock is read once on mount, not on every render.
   const [snapTs, setSnapTs] = useState(() => Date.now());
@@ -166,30 +168,47 @@ export function CameraSection({
   };
 
   const statusText = cameraDisabled
-    ? (manualOverride ? "Disabled by you" : "Auto-disabled (scene/emotion)")
-    : "Streaming";
+    ? (manualOverride ? "Off" : "Off for now")
+    : "On";
   const statusColor = cameraDisabled ? "var(--lm-red)" : "var(--lm-green)";
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div className="lm-grid-2">
+    <div className="lm-home" style={{ gap: 14 }}>
+      <div className="lm-home-stage" style={{ maxWidth: isDebug ? undefined : 760 }}>
+        <div className="lm-mon-hero lm-home-hero" style={{ padding: "20px 22px" }}>
+          <div className="lm-home-copy">
+            <div className="lm-home-kicker">Eyes</div>
+            <h1 className="lm-home-title" style={{ fontSize: 22, margin: "4px 0 6px" }}>What the robot sees</h1>
+            <p className="lm-home-meta">{cameraDisabled ? "The camera is off." : "Live view from the desk."}</p>
+          </div>
+          <button
+            type="button"
+            className={cameraDisabled ? "lm-home-cta" : "lm-home-ghost"}
+            onClick={toggleCamera}
+            disabled={toggling}
+          >
+            {toggling ? "…" : cameraDisabled ? "Turn on" : "Turn off"}
+          </button>
+        </div>
+      </div>
+      <div className={isDebug ? "lm-grid-2" : undefined}>
 
         {/* Live Stream card with Snapshot embedded as a sub-card */}
         <div style={S.card}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, gap: 10, flexWrap: "wrap" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={S.cardLabel}>Live Stream</div>
+              <div style={S.cardLabel}>Live</div>
               <span style={{
                 fontSize: 10, padding: "2px 7px", borderRadius: 4,
                 background: track.tracking ? "rgba(52,211,153,0.15)" : (cameraDisabled ? "rgba(248,113,113,0.15)" : "rgba(245,158,11,0.15)"),
                 color: track.tracking ? "var(--lm-green)" : (cameraDisabled ? "var(--lm-red)" : "var(--lm-amber)"),
                 fontWeight: 700, letterSpacing: "0.05em",
               }}>
-                {cameraDisabled ? "OFF" : track.tracking ? "TRACK" : "LIVE"}
+                {cameraDisabled ? "OFF" : track.tracking ? "TRACK" : "ON"}
               </span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              {mode.w && mode.h && (
+              {isDebug && mode.w && mode.h && (
                 <span
                   title="Actual capture mode negotiated with the camera"
                   style={{
@@ -202,19 +221,6 @@ export function CameraSection({
                 </span>
               )}
               <span style={{ fontSize: 11, color: "var(--lm-text-muted)" }}>{statusText}</span>
-              <button
-                onClick={toggleCamera}
-                disabled={toggling}
-                style={{
-                  padding: "4px 12px", borderRadius: 6, fontSize: 11, fontWeight: 600,
-                  cursor: toggling ? "wait" : "pointer",
-                  background: cameraDisabled ? "rgba(52,211,153,0.1)" : "rgba(248,113,113,0.1)",
-                  border: `1px solid ${cameraDisabled ? "rgba(52,211,153,0.3)" : "rgba(248,113,113,0.3)"}`,
-                  color: cameraDisabled ? "var(--lm-green)" : "var(--lm-red)",
-                }}
-              >
-                {toggling ? "…" : cameraDisabled ? "Enable" : "Disable"}
-              </button>
             </div>
           </div>
 
@@ -260,9 +266,9 @@ export function CameraSection({
               disabled={cameraDisabled}
               paused={!streamActive}
               error={streamError}
-              disabledText="Camera disabled"
-              pausedText="Stream paused (tab hidden)"
-              errorText="Stream unavailable"
+              disabledText="Camera is off"
+              pausedText="Paused while this tab is in the background"
+              errorText="Can't show the camera right now"
               highlight={track.tracking}
             >
               <img
@@ -353,8 +359,7 @@ export function CameraSection({
           </div>
         </div>
 
-        {/* Vision Tracking — alignSelf:start so the card hugs its content
-            instead of stretching to match the taller Live Stream card. */}
+        {isDebug && (
         <div style={{ ...S.card, alignSelf: "start" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
             <div style={S.cardLabel}>Vision Tracking</div>
@@ -435,6 +440,7 @@ export function CameraSection({
             )}
           </div>
         </div>
+        )}
       </div>
     </div>
   );

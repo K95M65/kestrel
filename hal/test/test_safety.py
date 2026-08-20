@@ -17,11 +17,14 @@ from hal.safety.policy import (
     audio_quiet_now,
     clamp_brightness,
     clamp_color,
+    damp_recorded_actions,
     in_window,
     load_safety,
     cap_speed_dps,
+    max_joint_delta,
     min_move_duration,
     parse_safety,
+    playback_time_scale,
     read_soc_temp_c,
     thermal_over,
     validate_schema,
@@ -358,6 +361,45 @@ class TestCapSpeedDps(unittest.TestCase):
     def test_no_policy_passthrough(self):
         # Undeclared stays undeclared — never invent a ceiling of 0.
         self.assertEqual(cap_speed_dps(None, 55.0), 55.0)
+
+
+class TestRecordedPlaybackGate(unittest.TestCase):
+    """Recorded/emotion frames must be stretchable by the same max_speed
+    ceiling aim/nudge already use. Peak deg/s is derived from the frames and
+    the bound — never a magic duration."""
+
+    def setUp(self):
+        # 30 deg/s so a 90° step is obviously too fast at typical fps.
+        self.max_speed = 30
+        self.p = parse_safety(
+            _FM_MOTION.replace("max_speed: 120", f"max_speed: {self.max_speed}")
+        )
+        self.delta = 90.0
+        self.frames = [{"pan.pos": 0.0}, {"pan.pos": self.delta}]
+        self.fps = 10.0
+        self.dt = 1.0 / self.fps
+
+    def test_time_scale_is_at_least_delta_over_max_speed(self):
+        scale = playback_time_scale(self.p, self.frames, self.dt)
+        stretched = scale * self.dt
+        self.assertGreaterEqual(stretched, self.delta / self.max_speed - 1e-9)
+
+    def test_damped_actions_keep_peak_dps_at_or_below_bound(self):
+        out = damp_recorded_actions(self.p, self.frames, self.fps)
+        max_step = self.max_speed / self.fps
+        for a, b in zip(out, out[1:]):
+            self.assertLessEqual(max_joint_delta(a, b), max_step + 1e-6)
+        play_s = (len(out) - 1) / self.fps
+        self.assertGreaterEqual(play_s, self.delta / self.max_speed - 1e-6)
+
+    def test_already_slow_frames_are_not_padded(self):
+        slow = [{"pan.pos": 0.0}, {"pan.pos": 1.0}]
+        out = damp_recorded_actions(self.p, slow, self.fps)
+        self.assertEqual(len(out), 2)
+
+    def test_no_speed_bound_passthrough(self):
+        self.assertEqual(playback_time_scale(parse_safety(_FM), self.frames, self.dt), 1.0)
+        self.assertEqual(damp_recorded_actions(None, self.frames, self.fps), self.frames)
 
 
 if __name__ == "__main__":

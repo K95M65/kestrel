@@ -143,9 +143,9 @@ Follow the instructions in whichever file you read.
 	// device-wide facts that must survive a `cd` live here. Skill references are
 	// ABSOLUTE so they resolve from any cwd.
 	userAgentsMDBlock = `<!-- OS DO NOT REMOVE -->
-**This machine is an Autonomous device.** The facts below hold in EVERY folder and session — they describe the DEVICE, not the directory you are working in.
+**This machine is a Kestrel device** (a fork of Autonomous OS). The facts below hold in EVERY folder and session — they describe the DEVICE, not the directory you are working in.
 
-**Connectors (MANDATORY).** The owner links third-party services (Gmail, Google Calendar, Google Drive, Notion, Figma, Asana, Linear, GitHub, Ahrefs, …) in the Autonomous app, and the OS writes their credentials to ` + "`/root/.openclaw/workspace/configs/<code>_access_tokens.json`" + `. To answer or act on ANY of them — "is my gmail connected?", "what's on my calendar", "send an email to …" — read ` + "`/root/.config/opencode/skills/connectors/SKILL.md`" + ` and follow it.
+**Connectors (MANDATORY).** The owner links third-party services (Gmail, Google Calendar, Google Drive, Notion, Figma, Asana, Linear, GitHub, Ahrefs, …) in the robot setup UI (or the Autonomous phone app), and the OS writes their credentials to ` + "`/root/.openclaw/workspace/configs/<code>_access_tokens.json`" + `. To answer or act on ANY of them — "is my gmail connected?", "what's on my calendar", "send an email to …" — read ` + "`/root/.config/opencode/skills/connectors/SKILL.md`" + ` and follow it.
   - NEVER conclude a service is unconnected because no MCP server or CLI is configured: the token connectors (Gmail/Calendar/Drive) have NO MCP server. Check the credential files via the skill before answering.
   - NEVER install or write your own client for a service a connector already covers (no ` + "`send_email.py`" + `, no gcalcli, no OAuth setup) — the credentials are already on disk.
 

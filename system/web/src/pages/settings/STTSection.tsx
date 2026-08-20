@@ -71,7 +71,7 @@ export function STTSection({
               fontSize: 12.5, color: C.text, outline: "none", cursor: "pointer",
             }}
           >
-            <option value="autonomous">Autonomous (reuse AI brain)</option>
+            <option value="autonomous">Kestrel (reuse AI brain)</option>
             <option value="deepgram">Deepgram</option>
           </select>
         </div>

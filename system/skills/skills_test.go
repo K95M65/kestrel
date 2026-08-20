@@ -44,12 +44,12 @@ func TestSupported_ReducedDevicePrunesHardware(t *testing.T) {
 	// box lacks — so they prune. Voice people-perception (speaker-recognizer,
 	// user-emotion-detection) gates on `audio` (the mic), which this box HAS — so
 	// they survive (see the kept list below).
-	for _, gone := range []string{"servo-control", "servo-tracking", "led-control", "display", "emotion", "scene", "camera", "music", "face-enroll", "guard", "computer-use"} {
+	for _, gone := range []string{"servo-control", "servo-tracking", "led-control", "display", "emotion", "scene", "camera", "music", "face-enroll", "guard", "computer-use", "spotify"} {
 		if contains(got, gone) {
 			t.Errorf("expected %q pruned (device lacks its capability)", gone)
 		}
 	}
-	for _, kept := range []string{"audio", "voice", "sensing", "sensing-track", "speaker-recognizer", "user-emotion-detection"} {
+	for _, kept := range []string{"audio", "voice", "sensing", "sensing-track", "speaker-recognizer", "user-emotion-detection", "weather", "news"} {
 		if !contains(got, kept) {
 			t.Errorf("expected %q kept (audio/sensing satisfied)", kept)
 		}

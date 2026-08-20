@@ -4,6 +4,9 @@ import { C, Field, SectionCard, LABEL_STYLE } from "@/components/setup/shared";
 import { pickVoicePhrases, pickVoiceIntro, VOICE_DURATION_SEC } from "@/components/setup/voice-phrases";
 import type { FaceOwner } from "@/hooks/setup/useFaceEnroll";
 import { hwUrl } from "@/lib/api";
+import { voiceEnrollTarget } from "@/lib/voiceEnroll";
+import { UNSUPPORTED } from "@/lib/guideWalk";
+import { useCapabilities } from "@/hooks/useCapabilities";
 
 // Voice enroll — remote-trigger the device's /speaker/record-enroll. The device captures
 // via its own mic; web only does countdown UI. Sharing label with face enroll
@@ -42,8 +45,11 @@ export function VoiceSection({
   };
 
   const startVoiceEnroll = () => {
-    if (!voiceLabel.trim()) {
-      setVoiceMsg("Enter a name first");
+    let target: string;
+    try {
+      target = voiceEnrollTarget(voiceLabel);
+    } catch (err) {
+      setVoiceMsg(err instanceof Error ? err.message : "Pick a person first");
       return;
     }
     setVoiceMsg(null);
@@ -73,7 +79,7 @@ export function VoiceSection({
       fetch(hwUrl("/speaker/record-enroll"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: voiceLabel.trim().toLowerCase(), duration_sec: VOICE_DURATION_SEC }),
+        body: JSON.stringify({ name: target, duration_sec: VOICE_DURATION_SEC }),
       })
         .then((r) => r.json().then((data) => ({ ok: r.ok, data })))
         .then(({ ok, data }) => {
@@ -96,12 +102,27 @@ export function VoiceSection({
     }, 1000);
   };
 
+  const { hasCap } = useCapabilities();
   const withVoice = faceOwners.filter((p) => (p.voice_samples?.length ?? 0) > 0);
+
+  if (!hasCap("audio")) {
+    return (
+      <SectionCard
+        id="voice"
+        title="My Voice"
+        active={active}
+        description={UNSUPPORTED}
+        icon={<MicVocal size={17} />}
+      >
+        <p style={{ fontSize: 13, color: C.textMuted, margin: 0 }}>{UNSUPPORTED}</p>
+      </SectionCard>
+    );
+  }
 
   return (
     <SectionCard
       id="voice"
-      title="My Voice (optional)"
+      title="My Voice"
       active={active}
       description={VOICE_INTRO}
       icon={<MicVocal size={17} />}

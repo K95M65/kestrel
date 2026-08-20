@@ -362,6 +362,27 @@ func (h *DeviceHandler) SetTimezone(c *gin.Context) {
 	c.JSON(http.StatusOK, serializers.ResponseSuccess(true))
 }
 
+// SetIdentity saves the robot's name and optional custom wake phrase.
+func (h *DeviceHandler) SetIdentity(c *gin.Context) {
+	var req domain.IdentityRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, serializers.ResponseError(err.Error()))
+		return
+	}
+	if err := h.service.SetIdentity(req.Name, req.WakePhrase); err != nil {
+		slog.Warn("set identity failed", "component", "device", "error", err)
+		c.JSON(http.StatusBadRequest, serializers.ResponseError(err.Error()))
+		return
+	}
+	pub := h.service.GetPublicConfig()
+	c.JSON(http.StatusOK, serializers.ResponseSuccess(domain.IdentityPublic{
+		Name:        pub.AgentName,
+		WakePhrase:  pub.WakePhrase,
+		WakePhrases: pub.WakePhrases,
+		WakeWord:    pub.WakeWord,
+	}))
+}
+
 // GetSleep returns quiet-hours status plus the saved schedule.
 func (h *DeviceHandler) GetSleep(c *gin.Context) {
 	c.JSON(http.StatusOK, serializers.ResponseSuccess(h.service.GetSleepStatus()))
@@ -402,6 +423,110 @@ func (h *DeviceHandler) WakeNow(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, serializers.ResponseSuccess(h.service.GetSleepStatus()))
+}
+
+// SetMe records which household member is the operator (People card "Me").
+func (h *DeviceHandler) SetMe(c *gin.Context) {
+	var req domain.MeSet
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, serializers.ResponseError(err.Error()))
+		return
+	}
+	if err := h.service.SetMe(req.Label); err != nil {
+		c.JSON(http.StatusBadRequest, serializers.ResponseError(err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, serializers.ResponseSuccess(h.service.GetBehaviorsStatus()))
+}
+
+// GetBehaviors returns the companion pack plus live status.
+func (h *DeviceHandler) GetBehaviors(c *gin.Context) {
+	c.JSON(http.StatusOK, serializers.ResponseSuccess(h.service.GetBehaviorsStatus()))
+}
+
+// SetBehaviors saves the companion pack.
+func (h *DeviceHandler) SetBehaviors(c *gin.Context) {
+	var req config.Behaviors
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, serializers.ResponseError(err.Error()))
+		return
+	}
+	if err := h.service.SetBehaviors(req); err != nil {
+		c.JSON(http.StatusBadRequest, serializers.ResponseError(err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, serializers.ResponseSuccess(h.service.GetBehaviorsStatus()))
+}
+
+// FireBriefNow runs the morning briefing immediately.
+func (h *DeviceHandler) FireBriefNow(c *gin.Context) {
+	if err := h.service.FireMorningBrief("manual"); err != nil {
+		c.JSON(http.StatusBadGateway, serializers.ResponseError(err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, serializers.ResponseSuccess(h.service.GetBehaviorsStatus()))
+}
+
+// SetMeeting toggles meeting privacy (mic + speaker + camera off).
+func (h *DeviceHandler) SetMeeting(c *gin.Context) {
+	var req domain.MeetingSet
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, serializers.ResponseError(err.Error()))
+		return
+	}
+	if err := h.service.SetMeeting(req.On); err != nil {
+		c.JSON(http.StatusBadGateway, serializers.ResponseError(err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, serializers.ResponseSuccess(h.service.GetBehaviorsStatus()))
+}
+
+// StartPomodoro starts a work block.
+func (h *DeviceHandler) StartPomodoro(c *gin.Context) {
+	if err := h.service.StartPomodoro(); err != nil {
+		c.JSON(http.StatusBadRequest, serializers.ResponseError(err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, serializers.ResponseSuccess(h.service.GetBehaviorsStatus()))
+}
+
+// StopPomodoro clears the timer.
+func (h *DeviceHandler) StopPomodoro(c *gin.Context) {
+	h.service.StopPomodoro()
+	c.JSON(http.StatusOK, serializers.ResponseSuccess(h.service.GetBehaviorsStatus()))
+}
+
+// ListMemories returns the remember-this inbox.
+func (h *DeviceHandler) ListMemories(c *gin.Context) {
+	c.JSON(http.StatusOK, serializers.ResponseSuccess(device.ListMemories()))
+}
+
+// AddMemory appends one inbox note (dashboard or HW marker).
+func (h *DeviceHandler) AddMemory(c *gin.Context) {
+	var req domain.MemoryAdd
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, serializers.ResponseError(err.Error()))
+		return
+	}
+	max := 200
+	if h.config != nil {
+		max = h.config.BehaviorsOrDefault().Remember.MaxItems
+	}
+	item, err := device.AddMemory(req.Text, max)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, serializers.ResponseError(err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, serializers.ResponseSuccess(item))
+}
+
+// DeleteMemory removes one inbox note.
+func (h *DeviceHandler) DeleteMemory(c *gin.Context) {
+	if err := device.DeleteMemory(c.Param("id")); err != nil {
+		c.JSON(http.StatusNotFound, serializers.ResponseError(err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, serializers.ResponseSuccess(true))
 }
 
 // ChangeChannel godoc

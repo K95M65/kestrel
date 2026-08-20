@@ -70,7 +70,7 @@ export const S = {
     border: "1px solid var(--lm-border)",
     borderRadius: 14,
     padding: 16,
-    boxShadow: "0 1px 2px rgba(0,0,0,0.18), 0 8px 24px -16px rgba(0,0,0,0.5)",
+    boxShadow: "0 1px 2px color-mix(in srgb, var(--lm-amber) 8%, transparent), 0 10px 28px -18px color-mix(in srgb, var(--lm-amber) 22%, transparent)",
   },
   cardLabel: {
     fontSize: 10,

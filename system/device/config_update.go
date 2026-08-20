@@ -27,8 +27,19 @@ func (s *Service) GetPublicConfig() domain.ConfigPublicResponse {
 	if deviceID == "" {
 		deviceID = GetDeviceMac()
 	}
-	agentName := i18n.DeviceName()
-	deviceType := s.config.DeviceTypeOrDefault()
+	agentName := i18n.DeviceDisplayName()
+	if agentName == "" {
+		agentName = i18n.DeviceName()
+	}
+	wakePhrase := ""
+	// Public chips are this robot's name family (hey {name}, wake up {name}, …).
+	// Permanent autonomous / device-type aliases still work on HAL; they belong
+	// behind Advanced, not on General.
+	wakePhrases := i18n.VoiceWakeWordsForName(i18n.DeviceName())
+	if len(s.config.WakeWords) > 0 {
+		wakePhrases = append([]string(nil), s.config.WakeWords...)
+		wakePhrase = s.config.WakeWords[0]
+	}
 	return domain.ConfigPublicResponse{
 		Channel:            s.config.Channel,
 		TelegramUserID:     s.config.TelegramUserID,
@@ -47,7 +58,8 @@ func (s *Service) GetPublicConfig() domain.ConfigPublicResponse {
 		TTSVoice:           s.config.TTSVoice,
 		WakeWord:           s.config.WakeWordEnabled(),
 		AgentName:          agentName,
-		WakePhrases:        i18n.BuildSupportedVoiceWakeWords(agentName, deviceType),
+		WakePhrase:         wakePhrase,
+		WakePhrases:        wakePhrases,
 		DeviceID:           deviceID,
 		Mac:                GetDeviceMac(),
 		NetworkSSID:        s.config.NetworkSSID,

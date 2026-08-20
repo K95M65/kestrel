@@ -10,7 +10,8 @@ import type { StrangersData } from "./types";
 // and are passed in; this is purely the card's presentation.
 export function StrangerClustersCard({
   strangers, strangersError, expandedCluster, setExpandedCluster,
-  deletingCluster, deletingStrangerFile, onDeleteCluster, onDeleteStrangerFile,
+  deletingCluster, deletingStrangerFile, claimingHash,
+  onDeleteCluster, onDeleteStrangerFile, onClaim,
   monCard, cardHeader,
 }: {
   strangers: StrangersData | null;
@@ -19,15 +20,17 @@ export function StrangerClustersCard({
   setExpandedCluster: Dispatch<SetStateAction<Record<string, boolean>>>;
   deletingCluster: string | null;
   deletingStrangerFile: string | null;
+  claimingHash?: string | null;
   onDeleteCluster: (hash: string, sampleCount: number) => void;
   onDeleteStrangerFile: (hash: string, filename: string) => void;
+  onClaim?: (hash: string) => void;
   monCard: CSSProperties;
   cardHeader: CSSProperties;
 }) {
   return (
     <div className="lm-mon-card" style={monCard}>
       <div style={cardHeader}>
-        <CardLabel icon={<Mic size={13} />} text="Unknown Voices" />
+        <CardLabel icon={<Mic size={13} />} text="Unknown voices" />
         <span style={{ fontSize: 10, color: "var(--lm-text-muted)" }}>
           {strangers ? `${strangers.total} cluster${strangers.total !== 1 ? "s" : ""}` : ""}
         </span>
@@ -68,6 +71,17 @@ export function StrangerClustersCard({
                       · {fmtAgo(cluster.latest_mtime)}
                     </span>
                   </div>
+                  {onClaim && (
+                    <button
+                      type="button"
+                      className="lm-u-btn"
+                      disabled={claimingHash === cluster.hash || deletingCluster === cluster.hash}
+                      onClick={(e) => { e.stopPropagation(); onClaim(cluster.hash); }}
+                      style={{ fontSize: 10, padding: "2px 8px", flexShrink: 0 }}
+                    >
+                      {claimingHash === cluster.hash ? "…" : "This is someone I know"}
+                    </button>
+                  )}
                   <span
                     onClick={(e) => { e.stopPropagation(); if (deletingCluster !== cluster.hash) onDeleteCluster(cluster.hash, cluster.sample_count); }}
                     title={`Delete cluster ${cluster.hash}`}

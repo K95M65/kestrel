@@ -1,4 +1,4 @@
-// Package grokauth is the xAI Grok account login used by Autonomous OS.
+// Package grokauth is the xAI Grok account login used by Kestrel.
 //
 // It is a Go port of OpenCode's official xAI plugin
 // (packages/opencode/src/plugin/xai.ts): the public Grok-CLI OAuth client,

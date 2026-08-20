@@ -1,6 +1,10 @@
+import { useState } from "react";
 import { Volume2 } from "lucide-react";
+import { toast } from "sonner";
 import { C, SectionCard, LABEL_STYLE, INPUT_STYLE, FIELD_GAP } from "./shared";
 import { testTTSVoice } from "@/lib/api";
+import { ttsProviderLabel } from "@/lib/ttsLabels";
+import { HW } from "@/pages/monitor/types";
 
 export function TTSSection({
   active, isContinue,
@@ -16,6 +20,35 @@ export function TTSSection({
   ttsVoices: string[];
   sttLanguage: string;
 }) {
+  const [testing, setTesting] = useState(false);
+
+  async function preview() {
+    if (testing) return;
+    setTesting(true);
+    try {
+      await testTTSVoice(ttsVoice, { lang: sttLanguage, provider: ttsProvider });
+      toast.success("Playing on the robot.");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      if (/muted/i.test(msg)) {
+        toast.error("Speaker is muted — unmute, then try again.", {
+          action: {
+            label: "Unmute",
+            onClick: () => {
+              void fetch(`${HW}/speaker/unmute`, { method: "POST" })
+                .then(() => toast.message("Speaker unmuted. Test Voice again."))
+                .catch(() => toast.error("Couldn't unmute."));
+            },
+          },
+        });
+      } else {
+        toast.error(msg || "Couldn't play a preview.");
+      }
+    } finally {
+      setTesting(false);
+    }
+  }
+
   return (
     <SectionCard id="tts" title="Voice" active={active} icon={<Volume2 size={17} />}
       description="Choose how your device sounds when it speaks back to you.">
@@ -33,7 +66,7 @@ export function TTSSection({
           style={{ ...INPUT_STYLE, cursor: "pointer" }}
         >
           {(ttsProviders.length > 0 ? ttsProviders : ["elevenlabs"]).map((p) => (
-            <option key={p} value={p}>{p}</option>
+            <option key={p} value={p}>{ttsProviderLabel(p)}</option>
           ))}
         </select>
       </div>
@@ -54,17 +87,16 @@ export function TTSSection({
         {isContinue ? (
           <button
             type="button"
-            onClick={() => testTTSVoice(ttsVoice, {
-              lang: sttLanguage,
-              provider: ttsProvider,
-            })}
+            disabled={testing}
+            onClick={() => void preview()}
             style={{
               marginTop: 10, width: "100%", padding: "10px 0",
-              background: C.amber, color: "#0C0B09", border: "none",
-              borderRadius: 8, fontSize: 13, cursor: "pointer", fontWeight: 600,
+              background: C.amber, color: "var(--lm-on-amber)", border: "none",
+              borderRadius: 8, fontSize: 13, cursor: testing ? "wait" : "pointer", fontWeight: 600,
+              opacity: testing ? 0.7 : 1,
             }}
           >
-            Test Voice
+            {testing ? "Playing…" : "Test Voice"}
           </button>
         ) : (
           <div style={{ marginTop: 8, fontSize: 12.5, color: C.textDim }}>

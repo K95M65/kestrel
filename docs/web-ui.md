@@ -24,7 +24,7 @@ The browser tab title (`document.title`) reflects the focused page/tab so multip
 | Route / state | Title |
 |---------------|-------|
 | `/setup` (and `/` when not provisioned) | `Lamp · Setup` |
-| `/monitor#<section>` (active section) | `Lamp · <section label>` — e.g. `Lamp · Chat`, `Lamp · Overview`, `Lamp · Info`, `Lamp · Flow`, `Lamp · Users`, `Lamp · Camera`, `Lamp · Sensing`, `Lamp · Analytics`, `Lamp · Servo`, `Lamp · Logs`, `Lamp · CLI` |
+| `/monitor#<section>` (active section) | `Lamp · <section label>` — e.g. `Lamp · Talk`, `Lamp · Home`, `Lamp · People`, `Lamp · Camera`, `Lamp · Logs` |
 | `/setting#<section>` (Settings, active section) | `Lamp · Settings · <section label>` — e.g. `Lamp · Settings · General`, `Lamp · Settings · Wi-Fi`, `Lamp · Settings · AI Brain`, `Lamp · Settings · Language`, `Lamp · Settings · Voice`, `Lamp · Settings · My Voice`, `Lamp · Settings · Face`, `Lamp · Settings · Channels`, `Lamp · Settings · MQTT`, `Lamp · Settings · Timezone` |
 | `/gw-config` | `Lamp · GW Config` |
 
@@ -74,47 +74,37 @@ system/web/
 
 ### 3.1 Overall Design
 
-Monitor uses a dedicated dark theme with class `.lm-root` (defined in `index.css`), **not using Tailwind** — all styling uses inline styles with CSS variables `--lm-*`.
+Monitor uses class `.lm-root` (defined in `index.css`) with `--lm-*` tokens. Light (cream canvas) is the product default; `.lm-dark` is navy.
 
-Layout: **Fixed 216px sidebar + flexible main area**, 100vh height.
+Layout: **Fixed 250px sidebar + flexible main area**, 100vh height.
 
 ### 3.2 Sidebar Navigation
 
-4 sections toggled via local state (`section: Section`):
+Four rooms in `NAV` (`system/web/src/pages/monitor/types.ts`):
 
-| Icon | Section | Content |
-|------|---------|---------|
-| ◈ | Overview | Full system overview |
-| ⬡ | System | CPU/RAM/Temp details + history |
-| ◎ | Workflow | OpenClaw event feed real-time |
-| ⬟ | Camera | MJPEG stream + Display LCD |
+| Room | Leaves |
+|------|--------|
+| Talk | Chat |
+| Home | Product Home (was Overview) |
+| House | Behaviors, Quiet hours, People |
+| Device | Wi-Fi, Voice, My Voice, Channels, General, Camera, Timezone, Plugins, Face enroll, Logs. Advanced (Language, Realtime, AI Brain, Runtime, MQTT, MCP, System, Flow, Sensing, Servo, Bluetooth, CLI, API Docs) is `?debug=true` only. |
 
-Bottom of sidebar shows OpenClaw status (online/offline) and last update time.
+Bottom of sidebar shows last update time.
 
 **Feature search.** A search box (`SidebarSearch`, `system/web/src/pages/monitor/index.tsx`) sits at the top of the rail to tame the long nav. It filters nav leaves by label **or** parent-group name (case-insensitive substring) and honours the same visibility gates as the rendered nav — debug-only sections (`PUBLIC_SECTIONS`) and absent-hardware tabs (`sectionVisible`) never appear in results. While a query is active the grouped tree is hidden and replaced by a flat result list; each row reuses `.lm-snav-item` so the amber active/hover treatment carries over, and shows a small parent-group chip (e.g. `General` · `Settings`). The leading magnifier turns amber on focus; a trailing clear (×) button appears once there's a query (also cleared by `Esc`). `Enter` jumps to the first result.
 
-### 3.3 Dark Theme Variables
+### 3.3 Theme variables
 
-Defined at `.lm-root` in `index.css`:
+Light-first at `.lm-root` in `index.css`. Cream canvas, white fields, ocean primary. Seafoam (`#C8DFDB`) is a tint (borders / washes), not a field fill. `--lm-amber` is the ocean brand fill (name kept).
 
 ```css
---lm-bg:          #0C0B09   /* Main background */
---lm-sidebar:     #111009   /* Sidebar */
---lm-card:        #17160F   /* Card background */
---lm-surface:     #1E1D14   /* Surface inside card */
---lm-border:      #2A2820   /* Border */
---lm-border-hi:   #3A3828   /* Border highlight */
---lm-amber:       #F59E0B   /* Primary color (warm lamp) */
---lm-amber-dim:   rgba(245,158,11,0.12)
---lm-amber-glow:  rgba(245,158,11,0.35)
---lm-teal:        #2DD4BF
---lm-green:       #34D399
---lm-red:         #F87171
---lm-blue:        #60A5FA
---lm-purple:      #A78BFA
---lm-text:        #F0EEE8
---lm-text-dim:    #9A9080
---lm-text-muted:  #504A3C
+--lm-bg:          #F2EFE7   /* cream canvas */
+--lm-sidebar:     #EDEAE2
+--lm-card:        #FFFcf7   /* white fields */
+--lm-surface:     #E8E4D8
+--lm-border:      mix of seafoam + warm gray
+--lm-amber:       #3368A0   /* ocean brand */
+--lm-teal:        #66A3BF   /* sky */
 ```
 
 ### 3.4 Settings (`/setting`) — shared shell
@@ -142,12 +132,19 @@ The Settings collapsible group lives in the shared sidebar `NAV` (`system/web/sr
 | Plugins | `/setting#plugins` |
 | Timezone | `/setting#timezone` |
 | Quiet hours | `/setting#sleep` |
+| Behaviors | `/setting#behaviors` |
 
-Monitor leaves serialize as the plain id, e.g. `/monitor#overview`, `/monitor#system`, `/monitor#flow`. Defaults: `/monitor` with no/invalid hash → `overview`; `/setting` with no/invalid hash → `general` (URL normalized to `/setting#general`). Deep-links (e.g. `/setting#wifi`) and browser back/forward are honored via a `useLocation`-driven effect. Non-debug users only see the leaves in `PUBLIC_SECTIONS` (which includes Chat, Overview, Info, Flow, Camera, Users, Bluetooth, **Logs**, **CLI**, and the public Settings leaves General/Wi-Fi/My Voice/Face/MCP Tools/Plugins/Timezone/Quiet hours); `?debug=true` reveals the rest (Sensing, Analytics, Servo, API Docs, Agent gateway, and the deeper Settings leaves AI Brain/Runtime/Language/Voice/Realtime/Channels/MQTT). The top-bar **Debug** toggle beside the Dark/Light button toggles that query parameter while preserving the active route hash and any other query parameters; its amber state indicates that debug mode is enabled.
+Monitor leaves serialize as the plain id, e.g. `/monitor#overview` (Home), `/monitor#chat` (Talk). Defaults: `/monitor` with no/invalid hash → `overview` (Home); `/setting` with no/invalid hash → `behaviors` (URL normalized to `/setting#behaviors`). Deep-links (e.g. `/setting#wifi`) and browser back/forward are honored via a `useLocation`-driven effect. Non-debug users only see the leaves in `PUBLIC_SECTIONS` (Talk, Home, House, and the public Device leaves); `?debug=true` reveals the rest (Sensing, Servo, API Docs, Agent gateway, and the deeper Settings leaves AI Brain/Runtime/Language/Realtime/MQTT/MCP). The top-bar **Debug** toggle beside the Dark/Light button toggles that query parameter while preserving the active route hash and any other query parameters; its ocean state indicates that debug mode is enabled.
+
+**Home** (`/monitor#overview`, `OverviewSection.tsx`) — product face: companion mark, awake/quiet/meeting, next brief, Talk / Meeting / Sleep, guided-setup CTA when `behaviors.onboarded` is unset, and a Sound strip. Brand lockup is **Kestrel / Desk Companion** (Reachy Mini is one compatible body). Hardware, Emotion, Servo, Versions, Network, Presence, Agent Gateway stay behind `?debug=true`.
 
 **Wake-word gate** lives in the public **General** settings card, not the debug-only Realtime section. Its checkbox writes the top-level `wakeword` flag; saving restarts HAL so the change applies. The card lists every currently accepted phrase, including the active agent's exact current name and the permanent `autonomous` and device-type aliases; the system manages that list. Reload Settings after an agent rename to see the new name.
 
 **Quiet hours** (`/setting#sleep`, internal `settings:sleep`, `SleepSection.tsx`) — bedtime for the body. Saves `sleep_schedule` via `PUT /api/device/sleep` (`enabled`, `sleep_at`/`wake_at` as `HH:MM`, optional `days` 0=Sunday…6=Saturday; empty days = every night). Times use the device timezone. While quiet, HAL is `sleepy` (mic/speaker/motion off); walking past does not wake it; fire still does. `POST /api/device/sleep/now` and `/sleep/wake` are also on Overview. Not part of Save Changes.
+
+**Behaviors** (`/setting#behaviors`, internal `settings:behaviors`, `BehaviorsSection.tsx`) — the companion pack (morning brief, remember inbox, dance-to-song, meeting mode, draft-not-send, kids, kitchen windows, Home Assistant, pomodoro, stories, focus coach, greeter, look-at-this, and the HAL-pending body-play flags). Saves `behaviors` via `PUT /api/device/behaviors`. Meeting / Brief now / Pomodoro start-stop are also on Overview. Not part of Save Changes. Home Assistant token is write-only.
+
+**Guided setup** — interactive onboarding for that pack (`BehaviorsOnboarding.tsx`). Six questions (who it's for, mornings, privacy, what's alive, review). Opens from Settings → Behaviors, from Overview when `behaviors.onboarded` is unset, or via `/setting?guide=1#behaviors`. Skip or finish both set `onboarded`. Personality chips (Just me / Family / Kids around / Office) apply a preset; Save still required on the page.
 
 **Timezone** (`/setting#timezone`, internal `settings:timezone`, `TimezoneSection.tsx`) — an admin-gated section that, like Agent Runtime, is **not** part of the form's "Save Changes" flow: it has its own **Apply** button. It loads the current zone and the selectable IANA zone list via `GET /api/device/timezone`, lets the operator pick a zone from a single dropdown (`<select>` grouped by region via `<optgroup>`, each option labelled `(GMT+7) Ho Chi Minh` and ordered by UTC offset, the way common web timezone pickers work), and shows a live preview of the local time in the selected zone. On **Apply** it calls `POST /api/device/timezone {timezone}`; the change applies immediately (no device restart needed).
 

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import "./chartSetup";
 import { Bar, Line } from "react-chartjs-2";
 import { S } from "./styles";
 import { API } from "./types";

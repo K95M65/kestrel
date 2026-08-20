@@ -1,9 +1,9 @@
 # Architecture
 
-Autonomous is a layered stack. Each layer exposes an interface to the layer above and
+Kestrel is a layered stack (the Autonomous OS architecture). Each layer exposes an interface to the layer above and
 depends only on the one below, so any layer can be replaced without touching the others.
 
-![Autonomous OS stack, top down: 25 skills, six swappable agent runtimes, 14 Go system packages, the realtime voice agent, 13 HAL capabilities, a deterministic safety gate below them (brightness, quiet hours, explicit-move speed, thermal today), in-tree drivers and board profiles, the vendor Linux kernel, and the bodies — each row labelled with its repo folder.](autonomous-stack.png)
+![Kestrel / Autonomous OS stack, top down: 25 skills, six swappable agent runtimes, 14 Go system packages, the realtime voice agent, 13 HAL capabilities, a deterministic safety gate below them (brightness, quiet hours, explicit-move speed, thermal today), in-tree drivers and board profiles, the vendor Linux kernel, and the bodies — each row labelled with its repo folder.](autonomous-stack.png)
 
 ## Layers
 

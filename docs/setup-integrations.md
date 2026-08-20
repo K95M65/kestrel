@@ -70,9 +70,9 @@ Implementation shape (one pattern, many providers):
 
 ---
 
-## 2. Dash link for Autonomous Buddy (Mac)
+## 2. Dash link for Kestrel Buddy
 
-The Overview **Autonomous Buddy (Mac)** card (`BuddyCard.tsx`) can start a pairing code and revoke. It says “Install Autonomous Buddy on your Mac” and **does not link to a build**.
+The Overview **Kestrel Buddy** card (`BuddyCard.tsx`) can start a pairing code and revoke. It says “Download Kestrel Buddy for this computer” and links to GitHub release assets when present.
 
 On Reachy we had to: clone/build Swift, ad-hoc sign, copy to `/Applications`, then pair with a code that also required an **admin bearer** (`POST /api/buddy/pair/start`). That is the manual loop to kill.
 

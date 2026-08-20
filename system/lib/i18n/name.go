@@ -23,16 +23,17 @@ var (
 
 // SetDeviceName sets the name used to fill {name}/{Name} across i18n strings and
 // rebuilds the chitchat wake-word strip list. Call at startup (device_type) and
-// on agent rename (IDENTITY.md name). "" is ignored.
+// on agent rename (IDENTITY.md name). "" is ignored. Display casing is kept as
+// the owner typed it; matchers still use the lowercase form.
 func SetDeviceName(name string) {
-	n := strings.ToLower(strings.TrimSpace(name))
-	if n == "" {
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
 		return
 	}
-	disp := strings.ToUpper(n[:1]) + n[1:]
+	n := strings.ToLower(trimmed)
 	deviceNameMu.Lock()
 	deviceNameLower = n
-	deviceNameDisplay = disp
+	deviceNameDisplay = trimmed
 	deviceNameMu.Unlock()
 	SetChitchatWakeWords(BuildChitchatWakeWords(n))
 }
@@ -44,6 +45,14 @@ func DeviceName() string {
 	deviceNameMu.RLock()
 	defer deviceNameMu.RUnlock()
 	return deviceNameLower
+}
+
+// DeviceDisplayName returns the owner-facing name with the casing they set.
+// Empty until SetDeviceName has been called.
+func DeviceDisplayName() string {
+	deviceNameMu.RLock()
+	defer deviceNameMu.RUnlock()
+	return deviceNameDisplay
 }
 
 // applyName fills {Name}/{name} placeholders with the current device name. Safe

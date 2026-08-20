@@ -11,6 +11,8 @@ import { useEffect, useState } from "react";
 // declares none) → fail-open: show everything.
 export function useCapabilities() {
   const [caps, setCaps] = useState<Set<string> | null>(null);
+  const [deviceType, setDeviceType] = useState("");
+  const [loaded, setLoaded] = useState(false);
   useEffect(() => {
     fetch("/api/system/info")
       .then((r) => r.json())
@@ -18,10 +20,13 @@ export function useCapabilities() {
         if (r.status === 1 && r.data?.capabilities) {
           setCaps(new Set<string>(r.data.capabilities));
         }
+        const dt = r.data?.deviceType || r.data?.device_type;
+        if (typeof dt === "string") setDeviceType(dt);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLoaded(true));
   }, []);
   // null caps (not yet loaded / none declared) → fail-open.
   const hasCap = (c: string): boolean => !caps || caps.has(c);
-  return { caps, hasCap };
+  return { caps, hasCap, deviceType, loaded };
 }

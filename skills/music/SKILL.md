@@ -5,7 +5,7 @@ description: Play and stop music from YouTube through the device's speaker on us
 
 # Music
 
-Play music through the device's speaker by searching YouTube. Use this when the user asks to play, sing, or listen to music.
+Play music through the device's speaker by searching YouTube. Use this when the user asks to play, sing, or listen to music. Spotify on a paired Mac is the **spotify** skill — do not send Spotify through this speaker.
 
 ## Workflow
 

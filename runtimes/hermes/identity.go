@@ -118,7 +118,7 @@ func (s *HermesService) WatchIdentity(ctx context.Context) {
 			continue
 		}
 		lastName = name
-		words := i18n.BuildVoiceWakeWords(name)
+		words := i18n.VoiceWakeWordsForName(name)
 		slog.Info("agent renamed, updating wake words", "component", "hermes", "name", name, "words", words)
 		hal.SetVoiceConfig(words)
 		i18n.SetDeviceName(name) // {name}/{Name} + chitchat strip follow the agent name too

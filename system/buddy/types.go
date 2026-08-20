@@ -1,5 +1,5 @@
-// Package buddy implements the device-side coordinator for the Autonomous Buddy macOS
-// companion app. It owns:
+// Package buddy implements the device-side coordinator for Kestrel Buddy
+// (Mac menu bar, Windows/Linux desktop). It owns:
 //   - pairing flow (6-digit code → long-lived token)
 //   - persistent pairing record (config/buddies.json)
 //   - WebSocket gateway to the connected buddy

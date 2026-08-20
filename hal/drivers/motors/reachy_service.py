@@ -28,6 +28,7 @@ import logging
 import math
 import os
 import threading
+import time
 from typing import Any, Dict, List, Optional, Set
 
 import numpy as np
@@ -115,6 +116,23 @@ _MOVE_MAP: Dict[str, str] = {
 
 _MIN_MOVE_DURATION_S = 0.1
 
+# Pollen SDK sleep pose for the antenna ears (radians, [right, left]).
+# INIT is only ±10° (vertical). Sleep is ±3.05 rad (~±175°) — fully folded
+# down/back so they are out of the camera and the desk. Copied from
+# reachy_mini.SLEEP_ANTENNAS_JOINT_POSITIONS so we can park without calling
+# SDK goto_sleep(), which first raises the ears to INIT if the head is far
+# from home and can abort on play_sound when media_backend is no_media.
+_SLEEP_ANTENNAS_RAD = (-3.05, 3.05)
+_SLEEP_POSE_DURATION_S = 2.0
+_SLEEP_ANTENNA_DURATION_S = 1.2
+_SLEEP_SETTLE_S = 0.2
+
+# SDK wake_up() goes to INIT in a fixed 2s (and plays a sound that throws
+# with media_backend="no_media"). INIT antennas are ±10° vertical; sleep is
+# ±175° folded. That 2s snap is ~82 deg/s — above Reachy's max_speed: 60.
+_INIT_ANTENNAS_RAD = (-0.1745, 0.1745)
+_WAKE_GOTO_S = 2.0
+
 # Seconds the daemon takes to interpolate into a move's first pose
 # (play_move(initial_goto_duration=...)). The SDK default is 0.0: it jumps
 # there as fast as the controller allows, which is the snap you feel when one
@@ -124,6 +142,11 @@ _MIN_MOVE_DURATION_S = 0.1
 # head has a long way to travel. Tuned by feel on a Wireless unit — 0.5s still
 # read as a flick when one emotion cut another mid-pose.
 _PLAY_RAMP_S = float(os.environ.get("HAL_REACHY_PLAY_RAMP_S", "0.8"))
+
+# RecordedMove.evaluate is defined on [0, duration). HF emotion clips start at
+# t=0 so duration == timestamps[-1]; evaluating t == duration raises. The
+# Pollen player stops at duration - 1e-2; the speed-gate sampler must too.
+_MOVE_EVAL_EPS_S = 1e-2
 
 # The SDK client holds one long-lived connection to the daemon. Anything that
 # restarts the daemon — an OS reboot, `systemctl restart reachy-mini-daemon`, an
@@ -142,6 +165,45 @@ _RECONNECT_MARKERS = (
 
 def _is_disconnect(err: Exception) -> bool:
     return any(m in str(err).lower() for m in _RECONNECT_MARKERS)
+
+
+def _move_duration_of(move: Any) -> float:
+    duration = getattr(move, "duration", None)
+    if callable(duration):
+        duration = duration()
+    try:
+        return float(duration or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _eval_t_inside(duration: float, t: float) -> float:
+    """Clamp t into RecordedMove.evaluate's half-open [0, duration)."""
+    if duration <= 0:
+        return 0.0
+    last = duration - _MOVE_EVAL_EPS_S
+    if last <= 0:
+        last = duration * 0.99
+    return min(max(float(t), 0.0), last)
+
+
+class _TimeScaledMove:
+    """Same recorded pose path, played slower. Forwards unknown attrs."""
+
+    def __init__(self, inner: Any, scale: float):
+        self._inner = inner
+        self._scale = float(scale)
+
+    @property
+    def duration(self) -> float:
+        return _move_duration_of(self._inner) * self._scale
+
+    def evaluate(self, t: float):
+        inner_dur = _move_duration_of(self._inner)
+        return self._inner.evaluate(_eval_t_inside(inner_dur, float(t) / self._scale))
+
+    def __getattr__(self, name: str):
+        return getattr(self._inner, name)
 
 
 def _joints_from_sdk(head_pose: Any, antennas: Any, body_yaw_rad: Any) -> Dict[str, float]:
@@ -223,9 +285,9 @@ class ReachyMotionService:
             )
             self._enable_motors()
             try:
-                self._mini.wake_up()
+                self._goto_awake_pose(self._mini)
             except Exception as e:
-                logger.warning("[reachy] wake_up failed (continuing): %s", e)
+                logger.warning("[reachy] wake pose failed (continuing): %s", e)
         logger.info(
             "[reachy] connected to daemon at %s:%s (play ramp %.2fs%s)",
             self._host, self._port, _PLAY_RAMP_S,
@@ -272,9 +334,9 @@ class ReachyMotionService:
             if self._mini is None:
                 return
             try:
-                self._mini.goto_sleep()
+                self._park_sleep(self._mini)
             except Exception as e:
-                logger.warning("[reachy] goto_sleep on stop failed: %s", e)
+                logger.warning("[reachy] sleep pose on stop failed: %s", e)
             # ReachyMini has no public close(); cleanup mirrors its __exit__.
             try:
                 self._mini.client.disconnect()
@@ -512,9 +574,19 @@ class ReachyMotionService:
         with self._lock:
             mini = self._require_mini()
             try:
-                mini.goto_sleep()
+                mini.enable_motors()
+            except Exception as e:
+                errors["enable"] = str(e)
+            try:
+                self._park_sleep(mini)
             except Exception as e:
                 errors["sleep"] = str(e)
+                try:
+                    self._fold_sleep_antennas(mini)
+                except Exception as e2:
+                    errors["antennas"] = str(e2)
+            if _SLEEP_SETTLE_S > 0:
+                time.sleep(_SLEEP_SETTLE_S)
             try:
                 mini.disable_motors()
             except Exception as e:
@@ -527,6 +599,7 @@ class ReachyMotionService:
         self._zero_mode = False
         self._hold_mode = False
         self._hold_explicit = False
+        self._take_servo()
         with self._lock:
             mini = self._require_mini()
             try:
@@ -534,9 +607,9 @@ class ReachyMotionService:
             except Exception as e:
                 logger.warning("[reachy] enable_motors failed: %s", e)
             try:
-                mini.wake_up()
+                self._goto_awake_pose(mini)
             except Exception as e:
-                logger.warning("[reachy] wake_up failed: %s", e)
+                logger.warning("[reachy] wake pose failed: %s", e)
         self._released = False
 
     def hold(self, explicit: bool = False) -> None:
@@ -667,6 +740,105 @@ class ReachyMotionService:
         body_yaw = math.radians(positions[_BODY_KEY])
         return head, antennas, body_yaw
 
+    def _fold_sleep_antennas(self, mini: ReachyMini, duration: float = _SLEEP_ANTENNA_DURATION_S) -> None:
+        """Fold both ears fully down. Caller holds _lock.
+
+        body_yaw=None keeps the current yaw — this is the antenna guarantee,
+        not a full-body park.
+        """
+        mini.goto_target(
+            antennas=list(_SLEEP_ANTENNAS_RAD),
+            duration=duration,
+            body_yaw=None,
+        )
+
+    def _goto_sleep_pose(self, mini: ReachyMini) -> None:
+        """Park the head and fold the antennae. Caller holds _lock.
+
+        Does not use SDK ``goto_sleep()``: that path first raises the ears to
+        INIT when the head is far from home, then can throw on ``play_sound``
+        (this driver uses ``media_backend="no_media"``) and skip the sleep
+        pose entirely — leaving the ears sticking up when torque is cut.
+        """
+        try:
+            from reachy_mini.reachy_mini import SLEEP_ANTENNAS_JOINT_POSITIONS, SLEEP_HEAD_POSE
+            head = SLEEP_HEAD_POSE
+            antennas = list(SLEEP_ANTENNAS_JOINT_POSITIONS)
+        except Exception:
+            head = None
+            antennas = list(_SLEEP_ANTENNAS_RAD)
+        if head is not None:
+            mini.goto_target(head=head, antennas=antennas, duration=_SLEEP_POSE_DURATION_S)
+        else:
+            self._fold_sleep_antennas(mini, duration=_SLEEP_POSE_DURATION_S)
+
+    def _park_sleep(self, mini: ReachyMini) -> None:
+        """Tuck the head and always finish with the ears folded down.
+
+        Caller holds _lock. The last command is antenna-only so a head-pose
+        failure cannot leave the ears up.
+        """
+        logger.info("[reachy] parking sleep pose — folding antennas down")
+        try:
+            self._goto_sleep_pose(mini)
+        except Exception as e:
+            logger.warning("[reachy] sleep head pose failed: %s", e)
+        self._fold_sleep_antennas(mini)
+
+    def _awake_targets(self):
+        """INIT head + antennas (SDK wake pose) as (head 4x4, antennas rad, HAL joints)."""
+        try:
+            from reachy_mini.reachy_mini import INIT_ANTENNAS_JOINT_POSITIONS, INIT_HEAD_POSE
+            head = INIT_HEAD_POSE
+            antennas = list(INIT_ANTENNAS_JOINT_POSITIONS)
+        except Exception:
+            head = np.eye(4)
+            antennas = list(_INIT_ANTENNAS_RAD)
+        joints = _joints_from_sdk(head, antennas, 0.0)
+        return head, antennas, joints
+
+    def _live_positions_locked(self, mini: ReachyMini) -> Optional[Dict[str, float]]:
+        """Hardware pose, or None. Never falls back to `_target` (stale after sleep)."""
+        try:
+            pose = mini.get_current_head_pose()
+            head_joints, ant = mini.get_current_joint_positions()
+            return _joints_from_sdk(pose, ant, head_joints[0])
+        except Exception as e:
+            logger.warning("[reachy] live pose unreadable for wake gate: %s", e)
+            return None
+
+    def _wake_duration(
+        self, current: Optional[Dict[str, float]], target: Dict[str, float]
+    ) -> float:
+        """Seconds for INIT. Unknown start uses sleep-fold→INIT, not the 2s snap."""
+        from hal.safety.policy import min_move_duration
+
+        if current:
+            return min_move_duration(
+                self._safety_policy, target, current, _WAKE_GOTO_S
+            )
+        sleep_joints = _joints_from_sdk(np.eye(4), list(_SLEEP_ANTENNAS_RAD), 0.0)
+        return min_move_duration(
+            self._safety_policy, target, sleep_joints, _WAKE_GOTO_S
+        )
+
+    def _goto_awake_pose(self, mini: ReachyMini) -> None:
+        """Stand the head/ears up, duration-stretched to motion.max_speed.
+
+        Caller holds `_lock`. Does not use SDK ``wake_up()``: that path is a
+        fixed 2s goto plus ``play_sound``, which throws with
+        ``media_backend="no_media"`` and can leave a folded body snapping
+        toward INIT in whatever time the daemon already started.
+        """
+        head, antennas, target = self._awake_targets()
+        current = self._live_positions_locked(mini)
+        duration = self._wake_duration(current, target)
+        logger.info("[reachy] waking to INIT over %.2fs", duration)
+        mini.goto_target(
+            head=head, antennas=list(antennas), body_yaw=0.0, duration=duration
+        )
+        self._target = dict(target)
+
     def _goto(self, positions: Dict[str, float], duration: float) -> None:
         head, antennas, body_yaw = self._compose(positions)
         self._call(
@@ -773,6 +945,50 @@ class ReachyMotionService:
             logger.debug("[reachy] ramp estimate failed (%s) — using %.2fs", e, _PLAY_RAMP_S)
             return _PLAY_RAMP_S
 
+    def _move_duration(self, move: Any) -> float:
+        return _move_duration_of(move)
+
+    def _sample_move_frames(self, move: Any):
+        """HAL-joint samples of a recorded move, plus the authored step dt.
+
+        Last sample is strictly inside [0, duration) — RecordedMove.evaluate
+        raises at t >= duration (HF clips start at 0, so duration is the last
+        timestamp). The Pollen player uses duration-1e-2; we do too.
+        """
+        requested = self._move_duration(move)
+        if requested <= 0:
+            head, antennas, body_yaw = move.evaluate(0.0)
+            return [_joints_from_sdk(head, antennas, body_yaw)], 0.0
+        end = _eval_t_inside(requested, requested)
+        n = max(2, min(80, int(requested * 25) + 1))
+        dt = end / (n - 1)
+        frames = []
+        for i in range(n):
+            head, antennas, body_yaw = move.evaluate(dt * i)
+            frames.append(_joints_from_sdk(head, antennas, body_yaw))
+        return frames, dt
+
+    def _stretch_move(self, move: Any) -> Any:
+        """Slow a recorded trajectory so peak deg/s respects motion.max_speed.
+
+        Same gate as aim/nudge (`playback_time_scale` / `min_move_duration`):
+        the path is unchanged, only time stretches. No policy → pass-through.
+        Sampling/scale errors propagate — swallowing them used to play the
+        unsanitized move (fail-open).
+        """
+        if self._safety_policy is None:
+            return move
+        from hal.safety.policy import playback_time_scale
+
+        frames, dt = self._sample_move_frames(move)
+        scale = playback_time_scale(self._safety_policy, frames, dt)
+        if scale <= 1.0 + 1e-9:
+            return move
+        logger.info(
+            "[reachy] recorded playback x%.2f to respect motion.max_speed", scale
+        )
+        return _TimeScaledMove(move, scale)
+
     def _play_move_once(self, move: Any, name: str, gen: int) -> bool:
         """Play one pass of a recorded move (blocking). False if superseded.
 
@@ -794,8 +1010,10 @@ class ReachyMotionService:
             self._current_recording = name
             with self._lock:
                 mini = self._require_mini()
-            # Read the ramp before the move starts — it compares frame 0 with
-            # the pose the head is actually sitting at right now.
+            # Stretch the recording itself (intra-move deg/s), then ramp into
+            # frame 0 from wherever the head is now. Recovery paths never enter
+            # here — they call halt/release/zero/goto_target, not play_move.
+            move = self._stretch_move(move)
             ramp = self._ramp_for(move)
             # play_move blocks for the move duration — keep it out of _lock so
             # state reads stay responsive; SDK serializes via the daemon.
@@ -823,6 +1041,31 @@ class ReachyMotionService:
         # after a hold, with nothing but a debug line to explain it.
         if self._released:
             logger.info("[reachy] play '%s' refused — servos released", name)
+            return
+        # tired1 can lift the ears. Sleep must fold them down, so we park
+        # instead of playing the HF move. release() parks again then cuts torque.
+        if name == P.SERVO_SLEEPY:
+            logger.info("[reachy] sleepy — folding antennas down (skip %s)", _MOVE_MAP.get(name, "tired1"))
+            with self._lock:
+                self._play_gen += 1
+                gen = self._play_gen
+            if self._play_thread and self._play_thread.is_alive():
+                self._cancel_move()
+
+            def _park():
+                with self._lock:
+                    if gen != self._play_gen or self._mini is None:
+                        return
+                    try:
+                        self._park_sleep(self._mini)
+                    except Exception as e:
+                        logger.warning("[reachy] sleepy park failed: %s", e)
+
+            self._current_recording = name
+            self._play_thread = threading.Thread(
+                target=_park, daemon=True, name="reachy-sleep"
+            )
+            self._play_thread.start()
             return
         with self._lock:
             self._play_gen += 1

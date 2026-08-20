@@ -207,12 +207,14 @@ func (h *AgentHandler) fireHWCall(c hwCall, flowRunID string, client *http.Clien
 	//   /mood/log              → POST :5000/api/mood/log (signal + decision share endpoint, kind in body)
 	//   /music-suggestion/log  → POST :5000/api/music-suggestion/log
 	//   /posture/log           → POST :5000/api/posture/log (nudge/praise/recap rows)
+	//   /behaviors/remember    → POST :5000/api/behaviors/remember
 	postURL := hal.BaseURL + c.path
 	if strings.HasPrefix(c.path, "/wellbeing/") ||
 		strings.HasPrefix(c.path, "/mood/") ||
 		strings.HasPrefix(c.path, "/music-suggestion/") ||
 		strings.HasPrefix(c.path, "/posture/") ||
-		strings.HasPrefix(c.path, "/buddy/") {
+		strings.HasPrefix(c.path, "/buddy/") ||
+		strings.HasPrefix(c.path, "/behaviors/") {
 		postURL = "http://127.0.0.1:5000/api" + c.path
 	}
 	isBuddy := strings.HasPrefix(c.path, "/buddy/")

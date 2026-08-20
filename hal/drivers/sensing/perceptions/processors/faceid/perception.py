@@ -32,9 +32,11 @@ from hal.drivers.sensing.presence_service import PresenseService
 
 from ..base import Perception
 from .constants import (
+    STRANGER_ID_RE,
     _STRANGER_SNAPSHOTS_DIR,
     _STRANGER_STATS_FILE,
     USERS_DIR,
+    latest_stranger_snapshot,
 )
 from .recognizer import FaceRecognizer
 
@@ -781,6 +783,51 @@ class FacePerception(Perception[cv2.typing.MatLike]):
         """Return visit counts for all tracked stranger IDs."""
         with self._state_lock:
             return self._stranger_visit_counts
+
+    def latest_stranger_snapshot(self, stranger_id: str) -> Path | None:
+        """Newest on-disk JPEG for this stranger, if HAL saved one."""
+        return latest_stranger_snapshot(_STRANGER_SNAPSHOTS_DIR, stranger_id)
+
+    def forget_stranger(self, stranger_id: str) -> bool:
+        """Drop visit stats, snapshots, and the stranger-bank row for this id."""
+        if not STRANGER_ID_RE.match(stranger_id):
+            return False
+        found = False
+        with self._state_lock:
+            if stranger_id in self._stranger_visit_counts:
+                del self._stranger_visit_counts[stranger_id]
+                found = True
+            self._people_data_dict.pop(stranger_id, None)
+            if found:
+                self._save_stranger_stats()
+        if _STRANGER_SNAPSHOTS_DIR.is_dir():
+            for path in _STRANGER_SNAPSHOTS_DIR.glob(f"{stranger_id}_*.jpg"):
+                try:
+                    path.unlink()
+                    found = True
+                except OSError as e:
+                    logger.warning("[face] failed to remove snapshot %s: %s", path, e)
+        if self._face_recognizer.drop_stranger_person(stranger_id):
+            found = True
+        return found
+
+    def claim_stranger(self, stranger_id: str, label: str) -> str:
+        """Enroll this stranger as ``label`` from the saved snapshot, then forget them.
+
+        Raises ``ValueError`` for a reserved/empty name, ``FileNotFoundError``
+        when HAL never saved a still of this face.
+        """
+        if not STRANGER_ID_RE.match(stranger_id):
+            raise ValueError("invalid unknown-face id")
+        norm = self.normalize_label(label)
+        if not norm or norm == "unknown":
+            raise ValueError("pick a real name")
+        snap = self.latest_stranger_snapshot(stranger_id)
+        if snap is None:
+            raise FileNotFoundError("no photo of this face yet — look at the camera")
+        path = self.enroll_from_bytes(snap.read_bytes(), norm)
+        self.forget_stranger(stranger_id)
+        return path
 
     def has_friend_present(self) -> bool:
         """Return True if any friend was seen within the forget interval."""

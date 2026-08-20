@@ -7,7 +7,7 @@ import { C } from "@/components/setup/shared";
 export function SourceFooter() {
   return (
     <a
-      href="https://github.com/autonomous-ai/autonomous-os"
+      href="https://github.com/K95M65/kestrel"
       target="_blank"
       rel="noopener noreferrer"
       style={{
@@ -19,9 +19,9 @@ export function SourceFooter() {
         pointerEvents: "auto", zIndex: 1,
         fontFamily: "ui-monospace, monospace",
       }}
-      title="Source code (GPL v3)"
+      title="Kestrel source (fork of Autonomous OS)"
     >
-      ⌥ github.com/autonomous-ai/autonomous-os
+      ⌥ github.com/K95M65/kestrel
     </a>
   );
 }

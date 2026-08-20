@@ -26,7 +26,7 @@ func githubRepo() string {
 	return "K95M65/kestrel"
 }
 
-// CompanionApps is the onboarding catalog (Buddy Mac today).
+// CompanionApps is the onboarding catalog (Buddy on Mac, Windows, and Linux).
 func CompanionApps() []CompanionApp {
 	repo := githubRepo()
 	base := "https://github.com/" + repo
@@ -49,15 +49,39 @@ func CompanionApps() []CompanionApp {
 	return []CompanionApp{
 		{
 			ID:          "autonomous-buddy",
-			Name:        "Autonomous Buddy",
+			Name:        "Kestrel Buddy",
 			Platform:    "macOS 13+",
-			Version:     "0.0.18",
+			Version:     "0.1.0",
 			Summary:     "Lets the robot open apps, type, click, and screenshot on your Mac.",
 			Hint:        "Install, allow Accessibility (and Screen Recording for screenshots), then pair with the code from this dash.",
 			Kind:        "buddy",
 			DownloadURL: base + "/releases/latest",
 			DirectURL:   base + "/releases/latest/download/AutonomousBuddy.zip",
 			SourceURL:   base + "/tree/main/integrations/companions/autonomous-buddy",
+		},
+		{
+			ID:          "autonomous-buddy-windows",
+			Name:        "Kestrel Buddy",
+			Platform:    "Windows 10+",
+			Version:     "0.1.0",
+			Summary:     "Same pairing as Mac. Opens sites and apps on this PC.",
+			Hint:        "Run the desktop binary, pair with the code from this dash. Click and screenshot still need the Mac app.",
+			Kind:        "buddy",
+			DownloadURL: base + "/releases/latest",
+			DirectURL:   base + "/releases/latest/download/autonomous-buddy.exe",
+			SourceURL:   base + "/tree/main/integrations/companions/autonomous-buddy/desktop",
+		},
+		{
+			ID:          "autonomous-buddy-linux",
+			Name:        "Kestrel Buddy",
+			Platform:    "Linux",
+			Version:     "0.1.0",
+			Summary:     "Same pairing as Mac. Opens sites and apps on this computer.",
+			Hint:        "Run the desktop binary. Typing needs xdotool (X11) or ydotool (Wayland).",
+			Kind:        "buddy",
+			DownloadURL: base + "/releases/latest",
+			DirectURL:   base + "/releases/latest/download/autonomous-buddy-linux",
+			SourceURL:   base + "/tree/main/integrations/companions/autonomous-buddy/desktop",
 		},
 		robot("dance", "Dance",
 			"Groove with happy/excited moves. Optional music via DANCE_MUSIC.",

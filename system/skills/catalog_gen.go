@@ -10,6 +10,7 @@ import "go.autonomous.ai/os/system/device"
 var Catalog = []string{
 	"asl-teacher",
 	"audio",
+	"body-play",
 	"camera",
 	"cameraman",
 	"claude-buddy",
@@ -19,13 +20,21 @@ var Catalog = []string{
 	"display",
 	"emotion",
 	"face-enroll",
+	"focus-coach",
+	"greeter",
 	"guard",
 	"habit",
+	"home-assistant",
 	"input-branching",
+	"kitchen",
 	"led-control",
 	"mood",
+	"morning-brief",
 	"music",
 	"music-suggestion",
+	"news",
+	"pomodoro",
+	"remember",
 	"scene",
 	"sensing",
 	"sensing-track",
@@ -33,8 +42,11 @@ var Catalog = []string{
 	"servo-tracking",
 	"skill-creator",
 	"speaker-recognizer",
+	"spotify",
+	"stories",
 	"user-emotion-detection",
 	"voice",
+	"weather",
 	"wellbeing",
 }
 
@@ -44,6 +56,7 @@ var Catalog = []string{
 var Capability = map[string][]string{
 	"asl-teacher": {device.CapMotion, device.CapAudio},
 	"audio":       {device.CapAudio},
+	"body-play":   {device.CapMotion},
 	"camera":      {device.CapVision},
 	"cameraman":   {device.CapMotion, device.CapVision},
 	// Needs a mic and speaker to ask out loud; harmless on audio devices with no
@@ -56,11 +69,15 @@ var Capability = map[string][]string{
 	// Camera people-perception: the ML people-layer over the camera, not the raw
 	// vision sensor — a camera that only streams must not load it.
 	"face-enroll": {device.CapPresence},
+	"focus-coach": {device.CapVision},
+	"greeter":     {device.CapPresence},
 	// Camera people-perception: the ML people-layer over the camera, not the raw
 	// vision sensor.
 	"guard":          {device.CapPresence},
 	"led-control":    {device.CapLight},
 	"music":          {device.CapMedia},
+	"news":           {device.CapAudio},
+	"pomodoro":       {device.CapAudio},
 	"scene":          {device.CapLight},
 	"sensing":        {device.CapSensing},
 	"sensing-track":  {device.CapSensing},
@@ -69,8 +86,11 @@ var Capability = map[string][]string{
 	// Voice people-perception: a mic is all speaker-ID needs — no camera, no
 	// presence layer.
 	"speaker-recognizer": {device.CapAudio},
+	"spotify":            {device.CapCompanion},
+	"stories":            {device.CapAudio},
 	// One skill, two triggers: facial emotion (camera, gated on presence) and
 	// speech emotion (mic, gated on audio). Loads when the device has either.
 	"user-emotion-detection": {device.CapAudio, device.CapPresence},
 	"voice":                  {device.CapAudio},
+	"weather":                {device.CapAudio},
 }

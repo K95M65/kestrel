@@ -106,7 +106,8 @@ Any phrase meaning "stop looking" or "camera off" MUST trigger `[HW:/camera/disa
 | User says | Action |
 |-----------|--------|
 | "don't look" / "stop looking" / "stop watching" / "privacy mode" / "camera off" / "don't watch me" / "give me privacy" / "stop staring" | `[HW:/camera/disable:{}]` — MUST call |
-| "look at me" / "camera on" / "you can look now" / "start watching" / "look at this" | `[HW:/camera/enable:{}]` — MUST call |
+| "look at me" / "camera on" / "you can look now" / "start watching" | `[HW:/camera/enable:{}]` — MUST call |
+| "look at this" / "what's that" / "what do you see" | **snapshot**, not a live stream — see Look-at-this below |
 
 ### Examples
 
@@ -140,6 +141,8 @@ Any phrase meaning "stop looking" or "camera off" MUST trigger `[HW:/camera/disa
 - **Prefer `/camera/snapshot`** over `/camera/stream` — simpler and sufficient for most tasks.
 - When describing what you see, be specific and helpful.
 - If camera is unavailable, inform the user clearly and move on.
+- **Look-at-this / household camera.** If `[behaviors] look` is true (default) and they hold something up or ask "what's that" / "look at this": one snapshot (`?save=true&width=768&quality=75`), describe it, done. If `camera_on_demand` is true, do **not** leave the stream running and do **not** `[HW:/camera/enable]` unless they asked for the camera to stay on. Snapshot auto-enables for the frame. Kids: one snapshot is OK; then camera stays off.
+- `face_follow_after_wake` true → do not start `/servo/track` on a stranger presence; only after a wake / named friend greeting.
 
 ## Output Template
 

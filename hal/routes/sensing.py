@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import Response
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 import hal.app_state as state
@@ -489,6 +489,49 @@ def face_stranger_stats():
     """Return visit counts for all tracked stranger IDs."""
     fr = _require_face_recognizer()
     return fr.stranger_stats()
+
+
+@router.get("/face/stranger-photo/{stranger_id}", tags=["Face"])
+def face_stranger_photo(stranger_id: str):
+    """Serve the newest still HAL saved for this unknown face."""
+    fr = _require_face_recognizer()
+    path = fr.latest_stranger_snapshot(stranger_id)
+    if path is None:
+        raise HTTPException(404, "no snapshot")
+    return FileResponse(path, media_type="image/jpeg")
+
+
+class FaceStrangerClaimRequest(BaseModel):
+    stranger_id: str = Field(min_length=1, max_length=32)
+    label: str = Field(min_length=1, max_length=64)
+
+
+@router.post("/face/stranger/claim", response_model=FaceEnrollResponse, tags=["Face"])
+def face_stranger_claim(req: FaceStrangerClaimRequest):
+    """Turn an unknown face into a named person using the saved snapshot."""
+    fr = _require_face_recognizer()
+    try:
+        path = fr.claim_stranger(req.stranger_id, req.label)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+    norm = fr.normalize_label(req.label)
+    return FaceEnrollResponse(
+        status="ok",
+        label=norm,
+        photo_path=path,
+        enrolled_count=fr.enrolled_count(),
+    )
+
+
+@router.delete("/face/stranger/{stranger_id}", tags=["Face"])
+def face_stranger_forget(stranger_id: str):
+    """Forget an unknown face (stats + snapshot) without naming them."""
+    fr = _require_face_recognizer()
+    if not fr.forget_stranger(stranger_id):
+        raise HTTPException(404, "unknown face not found")
+    return {"status": "ok"}
 
 
 @router.get("/face/cooldowns", tags=["Face"])

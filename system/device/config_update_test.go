@@ -226,17 +226,21 @@ func TestApplyWakeWord(t *testing.T) {
 
 func TestGetPublicConfigReturnsEffectiveWakePhrases(t *testing.T) {
 	i18n.SetDeviceName("Luna")
-	t.Cleanup(func() { i18n.SetDeviceName("autonomous") })
+	i18n.SetExclusiveWakeWords(nil)
+	t.Cleanup(func() {
+		i18n.SetDeviceName("autonomous")
+		i18n.SetExclusiveWakeWords(nil)
+	})
 
 	s := &Service{config: &config.Config{DeviceType: "lamp"}}
 	cfg := s.GetPublicConfig()
-	if cfg.AgentName != "luna" {
-		t.Fatalf("AgentName = %q, want luna", cfg.AgentName)
+	if cfg.AgentName != "Luna" {
+		t.Fatalf("AgentName = %q, want Luna", cfg.AgentName)
 	}
-	if len(cfg.WakePhrases) != 21 {
-		t.Fatalf("WakePhrases = %v, want 21 phrases", cfg.WakePhrases)
+	if len(cfg.WakePhrases) != 7 {
+		t.Fatalf("WakePhrases = %v, want 7 name-family phrases", cfg.WakePhrases)
 	}
-	for _, phrase := range []string{"hey autonomous", "hey lamp", "hey luna"} {
+	for _, phrase := range []string{"hey luna", "wake up luna", "hello luna"} {
 		found := false
 		for _, got := range cfg.WakePhrases {
 			if got == phrase {
@@ -247,5 +251,29 @@ func TestGetPublicConfigReturnsEffectiveWakePhrases(t *testing.T) {
 		if !found {
 			t.Fatalf("WakePhrases = %v, missing %q", cfg.WakePhrases, phrase)
 		}
+	}
+	for _, leaked := range []string{"hey autonomous", "hey lamp"} {
+		for _, got := range cfg.WakePhrases {
+			if got == leaked {
+				t.Fatalf("WakePhrases leaked permanent alias %q: %v", leaked, cfg.WakePhrases)
+			}
+		}
+	}
+	if cfg.WakePhrase != "" {
+		t.Fatalf("WakePhrase = %q, want empty generated", cfg.WakePhrase)
+	}
+}
+
+func TestGetPublicConfigExclusiveWakePhrase(t *testing.T) {
+	i18n.SetDeviceName("Buddy")
+	t.Cleanup(func() { i18n.SetDeviceName("autonomous") })
+
+	s := &Service{config: &config.Config{DeviceType: "lamp", WakeWords: []string{"computer"}}}
+	cfg := s.GetPublicConfig()
+	if cfg.WakePhrase != "computer" {
+		t.Fatalf("WakePhrase = %q, want computer", cfg.WakePhrase)
+	}
+	if len(cfg.WakePhrases) != 1 || cfg.WakePhrases[0] != "computer" {
+		t.Fatalf("WakePhrases = %v, want [computer]", cfg.WakePhrases)
 	}
 }

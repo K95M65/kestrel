@@ -1,11 +1,11 @@
-# Autonomous Buddy MVP — Implementation Plan
+# Kestrel Buddy MVP — Implementation Plan
 
 > **Status:** Ready to execute
 > **Last updated:** 2026-05-21
 > **Design doc:** [autonomous-buddy.md](./autonomous-buddy.md)
 > **Target completion:** ~2 weeks (single dev)
 
-This is the actionable plan for **MVP of Autonomous Buddy** — the macOS companion app that lets the device control the user's computer via voice. Full design rationale in [autonomous-buddy.md](./autonomous-buddy.md). This doc lists *what to build, in what order, with acceptance criteria*.
+This is the actionable plan for **MVP of Kestrel Buddy** — the companion app that lets the device control the user's computer via voice. Full design rationale in [autonomous-buddy.md](./autonomous-buddy.md). This doc lists *what to build, in what order, with acceptance criteria*.
 
 ---
 
@@ -55,7 +55,7 @@ Each phase is independently shippable and reviewable.
 - `autonomous-buddy/macos/Sources/AutonomousBuddy/MenuBarController.swift`
 - `autonomous-buddy/.gitignore`
 
-**Acceptance:** `cd autonomous-buddy/macos && swift run` shows a status bar icon. Menu has "About Autonomous Buddy", "Quit". No crash. Process activation policy is `.accessory` (no Dock icon).
+**Acceptance:** `cd autonomous-buddy/macos && swift run` shows a status bar icon. Menu has "About Kestrel Buddy", "Quit". No crash. Process activation policy is `.accessory` (no Dock icon).
 
 ### Phase 1B — Lamp discovery (mDNS)
 

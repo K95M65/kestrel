@@ -1209,6 +1209,47 @@ type SleepStatus struct {
 	NextTransitionKind string        `json:"next_transition_kind,omitempty"`
 }
 
+// BehaviorsStatus is GET /api/device/behaviors.
+type BehaviorsStatus struct {
+	Config      any            `json:"config"`
+	HATokenSet  bool           `json:"ha_token_set"`
+	Meeting     bool           `json:"meeting"`
+	LastBrief   string         `json:"last_brief,omitempty"`
+	NextBrief   string         `json:"next_brief,omitempty"`
+	MemoryCount int            `json:"memory_count"`
+	Pomodoro    PomodoroStatus `json:"pomodoro"`
+}
+
+// PomodoroStatus is the live timer (not persisted).
+type PomodoroStatus struct {
+	Running   bool   `json:"running"`
+	Phase     string `json:"phase,omitempty"` // work | break
+	EndsAt    string `json:"ends_at,omitempty"`
+	RemainSec int    `json:"remain_sec,omitempty"`
+}
+
+// MemoryItem is one inbox note from "remember this".
+type MemoryItem struct {
+	ID        string `json:"id"`
+	Text      string `json:"text"`
+	CreatedAt string `json:"created_at"`
+}
+
+// MemoryAdd is POST /api/behaviors/remember and dashboard POST.
+type MemoryAdd struct {
+	Text string `json:"text"`
+}
+
+// MeetingSet is POST /api/device/behaviors/meeting.
+type MeetingSet struct {
+	On bool `json:"on"`
+}
+
+// MeSet is PUT /api/device/me. Empty label clears Me.
+type MeSet struct {
+	Label string `json:"label"`
+}
+
 // MQTTTimezoneSetAck is published to fd_channel after applying (or failing) a
 // timezone.set downlink. status: "starting" | "success" | "failure". Mirrors
 // MQTTRealtimeSetAck.
@@ -1256,6 +1297,21 @@ type MQTTDeviceRenameData struct {
 	Name string `json:"name"`
 }
 
+// IdentityRequest is PUT /api/device/identity. Name is required. WakePhrase is
+// the optional exclusive spoken phrase; empty means generated "hey {name}" aliases.
+type IdentityRequest struct {
+	Name       string `json:"name"`
+	WakePhrase string `json:"wake_phrase"`
+}
+
+// IdentityPublic is the read-back after a successful identity save.
+type IdentityPublic struct {
+	Name        string   `json:"name"`
+	WakePhrase  string   `json:"wake_phrase"`
+	WakePhrases []string `json:"wake_phrases"`
+	WakeWord    bool     `json:"wakeword"`
+}
+
 // ConfigPublicResponse is returned by GET /api/device/config. Raw secrets
 // (API keys, channel tokens, MQTT/WiFi passwords) are replaced by boolean
 // presence flags so the web UI can render "configured ✓" + a write-only
@@ -1293,6 +1349,7 @@ type ConfigPublicResponse struct {
 	TTSVoice           string   `json:"tts_voice"`
 	WakeWord           bool     `json:"wakeword"`
 	AgentName          string   `json:"agent_name"`
+	WakePhrase         string   `json:"wake_phrase"`
 	WakePhrases        []string `json:"wake_phrases"`
 	DeviceID           string   `json:"device_id"`
 	Mac                string   `json:"mac"`

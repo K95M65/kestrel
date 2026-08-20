@@ -1,6 +1,6 @@
 # Companions
 
-Companions pair a user's computer with an Autonomous device. The pairing runs in
+Companions pair a user's computer with a Kestrel device. The pairing runs in
 both directions:
 
 - **Device as the physical face of the computer** — activity on the computer

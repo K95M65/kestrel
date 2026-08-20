@@ -186,6 +186,46 @@ func BuildSupportedVoiceWakeWords(agentName, deviceType string) []string {
 	return words
 }
 
+// exclusiveWakeWords is the optional custom voice-wake list (config.json
+// wake_words / HAL_WAKE_WORDS). When set, WatchIdentity must push this list
+// instead of generated "hey {name}" aliases, or a rename wipes the owner's phrase.
+var (
+	exclusiveWakeMu    sync.RWMutex
+	exclusiveWakeWords []string
+)
+
+// SetExclusiveWakeWords replaces the custom voice-wake list. Empty/nil clears it
+// so VoiceWakeWordsForName falls back to generated name aliases. Call at
+// startup from config.json and whenever the owner saves a custom phrase.
+func SetExclusiveWakeWords(words []string) {
+	exclusiveWakeMu.Lock()
+	defer exclusiveWakeMu.Unlock()
+	if len(words) == 0 {
+		exclusiveWakeWords = nil
+		return
+	}
+	exclusiveWakeWords = append([]string(nil), words...)
+}
+
+// ExclusiveWakeWords returns a copy of the custom voice-wake list, or nil.
+func ExclusiveWakeWords() []string {
+	exclusiveWakeMu.RLock()
+	defer exclusiveWakeMu.RUnlock()
+	if len(exclusiveWakeWords) == 0 {
+		return nil
+	}
+	return append([]string(nil), exclusiveWakeWords...)
+}
+
+// VoiceWakeWordsForName is what WatchIdentity should push to HAL. A custom
+// exclusive list wins; otherwise the generated "hey {name}" family.
+func VoiceWakeWordsForName(name string) []string {
+	if w := ExclusiveWakeWords(); len(w) > 0 {
+		return w
+	}
+	return BuildVoiceWakeWords(name)
+}
+
 // SetChitchatWakeWords replaces the wake-word strip list. Call once at startup
 // with the device type; safe to call again on agent rename.
 func SetChitchatWakeWords(words []string) {

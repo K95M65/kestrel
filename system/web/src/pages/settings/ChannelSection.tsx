@@ -2,6 +2,7 @@ import { C, LockedField, SectionCard } from "@/components/setup/shared";
 import { SecretUpdateField } from "@/components/SecretUpdateField";
 import type { ChannelType } from "@/types";
 import type { ChannelLoadedState } from "@/hooks/setup/types";
+import { DeviceServicesCard } from "@/pages/settings/guide/DeviceServicesCard";
 
 // Bot tokens now go through SecretUpdateField (write-only) — the server only
 // returns has_* booleans so the previous "show saved token" affordance is
@@ -26,7 +27,7 @@ export function ChannelSection({
   discordUserId: string; setDiscordUserId: (v: string) => void;
 }) {
   return (
-    <SectionCard id="channel" title="Messaging Channels" active={active}>
+    <SectionCard id="channel" title="Channels" active={active} description="Where the robot can message you, and the accounts it reads mail and calendar from.">
       <div style={{ marginBottom: 12 }}>
         <label style={{ display: "block", fontSize: 11, color: C.textDim, marginBottom: 5 }}>Channel</label>
         <select
@@ -34,7 +35,7 @@ export function ChannelSection({
           onChange={(e) => setChannel(e.target.value as ChannelType)}
           style={{
             width: "100%", boxSizing: "border-box" as const,
-            background: C.surface, border: `1px solid ${C.border}`,
+            background: C.card, border: `1px solid ${C.border}`,
             borderRadius: 7, padding: "8px 11px",
             fontSize: 12.5, color: C.text, outline: "none", cursor: "pointer",
           }}
@@ -64,6 +65,7 @@ export function ChannelSection({
           <LockedField lockedInitially={channelLoaded.discordUserId} label="User ID" id="discord_user_id" value={discordUserId} onChange={setDiscordUserId} placeholder="123456789" />
         </>
       )}
+      {active && <DeviceServicesCard />}
     </SectionCard>
   );
 }

@@ -11,7 +11,7 @@ type Theme = "dark" | "light";
  * Monitor, EditConfig) — which were written before next-themes and apply their own
  * `lm-light`/`lm-dark` class to `.lm-root` — switch in lockstep with the rest of the app.
  *
- * Default is DARK (matches defaultTheme="dark" in theme-provider.tsx).
+ * Default is LIGHT (cream canvas; matches defaultTheme="light" in theme-provider.tsx).
  */
 const STORAGE_KEY = "theme";
 
@@ -22,7 +22,7 @@ function read(): Theme {
   } catch {
     /* ignore */
   }
-  return "dark";
+  return "light";
 }
 
 function apply(theme: Theme) {

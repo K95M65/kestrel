@@ -7,17 +7,20 @@ description: Make Reachy dance, with or without music. Use when they say dance, 
 
 Drive HAL directly. The Apps plugin is for the operator dash; do not POST `/api/plugin/...` (that endpoint needs admin auth).
 
-With music:
+Read `[behaviors: dance]`. If `dance` is false, a spoken "I am sitting this one out" is enough — no motion, no music.
+
+**Dance to a song** (default on): when they name a track/artist OR just say "dance", pair music + motion in one reply. Use their query; if they did not name a song, use `dance_query` from the behaviors block (fallback `upbeat dance pop`).
+
 ```
 [HW:/emotion:{"emotion":"excited","intensity":0.9}]
-[HW:/audio/play:{"query":"upbeat dance pop"}]
+[HW:/audio/play:{"query":"<song or dance_query>"}]
+Let's dance!
 ```
 
-Silent groove (no music):
+Silent groove (they said dance but "no music" / "quiet"):
 ```
 [HW:/emotion:{"emotion":"happy","intensity":0.9}]
-[HW:/emotion:{"emotion":"laugh","intensity":0.8}]
 [HW:/emotion:{"emotion":"music_strong","intensity":0.9}]
 ```
 
-Stop music with `[HW:/audio/stop]`. Say one short line ("Let's dance!") and do not call extra tools.
+Stop with `[HW:/audio/stop]`. One short line. Do not call extra tools.

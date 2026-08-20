@@ -100,7 +100,7 @@ export function PlusMenu({
                 {/* Splits "add one of your own" from "work with what's out there
                     / already installed". */}
                 <MenuDivider />
-                <MenuItem icon={Store} label="Browse skills" hint="Autonomous skill store" onClick={() => run(() => onSkillsAction("browse"))} />
+                <MenuItem icon={Store} label="Browse skills" hint="Skill store" onClick={() => run(() => onSkillsAction("browse"))} />
                 <MenuItem icon={FolderTree} label="Manage skills" hint="installed on this runtime" onClick={() => run(() => onSkillsAction("manage"))} />
               </div>
             )}

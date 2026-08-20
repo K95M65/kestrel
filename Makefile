@@ -1,4 +1,4 @@
-# Autonomous — Makefile
+# Kestrel — Makefile (fork of Autonomous OS)
 # 4 components: Go (os + bootstrap + buddy), Python (hal), TypeScript (web)
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")

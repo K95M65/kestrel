@@ -16,7 +16,7 @@ export function EmptyState({ icon, text }: { icon: ReactNode; text: string }) {
         color: "var(--lm-text-muted)",
         opacity: 0.7,
       }} aria-hidden>{icon}</span>
-      <span style={{ fontSize: 11.5, color: "var(--lm-text-muted)", maxWidth: 220, lineHeight: 1.5 }}>
+      <span style={{ fontSize: 13.5, color: "var(--lm-text-dim)", maxWidth: 280, lineHeight: 1.5 }}>
         {text}
       </span>
     </div>

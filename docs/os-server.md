@@ -36,6 +36,14 @@
 | PUT | `/api/device/sleep` | Save schedule `{enabled,sleep_at,wake_at,days}` (admin-gated) |
 | POST | `/api/device/sleep/now` | HAL sleepy now: mute, stop plugins, ignore presence (admin-gated) |
 | POST | `/api/device/sleep/wake` | Wake now until the next scheduled sleep (admin-gated) |
+| GET | `/api/device/behaviors` | Companion pack + live status (admin-gated) |
+| PUT | `/api/device/behaviors` | Save companion pack (admin-gated) |
+| POST | `/api/device/behaviors/brief` | Fire morning briefing now (admin-gated) |
+| POST | `/api/device/behaviors/meeting` | `{on:true\|false}` meeting privacy (admin-gated) |
+| POST | `/api/device/behaviors/pomodoro/start` | Start work block (admin-gated) |
+| POST | `/api/device/behaviors/pomodoro/stop` | Clear pomodoro (admin-gated) |
+| GET/POST/DELETE | `/api/device/behaviors/memory` | Remember-this inbox (admin-gated) |
+| POST | `/api/behaviors/remember` | Same write path for `[HW:/behaviors/remember]` (LAN) |
 
 **GET response** (`data`):
 ```json

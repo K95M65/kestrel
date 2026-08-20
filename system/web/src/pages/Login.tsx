@@ -4,6 +4,9 @@ import { login } from "@/lib/api";
 import { useTheme } from "@/lib/useTheme";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { C, PasswordField } from "@/components/setup/shared";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ReachyMark } from "@/components/ReachyMark";
 
 // Login page — single password field that POSTs /api/login. A password query
 // parameter supports one-click local-device links: it pre-fills the field and
@@ -60,68 +63,50 @@ export default function Login() {
   return (
     <div className={`lm-root ${themeClass}`} style={{
       minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
-      background: C.bg, color: C.text,
-      fontFamily: "'Inter', 'Segoe UI', sans-serif", fontSize: 14,
-      padding: 24,
+      background: C.bg, color: C.text, fontSize: 14, padding: 24,
     }}>
-      <div style={{
-        width: "100%", maxWidth: 360,
-        background: C.card, border: `1px solid ${C.border}`,
-        borderRadius: 12, padding: "24px 22px",
-        position: "relative",
-      }}>
+      <Card className="w-full max-w-sm shadow-sm relative gap-4 py-5">
         <button onClick={toggleTheme} style={{
           position: "absolute", top: 12, right: 12,
           background: "none", border: "none", cursor: "pointer",
           fontSize: 14, color: C.textMuted, padding: "4px 6px",
-        }} title={`Theme: ${theme}`}>
+        }} title={`Theme: ${theme}`} type="button">
           {theme === "dark" ? "◑" : "◐"}
         </button>
-
-        <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 4, color: C.text }}>
-          Sign in
-        </div>
-        <div style={{ fontSize: 12, color: C.textDim, marginBottom: 18, lineHeight: 1.5 }}>
-          Enter the admin password you set during device setup.
-          <div style={{ marginTop: 6 }}>
-            If you haven't set one, the default is the 4 characters after the
-            dash on the sticker at the bottom of your device.
-          </div>
-        </div>
-
-        {error && (
-          <div style={{
-            background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.25)",
-            borderRadius: 8, padding: "9px 12px", fontSize: 12, color: C.red, marginBottom: 14,
-          }}>
-            {error}
-          </div>
-        )}
-
-        <form onSubmit={submit}>
-          <PasswordField
-            label="Admin Password"
-            id="login-password"
-            value={password}
-            onChange={setPassword}
-            placeholder="••••••••"
-          />
-          <button
-            type="submit"
-            disabled={busy || !password}
-            style={{
-              width: "100%", padding: "9px 14px", borderRadius: 7,
-              fontSize: 13, fontWeight: 600,
-              background: busy || !password ? C.surface : C.amber,
-              color: busy || !password ? C.textMuted : "#0C0B09",
-              border: "none", cursor: busy || !password ? "not-allowed" : "pointer",
-              marginTop: 4, opacity: busy ? 0.7 : 1,
-            }}
-          >
-            {busy ? "Signing in…" : "Sign in"}
-          </button>
-        </form>
-      </div>
+        <CardHeader className="items-center text-center pb-0">
+          <ReachyMark size={48} />
+          <div className="lm-reachy-brand-name" style={{ marginTop: 8 }}>Kestrel</div>
+          <div className="lm-reachy-brand-sub">Desk Companion</div>
+          <CardTitle className="text-xl mt-3">Sign in</CardTitle>
+          <CardDescription className="text-left">
+            Enter the admin password you set during device setup. If you haven't
+            set one, the default is the 4 characters after the dash on the
+            sticker at the bottom of your device.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {error && (
+            <div style={{
+              background: "var(--lm-red-dim)", border: "1px solid var(--lm-red-glow)",
+              borderRadius: 8, padding: "9px 12px", fontSize: 12, color: C.red, marginBottom: 14,
+            }}>
+              {error}
+            </div>
+          )}
+          <form onSubmit={submit}>
+            <PasswordField
+              label="Admin Password"
+              id="login-password"
+              value={password}
+              onChange={setPassword}
+              placeholder="••••••••"
+            />
+            <Button type="submit" className="w-full mt-1" disabled={busy || !password} size="lg">
+              {busy ? "Signing in…" : "Sign in"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }

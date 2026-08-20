@@ -52,7 +52,10 @@ wrapping Pollen's Python SDK, and a SAFETY.md — not a fork.
 A 28 cm desk robot: a Stewart-platform head (6-DOF parallel kinematics), a 360°
 rotating body, two antenna ears (expression), an HD wide-angle camera, a 4-mic
 array, and a 5W speaker. Compute is a Raspberry Pi Compute Module 4 onboard
-(measured on the Wireless unit: `Raspberry Pi Compute Module 4 Rev 1.1`, 4 GB).
+(SKU **CM4104016**: Wi-Fi, 4 GB RAM, 16 GB eMMC; measured on this Wireless unit
+as `Raspberry Pi Compute Module 4 Rev 1.1`). USB-C on the back is **data only**
+(does not charge). There is no 40-pin GPIO header, so a Pi 5 AI HAT will not
+fit. See [`docs/hardware.md`](docs/hardware.md) for local-AI options.
 The body is
 controlled via Pollen's Python SDK (`reachy_sdk`); the agent never addresses
 hardware directly.

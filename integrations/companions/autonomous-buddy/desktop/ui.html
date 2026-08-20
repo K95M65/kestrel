@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kestrel Buddy</title>
+  <style>
+    :root {
+      --lm-bg: #F2EFE7;
+      --lm-card: #FFFcf7;
+      --lm-surface: #E8E4D8;
+      --lm-border: #C8DFDB;
+      --lm-amber: #3368A0;
+      --lm-amber-dim: rgba(51,104,160,0.12);
+      --lm-text: #1E3A54;
+      --lm-text-dim: #3368A0;
+      --lm-text-muted: #66A3BF;
+      --lm-on-amber: #F2EFE7;
+      --lm-green: #2F8F78;
+      --lm-red: #C23B3B;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --lm-bg: #152536;
+        --lm-card: #1B354C;
+        --lm-surface: #21415C;
+        --lm-border: #2C5470;
+        --lm-amber: #66A3BF;
+        --lm-amber-dim: rgba(102,163,191,0.14);
+        --lm-text: #F2EFE7;
+        --lm-text-dim: #C8DFDB;
+        --lm-text-muted: #66A3BF;
+        --lm-on-amber: #152536;
+        --lm-green: #5BC4A8;
+        --lm-red: #E07070;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(900px 480px at 8% -8%, color-mix(in srgb, #C8DFDB 70%, transparent), transparent 55%),
+        var(--lm-bg);
+      color: var(--lm-text);
+      min-height: 100vh;
+    }
+    main { max-width: 440px; margin: 0 auto; padding: 28px 18px 40px; }
+    h1 { font-size: 22px; letter-spacing: -0.03em; margin: 0 0 6px; }
+    .kicker { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--lm-amber); }
+    .lead { font-size: 13.5px; color: var(--lm-text-dim); line-height: 1.5; margin: 0 0 18px; }
+    .card {
+      background: var(--lm-card);
+      border: 1px solid var(--lm-border);
+      border-radius: 14px;
+      padding: 16px;
+    }
+    label { display: block; font-size: 11px; font-weight: 650; color: var(--lm-text-muted); margin: 10px 0 5px; }
+    input {
+      width: 100%;
+      border: 1px solid var(--lm-border);
+      background: var(--lm-surface);
+      color: var(--lm-text);
+      border-radius: 9px;
+      padding: 9px 11px;
+      font-size: 14px;
+    }
+    input:focus { outline: none; border-color: var(--lm-amber); box-shadow: 0 0 0 3px var(--lm-amber-dim); }
+    .row { display: flex; gap: 8px; margin-top: 14px; }
+    button {
+      border-radius: 9px; font-size: 13px; font-weight: 650; cursor: pointer; padding: 8px 14px;
+    }
+    .primary { border: none; background: var(--lm-amber); color: var(--lm-on-amber); }
+    .ghost { border: 1px solid var(--lm-border); background: transparent; color: var(--lm-text); }
+    .status { margin-top: 12px; font-size: 13px; }
+    .ok { color: var(--lm-green); }
+    .err { color: var(--lm-red); }
+    .pill {
+      display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: 0.04em;
+      padding: 3px 8px; border-radius: 4px; border: 1px solid var(--lm-border); color: var(--lm-text-muted);
+    }
+    .pill.on { color: var(--lm-green); border-color: color-mix(in srgb, var(--lm-green) 40%, transparent); }
+    .meta { font-size: 12.5px; color: var(--lm-text-dim); margin: 8px 0; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="kicker">Kestrel Buddy</div>
+    <h1>Your computer, for the robot</h1>
+    <p class="lead">Pair with the code from Home or House → Uses. Same conversation as the desk — this window stays on the computer.</p>
+    <div class="card">
+      <span class="pill" id="pill">…</span>
+      <div class="meta" id="meta"></div>
+      <div id="pair">
+        <label for="host">Device host</label>
+        <input id="host" placeholder="reachy-xxxx.local or 10.10.2.160" />
+        <label for="code">Pairing code</label>
+        <input id="code" placeholder="6-digit code" maxlength="6" inputmode="numeric" />
+        <div class="row">
+          <button class="primary" id="pairBtn" type="button">Pair this computer</button>
+        </div>
+      </div>
+      <div id="linked" hidden>
+        <div class="row">
+          <button class="ghost" id="pauseBtn" type="button">Pause</button>
+          <button class="ghost" id="unpairBtn" type="button">Unpair</button>
+        </div>
+      </div>
+      <div class="status" id="msg"></div>
+    </div>
+  </main>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    async function api(path, opts) {
+      const r = await fetch(path, Object.assign({ headers: { "Content-Type": "application/json" } }, opts || {}));
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || r.statusText);
+      return j;
+    }
+    async function refresh() {
+      const s = await api("/api/status");
+      $("pill").textContent = s.paused ? "PAUSED" : (s.status || "idle").toUpperCase();
+      $("pill").className = "pill" + (s.status === "connected" ? " on" : "");
+      $("meta").textContent = s.paired
+        ? (s.host || "") + (s.os ? " · " + s.os : "") + (s.last ? " · last " + s.last : "")
+        : (s.os || "");
+      $("pair").hidden = !!s.paired;
+      $("linked").hidden = !s.paired;
+      $("pauseBtn").textContent = s.paused ? "Resume" : "Pause";
+      if (s.error && s.status !== "connected") { $("msg").className = "status err"; $("msg").textContent = s.error; }
+      else { $("msg").className = "status"; $("msg").textContent = ""; }
+    }
+    $("pairBtn").onclick = async () => {
+      $("msg").className = "status"; $("msg").textContent = "Pairing…";
+      try {
+        await api("/api/pair", { method: "POST", body: JSON.stringify({ host: $("host").value, code: $("code").value }) });
+        $("msg").className = "status ok"; $("msg").textContent = "Paired.";
+        await refresh();
+      } catch (e) {
+        $("msg").className = "status err"; $("msg").textContent = e.message;
+      }
+    };
+    $("unpairBtn").onclick = async () => { await api("/api/unpair", { method: "POST" }); await refresh(); };
+    $("pauseBtn").onclick = async () => { await api("/api/pause", { method: "POST" }); await refresh(); };
+    refresh();
+    setInterval(refresh, 2000);
+  </script>
+</body>
+</html>

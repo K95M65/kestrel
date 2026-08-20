@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-const BASE = "Autonomous";
+const BASE = "Kestrel";
 
 export function useDocumentTitle(parts: string | string[]) {
   // Derive the title during render so the effect depends on a single stable

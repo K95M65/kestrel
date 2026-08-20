@@ -1,13 +1,13 @@
 ---
 name: computer-use
-description: Control the user's Mac via the paired Autonomous Buddy companion app — open/close apps, navigate URLs in Chrome, type text into focused fields, fire keyboard shortcuts, show desktop notifications, write to clipboard, click named UI buttons via macOS Accessibility. Also covers vision-driven tasks (screenshot, find/click unlabelled UI, read text off the screen, drag) — those load `reference/vision.md` for the synchronous see-think-act loop. Use when the user explicitly asks the device to do something on their COMPUTER (e.g. "open Chrome", "go to Gmail", "join Meet", "close Slack", "type … into my Mac", "copy … to clipboard", "click the blue button on my screen", "what's on my Mac right now?"). Do NOT use for hardware control of the device itself (LED, scene, emotion, music, servo) — those are separate skills. Do NOT use if no Mac is paired (the device's web UI shows pairing status under the Buddy card).
+description: Control the user's computer via the paired Kestrel Buddy companion (Mac, Windows, or Linux) — open/close apps, navigate URLs, type text, keyboard shortcuts, desktop notifications, clipboard. Vision click/screenshot is Mac Buddy today. Use when they ask to do something on their COMPUTER (e.g. "open Chrome", "go to Gmail", "open Spotify on my computer"). Do NOT use for the robot's own hardware. Do NOT use if no computer is paired (Home → Buddy card). If `[behaviors] kids` is true, refuse computer-use entirely.
 ---
 
-# Computer Use (Mac via Autonomous Buddy)
+# Computer Use (via Kestrel Buddy)
 
 ## Quick Start
 
-Autonomous Buddy is a small macOS app the user installs on their Mac. Once paired with the device via the Buddy card on the Monitor web UI, it lets the device launch apps, open URLs, type text, fire keyboard shortcuts, and click UI elements **on the user's actual Mac**.
+Kestrel Buddy is a small app on the user's **computer** (Mac menu bar, or the desktop binary on Windows/Linux). Once paired via Home → Buddy, the robot can launch apps, open URLs, type, and notify **on that computer**. Click-by-label and screenshots are Mac Accessibility today.
 
 This skill emits inline markers that the device fires asynchronously while TTS speaks the confirmation:
 
@@ -22,7 +22,7 @@ The marker hits `/api/buddy/exec/<action>` on the device, which dispatches over 
 1. Determine the user's intent and pick one or more actions from the table below.
 2. Build the marker(s) — flat params JSON only (no nested objects).
 3. Place markers at the **start of the reply**, then add a short confirmation that TTS will speak.
-4. If no Mac is paired, say so and tell the user to set it up via the device's web UI Buddy card.
+4. If no computer is paired, say so and tell them House → Uses or Home → Buddy.
 
 ### When to load `reference/vision.md` instead
 
@@ -173,8 +173,8 @@ Markers fire in order. Useful patterns:
 
 ## Error handling
 
-- **No buddy paired** (`no buddy connected`): respond "No Mac is paired with the device yet. Open the Monitor page → Buddy card to pair one." Do NOT fire any markers.
-- **Timeout / connection error**: respond "I couldn't reach your Mac — the Buddy app may be offline."
+- **No buddy paired** (`no buddy connected`): respond "No computer is paired yet. Open Home → Buddy to pair one." Do NOT fire any markers.
+- **Timeout / connection error**: respond "I couldn't reach your computer — is Kestrel Buddy open?"
 - **Unknown action**: not possible if you only use the actions listed above. Stick to the table.
 
 ## Rules
@@ -186,6 +186,7 @@ Markers fire in order. Useful patterns:
 - **Don't fire `screenshot`, `click_at`, `scroll`, `mouse_move`, `drag`, `read_clipboard`, `cursor_pos`, `list_displays`** through inline markers. Those need return values (vision loop) and use a different transport. If the task needs visual reasoning (find an unlabelled button, drag a slider, read text off the screen), load `reference/vision.md` and follow its synchronous bash/curl pattern instead.
 - **Match the user's input language** in the TTS confirmation (English in, English out; Vietnamese in, Vietnamese out). Keep the TTS reply to one short sentence.
 - **If the user asks for device-side actions** ("turn yellow", "play music", "show emotion"), redirect to the appropriate skill (`led-control`, `music`, `emotion`, `scene`).
+- **Kids profile** (`kids: true` in `[behaviors]`) — refuse. Do not drive the Mac.
 
 ## Output template
 

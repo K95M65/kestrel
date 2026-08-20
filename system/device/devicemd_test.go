@@ -66,21 +66,22 @@ func TestCapabilities_Missing(t *testing.T) {
 
 func TestRouteCapability(t *testing.T) {
 	cases := map[string]string{
-		"/emotion":          CapExpression,
-		"/scene":            CapLight,
-		"/scene/off":        CapLight,
-		"/led/solid":        CapLight,
-		"/servo/track":      CapMotion,
-		"/servo/track/stop": CapMotion,
-		"/policy/run":       CapPolicy,
-		"/policy/stop":      CapPolicy,
-		"/display":          CapDisplay,
-		"/music/play":       CapMedia,
-		"/voice/status":     "", // audio paths fail open (almost always present)
-		"/audio/volume":     "",
-		"/wellbeing/log":    "", // os-server routes — no hardware gate
-		"/buddy/screenshot": "",
-		"/speak":            "",
+		"/emotion":            CapExpression,
+		"/scene":              CapLight,
+		"/scene/off":          CapLight,
+		"/led/solid":          CapLight,
+		"/servo/track":        CapMotion,
+		"/servo/track/stop":   CapMotion,
+		"/policy/run":         CapPolicy,
+		"/policy/stop":        CapPolicy,
+		"/display":            CapDisplay,
+		"/music/play":         CapMedia,
+		"/voice/status":       "", // audio paths fail open (almost always present)
+		"/audio/volume":       "",
+		"/wellbeing/log":      "", // os-server routes — no hardware gate
+		"/behaviors/remember": "",
+		"/buddy/screenshot":   "",
+		"/speak":              "",
 	}
 	for path, want := range cases {
 		if got := RouteCapability(path); got != want {

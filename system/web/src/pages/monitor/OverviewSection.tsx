@@ -1,9 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { Satellite, Globe, Eye, Volume2, Cpu, Drama, Clapperboard, Bot, Tag, Wifi, LayoutDashboard, Moon } from "lucide-react";
-import { getSleep, sleepNow, wakeNow, type SleepStatus } from "@/lib/api";
+import { useNavigate } from "react-router-dom";
+import { Satellite, Globe, Eye, Volume2, Cpu, Drama, Clapperboard, Bot, Tag, Moon, Sparkles, Library } from "lucide-react";
+import { getSleep, sleepNow, wakeNow, getBehaviors, setMeeting, fireBriefNow, getDeviceConfig, type SleepStatus, type BehaviorsStatus } from "@/lib/api";
+import { displayRobotName } from "@/lib/robotName";
+import { isRobotQuiet, sleepToggleKind, sleepToggleLabel, withSleeping } from "@/lib/sleepToggle";
+import { formatNext } from "@/lib/behaviorsModel";
+import { ReachyMark } from "@/components/ReachyMark";
 import { S } from "./styles";
 import { HW } from "./types";
+import { useCapabilities } from "@/hooks/useCapabilities";
+import { capsFromSet } from "@/lib/guideWalk";
+import { scenariosFor } from "@/lib/scenarios";
 
 const EMOTION_EMOJI: Record<string, string> = {
   happy: "😊", curious: "🤔", thinking: "💭", sad: "😢", excited: "🤩",
@@ -36,7 +44,7 @@ function useEmotionPresets() {
   return { emotions, colors };
 }
 import type { SystemInfo, NetworkInfo, HWHealth, OCStatus, PresenceInfo, VoiceStatus, ServoState, DisplayState, AudioVolume, LEDColor, SceneInfo } from "./types";
-import { StatusDot, HWBadge, SignalBars, Skeleton, SkeletonRows, SoftwareUpdateButton, StatRow, StatusBadge, STATUS_TONE, CardLabel, RestartAgentButton } from "./components";
+import { StatusDot, HWBadge, SignalBars, SkeletonRows, SoftwareUpdateButton, StatRow, StatusBadge, STATUS_TONE, CardLabel, RestartAgentButton } from "./components";
 import { formatUptime, formatAgo, useCountUp } from "./utils";
 import { BuddyCard } from "./BuddyCard";
 
@@ -56,6 +64,8 @@ export function OverviewSection({
   sceneInfo,
   hasEmotion,
   hasMotion,
+  hasLight,
+  hasVision,
   webVersion,
   halVersion,
   onSceneActivate,
@@ -66,6 +76,7 @@ export function OverviewSection({
   onEmotionPick,
   onServoPlay,
   onServoRelease,
+  onTalk,
 }: {
   sys: SystemInfo | null;
   net: NetworkInfo | null;
@@ -82,6 +93,8 @@ export function OverviewSection({
   sceneInfo: SceneInfo | null;
   hasEmotion: boolean; // device declares the expression capability (/emotion route)
   hasMotion: boolean; // device declares the motion capability (/servo route)
+  hasLight: boolean; // LED ring / scene
+  hasVision: boolean; // camera
   webVersion: string;
   halVersion: string | null;
   onSceneActivate: (scene: string) => void;
@@ -98,6 +111,7 @@ export function OverviewSection({
   onEmotionPick: (emotion: string) => void;
   onServoPlay: (recording: string) => void;
   onServoRelease: () => void;
+  onTalk: () => void;
 }) {
   const { emotions: ALL_EMOTIONS, colors: EMOTION_COLOR } = useEmotionPresets();
   const emotion = oc?.emotion ?? "";
@@ -145,47 +159,102 @@ export function OverviewSection({
   const monCard = { ...S.card, boxShadow: undefined };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <div className="lm-home">
+      <div className="lm-home-stage">
+        <HomeHero oc={oc} presence={presence} onTalk={onTalk} />
+        <HomeUsesStrip />
 
-      {/* Hero banner — a command-center header summarizing live device state.
-          Read-only: every chip reflects an already-fetched prop, no new calls. */}
-      <div className="lm-mon-hero">
-        <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <div style={{
-              width: 44, height: 44, borderRadius: 12, flexShrink: 0,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              background: "var(--lm-amber-dim)", color: "var(--lm-amber)",
-              boxShadow: "inset 0 0 0 1px var(--lm-amber-glow)",
-            }} aria-hidden><LayoutDashboard size={22} /></div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 19, fontWeight: 700, color: "var(--lm-text)", letterSpacing: "-0.3px", lineHeight: 1.2 }}>
-                Device Overview
+        <div className="lm-mon-card" style={monCard}>
+          <div style={{ marginBottom: 12 }}><CardLabel icon={<Volume2 size={13} />} text="Sound" /></div>
+          {voice ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div className="lm-audio-row">
+                <div className="lm-audio-row-label" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <StatusDot ok={voice.voice_available && !voice.mic_muted} />
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>Mic</span>
+                  {voice.mic_muted ? (
+                    <span style={{ fontSize: 10, padding: "3px 8px", borderRadius: 4, background: "rgba(239,68,68,0.12)", color: "#f87171" }}>MUTED</span>
+                  ) : voice.voice_listening ? (
+                    <span style={{ fontSize: 10, padding: "3px 8px", borderRadius: 4, background: "var(--lm-amber-dim)", color: "var(--lm-amber)" }}>LIVE</span>
+                  ) : null}
+                </div>
+                <ToggleButton
+                  active={!voice.mic_muted}
+                  disabled={voice.hw_mic_switch_muted === true}
+                  label={voice.mic_muted ? "Unmute" : "Mute"}
+                  onClick={() => onMicMutedChange(!voice.mic_muted)}
+                />
               </div>
-              <div style={{ fontSize: 12, color: "var(--lm-text-dim)", marginTop: 2 }}>
-                Live status across agent, network, presence & hardware
+              {voice.hw_mic_switch_muted === true && (
+                <div style={{ fontSize: 10.5, color: "#d97706", marginTop: -6 }}>
+                  Hardware mic switch is off — flip the physical switch to unmute.
+                </div>
+              )}
+              <div className="lm-audio-row">
+                <div className="lm-audio-row-label" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <StatusDot ok={voice.tts_available} />
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>Voice</span>
+                  {voice.tts_speaking && (
+                    <span style={{ fontSize: 10, padding: "3px 8px", borderRadius: 4, background: "rgba(167,139,250,0.15)", color: "var(--lm-purple)" }}>SPEAKING</span>
+                  )}
+                  {musicPlaying && !voice.tts_speaking && (
+                    <span style={{ fontSize: 10, padding: "3px 8px", borderRadius: 4, background: "rgba(52,211,153,0.12)", color: "var(--lm-green)" }}>MUSIC</span>
+                  )}
+                </div>
+                {(voice.tts_speaking || musicPlaying) && (
+                  <ToggleButton active={false} label="Stop" onClick={onTTSStop} />
+                )}
               </div>
+              <div className="lm-audio-row">
+                <div className="lm-audio-row-label" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <StatusDot ok={!speakerMuted} />
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>Speaker</span>
+                  {speakerMuted && (
+                    <span style={{ fontSize: 10, padding: "3px 8px", borderRadius: 4, background: "rgba(239,68,68,0.12)", color: "#f87171" }}>MUTED</span>
+                  )}
+                </div>
+                <ToggleButton active={!speakerMuted} label={speakerMuted ? "Unmute" : "Mute"}
+                  onClick={() => onSpeakerMutedChange(!speakerMuted)} />
+              </div>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                  <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--lm-text-dim)" }}>Volume</span>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: "var(--lm-amber)", fontFamily: "monospace" }}>
+                    {dragging ? (localVolume ?? audio?.volume ?? "—") : animatedVolume}%
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={localVolume ?? audio?.volume ?? 50}
+                  onChange={(e) => {
+                    draggingVolume.current = true;
+                    setDragging(true);
+                    setLocalVolume(Number(e.target.value));
+                  }}
+                  onMouseUp={(e) => commitVolume(Number((e.target as HTMLInputElement).value))}
+                  onTouchEnd={(e) => commitVolume(Number((e.target as HTMLInputElement).value))}
+                  className="lm-mon-range"
+                  style={{
+                    width: "100%", cursor: "pointer",
+                    ["--lm-fill" as string]: `${localVolume ?? audio?.volume ?? 50}%`,
+                  }}
+                />
+              </div>
+              <MicLevelBar muted={voice.mic_muted ?? false} onPlayback={onPlaybackLive} />
             </div>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <HeroChip
-              icon={<Bot size={14} />}
-              label="Agent"
-              value={oc?.connected ? "Online" : "Offline"}
-              tone={oc?.connected ? "ok" : "error"}
-            />
-            <HeroChip icon={<Wifi size={14} />} label="IP" value={net?.ip ?? "—"} tone="neutral" />
-            <HeroChip
-              icon={<Eye size={14} />}
-              label="Presence"
-              value={presence?.state ? presence.state[0].toUpperCase() + presence.state.slice(1) : "—"}
-              tone={presence?.state === "active" ? "active" : "neutral"}
-            />
-          </div>
+          ) : (
+            <div style={{ fontSize: 13, color: "var(--lm-text-muted)", lineHeight: 1.5 }}>
+              Sound isn't connected.
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Row 1: 4 status cards in one row */}
+      {isDebug && (
+      <>
+      <div className="lm-home-plant-label">Diagnostics</div>
       <div className="lm-grid-4 lm-overview-status-grid">
         {/* Agent Gateway */}
         {/* position:relative anchors the bottom-right RestartAgentButton to the card. */}
@@ -249,107 +318,6 @@ export function OverviewSection({
               <StatRow label="Last motion" value={formatAgo(presence.seconds_since_motion)} />
             </div>
           ) : <SkeletonRows lines={2} />}
-        </div>
-
-        {/* Audio */}
-        <div className="lm-mon-card" style={monCard}>
-          <div style={{ marginBottom: 12 }}><CardLabel icon={<Volume2 size={13} />} text="Audio" /></div>
-          {voice ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {/* Mic row */}
-              <div className="lm-audio-row">
-                <div className="lm-audio-row-label" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <StatusDot ok={voice.voice_available && !voice.mic_muted} />
-                  <span style={{ fontSize: 13, fontWeight: 600 }}>Mic</span>
-                  {voice.mic_muted ? (
-                    <span style={{ fontSize: 10, padding: "3px 8px", borderRadius: 4, background: "rgba(239,68,68,0.12)", color: "#f87171" }}>MUTED</span>
-                  ) : voice.voice_listening ? (
-                    <span style={{ fontSize: 10, padding: "3px 8px", borderRadius: 4, background: "var(--lm-amber-dim)", color: "var(--lm-amber)" }}>LIVE</span>
-                  ) : null}
-                </div>
-                {/* HW slide switch is the authority: while it's off, /voice/unmute
-                    returns 409 (see routes/voice.py). Disable the toggle and show
-                    a text hint under it so the user knows to flip the physical
-                    switch. hw_mic_switch_muted === null → device has no switch
-                    (Lamp) → normal behavior. */}
-                <ToggleButton
-                  active={!voice.mic_muted}
-                  disabled={voice.hw_mic_switch_muted === true}
-                  label={voice.mic_muted ? "Unmute" : "Mute"}
-                  onClick={() => onMicMutedChange(!voice.mic_muted)}
-                />
-              </div>
-              {voice.hw_mic_switch_muted === true && (
-                <div style={{ fontSize: 10.5, color: "#d97706", marginTop: -6 }}>
-                  Hardware mic switch is off — flip the physical switch to unmute.
-                </div>
-              )}
-
-              {/* TTS row */}
-              <div className="lm-audio-row">
-                <div className="lm-audio-row-label" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <StatusDot ok={voice.tts_available} />
-                  <span style={{ fontSize: 13, fontWeight: 600 }}>TTS</span>
-                  {voice.tts_speaking && (
-                    <span style={{ fontSize: 10, padding: "3px 8px", borderRadius: 4, background: "rgba(167,139,250,0.15)", color: "var(--lm-purple)" }}>SPEAKING</span>
-                  )}
-                  {musicPlaying && !voice.tts_speaking && (
-                    <span style={{ fontSize: 10, padding: "3px 8px", borderRadius: 4, background: "rgba(52,211,153,0.12)", color: "var(--lm-green)" }}>MUSIC</span>
-                  )}
-                </div>
-                {(voice.tts_speaking || musicPlaying) && (
-                  <ToggleButton active={false} label="Stop" onClick={onTTSStop} />
-                )}
-              </div>
-
-              {/* Speaker row */}
-              <div className="lm-audio-row">
-                <div className="lm-audio-row-label" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <StatusDot ok={!speakerMuted} />
-                  <span style={{ fontSize: 13, fontWeight: 600 }}>Speaker</span>
-                  {speakerMuted && (
-                    <span style={{ fontSize: 10, padding: "3px 8px", borderRadius: 4, background: "rgba(239,68,68,0.12)", color: "#f87171" }}>MUTED</span>
-                  )}
-                </div>
-                <ToggleButton active={!speakerMuted} label={speakerMuted ? "Unmute" : "Mute"}
-                  onClick={() => onSpeakerMutedChange(!speakerMuted)} />
-              </div>
-
-              {/* Volume slider */}
-              <div>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                  <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--lm-text-dim)" }}>Volume</span>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: "var(--lm-amber)", fontFamily: "monospace" }}>
-                    {/* While dragging show the exact handle value (no easing lag);
-                        when idle let it tick to the server-confirmed value. */}
-                    {dragging ? (localVolume ?? audio?.volume ?? "—") : animatedVolume}%
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={localVolume ?? audio?.volume ?? 50}
-                  onChange={(e) => {
-                    draggingVolume.current = true;
-                    setDragging(true);
-                    setLocalVolume(Number(e.target.value));
-                  }}
-                  onMouseUp={(e) => commitVolume(Number((e.target as HTMLInputElement).value))}
-                  onTouchEnd={(e) => commitVolume(Number((e.target as HTMLInputElement).value))}
-                  className="lm-mon-range"
-                  style={{
-                    width: "100%", cursor: "pointer",
-                    // Drives the amber-fill width in the .lm-mon-range track (paint only).
-                    ["--lm-fill" as string]: `${localVolume ?? audio?.volume ?? 50}%`,
-                  }}
-                />
-              </div>
-
-              {/* Live mic input VU meter */}
-              <MicLevelBar muted={voice.mic_muted ?? false} onPlayback={onPlaybackLive} />
-            </div>
-          ) : <AudioSkeleton />}
         </div>
       </div>
 
@@ -489,11 +457,12 @@ export function OverviewSection({
         {/* Compact status cards — painted on the LEFT via order: 1 */}
         <div className="lm-cluster-col" style={{ order: 1 }}>
         <QuietHoursCard />
+        <BehaviorsCard />
         {/* Hardware */}
         <div className="lm-mon-card" style={monCard}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
             <CardLabel icon={<Cpu size={13} />} text="Hardware" />
-            {ledColor && (
+            {hasLight && ledColor && (
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <div style={{
                   width: 14, height: 14, borderRadius: "50%",
@@ -525,9 +494,9 @@ export function OverviewSection({
           </div>
           {hw ? (
             <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 7 }}>
-              <HWBadge label="Servo" ok={hw.servo} />
-              <HWBadge label="LED" ok={hw.led} />
-              <HWBadge label="Camera" ok={hw.camera} />
+              {hasMotion && <HWBadge label="Servo" ok={hw.servo} />}
+              {hasLight && <HWBadge label="LED" ok={hw.led} />}
+              {hasVision && <HWBadge label="Camera" ok={hw.camera} />}
               <HWBadge label="Audio" ok={hw.audio} />
               <HWBadge label="Sensing" ok={hw.sensing} />
               <HWBadge label="Voice" ok={hw.voice} />
@@ -572,7 +541,7 @@ export function OverviewSection({
         </div>
         )}
 
-        {/* Autonomous Buddy pairing — closes out the compact (left) column. */}
+        {/* Kestrel Buddy pairing — closes out the compact (left) column. */}
         <BuddyCard />
         </div>
       </div>
@@ -599,6 +568,8 @@ export function OverviewSection({
           </div>
         ) : <span style={{ color: "var(--lm-text-muted)" }}>Loading…</span>}
       </div>
+      </>
+      )}
 
     </div>
   );
@@ -653,30 +624,201 @@ function PillCloud<T extends string>({ items, active, label, accent, onPick, tit
   );
 }
 
-// HeroChip is a compact pill in the hero banner showing a single live stat
-// (Agent / IP / Presence). Presentational only — values are passed in.
-function HeroChip({ icon, label, value, tone }: {
-  icon: ReactNode;
-  label: string;
-  value: string;
-  tone: "ok" | "error" | "active" | "neutral";
+function HomeHero({
+  oc, presence, onTalk,
+}: {
+  oc: OCStatus | null;
+  presence: PresenceInfo | null;
+  onTalk: () => void;
 }) {
-  const color =
-    tone === "ok" ? "var(--lm-green)" :
-    tone === "error" ? "var(--lm-red)" :
-    tone === "active" ? "var(--lm-amber)" :
-    "var(--lm-text)";
+  const navigate = useNavigate();
+  const [sleep, setSleep] = useState<SleepStatus | null>(null);
+  const [beh, setBeh] = useState<BehaviorsStatus | null>(null);
+  const [agentName, setAgentName] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const busyRef = useRef<string | null>(null);
+  useEffect(() => { busyRef.current = busy; }, [busy]);
+
+  useEffect(() => {
+    getDeviceConfig().then((c) => setAgentName(c.agent_name ?? "")).catch(() => {});
+    const refresh = () => {
+      if (busyRef.current) return;
+      getSleep().then(setSleep).catch(() => {});
+      getBehaviors().then(setBeh).catch(() => {});
+    };
+    refresh();
+    const t = setInterval(refresh, 5000);
+    return () => clearInterval(t);
+  }, []);
+
+  const meeting = !!beh?.meeting;
+  const quiet = isRobotQuiet(sleep?.sleeping, sleep?.emotion || oc?.emotion);
+  const mode = meeting ? "meeting" : quiet ? "quiet" : "awake";
+  const who = displayRobotName(agentName);
+  const titled = who === "your robot" ? "Your robot" : who;
+  const title =
+    mode === "meeting" ? `${titled} is in a meeting` :
+    mode === "quiet" ? `${titled} is quiet` :
+    `${titled} is awake`;
+  const kicker = mode === "meeting" ? "Meeting" : mode === "quiet" ? "Quiet hours" : "At the desk";
+
+  const bits: string[] = [];
+  if (beh?.config?.morning_brief?.enabled && beh.next_brief) {
+    bits.push(`Next brief ${formatNext(beh.next_brief)}`);
+  } else if (beh?.config?.morning_brief?.enabled) {
+    bits.push(`Brief at ${beh.config.morning_brief.at}`);
+  }
+  if (sleep?.schedule?.enabled) {
+    bits.push(`Quiet ${sleep.schedule.sleep_at}–${sleep.schedule.wake_at}`);
+  }
+  if (presence?.state === "active") bits.push("Someone's here");
+  if (oc && !oc.connected) bits.push("Brain offline");
+
+  const needsSetup = !!(beh?.config && !beh.config.onboarded);
+
+  async function act(kind: "meet" | "unmeet" | "sleep" | "wake" | "brief") {
+    setBusy(kind);
+    try {
+      if (kind === "brief") setBeh(await fireBriefNow());
+      else if (kind === "meet" || kind === "unmeet") setBeh(await setMeeting(kind === "meet"));
+      else if (kind === "sleep") {
+        setSleep((s) => withSleeping(s, true));
+        setSleep(await sleepNow());
+      } else {
+        setSleep((s) => withSleeping(s, false));
+        setSleep(await wakeNow());
+      }
+    } catch {
+      getSleep().then(setSleep).catch(() => {});
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function openGuide() {
+    const params = new URLSearchParams(window.location.search);
+    params.set("guide", "1");
+    navigate({ pathname: "/setting", search: `?${params.toString()}`, hash: "#behaviors" });
+  }
+
   return (
-    <div style={{
-      display: "flex", alignItems: "center", gap: 8,
-      padding: "6px 12px", borderRadius: 10,
-      background: "color-mix(in srgb, var(--lm-card) 70%, transparent)",
-      border: "1px solid var(--lm-border)",
-      backdropFilter: "blur(4px)",
-    }}>
-      <span style={{ display: "flex", color }} aria-hidden>{icon}</span>
-      <span style={{ fontSize: 10, color: "var(--lm-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</span>
-      <span style={{ fontSize: 12.5, fontWeight: 700, color, fontFamily: label === "IP" ? "monospace" : undefined }}>{value}</span>
+    <>
+      <div className="lm-mon-hero lm-home-hero">
+        <ReachyMark size={72} />
+        <div className="lm-home-copy">
+          <div className="lm-home-kicker">{kicker}</div>
+          <h1 className="lm-home-title">{title}</h1>
+          {bits.length > 0 && <p className="lm-home-meta">{bits.join(" · ")}</p>}
+          <div className="lm-home-actions">
+            <button type="button" className="lm-home-cta" onClick={onTalk}>Talk</button>
+            <button type="button" className="lm-home-ghost" disabled={!!busy}
+              onClick={() => void act(meeting ? "unmeet" : "meet")}>
+              {meeting ? "End meeting" : "Meeting"}
+            </button>
+            <button type="button" className="lm-home-ghost" disabled={!!busy}
+              onClick={() => void act(sleepToggleKind(quiet))}>
+              {sleepToggleLabel(quiet)}
+            </button>
+            {beh?.config?.morning_brief?.enabled && (
+              <button type="button" className="lm-home-ghost" disabled={!!busy}
+                onClick={() => void act("brief")}>Brief now</button>
+            )}
+          </div>
+        </div>
+      </div>
+      {needsSetup && (
+        <div className="lm-home-setup">
+          <div>
+            <div className="lm-home-setup-title">Set up this robot</div>
+            <div className="lm-home-setup-lead">Name it, talk to it, let it see you — then pick briefing and greetings.</div>
+          </div>
+          <button type="button" className="lm-home-cta" onClick={openGuide}>Guided setup</button>
+        </div>
+      )}
+    </>
+  );
+}
+
+function HomeUsesStrip() {
+  const navigate = useNavigate();
+  const { caps, loaded } = useCapabilities();
+  const list = scenariosFor(capsFromSet(loaded ? caps : null));
+  if (list.length === 0) return null;
+  function open(id?: string) {
+    const params = new URLSearchParams(window.location.search);
+    if (id) params.set("use", id);
+    else params.delete("use");
+    const qs = params.toString();
+    navigate({ pathname: "/setting", search: qs ? `?${qs}` : "", hash: "#uses" });
+  }
+  return (
+    <div className="lm-home-uses">
+      <div className="lm-home-uses-head">
+        <span className="lm-home-uses-title"><Library size={14} /> What it can do</span>
+        <button type="button" className="lm-home-ghost" style={{ padding: "5px 10px", fontSize: 12 }}
+          onClick={() => open()}>All uses</button>
+      </div>
+      <div className="lm-home-uses-chips">
+        {list.map((s) => (
+          <button key={s.id} type="button" className="lm-chip" onClick={() => open(s.id)}>
+            {s.title}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BehaviorsCard() {
+  const navigate = useNavigate();
+  const [st, setSt] = useState<BehaviorsStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    getBehaviors().then(setSt).catch(() => {});
+  }, []);
+  async function act(kind: "meet" | "unmeet" | "brief") {
+    setBusy(true);
+    try {
+      if (kind === "brief") setSt(await fireBriefNow());
+      else setSt(await setMeeting(kind === "meet"));
+    } catch {
+      /* settings page owns toasts */
+    } finally {
+      setBusy(false);
+    }
+  }
+  const needsSetup = st?.config && !st.config.onboarded;
+  return (
+    <div className="lm-mon-card" style={{ ...S.card, boxShadow: undefined }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <CardLabel icon={<Sparkles size={13} />} text="Behaviors" />
+        <span style={{ fontSize: 11, color: st?.meeting ? "var(--lm-amber)" : "var(--lm-text-muted)" }}>
+          {st?.meeting ? "meeting" : needsSetup ? "not set up" : st?.config?.morning_brief?.enabled ? "brief on" : "pack"}
+        </span>
+      </div>
+      {needsSetup && (
+        <div style={{ fontSize: 12, color: "var(--lm-text-dim)", lineHeight: 1.45, marginBottom: 10 }}>
+          Two minutes to pick who this robot is for — briefing, greetings, mornings.
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {needsSetup && (
+          <button type="button" className="lm-u-btn" onClick={() => {
+            const params = new URLSearchParams(window.location.search);
+            params.set("guide", "1");
+            navigate({ pathname: "/setting", search: `?${params.toString()}`, hash: "#behaviors" });
+          }}
+            style={{ fontSize: 11, padding: "4px 10px", background: "var(--lm-amber)", color: "var(--lm-on-amber)", border: "none" }}>
+            Guided setup
+          </button>
+        )}
+        <button type="button" className="lm-u-btn" disabled={busy} onClick={() => void act("meet")}
+          style={{ fontSize: 11, padding: "4px 10px" }}>Meeting</button>
+        <button type="button" className="lm-u-btn" disabled={busy} onClick={() => void act("unmeet")}
+          style={{ fontSize: 11, padding: "4px 10px" }}>End meeting</button>
+        <button type="button" className="lm-u-btn" disabled={busy} onClick={() => void act("brief")}
+          style={{ fontSize: 11, padding: "4px 10px" }}>Brief now</button>
+      </div>
     </div>
   );
 }
@@ -684,15 +826,26 @@ function HeroChip({ icon, label, value, tone }: {
 function QuietHoursCard() {
   const [st, setSt] = useState<SleepStatus | null>(null);
   const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
+  useEffect(() => { busyRef.current = busy; }, [busy]);
   useEffect(() => {
-    getSleep().then(setSt).catch(() => {});
+    const refresh = () => {
+      if (busyRef.current) return;
+      getSleep().then(setSt).catch(() => {});
+    };
+    refresh();
+    const t = setInterval(refresh, 5000);
+    return () => clearInterval(t);
   }, []);
-  async function act(kind: "sleep" | "wake") {
+  const quiet = isRobotQuiet(st?.sleeping, st?.emotion);
+  async function act() {
+    const kind = sleepToggleKind(quiet);
     setBusy(true);
+    setSt((s) => withSleeping(s, kind === "sleep"));
     try {
       setSt(kind === "sleep" ? await sleepNow() : await wakeNow());
     } catch {
-      /* toast lives on Settings; overview stays quiet */
+      getSleep().then(setSt).catch(() => {});
     } finally {
       setBusy(false);
     }
@@ -701,15 +854,13 @@ function QuietHoursCard() {
     <div className="lm-mon-card" style={{ ...S.card, boxShadow: undefined }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
         <CardLabel icon={<Moon size={13} />} text="Quiet hours" />
-        <span style={{ fontSize: 11, color: st?.sleeping ? "var(--lm-amber)" : "var(--lm-text-muted)" }}>
-          {st?.sleeping ? "quiet" : "awake"}
+        <span style={{ fontSize: 11, color: quiet ? "var(--lm-amber)" : "var(--lm-text-muted)" }}>
+          {quiet ? "quiet" : "awake"}
         </span>
       </div>
       <div style={{ display: "flex", gap: 8 }}>
-        <button type="button" className="lm-u-btn" disabled={busy} onClick={() => void act("sleep")}
-          style={{ fontSize: 11, padding: "4px 10px" }}>Sleep now</button>
-        <button type="button" className="lm-u-btn" disabled={busy} onClick={() => void act("wake")}
-          style={{ fontSize: 11, padding: "4px 10px" }}>Wake now</button>
+        <button type="button" className="lm-u-btn" disabled={busy} onClick={() => void act()}
+          style={{ fontSize: 11, padding: "4px 10px" }}>{sleepToggleLabel(quiet)}</button>
       </div>
       {st?.schedule?.enabled && (
         <div style={{ fontSize: 11, color: "var(--lm-text-muted)", marginTop: 8 }}>
@@ -880,29 +1031,6 @@ function LevelTrack({ fillRef, dim, tick, tickTitle, slow }: {
           }}
         />
       )}
-    </div>
-  );
-}
-
-// AudioSkeleton mirrors the Audio card's layout (three labelled toggle rows +
-// a volume slider) so the card holds its height while voice status loads,
-// avoiding the jump the old "Loading…" text caused.
-function AudioSkeleton() {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      {[0, 1, 2].map((i) => (
-        <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <Skeleton width={7} height={7} style={{ borderRadius: "50%" }} />
-            <Skeleton width={54} height={12} />
-          </div>
-          <Skeleton width={60} height={24} style={{ borderRadius: 6 }} />
-        </div>
-      ))}
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <Skeleton width="40%" height={11} />
-        <Skeleton width="100%" height={6} style={{ borderRadius: 999 }} />
-      </div>
     </div>
   );
 }

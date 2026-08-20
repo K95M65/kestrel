@@ -34,6 +34,9 @@ export interface SystemInfo {
   goRoutines: number;
   version: string;
   deviceId: string;
+  // robots/<type> folder id (lamp, reachy-mini, intern-v2, …). Flavor for
+  // Guided Setup copy; steps still come from capabilities.
+  deviceType?: string;
   // Device's DECLARED capabilities (see Cap), from os-server's parse of
   // ROBOT.md. The web gates tabs/controls on these. Absent until /system/info
   // loads → treat as "all present" (fail-open).
@@ -157,7 +160,7 @@ export interface DisplayEvent extends MonitorEvent {
   _seq: number;
 }
 
-export type Section = "overview" | "system" | "flow" | "camera" | "servo" | "face-owners" | "analytics" | "logs" | "chat" | "cli" | "sensing" | "bluetooth" | "api-docs" | "agent-config" | "settings:device" | "settings:wifi" | "settings:llm" | "settings:runtime" | "settings:voice" | "settings:face" | "settings:tts" | "settings:realtime" | "settings:stt" | "settings:channel" | "settings:mqtt" | "settings:mcp" | "settings:plugins" | "settings:timezone" | "settings:sleep";
+export type Section = "overview" | "system" | "flow" | "camera" | "servo" | "face-owners" | "analytics" | "logs" | "chat" | "cli" | "sensing" | "bluetooth" | "api-docs" | "agent-config" | "settings:device" | "settings:wifi" | "settings:llm" | "settings:runtime" | "settings:voice" | "settings:face" | "settings:tts" | "settings:realtime" | "settings:stt" | "settings:channel" | "settings:mqtt" | "settings:mcp" | "settings:plugins" | "settings:timezone" | "settings:sleep" | "settings:behaviors" | "settings:uses";
 
 // ─── Area + URL serialization ────────────────────────────────────────────────
 //
@@ -198,6 +201,8 @@ const SHORT_TO_SETTING: Record<string, Section> = {
   plugins: "settings:plugins",
   timezone: "settings:timezone",
   sleep: "settings:sleep",
+  behaviors: "settings:behaviors",
+  uses: "settings:uses",
 };
 const SETTING_TO_SHORT: Record<string, string> = Object.fromEntries(
   Object.entries(SHORT_TO_SETTING).map(([short, id]) => [id, short]),
@@ -207,7 +212,7 @@ const SETTING_TO_SHORT: Record<string, string> = Object.fromEntries(
 // In the setting area, settings:* ids become their short label; monitor
 // sections stay as their plain id.
 export function sectionToHash(section: Section, area: Area): string {
-  if (area === "setting") return SETTING_TO_SHORT[section] ?? "general";
+  if (area === "setting") return SETTING_TO_SHORT[section] ?? "behaviors";
   return section;
 }
 
@@ -232,6 +237,9 @@ export const Cap = {
   Sensing: "sensing",
   Connectivity: "connectivity",
   Expression: "expression",
+  Light: "light",
+  Presence: "presence",
+  Media: "media",
 } as const;
 
 // A nav leaf may declare the capability it requires; the nav hides it and the
@@ -251,27 +259,17 @@ export function isNavLink(c: NavChild): c is NavLink {
 }
 
 export const NAV: NavEntry[] = [
-  { id: "chat",     label: "Chat",     icon: "▤" },
+  { id: "chat",     label: "Talk", icon: "▤" },
+  { id: "overview", label: "Home", icon: "⊞" },
   {
-    group: "settings",
-    label: "Settings",
-    icon: "⚙",
+    group: "house",
+    label: "House",
+    icon: "⌂",
     children: [
-      { id: "settings:device",   label: "General",   icon: "⚙" },
-      { id: "settings:wifi",     label: "Wi-Fi",     icon: "⌁" },
-      { id: "settings:llm",      label: "AI Brain",  icon: "✦" },
-      { id: "settings:runtime",  label: "Runtime",   icon: "▦" },
-      { id: "settings:stt",      label: "Language",  icon: "⌘" },
-      { id: "settings:tts",      label: "Voice",     icon: "♫" },
-      { id: "settings:realtime", label: "Realtime",  icon: "⚡" },
-      { id: "settings:voice",    label: "My Voice",  icon: "◉" },
-      { id: "settings:face",     label: "Face",      icon: "☺" },
-      { id: "settings:channel",  label: "Channels",  icon: "✉" },
-      { id: "settings:mqtt",     label: "MQTT",      icon: "⇄" },
-      { id: "settings:mcp",      label: "MCP Tools", icon: "⬡" },
-      { id: "settings:plugins",  label: "Plugins",   icon: "⧉" },
-      { id: "settings:timezone", label: "Timezone",  icon: "◷" },
-      { id: "settings:sleep",    label: "Quiet hours", icon: "☾" },
+      { id: "face-owners",        label: "People",      icon: "☺", cap: Cap.Vision },
+      { id: "settings:uses",      label: "Uses",        icon: "☰" },
+      { id: "settings:behaviors", label: "Behaviors",   icon: "✦" },
+      { id: "settings:sleep",     label: "Quiet hours", icon: "☾" },
     ],
   },
   {
@@ -279,20 +277,31 @@ export const NAV: NavEntry[] = [
     label: "Device",
     icon: "⎚",
     children: [
-      { id: "overview",    label: "Overview",  icon: "⊞" },
-      { id: "system",      label: "System",    icon: "⚙" },
-      { id: "flow",        label: "Flow",      icon: "⇄" },
-      { id: "face-owners", label: "Users",     icon: "☺", cap: Cap.Vision }, // user roster needs the camera
-      { id: "camera",      label: "Camera",    icon: "◎", cap: Cap.Vision },
-      { id: "sensing",     label: "Sensing",   icon: "◉", cap: Cap.Sensing },
-      // Analytics hidden from the menu for now (section code kept; re-enable
-      // by uncommenting).
-      // { id: "analytics",   label: "Analytics", icon: "⊟" },
-      { id: "servo",       label: "Servo",     icon: "⎈", cap: Cap.Motion },
-      { id: "bluetooth",   label: "Bluetooth", icon: "✦", cap: Cap.Connectivity },
-      { id: "logs",        label: "Logs",      icon: "☰" },
-      { id: "cli",         label: "CLI",       icon: "▸" },
-      { id: "api-docs",    label: "API Docs",  icon: "⎗" },
+      { id: "camera",            label: "Camera",    icon: "◎", cap: Cap.Vision },
+      { id: "settings:tts",      label: "Voice",     icon: "♫" },
+      { id: "settings:device",   label: "General",   icon: "⚙" },
+      { id: "settings:wifi",     label: "Wi-Fi",     icon: "⌁" },
+      { id: "settings:timezone", label: "Timezone",  icon: "◷" },
+      { id: "settings:channel",  label: "Channels",  icon: "✉" },
+      { id: "settings:plugins",  label: "Plugins",   icon: "⧉" },
+      // Advanced — debug only (see PUBLIC_SECTIONS). Face + voice enroll
+      // for home users live on People contacts, not here.
+      { id: "logs",              label: "Logs",      icon: "☰" },
+      { id: "settings:voice",    label: "Voice enroll", icon: "◉", cap: Cap.Audio },
+      { id: "settings:face",     label: "Face enroll", icon: "☺", cap: Cap.Vision },
+      { id: "settings:stt",      label: "Language",  icon: "⌘" },
+      { id: "settings:realtime", label: "Realtime",  icon: "⚡" },
+      { id: "settings:llm",      label: "AI Brain",  icon: "✦" },
+      { id: "settings:runtime",  label: "Runtime",   icon: "▦" },
+      { id: "settings:mqtt",     label: "MQTT",      icon: "⇄" },
+      { id: "settings:mcp",      label: "MCP Tools", icon: "⬡" },
+      { id: "system",            label: "System",    icon: "⚙" },
+      { id: "flow",              label: "Flow",      icon: "⇄" },
+      { id: "sensing",           label: "Sensing",   icon: "◉", cap: Cap.Sensing },
+      { id: "servo",             label: "Servo",     icon: "⎈", cap: Cap.Motion },
+      { id: "bluetooth",         label: "Bluetooth", icon: "✦", cap: Cap.Connectivity },
+      { id: "cli",               label: "CLI",       icon: "▸" },
+      { id: "api-docs",          label: "API Docs",  icon: "⎗" },
     ],
   },
 ];

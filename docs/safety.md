@@ -178,9 +178,20 @@ to the declared `motion.max_speed` at the single place the profile is chosen
 Lamp (`max_speed: 120`) nothing is clamped today; a body declaring a lower
 ceiling is what the gate is for.
 
-**Still not gated:** recorded animations. They replay stored frames at a fixed
-fps, so bounding their speed means changing how an animation looks, not
-stretching a number — an open question rather than a missing line of code.
+**Recorded / emotion play** is gated the same way: `damp_recorded_actions`
+(Lamp `_continue_playback`) inserts interpolated frames so no commanded step
+exceeds `motion.max_speed` at the authored fps, and Reachy time-scales the
+recorded move (`playback_time_scale`) so peak deg/s cannot exceed the bound.
+The path stays the same; only time stretches (a music groove may desync — that
+is the documented tradeoff).
+
+**Wake / resume** is gated too: Reachy `start` and `/servo/resume` go to INIT
+via `_goto_awake_pose` whose duration is `min_move_duration` from the live
+pose (sleep-fold→INIT if the pose cannot be read). SDK `wake_up()` is not
+used — it is a fixed 2s snap plus a sound that can abort with `no_media`.
+
+Recovery actions (`release`/`zero`/`hold`/`stop`) still never go through that
+stretch.
 
 ### Learned-policy interface (dry run)
 
@@ -205,9 +216,9 @@ the body.
       `duration` and the ring/arm moves at the capped speed; a device with no
       `motion:` bounds moves unrestricted (no 403).
 - [x] **Bypass audit (routes):** the speed cap is applied at `/servo/move` via
-      `min_move_duration` (the one endpoint that takes a duration). NOTE: internal
-      animation (idle/emotion poses driven by the runtime, not the agent) is not
-      gated — that is device-controlled, not agent-requested; revisit if needed.
+      `min_move_duration` (the one endpoint that takes a duration). Recorded
+      emotion/idle play is gated in the motion driver (`damp_recorded_actions` /
+      Reachy `_stretch_move`) so a Hub or library move cannot outrun the bound.
 - [x] **Determinism:** `min_move_duration` is pure (no clock, no caller identity).
 
 ### Slice 4 — fail-safe states (checklist)

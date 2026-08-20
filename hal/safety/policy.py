@@ -13,7 +13,9 @@ Enforced bounds:
   - slice 2: light.quiet_hours{max_brightness}, audio.quiet_hours — a nightly
              window that lowers the LED ceiling and suppresses loud audio (music)
   - slice 3: motion.max_speed                — deg/s ceiling, enforced by
-             stretching a move's duration (see min_move_duration)
+             stretching a move's duration (see min_move_duration) and by
+             stretching recorded/emotion play (damp_recorded_actions /
+             playback_time_scale) so no commanded joint exceeds the bound
   - slice 4: thermal.max_temp_c              — SoC over-temp → health event +
              stop discretionary motion (background monitor, see thermal_over)
 
@@ -28,6 +30,7 @@ and docs/safety.md.
 from __future__ import annotations
 
 import logging
+import math
 import os
 import re
 import urllib.request
@@ -351,6 +354,83 @@ def min_move_duration(
         max_delta = max(max_delta, abs(float(tgt) - float(cur)))
     needed = max_delta / policy.motion.max_speed
     return max(requested, needed)
+
+
+def max_joint_delta(current: dict, target: dict) -> float:
+    """Largest absolute degree delta for joints present in both dicts."""
+    peak = 0.0
+    for joint, tgt in target.items():
+        cur = current.get(joint)
+        if cur is None:
+            continue
+        peak = max(peak, abs(float(tgt) - float(cur)))
+    return peak
+
+
+def playback_time_scale(
+    policy: Optional[SafetyPolicy],
+    frames: list,
+    dt: float,
+) -> float:
+    """Uniform time scale (>= 1) so peak consecutive-frame deg/s <= max_speed.
+
+    `dt` is the authored seconds between consecutive `frames`. Pass-through 1.0
+    when no ceiling is declared, the trajectory is empty, or `dt` is not
+    positive. Used to slow a recorded move without changing its shape.
+    """
+    if policy is None or policy.motion is None or policy.motion.max_speed is None:
+        return 1.0
+    if dt <= 0 or not frames or len(frames) < 2:
+        return 1.0
+    peak_dps = 0.0
+    prev = frames[0]
+    for cur in frames[1:]:
+        peak_dps = max(peak_dps, max_joint_delta(prev, cur) / dt)
+        prev = cur
+    if peak_dps <= 0:
+        return 1.0
+    return max(1.0, peak_dps / float(policy.motion.max_speed))
+
+
+def damp_recorded_actions(
+    policy: Optional[SafetyPolicy],
+    frames: list,
+    fps: float,
+) -> list:
+    """Copy of `frames` with extra interpolated poses so no commanded step
+    exceeds motion.max_speed at `fps`. Same path, slower where a step would
+    otherwise jerk. Pass-through (a shallow copy of each frame) when no
+    ceiling is declared.
+    """
+    if not frames:
+        return list(frames)
+    copied = [dict(f) for f in frames]
+    if policy is None or policy.motion is None or policy.motion.max_speed is None:
+        return copied
+    rate = float(fps)
+    if rate <= 0:
+        return copied
+    max_step = float(policy.motion.max_speed) / rate
+    if max_step <= 0:
+        return copied
+    out = [copied[0]]
+    for nxt in copied[1:]:
+        cur = out[-1]
+        delta = max_joint_delta(cur, nxt)
+        if delta <= max_step + 1e-9:
+            out.append(nxt)
+            continue
+        n = max(1, int(math.ceil(delta / max_step)))
+        keys = set(cur) | set(nxt)
+        for i in range(1, n + 1):
+            t = i / n
+            frame = {}
+            for joint in keys:
+                a = float(cur[joint]) if joint in cur else float(nxt[joint])
+                b = float(nxt[joint]) if joint in nxt else a
+                frame[joint] = a + (b - a) * t
+            out.append(frame)
+    return out
 
 
 def thermal_over(policy: Optional[SafetyPolicy], temp_c: Optional[float], was_over: bool) -> bool:

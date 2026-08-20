@@ -220,6 +220,7 @@ func (h *SensingHandler) PostEvent(c *gin.Context) {
 	isVoiceCommand := req.Type == "voice_command" || req.Type == "voice_followup"
 	isChat := sensingmsg.IsChat(req.Type)
 	scheduledQuiet := h.deviceService != nil && h.deviceService.IsQuiet()
+	inMeeting := h.deviceService != nil && h.deviceService.IsMeeting()
 	// A realtime-handled turn is user-initiated by definition: the user spoke and
 	// the realtime agent ALREADY replied out loud. That exchange happens entirely
 	// in HAL and never consults this sleep flag, so the device can be "asleep"
@@ -230,15 +231,19 @@ func (h *SensingHandler) PostEvent(c *gin.Context) {
 	// the realtime agent already answered (the run is MarkSilentRun).
 	isRealtimeHandled := req.Type == "voice_agent_handled"
 	isPassive := !isVoiceCommand
-	if scheduledQuiet && req.Type != "fire_hazard.detected" && !isChat {
-		slog.Info("INBOUND from HAL → SLEEP-DROPPED (quiet hours)",
+	if (scheduledQuiet || inMeeting) && req.Type != "fire_hazard.detected" && !isChat {
+		reason := "quiet_hours"
+		if inMeeting && !scheduledQuiet {
+			reason = "meeting"
+		}
+		slog.Info("INBOUND from HAL → SLEEP-DROPPED ("+reason+")",
 			"component", "sensing", "backend", h.agentGateway.Name(), "type", req.Type)
 		h.monitorBus.Push(domain.MonitorEvent{
 			Type:    "sensing_drop",
 			Summary: "[" + req.Type + "] " + req.Message,
-			Detail:  map[string]any{"type": req.Type, "reason": "quiet_hours"},
+			Detail:  map[string]any{"type": req.Type, "reason": reason},
 		})
-		c.JSON(http.StatusOK, serializers.ResponseSuccess(map[string]string{"handler": "dropped_quiet_hours"}))
+		c.JSON(http.StatusOK, serializers.ResponseSuccess(map[string]string{"handler": "dropped_" + reason}))
 		return
 	}
 	if isPassive && !isVoice && !isRealtimeHandled && !isChat && req.Type != "presence.enter" && req.Type != "fire_hazard.detected" && h.isSleeping != nil && h.isSleeping() {
@@ -382,6 +387,14 @@ func (h *SensingHandler) PostEvent(c *gin.Context) {
 			req.Message += "\n[image description] " + desc
 		}
 		req.Image = "" // text-only from here on; nothing downstream gets the blob
+	}
+
+	// A rename's NewSession occupies the agent. Wait a beat so guided-setup /
+	// Talk after SetIdentity is not dropped as busy. Timeout → same queue path.
+	if isChat && h.deviceService != nil {
+		if err := h.deviceService.WaitSessionReady(12 * time.Second); err != nil {
+			slog.Info("web chat waiting on identity session reset timed out", "component", "sensing", "error", err)
+		}
 	}
 
 	// When agent is busy:

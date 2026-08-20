@@ -15,6 +15,8 @@ import { RealtimeSection } from "@/pages/settings/RealtimeSection";
 import { AgentRuntimeSection } from "@/pages/settings/AgentRuntimeSection";
 import { TimezoneSection } from "@/pages/settings/TimezoneSection";
 import { SleepSection } from "@/pages/settings/SleepSection";
+import { BehaviorsSection } from "@/pages/settings/BehaviorsSection";
+import { UsesSection } from "@/pages/settings/UsesSection";
 import { STTSection, type SttProvider } from "@/pages/settings/STTSection";
 import { ChannelSection } from "@/pages/settings/ChannelSection";
 import { MqttSection } from "@/pages/settings/MqttSection";
@@ -25,7 +27,7 @@ import { PluginsSection } from "@/pages/settings/PluginsSection";
 // page shell owns the sidebar / active-section state). `stt` is the Language
 // section (rendered under id="stt"), matching the legacy /edit layout. `runtime`
 // is the agent-backend switch (its own Switch button, not part of Save).
-export type SettingsSectionId = "device" | "wifi" | "llm" | "runtime" | "voice" | "face" | "tts" | "realtime" | "stt" | "channel" | "mqtt" | "mcp" | "plugins" | "timezone" | "sleep";
+export type SettingsSectionId = "device" | "wifi" | "llm" | "runtime" | "voice" | "face" | "tts" | "realtime" | "stt" | "channel" | "mqtt" | "mcp" | "plugins" | "timezone" | "sleep" | "behaviors" | "uses";
 
 // Header-row label lookup. Kept local so the panel can render the active-section
 // title above the form without depending on the page's NAV_GROUPS config.
@@ -35,7 +37,7 @@ const SECTION_LABELS: Record<SettingsSectionId, string> = {
   llm: "AI Brain",
   runtime: "Runtime",
   voice: "My Voice",
-  face: "Face",
+  face: "Add a face",
   tts: "Voice",
   realtime: "Realtime",
   stt: "Language",
@@ -45,6 +47,8 @@ const SECTION_LABELS: Record<SettingsSectionId, string> = {
   plugins: "Plugins",
   timezone: "Timezone",
   sleep: "Quiet hours",
+  behaviors: "Behaviors",
+  uses: "Uses",
 };
 
 // Field / LockedField / LockedPasswordField / SectionCard live in
@@ -108,6 +112,7 @@ export function SettingsPanel({ activeSection }: { activeSection: SettingsSectio
   const [realtimeEnabled, setRealtimeEnabled] = useState(true);
   const [wakeWord, setWakeWord] = useState(false);
   const [agentName, setAgentName] = useState("");
+  const [wakePhrase, setWakePhrase] = useState("");
   const [wakePhrases, setWakePhrases] = useState<string[]>([]);
   const [realtimeProvider, setRealtimeProvider] = useState("gemini");
   const [realtimeVoice, setRealtimeVoice] = useState("Kore");
@@ -212,6 +217,7 @@ export function SettingsPanel({ activeSection }: { activeSection: SettingsSectio
         setTtsVoice(cfg.tts_voice || "Rachel");
         setWakeWord(cfg.wakeword ?? false);
         setAgentName(cfg.agent_name ?? "");
+        setWakePhrase(cfg.wake_phrase ?? "");
         setWakePhrases(cfg.wake_phrases ?? []);
         if (cfg.realtime) {
           setRealtimeEnabled(cfg.realtime.enabled ?? true);
@@ -298,7 +304,12 @@ export function SettingsPanel({ activeSection }: { activeSection: SettingsSectio
           fdChannel: cfg.fd_channel ?? "",
         });
       })
-      .catch((err: Error) => setError(err.message))
+      .catch((err: Error) => {
+        const msg = err.message || "";
+        setError(/JSON|Unexpected token|Failed to fetch|NetworkError/i.test(msg)
+          ? "Can't reach the device right now."
+          : msg);
+      })
       .finally(() => setLoadingCfg(false));
     getTTSProviders().then(setTtsProviders).catch(() => {});
     getTTSVoices().then(setTtsVoices).catch(() => {});
@@ -487,11 +498,11 @@ export function SettingsPanel({ activeSection }: { activeSection: SettingsSectio
 
   // Save is hidden for sections that aren't part of the form's PUT flow: Face/My
   // Voice enroll via their own buttons, and Runtime switches via its own action.
-  const showSave = activeSection !== "face" && activeSection !== "voice" && activeSection !== "runtime" && activeSection !== "timezone" && activeSection !== "sleep";
+  const showSave = activeSection !== "face" && activeSection !== "voice" && activeSection !== "runtime" && activeSection !== "timezone" && activeSection !== "sleep" && activeSection !== "behaviors" && activeSection !== "uses";
 
   return (
     <div className="lm-fade-in lm-settings-panel" style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
-      <div style={{ maxWidth: 560, margin: "0 auto" }}>
+      <div style={{ maxWidth: activeSection === "behaviors" || activeSection === "uses" ? 720 : 560, margin: "0 auto", width: "100%" }}>
 
         {/* Header row: active-section label on the left, Save button on the right.
             A hairline divider under the row separates the title from the body. */}
@@ -545,7 +556,15 @@ export function SettingsPanel({ activeSection }: { activeSection: SettingsSectio
               wakeWord={wakeWord}
               setWakeWord={setWakeWord}
               agentName={agentName}
+              wakePhrase={wakePhrase}
               wakePhrases={wakePhrases}
+              onIdentityApplied={(r) => {
+                setAgentName(r.name);
+                setWakePhrase(r.wake_phrase);
+                setWakePhrases(r.wake_phrases ?? []);
+                setWakeWord(r.wakeword);
+                setBaseline((b) => (b ? { ...b, wakeWord: r.wakeword } : b));
+              }}
             />
 
             <WifiSection
@@ -567,6 +586,8 @@ export function SettingsPanel({ activeSection }: { activeSection: SettingsSectio
 
             <TimezoneSection active={activeSection === "timezone"} />
             <SleepSection active={activeSection === "sleep"} />
+            <UsesSection active={activeSection === "uses"} />
+            <BehaviorsSection active={activeSection === "behaviors"} />
 
             <EditVoiceSection
               active={activeSection === "voice"}

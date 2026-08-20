@@ -1,4 +1,4 @@
-# Autonomous Buddy — sign + notarize cho production
+# Kestrel Buddy — sign + notarize cho production
 
 Doc handover cho dev sẽ làm Apple Developer enrolment. Sau khi setup 1 lần xong, mỗi release chỉ cần:
 

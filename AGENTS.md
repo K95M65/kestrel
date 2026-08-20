@@ -43,7 +43,7 @@ rules apply to all code changes:
    | Habit tracking, pattern building, habit-aware nudge phrasing | `robots/lamp/docs/habit-tracking.md` | `robots/lamp/docs/vi/habit-tracking_vi.md` |
    | Vision tracking, object follow, servo track | `robots/lamp/docs/vision-tracking.md` | `robots/lamp/docs/vi/vision-tracking_vi.md` |
    | Physical controls (GPIO button, TTP223 touchpad, gestures, pet response) | `robots/lamp/docs/physical-controls.md` | `robots/lamp/docs/vi/physical-controls_vi.md` |
-   | Autonomous Buddy (Mac companion app) | `integrations/companions/autonomous-buddy/docs/autonomous-buddy.md`, `integrations/companions/autonomous-buddy/docs/autonomous-buddy-mvp.md`, `integrations/companions/autonomous-buddy/docs/release-signing.md` | `integrations/companions/autonomous-buddy/docs/vi/autonomous-buddy_vi.md`, `integrations/companions/autonomous-buddy/docs/vi/autonomous-buddy-mvp_vi.md`, `integrations/companions/autonomous-buddy/docs/vi/release-signing_vi.md` |
+   | Kestrel Buddy (companion app) | `integrations/companions/autonomous-buddy/docs/autonomous-buddy.md`, `integrations/companions/autonomous-buddy/docs/autonomous-buddy-mvp.md`, `integrations/companions/autonomous-buddy/docs/release-signing.md` | `integrations/companions/autonomous-buddy/docs/vi/autonomous-buddy_vi.md`, `integrations/companions/autonomous-buddy/docs/vi/autonomous-buddy-mvp_vi.md`, `integrations/companions/autonomous-buddy/docs/vi/release-signing_vi.md` |
    | Security test checklist | `robots/lamp/docs/security-test.md` | _(no vi version)_ |
 
 2. **Comments in English** - Project standard.
@@ -107,7 +107,7 @@ Rules:
 
 ## Project Overview
 
-Autonomous is an open-source OS for physical AI agents. The Go backend
+Kestrel is a fork of Autonomous OS for desk companion robots. The Go backend
 (`system`) provides device onboarding (WiFi, LLM provider, messaging
 channel setup), OTA updates, and agent gateway integration. The brain is a
 swappable agentic runtime (OpenClaw, Hermes, or any LLM + skills + memory).

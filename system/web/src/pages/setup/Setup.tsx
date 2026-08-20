@@ -14,6 +14,7 @@ import { VoiceSection } from "@/pages/settings/VoiceSection";
 import { FaceSection } from "@/pages/settings/FaceSection";
 import { AppsSection } from "@/components/setup/AppsSection";
 import { Wifi, Brain, Volume2, MessageSquare, UserCircle, Mic, Globe, Check, Laptop } from "lucide-react";
+import { ReachyMark } from "@/components/ReachyMark";
 import type { SetupMode } from "./helpers";
 import { useSetupController } from "./useSetupController";
 import { SetupProgressScreen } from "./SetupProgressScreen";
@@ -88,11 +89,12 @@ export default function Setup({ mode = "initial" }: SetupProps = {}) {
         {/* Brand header + overall progress so the operator always sees how far
             they are into the wizard from the sidebar. */}
         <div style={{ padding: "16px 16px 12px" }}>
-          <div style={{ fontSize: 14.5, fontWeight: 700, color: C.text, letterSpacing: "0.01em" }}>
-            Device Setup
-          </div>
-          <div style={{ fontSize: 12, color: C.textMuted, marginTop: 3 }}>
-            {doneCount} of {visibleSections.length} done
+          <div className="lm-reachy-brand" style={{ padding: 0, marginBottom: 10 }}>
+            <ReachyMark size={32} />
+            <div>
+              <div className="lm-reachy-brand-name" style={{ fontSize: 14.5, color: C.text }}>Kestrel</div>
+              <div className="lm-reachy-brand-sub">Desk Companion · {doneCount} of {visibleSections.length} done</div>
+            </div>
           </div>
           <div className="lm-progress-track" style={{ marginTop: 10 }}>
             <div className="lm-progress-fill" style={{ width: `${progressPct}%` }} />

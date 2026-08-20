@@ -77,7 +77,9 @@ export function WifiSection({
       id="wifi"
       title="Wi-Fi"
       active={active}
-      description="The network your device connects to. Click the pencil to change it."
+      description={ssid.trim()
+        ? `Connected to “${ssid.trim()}”. Pencil to change networks.`
+        : "The network this robot uses. Pencil to join one."}
       icon={<Wifi size={17} />}
     >
       <div style={{ marginBottom: FIELD_GAP }}>

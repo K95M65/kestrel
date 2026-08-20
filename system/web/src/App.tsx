@@ -10,6 +10,13 @@ import GwConfig from "@/pages/GwConfig";
 import { checkInternet, getDeviceConfig, getSetupStatus, safeSearch, scrubLocationSecrets, setApiToken } from "@/lib/api";
 import { setLanguage } from "@/lib/i18n";
 
+// Pause CSS companion animations when the tab is hidden (saves GPU on the Pi).
+if (typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", () => {
+    document.documentElement.classList.toggle("lm-paused", document.hidden);
+  });
+}
+
 // Detect Tailscale access by either:
 //  - CGNAT IPv4 in 100.64.0.0/10 (100.64.0.0 – 100.127.255.255), or
 //  - MagicDNS hostname (anything ending in `.ts.net`).

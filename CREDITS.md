@@ -1,7 +1,7 @@
 # Credits
 
-Autonomous OS is assembled from other people's work. This is what a robot running it
-actually carries, and where each piece came from. Licenses are stated only where the
+Kestrel is a fork of Autonomous OS, assembled from other people's work. This is
+what a robot running it actually carries, and where each piece came from. Licenses are stated only where the
 tree proves them — a `LICENSE` file, a header, or the upstream's own published terms.
 Where we could not verify one from here, we say so; check upstream before you ship.
 

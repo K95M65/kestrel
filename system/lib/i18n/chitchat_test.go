@@ -28,6 +28,26 @@ func TestBuildVoiceWakeWordsUsesHALPrefixes(t *testing.T) {
 	}
 }
 
+func TestVoiceWakeWordsForNamePrefersExclusiveList(t *testing.T) {
+	SetExclusiveWakeWords([]string{"computer"})
+	t.Cleanup(func() { SetExclusiveWakeWords(nil) })
+	got := VoiceWakeWordsForName("Luna")
+	if len(got) != 1 || got[0] != "computer" {
+		t.Fatalf("VoiceWakeWordsForName exclusive = %v, want [computer]", got)
+	}
+}
+
+func TestSetDeviceNamePreservesDisplayCasing(t *testing.T) {
+	SetDeviceName("McBot")
+	t.Cleanup(func() { SetDeviceName("autonomous") })
+	if DeviceName() != "mcbot" {
+		t.Fatalf("DeviceName = %q, want mcbot", DeviceName())
+	}
+	if DeviceDisplayName() != "McBot" {
+		t.Fatalf("DeviceDisplayName = %q, want McBot", DeviceDisplayName())
+	}
+}
+
 func TestBuildSupportedVoiceWakeWordsIncludesCurrentAndPermanentAliases(t *testing.T) {
 	words := BuildSupportedVoiceWakeWords("Luna", "lamp")
 	want := []string{

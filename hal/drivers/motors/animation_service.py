@@ -6,6 +6,7 @@ import threading
 from typing import Any, Callable, Dict, List, Optional, Set
 from hal.follower import LeLampFollowerConfig, LeLampFollower
 from hal.presets import EMO_SLEEPY, SERVO_CMD_PLAY, SERVO_CMD_MUSIC_START, SERVO_CMD_MUSIC_STOP, SERVO_IDLE, SERVO_MUSIC_GROOVE
+from hal.safety.policy import damp_recorded_actions, min_move_duration
 
 logger = logging.getLogger(__name__)
 
@@ -61,13 +62,16 @@ def _motor_positions_from_bus(robot: LeLampFollower) -> Dict[str, float]:
 
 
 class AnimationService:
-    def __init__(self, port: str, lamp_id: str, fps: int = 30, duration: float = 5.0, idle_recording: str = SERVO_IDLE, hold_s: float = 0.0):
+    def __init__(self, port: str, lamp_id: str, fps: int = 30, duration: float = 5.0, idle_recording: str = SERVO_IDLE, hold_s: float = 0.0, safety_policy: Any = None):
         self.port = port
         self.lamp_id = lamp_id
         self.fps = fps
         self.duration = duration
         self.idle_recording = idle_recording
         self.hold_s = hold_s
+        # Same policy aim/nudge already receive per-call. Recorded play has no
+        # route to carry it, so it lives on the service (presence-driven).
+        self._safety_policy = safety_policy
         self._hold_until: float = 0.0  # timestamp until which to hold pose before returning to idle
         self._no_idle_recordings = NO_IDLE_RECORDINGS
         # disable_torque_on_disconnect=False: dropping torque is what `release()`
@@ -336,7 +340,10 @@ class AnimationService:
         actions = self._load_recording(recording_name)
         if actions is None:
             return
-        
+        # Dampen intra-recording steps to motion.max_speed. Recovery actions
+        # (halt/release/zero/hold/stop) never load a recording this way.
+        actions = damp_recorded_actions(self._safety_policy, actions, self.fps)
+
         print(f"Starting {recording_name} with interpolation")
         
         # Set up new playback
@@ -347,8 +354,11 @@ class AnimationService:
         # If we have a current state, set up interpolation to the first frame.
         # _resume_duration overrides self.duration once (set by resume endpoint for slow-start).
         if self._current_state is not None:
-            effective_duration = self._resume_duration if self._resume_duration is not None else self.duration
+            requested = self._resume_duration if self._resume_duration is not None else self.duration
             self._resume_duration = None
+            effective_duration = min_move_duration(
+                self._safety_policy, actions[0], self._current_state, requested
+            )
             total = int(effective_duration * self.fps)
             self._interpolation_frames = total
             self._interpolation_total_frames = total
@@ -518,11 +528,20 @@ class AnimationService:
                         next_rec = self.idle_recording
                     next_actions = self._load_recording(next_rec)
                     if next_actions is not None and len(next_actions) > 0:
+                        next_actions = damp_recorded_actions(
+                            self._safety_policy, next_actions, self.fps
+                        )
                         self._current_recording = next_rec
                         self._current_actions = next_actions
                         self._current_frame_index = 0
                         if self._current_state is not None:
-                            total = int(self.duration * self.fps)
+                            ramp = min_move_duration(
+                                self._safety_policy,
+                                next_actions[0],
+                                self._current_state,
+                                self.duration,
+                            )
+                            total = int(ramp * self.fps)
                             self._interpolation_frames = total
                             self._interpolation_total_frames = total
                             self._interpolation_target = next_actions[0]
@@ -981,7 +1000,6 @@ class AnimationService:
             safety_policy: object) -> Dict[str, float]:
         """Aim to a named direction. Returns the final joint positions."""
         from hal.presets import AIM_PRESETS, AIM_LEFT, AIM_RIGHT, AIM_CENTER
-        from hal.safety.policy import min_move_duration
 
         preset = AIM_PRESETS.get(direction)
         if preset is None:
@@ -1034,8 +1052,6 @@ class AnimationService:
               current_positions: Dict[str, float],
               safety_policy: object) -> Dict[str, float]:
         """Relative nudge from current position. Returns final positions."""
-        from hal.safety.policy import min_move_duration
-
         positions = dict(current_positions)
         if yaw != 0:
             positions["base_yaw.pos"] = current_positions.get("base_yaw.pos", 0) + yaw

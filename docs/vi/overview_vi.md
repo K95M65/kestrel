@@ -1,4 +1,4 @@
-# Tổng Quan Kiến Trúc — Autonomous
+# Tổng Quan Kiến Trúc — Kestrel
 
 ## Kiến Trúc 3 Tầng
 
@@ -62,7 +62,7 @@ integrations/                     — Off-device: companions/, chat-bridges/, pe
 - **HAL là hardware driver** — không chứa logic AI
 - **SKILL.md native** — không dùng MCP, LLM tự đọc skill và gọi curl
 - **Chủ thiết bị có thể tạo skill** — `skill-creator` built-in hướng dẫn soạn,
-  kiểm thử và đóng gói skill để đưa lên Autonomous Skill Store.
+  kiểm thử và đóng gói skill để đưa lên Skill Store.
 
 ## Lamp Simulator trên Laptop
 

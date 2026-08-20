@@ -58,11 +58,11 @@ final class MenuBarController: NSObject {
 
         menu.addItem(.separator())
 
-        let about = NSMenuItem(title: "About Autonomous Buddy", action: #selector(aboutAction), keyEquivalent: "")
+        let about = NSMenuItem(title: "About Kestrel Buddy", action: #selector(aboutAction), keyEquivalent: "")
         about.target = self
         menu.addItem(about)
 
-        let quit = NSMenuItem(title: "Quit Autonomous Buddy", action: #selector(quitAction), keyEquivalent: "q")
+        let quit = NSMenuItem(title: "Quit Kestrel Buddy", action: #selector(quitAction), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
     }
@@ -112,7 +112,7 @@ final class MenuBarController: NSObject {
     private func headerText(for state: AppState) -> String {
         switch state.pairing {
         case .notPaired:
-            return "Autonomous Buddy — Not paired"
+            return "Kestrel Buddy — Not paired"
         case .paired(_, let host):
             switch state.connection {
             case .connected:
@@ -145,7 +145,7 @@ final class MenuBarController: NSObject {
                 menu.addItem(item)
             }
         }
-        let manual = NSMenuItem(title: "Pair with device…", action: #selector(pairManual), keyEquivalent: "p")
+        let manual = NSMenuItem(title: "Pair this computer…", action: #selector(pairManual), keyEquivalent: "p")
         manual.target = self
         menu.addItem(manual)
     }

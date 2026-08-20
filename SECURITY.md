@@ -1,8 +1,11 @@
 # Security
 
-Found a vulnerability? Please **report it privately** — open a [security advisory](https://github.com/autonomous-ai/autonomous-os/security/advisories/new)
-or email the maintainer instead of filing a public issue, and give us a chance to ship a fix
-first. Thank you. 🙏
+Found a vulnerability in **Kestrel**? Report it privately on
+[K95M65/kestrel](https://github.com/K95M65/kestrel/security/advisories/new)
+instead of filing a public issue.
+
+Issues in **upstream Autonomous OS** still go to
+[autonomous-ai/autonomous-os](https://github.com/autonomous-ai/autonomous-os/security/advisories/new).
 
 One thing to get right in production: the on-device HAL authenticates with a
 `device_auth_token` that is **separate from your LLM provider key** — keep them distinct so

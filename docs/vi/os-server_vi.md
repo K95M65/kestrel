@@ -36,6 +36,14 @@
 | PUT | `/api/device/sleep` | Lưu lịch `{enabled,sleep_at,wake_at,days}` (admin-gated) |
 | POST | `/api/device/sleep/now` | HAL sleepy ngay (admin-gated) |
 | POST | `/api/device/sleep/wake` | Đánh thức đến lần ngủ kế (admin-gated) |
+| GET | `/api/device/behaviors` | Gói companion + trạng thái (admin-gated) |
+| PUT | `/api/device/behaviors` | Lưu gói companion (admin-gated) |
+| POST | `/api/device/behaviors/brief` | Chạy morning briefing ngay (admin-gated) |
+| POST | `/api/device/behaviors/meeting` | `{on:true\|false}` chế độ họp (admin-gated) |
+| POST | `/api/device/behaviors/pomodoro/start` | Bắt đầu khối làm việc (admin-gated) |
+| POST | `/api/device/behaviors/pomodoro/stop` | Dừng pomodoro (admin-gated) |
+| GET/POST/DELETE | `/api/device/behaviors/memory` | Hộp nhớ “remember this” (admin-gated) |
+| POST | `/api/behaviors/remember` | Cùng đường ghi cho `[HW:/behaviors/remember]` (LAN) |
 
 **GET response** (`data`):
 ```json

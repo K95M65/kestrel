@@ -231,8 +231,9 @@ func SpeakPreview(text, voice, provider, apiKey, baseURL string) error {
 	body, _ := json.Marshal(payload)
 	// Generous timeout: ElevenLabs/OpenAI TTFB on first synthesis can run
 	// 1-3s; the default 5s `post` budget is tight when the preview phrase
-	// is long. Mirror PrerenderCached's window.
-	return postWithTimeout("/voice/speak", body, 30*time.Second)
+	// is long. Mirror PrerenderCached's window. Use the speak decoder so a
+	// muted speaker surfaces as ErrSpeakerMuted instead of a silent 200.
+	return postSpeakWithTimeout("/voice/speak", body, 30*time.Second)
 }
 
 // PrerenderCached asks hal to render+save WAV for text without playing.
@@ -515,6 +516,35 @@ func postSpeak(path string, body []byte) error {
 		reader = bytes.NewReader(body)
 	}
 	resp, err := doPost(path, reader)
+	if err != nil {
+		return fmt.Errorf("POST %s: %w", path, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("POST %s returned %d", path, resp.StatusCode)
+	}
+	var r struct {
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&r); err == nil && r.Status == "suppressed" {
+		return ErrSpeakerMuted
+	}
+	return nil
+}
+
+// postSpeakWithTimeout is postSpeak with a per-call timeout. SpeakPreview
+// needs both the 30s synthesis window and mute detection.
+func postSpeakWithTimeout(path string, body []byte, timeout time.Duration) error {
+	client := &http.Client{Timeout: timeout}
+	var reader io.Reader
+	if body != nil {
+		reader = bytes.NewReader(body)
+	}
+	req, err := newRequest("POST", path, reader)
+	if err != nil {
+		return fmt.Errorf("POST %s: %w", path, err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("POST %s: %w", path, err)
 	}

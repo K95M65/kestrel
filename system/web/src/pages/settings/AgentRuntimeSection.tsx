@@ -152,7 +152,7 @@ export function AgentRuntimeSection({ active }: { active: boolean }) {
               border: "none",
               cursor: switching || selected === current ? "not-allowed" : "pointer",
               background: switching || selected === current ? C.surface : C.amber,
-              color: switching || selected === current ? C.textMuted : "#0C0B09",
+              color: switching || selected === current ? C.textMuted : "var(--lm-on-amber)",
               opacity: switching || selected === current ? 0.6 : 1,
               transition: "all 0.15s",
             }}

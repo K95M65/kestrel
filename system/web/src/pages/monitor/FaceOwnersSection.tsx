@@ -1,9 +1,14 @@
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { Users, Mic, ScanFace, UserCheck, UserPlus, RefreshCw } from "lucide-react";
 import { S } from "./styles";
 import { useTheme } from "@/lib/useTheme";
-import { hwUrl } from "@/lib/api";
+import { getBehaviors, getDeviceConfig, hwUrl, setMe } from "@/lib/api";
+import { talkName } from "@/lib/robotName";
+import { useFaceEnroll } from "@/hooks/setup/useFaceEnroll";
+import { FriendPhotoModal } from "./face-owners/FriendPhotoModal";
+import { mainFacePhoto } from "@/lib/facePhoto";
 import { UserTimelineModal } from "./UserTimelineModal";
+import { ContactVoiceBar } from "./face-owners/ContactVoiceBar";
 import { useStrangers } from "./face-owners/useStrangers";
 import { useFilePreview } from "./face-owners/useFilePreview";
 import { useFaceData } from "./face-owners/useFaceData";
@@ -14,12 +19,53 @@ import { ConfirmDialog } from "./face-owners/ConfirmDialog";
 import { RenameModal } from "./face-owners/RenameModal";
 import { EnrollModal } from "./face-owners/EnrollModal";
 import { UnknownFacesCard } from "./face-owners/UnknownFacesCard";
+import { ClaimUnknownModal } from "./face-owners/ClaimUnknownModal";
 import { CooldownsCard } from "./face-owners/CooldownsCard";
 import { StrangerClustersCard } from "./face-owners/StrangerClustersCard";
 import { PersonCard } from "./face-owners/PersonCard";
 
-export function FaceOwnersSection() {
+export function FaceOwnersSection({
+  isDebug = false,
+}: {
+  isDebug?: boolean;
+}) {
   const [, , themeClass] = useTheme();
+  const { loadFaceOwners } = useFaceEnroll();
+  const [sttLanguage, setSttLanguage] = useState("en");
+  const [agentName, setAgentName] = useState("");
+  const [meLabel, setMeLabel] = useState("");
+  const [settingMe, setSettingMe] = useState(false);
+  const [claimAsMe, setClaimAsMe] = useState(false);
+  const meLabelRef = useRef("");
+  useEffect(() => { meLabelRef.current = meLabel; }, [meLabel]);
+
+  const handleSetMe = useCallback(async (label: string) => {
+    setSettingMe(true);
+    try {
+      const b = await setMe(label);
+      setMeLabel((b.config?.me ?? "").toLowerCase());
+    } catch {
+      /* stay on previous */
+    } finally {
+      setSettingMe(false);
+    }
+  }, []);
+
+  useEffect(() => { loadFaceOwners(); }, [loadFaceOwners]);
+  useEffect(() => {
+    getDeviceConfig()
+      .then((c) => {
+        setSttLanguage(c.stt_language || "en");
+        setAgentName(c.agent_name ?? "");
+      })
+      .catch(() => {});
+    getBehaviors()
+      .then((b) => setMeLabel((b.config?.me ?? "").toLowerCase()))
+      .catch(() => {});
+  }, []);
+
+  const [photoFor, setPhotoFor] = useState<string | null>(null);
+  const [voiceFor, setVoiceFor] = useState<string | null>(null);
 
   // Enrolled-owners list + detection state (cooldowns, current user) + polling
   // and refresh live in their own hook. `refresh` reloads the list after a
@@ -35,14 +81,6 @@ export function FaceOwnersSection() {
   // the list after a change.
   const {
     showEnroll, setShowEnroll,
-    enrollName, setEnrollName,
-    enrollTgUsername, setEnrollTgUsername,
-    enrollTgId, setEnrollTgId,
-    enrollFile, setEnrollFile,
-    enrollPreview, enrolling, enrollError,
-    enrollDragging, setEnrollDragging,
-    fileInputRef,
-    handleEnroll,
     renaming, setRenaming,
     renameValue, setRenameValue,
     renameError, setRenameError,
@@ -55,7 +93,14 @@ export function FaceOwnersSection() {
     handleRemove, confirmRemove,
     handleRemovePhoto, confirmRemovePhoto,
     handleRemoveVoiceFile, confirmRemoveVoice,
-  } = useOwnerActions(refresh);
+  } = useOwnerActions(refresh, {
+    onRenamed: (oldLabel, newLabel) => {
+      if (oldLabel === meLabelRef.current) void handleSetMe(newLabel);
+    },
+    onRemoved: (label) => {
+      if (label === meLabelRef.current) void handleSetMe("");
+    },
+  });
 
   // Timeline modal state
   const [timelineUser, setTimelineUser] = useState<string | null>(null);
@@ -81,7 +126,14 @@ export function FaceOwnersSection() {
     confirmStrangerFile, setConfirmStrangerFile,
     handleDeleteCluster, confirmDeleteCluster,
     handleDeleteStrangerFile, confirmDeleteStrangerFile,
+    confirmForgetFace, setConfirmForgetFace,
+    handleForgetFace, confirmForgetFaceNow,
+    claimTarget, claimName, setClaimName, claimError, closeClaim,
+    openClaimFace, openClaimVoice, submitClaim,
+    claimingFace, claimingVoice, forgettingFace,
   } = useStrangers();
+
+  useEffect(() => { if (claimTarget) setClaimAsMe(false); }, [claimTarget]);
 
   // Per-person file gallery: folder toggle, inline preview, audio playback, and
   // file-open routing live in their own hook.
@@ -99,7 +151,7 @@ export function FaceOwnersSection() {
   const monCard = { ...S.card, boxShadow: undefined };
 
   // Sizing-only — visual surface/border/hover/focus comes from `.lm-u-input`.
-  const inputStyle: React.CSSProperties = {
+  const inputStyle: CSSProperties = {
     fontSize: 12,
     padding: "8px 11px",
     borderRadius: 7,
@@ -108,13 +160,13 @@ export function FaceOwnersSection() {
 
   // Small uppercase field label for the enroll form, so each input reads as a
   // labelled field rather than a bare placeholder box.
-  const fieldLabel: React.CSSProperties = {
+  const fieldLabel: CSSProperties = {
     display: "block", fontSize: 10, fontWeight: 700, letterSpacing: "0.06em",
     textTransform: "uppercase", color: "var(--lm-text-dim)", marginBottom: 5,
   };
 
   // Sizing-only — visual surface/border/hover/focus comes from `.lm-u-btn`.
-  const btnStyle: React.CSSProperties = {
+  const btnStyle: CSSProperties = {
     fontSize: 10,
     padding: "4px 12px",
     borderRadius: 6,
@@ -123,7 +175,7 @@ export function FaceOwnersSection() {
 
   // Card header row — label on the left, badge/action on the right, matching the
   // Overview/System header pattern (no tinted strip, just spacing + alignment).
-  const cardHeader: React.CSSProperties = {
+  const cardHeader: CSSProperties = {
     display: "flex", justifyContent: "space-between", alignItems: "center",
     marginBottom: 12,
   };
@@ -131,7 +183,7 @@ export function FaceOwnersSection() {
   // Square icon button — used for the per-person action row (Edit / Timeline /
   // Delete / Expand) so each is the same compact size regardless of label width.
   // Surface/border/hover come from `.lm-u-btn`.
-  const iconBtnStyle: React.CSSProperties = {
+  const iconBtnStyle: CSSProperties = {
     width: 26, height: 26,
     display: "inline-flex", alignItems: "center", justifyContent: "center",
     padding: 0, borderRadius: 5,
@@ -152,60 +204,58 @@ export function FaceOwnersSection() {
   // First enrolled photo of the active user, so the Here-now tile can show a real
   // face avatar instead of the generic icon when we have one.
   const hereNowPhoto = hereNow
-    ? data?.persons.find((p) => p.label === hereNow)?.photos?.[0] ?? null
+    ? mainFacePhoto(data?.persons.find((p) => p.label === hereNow)?.photos) ?? null
     : null;
 
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      {/* Hero — command-center header for the Users page: title + live stat tiles,
-          mirroring the Overview hero so the tab reads as a dashboard, not a list. */}
-      <div className="lm-mon-hero">
-        <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", gap: 14 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-              <div style={{
-                width: 44, height: 44, borderRadius: 12, flexShrink: 0,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                background: "var(--lm-amber-dim)", color: "var(--lm-amber)",
-                boxShadow: "inset 0 0 0 1px var(--lm-amber-glow)",
-              }} aria-hidden><Users size={22} /></div>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 19, fontWeight: 700, color: "var(--lm-text)", letterSpacing: "-0.3px", lineHeight: 1.2 }}>
-                  Users
-                </div>
-                <div style={{ fontSize: 12, color: "var(--lm-text-dim)", marginTop: 2 }}>
-                  {error
-                    ? <span style={{ color: "var(--lm-red)" }}>User recognizer unavailable</span>
-                    : "Enrolled people, unknown voices & faces seen by the device"}
-                </div>
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: 6 }}>
-              <button
-                onClick={() => setShowEnroll(!showEnroll)}
-                className={"lm-u-btn" + (showEnroll ? "" : " lm-u-btn-primary")}
-                style={{
-                  ...btnStyle, fontSize: 12, padding: "7px 14px",
-                  display: "inline-flex", alignItems: "center", gap: 5,
-                  ...(showEnroll ? { background: "var(--lm-amber-dim)", color: "var(--lm-amber)", borderColor: "var(--lm-amber)" } : {}),
-                }}
-              >
-                <UserPlus size={13} /> Enroll
-              </button>
-              <button
-                onClick={handleManualRefresh}
-                disabled={manualRefreshing}
-                className="lm-u-btn"
-                title="Refresh"
-                aria-label="Refresh"
-                style={{ ...btnStyle, fontSize: 12, padding: "7px 11px", color: "var(--lm-text-dim)", display: "inline-flex", alignItems: "center" }}
-              >
-                <RefreshCw size={13} className={manualRefreshing ? "lm-spin" : undefined} />
-              </button>
-            </div>
-          </div>
+  const household = (data?.persons.filter((p) => p.label !== "unknown") ?? [])
+    .slice()
+    .sort((a, b) => {
+      if (a.label === meLabel) return -1;
+      if (b.label === meLabel) return 1;
+      return a.label.localeCompare(b.label);
+    });
+  const knownCount = household.length;
+  const meHere = !!hereNow && hereNow === meLabel;
 
-          {/* Live stat tiles — headline numbers pulled up from the cards below. */}
+  return (
+    <div className="lm-home">
+      <div className="lm-home-stage">
+      <div className="lm-mon-hero lm-home-hero">
+        <div className="lm-home-copy" style={{ flex: "1 1 100%" }}>
+          <div className="lm-home-kicker">{meHere ? "You're here" : hereNow ? "Someone's here" : "Household"}</div>
+          <h1 className="lm-home-title">
+            {meHere
+              ? "You're here"
+              : hereNow
+                ? `${hereNow[0].toUpperCase()}${hereNow.slice(1)} is here`
+                : `Who ${talkName(agentName)} knows`}
+          </h1>
+          <p className="lm-home-meta">
+            {error
+              ? "The robot can't see faces right now. You can still add someone from a photo."
+              : knownCount > 0
+                ? `${knownCount} ${knownCount === 1 ? "person" : "people"}. Mark yourself as Me so this robot knows which card is yours.`
+                : `Add a friend so ${talkName(agentName)} can say hello by name.`}
+          </p>
+          <div className="lm-home-actions">
+            <button type="button" className="lm-home-cta" onClick={() => setShowEnroll(true)}>
+              <UserPlus size={14} /> Add a friend
+            </button>
+            <button
+              type="button"
+              className="lm-home-ghost"
+              onClick={handleManualRefresh}
+              disabled={manualRefreshing}
+              aria-label="Refresh"
+            >
+              <RefreshCw size={14} className={manualRefreshing ? "lm-spin" : undefined} />
+            </button>
+          </div>
+        </div>
+      </div>
+      </div>
+
+      {isDebug && (
           <div className="lm-grid-auto">
             <HeroStat icon={<Users size={16} />} label="Enrolled" tone="amber"
               value={data ? data.enrolled_count : "—"} />
@@ -225,25 +275,16 @@ export function FaceOwnersSection() {
             <HeroStat icon={<ScanFace size={16} />} label="Unknown faces" tone="red"
               value={faceStrangers ? faceStrangers.length : "—"} />
           </div>
-        </div>
-      </div>
+      )}
 
       {/* Enroll form — Add New User popup modal (keeps the dense person grid
           uncluttered). All enroll state + handleEnroll stay in this component. */}
       {showEnroll && (
         <EnrollModal
           themeClass={themeClass}
-          enrollName={enrollName} setEnrollName={setEnrollName}
-          enrollTgUsername={enrollTgUsername} setEnrollTgUsername={setEnrollTgUsername}
-          enrollTgId={enrollTgId} setEnrollTgId={setEnrollTgId}
-          enrollFile={enrollFile} setEnrollFile={setEnrollFile}
-          enrollPreview={enrollPreview}
-          enrolling={enrolling} enrollError={enrollError}
-          enrollDragging={enrollDragging} setEnrollDragging={setEnrollDragging}
-          fileInputRef={fileInputRef}
+          robotName={agentName}
           onClose={() => setShowEnroll(false)}
-          onSubmit={handleEnroll}
-          inputStyle={inputStyle} fieldLabel={fieldLabel} btnStyle={btnStyle}
+          onEnrolled={() => { setShowEnroll(false); void refresh(); void loadFaceOwners(); }}
         />
       )}
 
@@ -264,8 +305,8 @@ export function FaceOwnersSection() {
       {confirmDelete != null && (
         <ConfirmDialog
           danger
-          title={`Remove "${confirmDelete}"?`}
-          message="All enrolled photos for this user will be permanently deleted."
+          title={`Remove ${confirmDelete}?`}
+          message="This robot will forget this face and its photos."
           confirmLabel="Remove"
           onConfirm={confirmRemove}
           onCancel={() => setConfirmDelete(null)}
@@ -308,6 +349,45 @@ export function FaceOwnersSection() {
         />
       )}
 
+      {confirmForgetFace != null && (
+        <ConfirmDialog
+          danger
+          title="Forget this face?"
+          message="The robot will stop listing this unknown face. If they walk by again, they may show up as new."
+          confirmLabel="Forget"
+          onConfirm={confirmForgetFaceNow}
+          onCancel={() => setConfirmForgetFace(null)}
+        />
+      )}
+
+      {claimTarget != null && (
+        <ClaimUnknownModal
+          themeClass={themeClass}
+          title="Who is this?"
+          lead={claimTarget.kind === "face"
+            ? "Give them a name, or pick someone the robot already knows."
+            : "Name this voice, or pick someone the robot already knows."}
+          photoUrl={claimTarget.kind === "face"
+            ? hwUrl(`/face/stranger-photo/${encodeURIComponent(claimTarget.id)}`)
+            : null}
+          household={household.map((p) => p.label)}
+          name={claimName} setName={setClaimName}
+          asMe={claimAsMe} setAsMe={setClaimAsMe}
+          error={claimError}
+          saving={!!claimingFace || !!claimingVoice || settingMe}
+          onClose={() => { setClaimAsMe(false); closeClaim(); }}
+          onSubmit={() => { void (async () => {
+            if (!(await submitClaim())) return;
+            const named = claimName.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "_").replace(/^_+|_+$/g, "");
+            if (claimAsMe && named) await handleSetMe(named);
+            setClaimAsMe(false);
+            void refresh();
+            void loadFaceOwners();
+          })(); }}
+          inputStyle={inputStyle} fieldLabel={fieldLabel} btnStyle={btnStyle}
+        />
+      )}
+
       {/* Delete stranger sample file confirm. */}
       {confirmStrangerFile != null && (
         <ConfirmDialog
@@ -321,14 +401,17 @@ export function FaceOwnersSection() {
       )}
 
       {/* Person cards */}
-      {data && data.persons.length > 0 && (
+      {data && (isDebug ? data.persons : household).length > 0 && (
         <div className="lm-grid-4">
-          {data.persons.map((person, idx) => (
+          {(isDebug ? data.persons : household).map((person, idx) => (
             <PersonCard
               key={person.label}
               person={person}
               idx={idx}
               currentUser={currentUser}
+              isMe={person.label === meLabel}
+              settingMe={settingMe}
+              onSetMe={person.label === "unknown" ? undefined : handleSetMe}
               expandedPerson={expandedPerson}
               setExpandedPerson={setExpandedPerson}
               hoveredPerson={hoveredPerson}
@@ -349,6 +432,8 @@ export function FaceOwnersSection() {
               onRemoveVoiceFile={handleRemoveVoiceFile}
               onOpenFile={openFile}
               onTimeline={setTimelineUser}
+              onRecordVoice={(label) => { setVoiceFor(label); setPhotoFor(null); }}
+              onAddPhoto={(label) => { setPhotoFor(label); setVoiceFor(null); }}
               monCard={monCard}
               iconBtnStyle={iconBtnStyle}
             />
@@ -356,38 +441,48 @@ export function FaceOwnersSection() {
         </div>
       )}
 
-      {data && data.persons.length === 0 && !showEnroll && (
+      {data && household.length === 0 && !showEnroll && !(faceStrangers && faceStrangers.length) && (
         <div className="lm-mon-card" style={monCard}>
-          <EmptyState icon={<UserPlus size={20} />} text={`No users enrolled yet. Click "Enroll" above or send a photo via Telegram.`} />
+          <EmptyState icon={<UserPlus size={20} />} text="Nobody here yet. Add a friend — look at the camera and type their name." />
         </div>
       )}
 
-      {/* Bottom row: 3 diagnostic cards side-by-side so we get the same
-          horizontal density as Sensing/Analytics, instead of three full-width
-          stacks. */}
-      <div className="lm-grid-3">
+      {((faceStrangers && faceStrangers.length > 0) || faceStrangersError) && (
+        <div style={{ marginTop: 14 }}>
+        <UnknownFacesCard
+          faceStrangers={faceStrangers}
+          faceStrangersError={faceStrangersError}
+          claimingId={claimingFace}
+          forgettingId={forgettingFace}
+          onClaim={openClaimFace}
+          onForget={handleForgetFace}
+          monCard={monCard}
+          cardHeader={cardHeader}
+        />
+        </div>
+      )}
 
-      {/* Unknown Voice Clusters */}
-      <StrangerClustersCard
-        strangers={strangers}
-        strangersError={strangersError}
-        expandedCluster={expandedCluster}
-        setExpandedCluster={setExpandedCluster}
-        deletingCluster={deletingCluster}
-        deletingStrangerFile={deletingStrangerFile}
-        onDeleteCluster={handleDeleteCluster}
-        onDeleteStrangerFile={handleDeleteStrangerFile}
-        monCard={monCard}
-        cardHeader={cardHeader}
-      />
+      {((strangers && strangers.total > 0) || (isDebug && strangersError)) && (
+        <div style={{ marginTop: 14 }}>
+          <StrangerClustersCard
+            strangers={strangers}
+            strangersError={strangersError}
+            expandedCluster={expandedCluster}
+            setExpandedCluster={setExpandedCluster}
+            deletingCluster={deletingCluster}
+            deletingStrangerFile={deletingStrangerFile}
+            claimingHash={claimingVoice}
+            onDeleteCluster={handleDeleteCluster}
+            onDeleteStrangerFile={handleDeleteStrangerFile}
+            onClaim={openClaimVoice}
+            monCard={monCard}
+            cardHeader={cardHeader}
+          />
+        </div>
+      )}
 
-      {/* Unknown Faces (visit stats per stranger_id) */}
-      <UnknownFacesCard
-        faceStrangers={faceStrangers}
-        faceStrangersError={faceStrangersError}
-        monCard={monCard}
-        cardHeader={cardHeader}
-      />
+      {isDebug && (
+      <div className="lm-grid-3" style={{ marginTop: 14 }}>
 
       {/* Face Recognition Cooldowns */}
       <CooldownsCard
@@ -400,7 +495,32 @@ export function FaceOwnersSection() {
         cardHeader={cardHeader}
       />
 
-      </div>{/* /lm-grid-3 bottom row */}
+      </div>
+      )}
+
+      {photoFor && (
+        <FriendPhotoModal
+          themeClass={themeClass}
+          person={data?.persons.find((p) => p.label === photoFor) ?? { label: photoFor, photos: [], photo_count: 0 }}
+          robotName={agentName}
+          onClose={() => setPhotoFor(null)}
+          onChanged={() => { void refresh(); void loadFaceOwners(); }}
+        />
+      )}
+      {voiceFor && (
+        <ContactVoiceBar
+          name={voiceFor}
+          sttLanguage={sttLanguage}
+          onDone={() => { void refresh(); void loadFaceOwners(); }}
+          onClose={() => setVoiceFor(null)}
+        />
+      )}
+
+      {isDebug && (
+        <p style={{ fontSize: 12, color: "var(--lm-text-muted)", marginTop: 16 }}>
+          Tweaker enroll forms still live under Device → Add a face / My Voice when Advanced is on.
+        </p>
+      )}
 
       {timelineUser && (
         <UserTimelineModal user={timelineUser} onClose={() => setTimelineUser(null)} />

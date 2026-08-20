@@ -31,7 +31,7 @@ func main() {
 	}
 
 	fmt.Printf("[mock-device] listening on http://%s\n", listenAddr)
-	fmt.Println("[hint] In Autonomous Buddy: menu → 'Pair with device…' → host: localhost:8765 + code below")
+	fmt.Println("[hint] In Kestrel Buddy: menu → 'Pair with device…' → host: localhost:8765 + code below")
 	state.IssueCode()
 
 	go func() {

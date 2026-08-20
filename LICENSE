@@ -1,3 +1,14 @@
+Kestrel
+https://github.com/K95M65/kestrel
+
+This product is a fork of Autonomous OS
+https://github.com/autonomous-ai/autonomous-os
+
+Original Autonomous OS copyright remains with its authors.
+Kestrel modifications are copyright the Kestrel contributors.
+
+Everything outside hal/ is licensed under the Apache License, Version 2.0
+(the text below). The hal/ directory is GPL-3.0 — see hal/LICENSE.
 
                                  Apache License
                            Version 2.0, January 2004

@@ -1,4 +1,4 @@
-# Architecture Overview — Autonomous
+# Architecture Overview — Kestrel
 
 ## 3-Layer Architecture
 
@@ -62,7 +62,7 @@ integrations/                     — Off-device: companions/, chat-bridges/, pe
 - **HAL is the hardware driver** — no AI logic
 - **SKILL.md native** — no MCP, LLM reads skills and calls curl directly
 - **Owners can create skills** — the built-in `skill-creator` guides an owner
-  through drafting, testing, and packaging a skill for the Autonomous Skill Store.
+  through drafting, testing, and packaging a skill for the Skill Store.
 
 ## Lamp Simulator on a Laptop
 

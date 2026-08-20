@@ -5,11 +5,23 @@ import "testing"
 func TestCompanionApps(t *testing.T) {
 	apps := CompanionApps()
 	if len(apps) == 0 {
-		t.Fatal("expected at least Autonomous Buddy")
+		t.Fatal("expected at least Kestrel Buddy")
 	}
 	b := apps[0]
 	if b.ID != "autonomous-buddy" || b.DownloadURL == "" || b.SourceURL == "" {
 		t.Fatalf("buddy = %+v", b)
+	}
+	var platforms int
+	for _, a := range apps {
+		if a.Kind == "buddy" {
+			platforms++
+			if a.DirectURL == "" {
+				t.Fatalf("buddy %s missing direct_url", a.ID)
+			}
+		}
+	}
+	if platforms < 3 {
+		t.Fatalf("expected Mac + Windows + Linux buddy, got %d", platforms)
 	}
 	var robots int
 	for _, a := range apps {

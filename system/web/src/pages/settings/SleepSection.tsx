@@ -3,6 +3,10 @@ import { Moon } from "lucide-react";
 import { toast } from "sonner";
 import { C, SectionCard, LABEL_STYLE, INPUT_STYLE } from "@/components/setup/shared";
 import { getSleep, setSleepSchedule, sleepNow, wakeNow, type SleepStatus } from "@/lib/api";
+import { isRobotQuiet, sleepToggleKind, sleepToggleLabel, withSleeping } from "@/lib/sleepToggle";
+import { bodyCopy } from "@/lib/bodyProfile";
+import { capsFromSet } from "@/lib/guideWalk";
+import { useCapabilities } from "@/hooks/useCapabilities";
 
 const DAYS = [
   { n: 0, label: "Sun" },
@@ -22,6 +26,8 @@ function formatNext(iso?: string): string {
 }
 
 export function SleepSection({ active }: { active: boolean }) {
+  const { caps, deviceType, loaded } = useCapabilities();
+  const copy = bodyCopy(deviceType, capsFromSet(caps), loaded);
   const [status, setStatus] = useState<SleepStatus | null>(null);
   const [enabled, setEnabled] = useState(false);
   const [sleepAt, setSleepAt] = useState("23:00");
@@ -39,11 +45,12 @@ export function SleepSection({ active }: { active: boolean }) {
   }
 
   useEffect(() => {
+    if (!active) return;
     getSleep()
       .then(applyStatus)
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  }, [active]);
 
   async function save() {
     setBusy("save");
@@ -64,10 +71,12 @@ export function SleepSection({ active }: { active: boolean }) {
 
   async function now(kind: "sleep" | "wake") {
     setBusy(kind);
+    setStatus((s) => withSleeping(s, kind === "sleep"));
     try {
       applyStatus(kind === "sleep" ? await sleepNow() : await wakeNow());
-      toast.success(kind === "sleep" ? "Reachy is quiet." : "Reachy is awake.");
+      toast.success(kind === "sleep" ? "The robot is quiet." : "The robot is awake.");
     } catch (err) {
+      getSleep().then(applyStatus).catch(() => {});
       toast.error(err instanceof Error ? err.message : "Could not change sleep.");
     } finally {
       setBusy(null);
@@ -82,6 +91,7 @@ export function SleepSection({ active }: { active: boolean }) {
     });
   }
 
+  const quiet = isRobotQuiet(status?.sleeping, status?.emotion);
   const nextLabel = status?.next_transition
     ? `${status.next_transition_kind === "wake" ? "Wakes" : "Sleeps"} ${formatNext(status.next_transition)}`
     : "";
@@ -98,9 +108,9 @@ export function SleepSection({ active }: { active: boolean }) {
       ) : (
         <>
           <div style={{ fontSize: 12.5, color: C.textDim, marginBottom: 14, lineHeight: 1.6 }}>
-            At the sleep time Reachy goes still and silent — no motion, no speaker,
+            At the sleep time this {copy.kind} goes still and silent — no motion, no speaker,
             no mic. Walking past will not wake it. Fire alerts still get through.
-            Times use the device timezone.
+            {" "}{copy.sleep} Times use the device timezone.
           </div>
 
           <div style={{
@@ -110,22 +120,16 @@ export function SleepSection({ active }: { active: boolean }) {
           }}>
             <div>
               <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>
-                {status?.sleeping ? "Quiet now" : "Awake"}
+                {quiet ? "Quiet now" : "Awake"}
               </div>
               {nextLabel && (
                 <div style={{ fontSize: 11, color: C.textMuted, marginTop: 3 }}>{nextLabel}</div>
               )}
             </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button type="button" disabled={!!busy} onClick={() => void now("sleep")}
-                style={btn(false, busy === "sleep")}>
-                {busy === "sleep" ? "…" : "Sleep now"}
-              </button>
-              <button type="button" disabled={!!busy} onClick={() => void now("wake")}
-                style={btn(true, busy === "wake")}>
-                {busy === "wake" ? "…" : "Wake now"}
-              </button>
-            </div>
+            <button type="button" disabled={!!busy} onClick={() => void now(sleepToggleKind(quiet))}
+              style={btn(true, !!busy)}>
+              {busy === "sleep" || busy === "wake" ? "…" : sleepToggleLabel(quiet)}
+            </button>
           </div>
 
           <label style={{ ...LABEL_STYLE, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>

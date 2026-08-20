@@ -24,7 +24,7 @@ Tiêu đề tab trình duyệt (`document.title`) hiển thị đúng theo page/
 | Route / trạng thái | Title |
 |--------------------|-------|
 | `/setup` (và `/` khi chưa provision) | `Lamp · Setup` |
-| `/monitor#<section>` (theo section đang chọn) | `Lamp · <tên section>` — ví dụ `Lamp · Chat`, `Lamp · Overview`, `Lamp · Info`, `Lamp · Flow`, `Lamp · Users`, `Lamp · Camera`, `Lamp · Sensing`, `Lamp · Analytics`, `Lamp · Servo`, `Lamp · Logs`, `Lamp · CLI` |
+| `/monitor#<section>` (theo section đang chọn) | `Lamp · <tên section>` — ví dụ `Lamp · Talk`, `Lamp · Home`, `Lamp · People`, `Lamp · Camera`, `Lamp · Logs` |
 | `/setting#<section>` (Settings, theo section đang chọn) | `Lamp · Settings · <tên section>` — ví dụ `Lamp · Settings · General`, `Lamp · Settings · Wi-Fi`, `Lamp · Settings · AI Brain`, `Lamp · Settings · Language`, `Lamp · Settings · Voice`, `Lamp · Settings · My Voice`, `Lamp · Settings · Face`, `Lamp · Settings · Channels`, `Lamp · Settings · MQTT`, `Lamp · Settings · Timezone` |
 | `/gw-config` | `Lamp · GW Config` |
 
@@ -80,41 +80,31 @@ Layout: **Sidebar 216px cố định + Main area co giãn**, chiều cao 100vh.
 
 ### 3.2 Sidebar Navigation
 
-4 section có thể chuyển đổi bằng local state (`section: Section`):
+Bốn phòng trong `NAV` (`system/web/src/pages/monitor/types.ts`):
 
-| Icon | Section | Nội dung |
-|------|---------|---------|
-| ◈ | Overview | Tổng quan toàn bộ hệ thống |
-| ⬡ | System | CPU/RAM/Temp chi tiết + lịch sử |
-| ◎ | Workflow | OpenClaw event feed real-time |
-| ⬟ | Camera | MJPEG stream + Display LCD |
+| Phòng | Mục |
+|------|--------|
+| Talk | Chat |
+| Home | Trang chủ sản phẩm (cũ: Overview) |
+| House | Behaviors, Quiet hours, People |
+| Device | Wi-Fi, Voice, My Voice, Channels, General, Camera, Timezone, Plugins, Face enroll, Logs. Phần nâng cao chỉ hiện với `?debug=true`. |
 
-Góc dưới sidebar hiển thị trạng thái OpenClaw (online/offline) và thời điểm cập nhật gần nhất.
+Góc dưới sidebar hiển thị thời điểm cập nhật gần nhất.
 
 **Tìm kiếm chức năng.** Một ô tìm kiếm (`SidebarSearch`, `system/web/src/pages/monitor/index.tsx`) nằm ở đầu sidebar để gọn gàng hoá danh sách nav vốn rất dài. Nó lọc các mục nav theo nhãn **hoặc** tên nhóm cha (không phân biệt hoa thường, khớp chuỗi con) và tuân theo đúng các điều kiện hiển thị như nav gốc — các mục chỉ-debug (`PUBLIC_SECTIONS`) và các tab thiếu phần cứng (`sectionVisible`) sẽ không xuất hiện trong kết quả. Khi đang có từ khoá, cây nhóm bị ẩn và được thay bằng danh sách kết quả phẳng; mỗi dòng tái sử dụng `.lm-snav-item` nên giữ nguyên hiệu ứng active/hover màu hổ phách, kèm một chip nhỏ ghi tên nhóm cha (ví dụ `General` · `Settings`). Biểu tượng kính lúp ở đầu chuyển sang màu hổ phách khi focus; nút xoá (×) ở cuối xuất hiện ngay khi có từ khoá (cũng xoá được bằng `Esc`). `Enter` nhảy tới kết quả đầu tiên.
 
-### 3.3 Dark Theme Variables
+### 3.3 Theme variables
 
-Định nghĩa tại `.lm-root` trong `index.css`:
+Light-first tại `.lm-root` trong `index.css`. Nền cream, ô trắng, primary ocean. Seafoam (`#C8DFDB`) chỉ là tint (viền / wash), không phải fill ô. `--lm-amber` là màu ocean (giữ tên).
 
 ```css
---lm-bg:          #0C0B09   /* Background chính */
---lm-sidebar:     #111009   /* Sidebar */
---lm-card:        #17160F   /* Card background */
---lm-surface:     #1E1D14   /* Surface bên trong card */
---lm-border:      #2A2820   /* Border */
---lm-border-hi:   #3A3828   /* Border highlight */
---lm-amber:       #F59E0B   /* Màu chủ đạo (warm lamp) */
---lm-amber-dim:   rgba(245,158,11,0.12)
---lm-amber-glow:  rgba(245,158,11,0.35)
---lm-teal:        #2DD4BF
---lm-green:       #34D399
---lm-red:         #F87171
---lm-blue:        #60A5FA
---lm-purple:      #A78BFA
---lm-text:        #F0EEE8
---lm-text-dim:    #9A9080
---lm-text-muted:  #504A3C
+--lm-bg:          #F2EFE7   /* nền cream */
+--lm-sidebar:     #EDEAE2
+--lm-card:        #FFFcf7   /* ô trắng */
+--lm-surface:     #E8E4D8
+--lm-border:      mix seafoam + xám ấm
+--lm-amber:       #3368A0   /* ocean */
+--lm-teal:        #66A3BF   /* sky */
 ```
 
 ### 3.4 Settings (`/setting`) — shell dùng chung
@@ -142,12 +132,19 @@ Nhóm Settings có thể thu gọn nằm trong `NAV` của sidebar dùng chung (
 | Plugins | `/setting#plugins` |
 | Timezone | `/setting#timezone` |
 | Quiet hours | `/setting#sleep` |
+| Behaviors | `/setting#behaviors` |
 
-Các mục Monitor được serialize thành id thuần, ví dụ `/monitor#overview`, `/monitor#system`, `/monitor#flow`. Mặc định: `/monitor` không có hash / hash không hợp lệ → `overview`; `/setting` không có hash / hash không hợp lệ → `general` (URL được chuẩn hóa thành `/setting#general`). Deep-link (ví dụ `/setting#wifi`) và nút back/forward của trình duyệt được tôn trọng qua một effect dựa trên `useLocation`. Người dùng không-debug chỉ thấy các mục trong `PUBLIC_SECTIONS` (gồm Chat, Overview, Info, Flow, Camera, Users, Bluetooth, **Logs**, **CLI**, và các mục Settings công khai General/Wi-Fi/My Voice/Face/MCP Tools/Plugins/Timezone/Quiet hours); `?debug=true` mở khóa phần còn lại (Sensing, Analytics, Servo, API Docs, Agent gateway, và các mục Settings sâu hơn AI Brain/Runtime/Language/Voice/Realtime/Channels/MQTT). Toggle **Debug** trên top bar, ngay cạnh nút Dark/Light, bật/tắt query parameter này nhưng vẫn giữ hash của mục đang mở và các query parameter khác; màu amber cho biết debug mode đang bật.
+Các mục Monitor được serialize thành id thuần, ví dụ `/monitor#overview` (Home), `/monitor#chat` (Talk). Mặc định: `/monitor` không có hash / hash không hợp lệ → `overview` (Home); `/setting` không có hash / hash không hợp lệ → `behaviors` (URL được chuẩn hóa thành `/setting#behaviors`). Deep-link (ví dụ `/setting#wifi`) và nút back/forward của trình duyệt được tôn trọng qua một effect dựa trên `useLocation`. Người dùng không-debug chỉ thấy các mục trong `PUBLIC_SECTIONS` (Talk, Home, House, và Device công khai); `?debug=true` mở khóa phần còn lại. Toggle **Debug** trên top bar, ngay cạnh nút Dark/Light, bật/tắt query parameter này nhưng vẫn giữ hash của mục đang mở và các query parameter khác.
+
+**Home** (`/monitor#overview`, `OverviewSection.tsx`) — mặt sản phẩm: companion mark, awake/quiet/meeting, brief kế tiếp, Talk / Meeting / Sleep, CTA guided setup khi chưa `onboarded`, và dải Sound. Brand lockup là **Kestrel / Desk Companion** (Reachy Mini là một body tương thích). Hardware, Emotion, Servo, Versions, Network, Presence, Agent Gateway nằm sau `?debug=true`.
 
 **Wake-word gate** nằm trong card **General** công khai, không nằm ở mục Realtime chỉ-debug. Checkbox ghi cờ `wakeword` top-level; lưu Settings sẽ restart HAL để áp dụng. Card liệt kê toàn bộ wake phrase hiện được chấp nhận, gồm tên agent hiện tại chính xác cùng các alias cố định `autonomous` và device type; hệ thống quản lý danh sách này. Tải lại Settings sau khi đổi tên agent để thấy tên mới.
 
 **Quiet hours** (`/setting#sleep`, nội bộ `settings:sleep`, `SleepSection.tsx`) — giờ ngủ của robot. Lưu `sleep_schedule` qua `PUT /api/device/sleep` (`enabled`, `sleep_at`/`wake_at` dạng `HH:MM`, `days` tùy chọn 0=CN…6=T7; để trống = mỗi đêm). Giờ theo timezone của thiết bị. Khi quiet, HAL ở `sleepy` (tắt mic/loa/động cơ); đi ngang không đánh thức; cháy nổ vẫn qua. `POST /api/device/sleep/now` và `/sleep/wake` cũng có trên Overview. Không nằm trong Save Changes.
+
+**Behaviors** (`/setting#behaviors`, nội bộ `settings:behaviors`, `BehaviorsSection.tsx`) — gói companion (morning brief, hộp nhớ, dance-to-song, meeting, draft-not-send, kids, kitchen, Home Assistant, pomodoro, stories, focus coach, greeter, look-at-this, và các cờ body-play chờ HAL). Lưu `behaviors` qua `PUT /api/device/behaviors`. Meeting / Brief now / Pomodoro cũng có trên Overview. Không nằm trong Save Changes. Token Home Assistant chỉ ghi, không đọc lại.
+
+**Guided setup** — onboarding tương tác cho gói đó (`BehaviorsOnboarding.tsx`). Sáu câu hỏi (cho ai, buổi sáng, quyền riêng tư, khi có mặt, xem lại). Mở từ Settings → Behaviors, từ Overview khi `behaviors.onboarded` chưa set, hoặc `/setting?guide=1#behaviors`. Bỏ qua hoặc hoàn tất đều ghi `onboarded`.
 
 **Timezone** (`/setting#timezone`, nội bộ `settings:timezone`, `TimezoneSection.tsx`) — một mục chỉ-admin mà, giống Agent Runtime, **không** nằm trong luồng "Save Changes" của form: nó có nút **Apply** riêng. Mục này tải zone hiện tại và danh sách zone IANA chọn được qua `GET /api/device/timezone`, cho người vận hành chọn một zone từ một dropdown duy nhất (`<select>` nhóm theo khu vực bằng `<optgroup>`, mỗi dòng ghi `(GMT+7) Ho Chi Minh` và sắp theo offset UTC, giống cách các trình chọn timezone phổ biến trên web làm), và hiển thị preview trực tiếp giờ địa phương theo zone đã chọn. Khi nhấn **Apply** nó gọi `POST /api/device/timezone {timezone}`; thay đổi áp dụng ngay lập tức (không cần khởi động lại thiết bị).
 

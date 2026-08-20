@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { UserCircle, UserPlus, ImagePlus, Camera, Loader2, X } from "lucide-react";
 import { hwUrl, fileToBase64 } from "@/lib/api";
+import { bodyCopy } from "@/lib/bodyProfile";
+import { capsFromSet, UNSUPPORTED } from "@/lib/guideWalk";
+import { useCapabilities } from "@/hooks/useCapabilities";
 import { C, Field, SectionCard, ConfirmDialog, LABEL_STYLE } from "@/components/setup/shared";
 import { CameraCaptureModal } from "./CameraCaptureModal";
 import type { FaceOwner } from "@/hooks/setup/useFaceEnroll";
@@ -178,15 +181,31 @@ export function FaceSection({
     setFaceUploading(false);
   };
 
+  const { caps, deviceType, loaded, hasCap } = useCapabilities();
+  const copy = bodyCopy(deviceType, capsFromSet(caps), loaded);
   const enrolled = faceOwners.filter((p) => p.photo_count > 0);
   const canEnroll = !!faceName.trim() && pending.length > 0;
+
+  if (!hasCap("vision")) {
+    return (
+      <SectionCard
+        id="face"
+        title="Add a face"
+        active={active}
+        description={UNSUPPORTED}
+        icon={<UserCircle size={17} />}
+      >
+        <p style={{ fontSize: 13, color: C.textMuted, margin: 0 }}>{UNSUPPORTED}</p>
+      </SectionCard>
+    );
+  }
 
   return (
     <SectionCard
       id="face"
-      title="Face Enroll (optional)"
+      title="Add a face"
       active={active}
-      description="Upload photos of the owner so your device can recognize them."
+      description={copy.faceLead}
       icon={<UserCircle size={17} />}
     >
       <Field label="Name" id="face_name" value={faceName} onChange={setFaceName} placeholder="e.g. Leo" />
@@ -355,7 +374,7 @@ export function FaceSection({
       >
         {faceUploading
           ? <><Loader2 size={15} className="lm-spin-ico" />Uploading {uploadProgress ?? 0}/{pending.length}…</>
-          : <><UserPlus size={15} />Enroll Face</>}
+          : <><UserPlus size={15} /> Add this face</>}
       </button>
       {enrolled.length > 0 && (
         <div style={{ marginTop: 16, borderTop: `1px solid ${C.border}`, paddingTop: 14 }}>

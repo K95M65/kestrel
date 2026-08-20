@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import "./chartSetup";
 import { Line } from "react-chartjs-2";
 import type { TooltipItem } from "chart.js";
 import { Cpu, Activity, MemoryStick, HardDrive, Thermometer, Server, Network } from "lucide-react";

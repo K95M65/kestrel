@@ -2,7 +2,7 @@
 
 How community functions — the kind on
 [Pollen’s Reachy Mini apps](https://pollen-robotics.com/reachy-mini/apps/) —
-should live in Autonomous OS / Kestrel so **Hermes and OpenClaw both see them**.
+should live in Kestrel (fork of Autonomous OS) so **Hermes and OpenClaw both see them**.
 
 The brain is a plugin. The catalog is the OS.
 

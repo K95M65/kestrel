@@ -82,10 +82,10 @@ type Catalogue = Record<string, Partial<Record<Lang, string>> & { en: string }>;
 const strings: Catalogue = {
   // Empty chat screen
   "chat.empty.title": {
-    en: "Chat with Assistant",
-    vi: "Trò chuyện với Assistant",
-    "zh-CN": "与助手聊天",
-    "zh-TW": "與助手聊天",
+    en: "Chat with {name}",
+    vi: "Trò chuyện với {name}",
+    "zh-CN": "与{name}聊天",
+    "zh-TW": "與{name}聊天",
   },
   "chat.empty.subtitle": {
     en: "Ask anything, or try one of these",
@@ -122,16 +122,16 @@ const strings: Catalogue = {
 
   // Assistant presence (top bar status line)
   "chat.status.thinking": {
-    en: "Assistant is thinking…",
-    vi: "Assistant đang suy nghĩ…",
-    "zh-CN": "助手正在思考…",
-    "zh-TW": "助手正在思考…",
+    en: "{name} is thinking…",
+    vi: "{name} đang suy nghĩ…",
+    "zh-CN": "{name}正在思考…",
+    "zh-TW": "{name}正在思考…",
   },
   "chat.status.online": {
-    en: "Assistant · online",
-    vi: "Assistant · trực tuyến",
-    "zh-CN": "助手 · 在线",
-    "zh-TW": "助手 · 在線",
+    en: "{name} · online",
+    vi: "{name} · trực tuyến",
+    "zh-CN": "{name} · 在线",
+    "zh-TW": "{name} · 在線",
   },
 
   // History panel — relative timestamps. {n} is substituted with the count.

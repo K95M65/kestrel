@@ -182,6 +182,11 @@ type Config struct {
 	// non-realtime Go fallback too, not just a particular realtime provider.
 	WakeWord *bool `json:"wakeword,omitempty" yaml:"wakeword"`
 
+	// WakeWords is an optional exclusive voice-wake list. When set, HAL listens
+	// only for these phrases (no "hey autonomous" / device-type aliases). Empty
+	// means generated aliases from the agent name. HAL reads this same key.
+	WakeWords []string `json:"wake_words,omitempty" yaml:"wakeWords"`
+
 	OpenclawConfigDir string `json:"openclaw_config_dir" yaml:"openclawConfigDir"`
 
 	NetworkSSID     string `json:"network_ssid" yaml:"networkSSID" validate:"required"`
@@ -202,6 +207,11 @@ type Config struct {
 	// SleepSchedule is quiet hours: HAL sleepy at SleepAt, greeting at WakeAt,
 	// in the device timezone. Nil / Enabled=false means no clock-driven sleep.
 	SleepSchedule *SleepSchedule `json:"sleep_schedule,omitempty" yaml:"sleepSchedule"`
+
+	// Behaviors is the companion pack (morning brief, memory, kids, kitchen…).
+	// Nil means DefaultBehaviors() — memory/dance/draft/greeter/look/kitchen on,
+	// scheduled jobs off until the operator opts in on Settings → Behaviors.
+	Behaviors *Behaviors `json:"behaviors,omitempty" yaml:"behaviors"`
 
 	// DeviceType is the device class/profile id — the folder name under robots/
 	// (e.g. "lamp", "intern-v2", "unitree-go2w"). Selects which ROBOT.md/SOUL.md the

@@ -5,13 +5,14 @@ import { API } from "./types";
 import { StatusBadge } from "./components";
 
 type LogSource = "hal" | "os-server" | "openclaw" | "openclaw-service" | "buddy";
-const LOG_SOURCES: { id: LogSource; label: string; color: string }[] = [
-  { id: "hal",              label: "HAL",        color: "var(--lm-green)" },
-  { id: "os-server",        label: "OS",         color: "var(--lm-amber)" },
-  { id: "openclaw",         label: "Agent",      color: "var(--lm-blue)" },
+const LOG_SOURCES: { id: LogSource; label: string; debugLabel?: string; color: string }[] = [
+  { id: "hal",              label: "Robot",  debugLabel: "HAL",        color: "var(--lm-green)" },
+  { id: "os-server",        label: "App",    debugLabel: "OS",         color: "var(--lm-amber)" },
+  { id: "openclaw",         label: "Brain",  debugLabel: "Agent",      color: "var(--lm-blue)" },
   { id: "openclaw-service", label: "Agent Service", color: "var(--lm-purple)" },
   { id: "buddy",            label: "Claude Desktop Buddy", color: "var(--lm-cyan)" },
 ];
+const PUBLIC_LOG_SOURCES = new Set<LogSource>(["hal", "os-server", "openclaw"]);
 
 const LOG_LEVELS = ["ALL", "DEBUG", "INFO", "WARN", "ERROR"] as const;
 type LogLevel = (typeof LOG_LEVELS)[number];
@@ -91,7 +92,7 @@ function LogPanel({ source, label, color, initialFilter, initialLevel, onFilterC
       const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
       const resp = await fetch(`${API}/logs/tail?source=${source}&lines=${lastN}`, { headers });
       if (!resp.ok) {
-        setError(`HTTP ${resp.status} ${resp.statusText}`);
+        setError("Can't reach logs right now.");
         setLines([]);
         return;
       }
@@ -101,7 +102,7 @@ function LogPanel({ source, label, color, initialFilter, initialLevel, onFilterC
       else setError(null);
       setLines(Array.isArray(data?.lines) ? data.lines.map(stripAnsi) : []);
     } catch (e) {
-      setError(`Fetch error: ${e instanceof Error ? e.message : String(e)}`);
+      setError("Can't reach logs right now.");
     } finally {
       setLoading(false);
     }
@@ -472,12 +473,18 @@ function saveLogState(active: LogSource, filters: Record<string, { filter: strin
   }, 250);
 }
 
-export function LogsSection() {
+export function LogsSection({ isDebug = false }: { isDebug?: boolean }) {
   const [saved] = useState(loadLogState);
-  const [active, setActive] = useState<LogSource>(saved.active);
+  const visible = LOG_SOURCES.filter((s) => isDebug || PUBLIC_LOG_SOURCES.has(s.id));
+  const [active, setActive] = useState<LogSource>(
+    visible.some((s) => s.id === saved.active) ? saved.active : "openclaw",
+  );
   const [filters, setFilters] = useState<Record<string, { filter: string; level: LogLevel }>>(saved.filters);
 
-  const src = LOG_SOURCES.find((s) => s.id === active)!;
+  const src = visible.find((s) => s.id === active) ?? visible[0];
+  const tabLabel = (s: (typeof LOG_SOURCES)[number]) =>
+    isDebug && s.debugLabel ? s.debugLabel : s.label;
+  if (!src) return null;
 
   const handleTabChange = (id: LogSource) => {
     setActive(id);
@@ -495,7 +502,7 @@ export function LogsSection() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 0, height: "100%" }}>
       <div style={{ display: "flex", gap: 4, padding: "0 0 8px 0", flexShrink: 0 }}>
-        {LOG_SOURCES.map((s) => (
+        {visible.map((s) => (
           <button
             key={s.id}
             onClick={() => handleTabChange(s.id)}
@@ -509,17 +516,17 @@ export function LogsSection() {
             }}
           >
             <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: s.color, marginRight: 5, verticalAlign: "middle" }} />
-            {s.label}
+            {tabLabel(s)}
           </button>
         ))}
       </div>
       <LogPanel
         key={active}
         source={src.id}
-        label={src.label}
+        label={tabLabel(src)}
         color={src.color}
         initialFilter={filters[src.id]?.filter ?? ""}
-        initialLevel={filters[src.id]?.level ?? "ALL"}
+        initialLevel={filters[src.id]?.level ?? (isDebug ? "ALL" : "INFO")}
         onFilterChange={handleFilterChange}
       />
     </div>

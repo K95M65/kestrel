@@ -1,8 +1,10 @@
-# Autonomous Buddy
+# Kestrel Buddy
 
-Native companion apps that let an Autonomous device control your computer via voice (open apps, navigate browser, type, etc.) — TeamViewer-style remote control, but driven by AI through the device.
+Native companion apps that let a Kestrel device control your computer via voice (open apps, navigate browser, type, etc.) — TeamViewer-style remote control, but driven by AI through the device. Fork of Autonomous Buddy from Autonomous OS.
 
-**Status:** Phase 1A — Mac-only scaffold. Menu bar shell that runs but does no networking yet.
+The on-disk Mac app is still `AutonomousBuddy.app` (bundle ID `network.autonomous.ai.buddy`, config dir `AutonomousBuddy`) so existing pairings keep working. The product name is **Kestrel Buddy**.
+
+**Status:** Mac menu-bar app is live (pairing + commands). Windows and Linux use the Go desktop client in [`desktop/`](desktop/).
 
 **Design doc:** [`docs/autonomous-buddy.md`](docs/autonomous-buddy.md) · [VI](docs/vi/autonomous-buddy_vi.md)
 **MVP plan:** [`docs/autonomous-buddy-mvp.md`](docs/autonomous-buddy-mvp.md) · [VI](docs/vi/autonomous-buddy-mvp_vi.md)
@@ -13,11 +15,11 @@ Native companion apps that let an Autonomous device control your computer via vo
 
 | Platform | Status | Folder |
 |----------|--------|--------|
-| **macOS 13+** | Phase 1A scaffold | [`macos/`](macos/) |
-| Windows | Planned v1.2 (likely Tauri/Rust) | — |
-| Linux (X11) | Planned v1.3 | — |
+| **macOS 13+** | Menu bar app — pairing, open/type/click | [`macos/`](macos/) |
+| **Windows 10+** | Desktop binary — pairing, open URL/app, notify, clipboard | [`desktop/`](desktop/) |
+| **Linux** | Same desktop binary (xdg-open, notify-send, wl-copy/xclip) | [`desktop/`](desktop/) |
 
-The MVP targets macOS only. Each platform lives in its own subfolder so toolchains don't leak between them. Cross-platform glue (protocol schemas, command formats) is captured in [`docs/autonomous-buddy.md`](docs/autonomous-buddy.md) so future ports stay aligned.
+Same pairing protocol and desk chrome (cream / ocean). Click-by-label and screenshots stay Mac Accessibility for now.
 
 ---
 
