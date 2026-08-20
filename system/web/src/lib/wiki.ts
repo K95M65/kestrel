@@ -9,6 +9,7 @@ import buddyMd from "@wiki/buddy.md?raw";
 import telegramMd from "@wiki/telegram.md?raw";
 import dummyHostMd from "@wiki/dummy-host.md?raw";
 import findMd from "@wiki/find.md?raw";
+import brainsMd from "@wiki/brains.md?raw";
 import safetyMd from "@wiki/safety.md?raw";
 
 export type WikiPage = {
@@ -29,6 +30,7 @@ export const WIKI_PAGES: WikiPage[] = [
   { slug: "telegram", title: "Telegram", body: telegramMd },
   { slug: "dummy-host", title: "Dummy host", body: dummyHostMd },
   { slug: "find", title: "Find this robot", body: findMd },
+  { slug: "brains", title: "Brains", body: brainsMd },
   { slug: "safety", title: "Kids and safety", body: safetyMd },
 ];
 

@@ -27,3 +27,8 @@ Why: last product question was finding the body on the network; IP is more relia
 Done: Home **This robot** card from `deviceReach` (LAN first, mDNS extra, loopback never shared). Guide page `find`.
 What would I do next? Guide page on brains / runtime switch honesty (seed 3).
 Why: the previous conversation asked if OpenClaw/Hermes/etc. are easy to swap; Home users should read that before Advanced Runtime.
+
+### Cycle 3
+Done: Guide **Brains** page — companion loop vs coding CLIs, what survives a switch.
+What would I do next? Advanced Runtime warns Codex / Claude Code / OpenCode are coding bridges (seed 4).
+Why: the wiki now says it; the switcher itself still looks like a harmless dropdown.
