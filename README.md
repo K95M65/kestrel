@@ -18,21 +18,39 @@ Stock Autonomous OS is a **device-agnostic robot OS**. Lamp, Intern, and Reachy 
 
 Kestrel is a **desk companion** on that same OS. The robot serves its own product. You name it, talk to it, and give it a life at the desk — without flashing the body or joining an Autonomous account.
 
-| Home | Talk |
+### Guided setup
+
+Name it, talk to it, let it see you, pick who it is for (Just me / Family / Kids / Office), then mornings.
+
+<p align="center">
+  <img src="robots/reachy-mini/images/app/guide-setup.gif" alt="Guided setup walkthrough — name, talk, see, personality, mornings" width="720">
+</p>
+
+### Rooms
+
+Talk, Home, House, Device. Hardware, runtime, and MQTT stay behind Advanced / `?debug=true`. Ocean on cream (`#3368A0` / `#F2EFE7`), not stock lamp amber.
+
+| Home — quiet hours + uses | Talk |
 | --- | --- |
-| <img src="robots/reachy-mini/images/app/02-home.png" alt="Home — the robot is awake" width="480"> | <img src="robots/reachy-mini/images/app/03-talk.png" alt="Talk with the robot" width="480"> |
+| <img src="robots/reachy-mini/images/app/02-home.png" alt="Home — buddy is quiet, uses chips, sound" width="480"> | <img src="robots/reachy-mini/images/app/03-talk.png" alt="Talk with buddy" width="480"> |
 
-| House — People | Guided setup |
+| House — People | Sign in |
 | --- | --- |
-| <img src="robots/reachy-mini/images/app/04-people.png" alt="People — who this robot knows" width="480"> | <img src="robots/reachy-mini/images/app/07-guide-intro.png" alt="Guided setup" width="480"> |
+| <img src="robots/reachy-mini/images/app/04-people.png" alt="People — who buddy knows" width="480"> | <img src="robots/reachy-mini/images/app/01-login.png" alt="Kestrel sign in" width="480"> |
 
-**Rooms, not a dump.** Public chrome is Talk, Home, House, Device. Hardware, runtime, MQTT, and the rest stay behind Advanced / `?debug=true`. Ocean on cream (`#3368A0` / `#F2EFE7`), not stock lamp amber.
+### Unique to this fork
 
-**It has a name.** Guided setup names the robot, speaks a hello, and enrolls a face from the live camera. Rename writes `IDENTITY.md` and resets the brain session so the next turn is not still “Reachy.” Wake chips are `hey {name}` — not `hey autonomous`.
+**Uses** is an OS-owned catalog the brains consume (they do not invent it): chat from your phone, websites on the computer, news and weather, speaker music vs Spotify on the computer, stories, look, dance. Each use has its own onboarding.
 
-**Life, then jobs.** Presets: Just me / Family / Kids / Office. Then an OS-owned **Uses** catalog the brains consume (they do not invent it): chat from your phone (Telegram), websites on your computer, news and weather, music on the speaker vs Spotify on the computer, stories, look, dance. Each use has its own onboarding.
+**Behaviors** is how it lives here — life presets and the guided setup, not a Settings dump.
 
-**People is a contact book.** House is who it knows — live add-a-friend, photo and voice on the person — not a Device tab of embeddings.
+| Uses | Behaviors |
+| --- | --- |
+| <img src="robots/reachy-mini/images/app/11-uses.png" alt="Uses catalog — jobs this body already knows" width="480"> | <img src="robots/reachy-mini/images/app/12-behaviors.png" alt="Behaviors — Just me, Family, Kids, Office" width="480"> |
+
+**It has a name.** Rename writes `IDENTITY.md` and resets the brain session so the next turn is not still “Reachy.” Wake chips are `hey {name}`.
+
+**People is a contact book.** Live add-a-friend, photo and voice on the person — not a Device tab of embeddings.
 
 **Kestrel Buddy on the computer you actually use.** Mac menu bar, plus Windows and Linux desktop. Same pairing code from Home. The robot opens sites and apps *there*. (A phone app is a different job — Talk from elsewhere — and is still Telegram today.)
 

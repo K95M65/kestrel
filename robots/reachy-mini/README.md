@@ -12,22 +12,22 @@ over-the-air updates, driving the body through Pollen's own SDK.
 
 ## The app
 
-Kestrel / Desk Companion — Home, Talk, People, Camera, and a guided setup that
-names the robot, talks to it, and tries the camera.
+Kestrel / Desk Companion — Talk, Home, House, Device. Guided setup names the
+robot, talks to it, and picks how it lives here.
+
+<p align="center">
+  <img src="images/app/guide-setup.gif" alt="Guided setup walkthrough" width="720">
+</p>
 
 | Home | Talk |
 | --- | --- |
-| <img src="images/app/02-home.png" alt="Home — your robot is awake" width="480"> | <img src="images/app/03-talk.png" alt="Talk with the robot" width="480"> |
+| <img src="images/app/02-home.png" alt="Home — quiet hours and uses" width="480"> | <img src="images/app/03-talk.png" alt="Talk with the robot" width="480"> |
 
-| People | Camera |
+| People | Uses |
 | --- | --- |
-| <img src="images/app/04-people.png" alt="People — who this robot knows" width="480"> | <img src="images/app/05-camera.png" alt="Camera — what the robot sees" width="480"> |
+| <img src="images/app/04-people.png" alt="People — who this robot knows" width="480"> | <img src="images/app/11-uses.png" alt="Uses catalog" width="480"> |
 
-| Guided setup | Name |
-| --- | --- |
-| <img src="images/app/07-guide-intro.png" alt="Guided setup intro" width="480"> | <img src="images/app/08-guide-name.png" alt="Name the robot" width="480"> |
-
-More shots: [images/app/](images/app/) (login, General, talk try, camera try).
+More shots: [images/app/](images/app/) (login, Behaviors, camera, each guide step).
 
 This unit’s overlay vs stock Autonomous OS is listed in
 [`docs/divergence-from-stock.md`](../../docs/divergence-from-stock.md). Check
