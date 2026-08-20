@@ -1,5 +1,6 @@
 import indexMd from "@wiki/index.md?raw";
 import gettingStartedMd from "@wiki/getting-started.md?raw";
+import identityMd from "@wiki/identity.md?raw";
 import talkMd from "@wiki/talk.md?raw";
 import voiceMd from "@wiki/voice.md?raw";
 import peopleMd from "@wiki/people.md?raw";
@@ -21,6 +22,7 @@ export type WikiPage = {
 export const WIKI_PAGES: WikiPage[] = [
   { slug: "index", title: "Start here", body: indexMd },
   { slug: "getting-started", title: "Get started", body: gettingStartedMd },
+  { slug: "identity", title: "Name and memory", body: identityMd },
   { slug: "talk", title: "Talk", body: talkMd },
   { slug: "voice", title: "Voice", body: voiceMd },
   { slug: "people", title: "People", body: peopleMd },

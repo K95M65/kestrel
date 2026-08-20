@@ -47,3 +47,12 @@ Why: product queue P1 Device Wi-Fi; next small home-user honesty.
 Done: Device → Wi-Fi shows live station SSID, signal, and link rate.
 What would I do next? Guide page for identity layers (seed 7).
 Why: the earlier identity question (name, soul, people) still has no handbook page.
+
+### Cycle 7
+Done: Guide **Name and memory** — IDENTITY, soul, USER, MEMORY, People.
+What would I do next? Channels lead copy before tokens (seed 8).
+Why: last remaining seed item; Device → Channels still opened on bot tokens.
+
+### Cycle 8
+Done: Channels card lead: text this robot from your phone, not iMessage.
+What would I do next? Stop. Seed list is covered. Remaining product (storage prune, forget Wi-Fi, six-runtime hop) stays deferred as in Non-goals / seed deferrals.
