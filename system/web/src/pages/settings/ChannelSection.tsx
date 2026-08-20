@@ -1,4 +1,5 @@
 import { C, LockedField, SectionCard } from "@/components/setup/shared";
+import { channelLead } from "@/lib/channelLead";
 import { SecretUpdateField } from "@/components/SecretUpdateField";
 import type { ChannelType } from "@/types";
 import type { ChannelLoadedState } from "@/hooks/setup/types";
@@ -27,7 +28,7 @@ export function ChannelSection({
   discordUserId: string; setDiscordUserId: (v: string) => void;
 }) {
   return (
-    <SectionCard id="channel" title="Channels" active={active} description="Where the robot can message you, and the accounts it reads mail and calendar from.">
+    <SectionCard id="channel" title="Channels" active={active} description={channelLead()}>
       <div style={{ marginBottom: 12 }}>
         <label style={{ display: "block", fontSize: 11, color: C.textDim, marginBottom: 5 }}>Channel</label>
         <select
