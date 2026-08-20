@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { FileText, Download } from "lucide-react";
 import { agentFileUrl } from "@/lib/api";
+import { isInternalAgentDoc } from "@/lib/stripChatMarkers";
 
 // Files the agent produced, surfaced under its reply.
 //
@@ -66,7 +67,9 @@ function extractAgentFiles(text: string, tools?: FileBearingTool[]): string[] {
   for (const hay of haystacks) {
     for (const m of hay.matchAll(FILE_RE)) {
       // Trailing punctuation belongs to the sentence, not the filename.
-      seen.add(m[0].replace(/[.,;:]+$/, ""));
+      const path = m[0].replace(/[.,;:]+$/, "");
+      if (isInternalAgentDoc(path)) continue;
+      seen.add(path);
     }
   }
   return [...seen];

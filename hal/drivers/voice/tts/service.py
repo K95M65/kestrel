@@ -1258,6 +1258,21 @@ class TTSService:
     def _tts_cache_path(self, text: str) -> Path:
         return _TTS_CACHE_DIR / f"{self._tts_cache_key(text)}.wav"
 
+    def render_preview_wav(self, text: str) -> Path:
+        """Render text to a cached WAV and return the path. Does not play.
+
+        Browser voice preview uses this so the same provider/voice the robot
+        would speak can play in the operator's browser without a speaker, a
+        sounddevice sink, or an unmuted HAL.
+        """
+        if self._backend is None or not self._backend.available:
+            raise RuntimeError("TTS backend not available")
+        cache_path = self._tts_cache_path(text)
+        with _render_lock_for(cache_path.name):
+            if not cache_path.exists():
+                self._render_and_save_wav(text, cache_path)
+        return cache_path
+
     def speak_cached(self, text: str, interruptible: bool = False, prerender: bool = False, realtime_feedback: bool = False) -> bool:
         """Cache-aware speak. On hit -> ~50ms playback. On miss -> render+save
         then play. prerender=True skips playback (warmup-only).

@@ -5,6 +5,7 @@ import {
   SCENARIO_MCP,
   scenarioFor,
   scenarioStatus,
+  scenarioStatusLabel,
   scenarioSteps,
   scenariosFor,
   scenariosMatching,
@@ -60,7 +61,8 @@ const ready = {
 };
 assert.equal(scenarioStatus(scenarioFor("chat")!, ready), "ready");
 assert.equal(scenarioStatus(scenarioFor("chat")!, { ...ready, telegram: false }), "setup");
-assert.equal(scenarioStatus(scenarioFor("web")!, { ...ready, buddyPaired: false }), "needs-mac");
+assert.equal(scenarioStatus(scenarioFor("web")!, { ...ready, buddyPaired: false }), "needs-computer");
+assert.equal(scenarioStatusLabel("needs-computer"), "Needs a computer");
 assert.equal(scenarioStatus(scenarioFor("spotify")!, { ...ready, kids: true }), "kids");
 assert.equal(scenarioStatus(scenarioFor("web")!, { ...ready, kids: true }), "kids");
 assert.equal(scenarioStatus(scenarioFor("music")!, { ...ready, kids: true }), "ready");

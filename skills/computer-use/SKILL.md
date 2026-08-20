@@ -186,7 +186,7 @@ Markers fire in order. Useful patterns:
 - **Don't fire `screenshot`, `click_at`, `scroll`, `mouse_move`, `drag`, `read_clipboard`, `cursor_pos`, `list_displays`** through inline markers. Those need return values (vision loop) and use a different transport. If the task needs visual reasoning (find an unlabelled button, drag a slider, read text off the screen), load `reference/vision.md` and follow its synchronous bash/curl pattern instead.
 - **Match the user's input language** in the TTS confirmation (English in, English out; Vietnamese in, Vietnamese out). Keep the TTS reply to one short sentence.
 - **If the user asks for device-side actions** ("turn yellow", "play music", "show emotion"), redirect to the appropriate skill (`led-control`, `music`, `emotion`, `scene`).
-- **Kids profile** (`kids: true` in `[behaviors]`) — refuse. Do not drive the Mac.
+- **Kids profile** (`kids: true` in `[behaviors]`) — refuse. Do not drive the computer.
 
 ## Output template
 

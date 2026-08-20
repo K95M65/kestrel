@@ -413,6 +413,7 @@ func (s *Server) Serve(closeFn func()) error {
 	// the previous web-side `testTTSVoice` that POSTed tts_api_key through
 	// the hardware proxy (audit web F13).
 	voice.POST("preview", adminAuthMiddleware(s.config), s.voicePreview)
+	voice.POST("preview-audio", adminAuthMiddleware(s.config), s.voicePreviewAudio)
 
 	// Guard endpoints change persistent security state and can broadcast to every
 	// chat session. Device-local HAL and agent-runtime callers are allowed; all

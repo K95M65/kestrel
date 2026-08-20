@@ -256,12 +256,12 @@ export type ScenarioReadyCtx = {
   toolsOn: boolean;
 };
 
-export type ScenarioStatus = "ready" | "setup" | "needs-mac" | "kids" | "unsupported";
+export type ScenarioStatus = "ready" | "setup" | "needs-computer" | "kids" | "unsupported";
 
 export function scenarioStatus(s: Scenario, ctx: ScenarioReadyCtx): ScenarioStatus {
   if (!s.need(ctx.caps)) return "unsupported";
   if (!s.kids && ctx.kids) return "kids";
-  if (s.buddy === "required" && !ctx.buddyPaired) return "needs-mac";
+  if (s.buddy === "required" && !ctx.buddyPaired) return "needs-computer";
   if (s.services.some((svc) => svc.id === "telegram") && !ctx.telegram) return "setup";
   if ((s.mcp.length > 0 || Object.keys(s.tools).length > 0) && !ctx.toolsOn) return "setup";
   return "ready";
@@ -273,8 +273,8 @@ export function scenarioStatusLabel(st: ScenarioStatus): string {
       return "Ready";
     case "setup":
       return "Set up";
-    case "needs-mac":
-      return "Needs a Mac";
+    case "needs-computer":
+      return "Needs a computer";
     case "kids":
       return "Off while kids profile is on";
     case "unsupported":

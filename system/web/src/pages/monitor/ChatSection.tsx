@@ -19,6 +19,7 @@ import { UploadSkillModal } from "./chat/UploadSkillModal";
 import { BrowseSkillsModal } from "./chat/BrowseSkillsModal";
 import { ManageSkillsModal } from "./chat/ManageSkillsModal";
 import { AgentFiles } from "./chat/AgentFiles";
+import { stripChatMarkers } from "@/lib/stripChatMarkers";
 
 const CREATE_SKILL_WITH_AGENT_PROMPT =
   "Let's create a skill together using your skill-creator skill. First ask me what the skill should do.";
@@ -251,25 +252,6 @@ function renderMarkdown(text: string): ReactNode {
   return result;
 }
 
-// Strip inline HW control markers like [HW:/emotion:{"emotion":"curious","intensity":0.7}]
-// and the markdown-link form [label](HW:/led/off:{}) some LLMs emit (keep the label).
-// Both patterns mirror the Go executor grammar (handler_hw.go hwMarkerRe/hwLinkRe)
-// exactly — never looser, so a variant the executor won't fire stays visible as raw
-// text instead of being scrubbed into a confident-looking label. The brace-anchored
-// body keeps `]` / `)` inside JSON from truncating the match.
-const HW_LINK_RE = /\[([^\]]*)\]\(\s*HW:\s*(?:\/[^(){:\s]+(?::[^(){:\s]+)*)(?::\{[^}]*\})?:?\s*\)/gi;
-const HW_MARKER_RE = /\[HW:\/[^{\]]*(?:\{[^}]*\})?\]/g;
-function stripHWMarkers(text: string): string {
-  return text
-    .replace(HW_LINK_RE, (_m, label: string) =>
-      // Label may itself be a canonical marker's content (LLM link-wrapped the
-      // second of a back-to-back pair) — both are markers, show neither.
-      /^hw:/i.test(label) ? "" : label,
-    )
-    .replace(HW_MARKER_RE, "")
-    .trim();
-}
-
 // ─── Tool call parsing ──────────────────────────────────────────────────────
 
 // Dynamic wire payload: SSE/flow event `detail` blobs and LLM tool-call args.
@@ -474,6 +456,12 @@ interface Conversation {
   pinned?: boolean;
 }
 
+function scrubAgentMessages(messages: ChatMessage[]): ChatMessage[] {
+  return messages.map((m) =>
+    m.role === "agent" && m.text ? { ...m, text: stripChatMarkers(m.text) } : m,
+  );
+}
+
 function loadConvos(): Conversation[] {
   try {
     const raw = localStorage.getItem(CONVOS_KEY);
@@ -485,7 +473,7 @@ function loadConvos(): Conversation[] {
     // Legacy shape: bare Conversation[]. Treat as still-fresh (the user is
     // upgrading right now); the next saveConvos() wraps it into the envelope.
     if (Array.isArray(parsed)) {
-      return parsed.map((c) => ({ ...c, messages: cleanPending(c.messages) }));
+      return parsed.map((c) => ({ ...c, messages: scrubAgentMessages(cleanPending(c.messages)) }));
     }
 
     // Envelope shape: enforce TTL. Stale → drop and start clean.
@@ -495,7 +483,7 @@ function loadConvos(): Conversation[] {
         localStorage.removeItem(ACTIVE_KEY);
         return [];
       }
-      return parsed.convos.map((c) => ({ ...c, messages: cleanPending(c.messages) }));
+      return parsed.convos.map((c) => ({ ...c, messages: scrubAgentMessages(cleanPending(c.messages)) }));
     }
 
     return [];
@@ -818,7 +806,7 @@ export function ChatSection({ events, isActive }: Props) {
         // Flush assistant text
         const buf = deltaBufRef.current.get(p);
         if (buf) {
-          const cleaned = stripHWMarkers(buf);
+          const cleaned = stripChatMarkers(buf);
           updateMessages((prev) =>
             prev.map((m) =>
               m.runId === p && m.role === "agent" && m.pending
@@ -832,7 +820,7 @@ export function ChatSection({ events, isActive }: Props) {
 
     const resolveRun = (runId: string) => {
       const buf = deltaBufRef.current.get(runId) ?? "";
-      const text = stripHWMarkers(buf || "…");
+      const text = stripChatMarkers(buf || "…");
       deltaBufRef.current.delete(runId);
       thinkingBufRef.current.delete(runId);
       resolvedIds.current.add(runId);
@@ -991,7 +979,7 @@ export function ChatSection({ events, isActive }: Props) {
             // Wait for the actual response or let the timeout handle it.
             if (!finalText) return;
             const { savedChips, usage } = resolveRun(pending);
-            const cleaned = stripHWMarkers(finalText);
+            const cleaned = stripChatMarkers(finalText);
             updateMessages((prev) =>
               prev.map((m) =>
                 m.runId === pending && m.role === "agent" && m.pending
@@ -1017,7 +1005,7 @@ export function ChatSection({ events, isActive }: Props) {
 
           // Partial (non-delta path)
           if (chatMsg && !deltaBufRef.current.has(pending)) {
-            const cleaned = stripHWMarkers(chatMsg);
+            const cleaned = stripChatMarkers(chatMsg);
             updateMessages((prev) =>
               prev.map((m) =>
                 m.runId === pending && m.role === "agent" && m.pending
@@ -1135,7 +1123,7 @@ export function ChatSection({ events, isActive }: Props) {
           setToolChips([]);
           const usage = tokenUsageRef.current;
           tokenUsageRef.current = undefined;
-          const cleaned = stripHWMarkers(text);
+          const cleaned = stripChatMarkers(text);
           updateMessages((prev) =>
             prev.map((m) =>
               m.runId === pending && m.role === "agent" && m.pending

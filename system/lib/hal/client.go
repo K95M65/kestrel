@@ -236,6 +236,51 @@ func SpeakPreview(text, voice, provider, apiKey, baseURL string) error {
 	return postSpeakWithTimeout("/voice/speak", body, 30*time.Second)
 }
 
+// SpeakPreviewAudio synthesizes the same preview as SpeakPreview but returns
+// the WAV bytes instead of playing on the robot speaker. Mute does not apply.
+func SpeakPreviewAudio(text, voice, provider, apiKey, baseURL string) ([]byte, string, error) {
+	payload := map[string]any{"text": text}
+	if voice != "" {
+		payload["voice"] = voice
+	}
+	if provider != "" {
+		payload["provider"] = provider
+	}
+	if apiKey != "" {
+		payload["tts_api_key"] = apiKey
+	}
+	if baseURL != "" {
+		payload["tts_base_url"] = baseURL
+	}
+	body, _ := json.Marshal(payload)
+	client := &http.Client{Timeout: 30 * time.Second}
+	req, err := newRequest("POST", "/voice/preview-audio", bytes.NewReader(body))
+	if err != nil {
+		return nil, "", fmt.Errorf("POST /voice/preview-audio: %w", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, "", fmt.Errorf("POST /voice/preview-audio: %w", err)
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, "", fmt.Errorf("POST /voice/preview-audio: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		msg := strings.TrimSpace(string(data))
+		if msg == "" {
+			msg = fmt.Sprintf("returned %d", resp.StatusCode)
+		}
+		return nil, "", fmt.Errorf("POST /voice/preview-audio: %s", msg)
+	}
+	ctype := resp.Header.Get("Content-Type")
+	if ctype == "" {
+		ctype = "audio/wav"
+	}
+	return data, ctype, nil
+}
+
 // PrerenderCached asks hal to render+save WAV for text without playing.
 // Used at startup to warm the cache for known fillers/intent confirms so
 // the first runtime call is a hit. Idempotent: no-op when WAV already exists.

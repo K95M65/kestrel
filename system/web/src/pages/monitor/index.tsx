@@ -12,7 +12,7 @@ import {
   UserCircle, MessageSquare, Link as LinkIcon, MonitorSmartphone,
   Workflow, Users, Camera, Radar, ChartColumn, Move3d, Bluetooth, ScrollText,
   Terminal, FileCode, Hexagon, ExternalLink, SlidersHorizontal, ChevronRight,
-  Server, Zap, LogOut, Clock, Search, X, CornerDownLeft, Plug, Blocks, Moon, Sparkles, Home, Sofa, Library,
+  Server, Zap, LogOut, Clock, Search, X, CornerDownLeft, Plug, Blocks, Moon, Sparkles, Home, Sofa, Library, BookOpen,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -27,6 +27,7 @@ import { ChatSection } from "./ChatSection";
 import { FaceOwnersSection } from "./FaceOwnersSection";
 import { ConfirmDialog } from "./components";
 import { SettingsPanel } from "@/pages/settings/SettingsPanel";
+import { GuideSection } from "./GuideSection";
 import { ReachyMark } from "@/components/ReachyMark";
 import type { SettingsSectionId } from "@/pages/settings/SettingsPanel";
 
@@ -54,7 +55,7 @@ const EMBED_SECTIONS = new Set<Section>(["api-docs", "agent-config"]);
 const PUBLIC_SECTIONS = new Set<Section>([
   "chat", "overview",
   "settings:behaviors", "settings:uses", "settings:sleep", "face-owners",
-  "camera", "settings:tts", "settings:device", "settings:wifi",
+  "camera", "settings:tts", "guide", "settings:device", "settings:wifi",
   "settings:timezone", "settings:channel", "settings:plugins",
 ]);
 
@@ -97,6 +98,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   "settings:runtime": Server,
   "settings:stt": Globe,
   "settings:tts": Volume2,
+  guide: BookOpen,
   "settings:realtime": Zap,
   "settings:voice": MicVocal,
   "settings:face": UserCircle,
@@ -153,9 +155,11 @@ function searchableLeaves(): SearchLeaf[] {
   const out: SearchLeaf[] = [];
   for (const entry of NAV) {
     if (isNavGroup(entry)) {
-      entry.children.forEach((c) => { if (!isNavLink(c)) out.push({ id: c.id, label: c.label, group: entry.label }); });
+      entry.children.forEach((c) => {
+        if (!isNavLink(c)) out.push({ id: c.id, label: c.label, group: entry.label, terms: c.terms });
+      });
     } else {
-      out.push({ id: entry.id, label: entry.label, group: null });
+      out.push({ id: entry.id, label: entry.label, group: null, terms: entry.terms });
     }
   }
   return out;
@@ -404,6 +408,7 @@ export default function Monitor() {
     const params = new URLSearchParams(location.search);
     if (opts?.use) params.set("use", opts.use);
     else params.delete("use");
+    if (s !== "guide") params.delete("doc");
     const qs = params.toString();
     const nextSearch = qs ? `?${qs}` : "";
     if (targetArea !== area || nextSearch !== (location.search || "")) {
@@ -450,6 +455,7 @@ export default function Monitor() {
     const params = new URLSearchParams(location.search);
     if (use) params.set("use", use);
     else params.delete("use");
+    if (id !== "guide") params.delete("doc");
     const qs = params.toString();
     return `${areaPath(a)}${qs ? `?${qs}` : ""}#${sectionToHash(id, a)}`;
   };
@@ -631,7 +637,9 @@ export default function Monitor() {
           if (!isDebug && !PUBLIC_SECTIONS.has(leaf.id)) return false;
           if (!sectionVisible(leaf.id)) return false;
           const nq = fold(q);
-          return fold(leaf.label).includes(nq) || (leaf.group ? fold(leaf.group).includes(nq) : false);
+          return fold(leaf.label).includes(nq)
+            || (leaf.group ? fold(leaf.group).includes(nq) : false)
+            || (leaf.terms ? fold(leaf.terms).includes(nq) : false);
         }),
         ...(!isDebug && !PUBLIC_SECTIONS.has("settings:uses") ? [] : scenariosMatching(q).map((s) => ({
           id: "settings:uses" as Section,
@@ -805,6 +813,7 @@ export default function Monitor() {
           ...(section === "chat" ? { padding: 0, overflow: "hidden" } : {}),
           ...(EMBED_SECTIONS.has(section) ? { padding: 0, overflow: "hidden" } : {}),
           ...(section.startsWith("settings:") ? { padding: 0, overflow: "hidden" } : {}),
+          ...(section === "guide" ? { padding: 0, overflow: "hidden" } : {}),
         }} className="lm-content">
           {/* Non-chat sections share a keyed wrapper so switching between them
               re-triggers the fade-in. Chat stays OUTSIDE this wrapper (always
@@ -917,6 +926,7 @@ export default function Monitor() {
           {section === "analytics" && <AnalyticsSection />}
           {section === "logs"      && <LogsSection isDebug={isDebug} />}
           {section === "cli" && <CliSection />}
+          {section === "guide" && <GuideSection />}
           </Suspense>
           {section === "api-docs" && (
             <iframe

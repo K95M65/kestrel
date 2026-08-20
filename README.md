@@ -4,6 +4,8 @@ Desk companion OS for robots — **Talk, Home, House, Device**. A fork of [Auton
 
 Kestrel is this product. Autonomous OS is the upstream stack (HAL, skills, Hermes / OpenClaw, the `ROBOT.md` contract). We keep that contract. We change what a person at the desk actually uses.
 
+**In-app Guide** (Device → Guide) is the home-user handbook. The same pages live in [`docs/wiki/`](docs/wiki/). Builder docs stay in [`docs/`](docs/).
+
 | | |
 |---|---|
 | This repo | [K95M65/kestrel](https://github.com/K95M65/kestrel) |

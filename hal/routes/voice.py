@@ -13,7 +13,7 @@ import time
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 import hal.app_state as state
 from hal.config import AUDIO_INPUT_ALSA, TTS_SPEED, TTS_VOICE, TTS_INSTRUCTIONS
@@ -224,32 +224,31 @@ def get_voices(provider: Optional[str] = None, lang: Optional[str] = None):
     return {"provider": provider, "voices": ["alloy", "ash", "coral", "echo", "fable", "onyx", "nova", "sage", "shimmer"]}
 
 
-@router.post("/voice/speak", response_model=StatusResponse)
-def speak_text(req: SpeakRequest):
-    """Synthesize text to speech and play through the speaker."""
+def _require_tts():
     if not state.tts_service:
-        state.logger.error("POST /voice/speak: tts_service is None (not initialized)")
+        state.logger.error("TTS route: tts_service is None (not initialized)")
         raise HTTPException(
             503,
             "TTS not initialized -- call /voice/start first or check config has llm_api_key + llm_base_url",
         )
-    if state._speaker_muted:
-        state.logger.info("POST /voice/speak: suppressed -- speaker muted (text='%s')", req.text[:80])
-        return {"status": "suppressed"}
-    if state.music_service and state.music_service.streaming:
-        state.logger.info(
-            "POST /voice/speak: rejected -- music is playing (text='%s')", req.text[:80]
-        )
-        raise HTTPException(409, "Speaker busy -- music is playing")
 
+
+def _apply_tts_overrides(req: SpeakRequest, *, need_speaker: bool) -> None:
+    """Hot-swap provider/credentials and set voice for this request.
+
+    need_speaker=True requires the playback path (sounddevice). Browser
+    preview only needs the synth backend — the WAV never hits the robot
+    speaker.
+    """
+    _require_tts()
     # Optional provider hot-swap for web TTS preview (test before saving config).
     # Only swap when something actually changed -- comparing values instead of
     # truthiness, so passing the same api_key/base_url every request is a no-op.
     if req.provider:
         current_backend = state.tts_service._backend
         current_provider = getattr(state.tts_service, "_provider", None)
-        current_api_key = getattr(current_backend, "_api_key", "") or ""
-        current_base_url = getattr(current_backend, "_base_url", "") or ""
+        current_api_key = (getattr(current_backend, "_api_key", "") or "") if current_backend else ""
+        current_base_url = (getattr(current_backend, "_base_url", "") or "") if current_backend else ""
         # ElevenLabs appends /elevenlabs to base_url; strip it for comparison.
         normalized_current_base = current_base_url.rstrip("/")
         if normalized_current_base.endswith("/elevenlabs"):
@@ -278,17 +277,38 @@ def speak_text(req: SpeakRequest):
                 state.logger.error("TTS backend swap failed: %s", e)
                 raise HTTPException(500, f"Failed to swap TTS backend: {e}")
 
-    if not state.tts_service.available:
-        state.logger.error(
-            "POST /voice/speak: tts_service not available -- backend=%s, sd=%s",
-            state.tts_service._backend is not None and state.tts_service._backend.available,
-            state.tts_service._sd is not None,
-        )
-        raise HTTPException(
-            503, "TTS not available -- missing openai SDK or sounddevice"
-        )
+    if need_speaker:
+        if not state.tts_service.available:
+            state.logger.error(
+                "TTS not available -- backend=%s, sd=%s",
+                state.tts_service._backend is not None and state.tts_service._backend.available,
+                state.tts_service._sd is not None,
+            )
+            raise HTTPException(
+                503, "TTS not available -- missing openai SDK or sounddevice"
+            )
+    else:
+        backend = state.tts_service._backend
+        if backend is None or not getattr(backend, "available", False):
+            raise HTTPException(503, "TTS backend not available")
     if req.voice:
         state.tts_service._voice = req.voice
+
+
+@router.post("/voice/speak", response_model=StatusResponse)
+def speak_text(req: SpeakRequest):
+    """Synthesize text to speech and play through the speaker."""
+    _require_tts()
+    if state._speaker_muted:
+        state.logger.info("POST /voice/speak: suppressed -- speaker muted (text='%s')", req.text[:80])
+        return {"status": "suppressed"}
+    if state.music_service and state.music_service.streaming:
+        state.logger.info(
+            "POST /voice/speak: rejected -- music is playing (text='%s')", req.text[:80]
+        )
+        raise HTTPException(409, "Speaker busy -- music is playing")
+
+    _apply_tts_overrides(req, need_speaker=True)
     # Don't dump req.model_dump_json() — it contains tts_api_key. Log shape only.
     state.logger.info(
         "POST /voice/speak: provider=%s voice=%s len=%d interruptible=%s cached=%s prerender=%s",
@@ -324,6 +344,27 @@ def speak_text(req: SpeakRequest):
     if not started:
         raise HTTPException(409, "TTS is busy speaking")
     return {"status": "ok"}
+
+
+@router.post("/voice/preview-audio")
+def preview_audio(req: SpeakRequest):
+    """Render the selected voice to WAV and return it. Does not play on the
+    robot speaker — used by Device → Voice “In this browser”. Mute and music
+    do not apply. Needs the TTS backend, not sounddevice.
+    """
+    _apply_tts_overrides(req, need_speaker=False)
+    state.logger.info(
+        "POST /voice/preview-audio: provider=%s voice=%s len=%d",
+        req.provider or "(default)",
+        req.voice or "(default)",
+        len(req.text or ""),
+    )
+    try:
+        path = state.tts_service.render_preview_wav(req.text)
+    except Exception as e:
+        state.logger.error("preview-audio render failed: %s", e)
+        raise HTTPException(502, f"preview failed: {e}") from e
+    return FileResponse(path, media_type="audio/wav", filename="preview.wav")
 
 
 @router.post("/voice/speak-queue", response_model=StatusResponse)

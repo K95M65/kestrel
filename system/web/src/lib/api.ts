@@ -767,20 +767,63 @@ function demoPhraseFor(lang?: string): string {
   return TTS_DEMO_PHRASES[lang] || TTS_DEMO_PHRASES.en;
 }
 
+function ttsPreviewBody(voice: string, opts: TestTTSOptions) {
+  return JSON.stringify({
+    text: opts.text || demoPhraseFor(opts.lang),
+    voice,
+    provider: opts.provider || undefined,
+  });
+}
+
 /** POST /api/voice/preview — server reads the TTS API key + base URL from
  *  cfg and forwards to the device. Browser never sees or ships the credential
  *  (audit web F13). Operator can still pick a non-default voice/provider for
- *  the test by passing `provider` in opts. */
+ *  the test by passing `provider` in opts. Plays on the robot speaker. */
 export async function testTTSVoice(voice: string, opts: TestTTSOptions = {}): Promise<void> {
   await apiRequest<boolean>(`${API_BASE}/api/voice/preview`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      text: opts.text || demoPhraseFor(opts.lang),
-      voice,
-      provider: opts.provider || undefined,
-    }),
+    body: ttsPreviewBody(voice, opts),
   });
+}
+
+let browserPreviewAudio: HTMLAudioElement | null = null;
+
+/** POST /api/voice/preview-audio — same phrase and voice as testTTSVoice,
+ *  but HAL returns a WAV and this computer plays it. Mute on the robot does
+ *  not apply. Stops a previous in-browser preview first. */
+export async function previewTTSInBrowser(voice: string, opts: TestTTSOptions = {}): Promise<void> {
+  if (browserPreviewAudio) {
+    browserPreviewAudio.pause();
+    browserPreviewAudio.src = "";
+    browserPreviewAudio = null;
+  }
+  const headers = new Headers({ "Content-Type": "application/json" });
+  if (apiToken) headers.set("Authorization", `Bearer ${apiToken}`);
+  const res = await fetch(`${API_BASE}/api/voice/preview-audio`, {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: ttsPreviewBody(voice, opts),
+  });
+  const ctype = res.headers.get("content-type") || "";
+  if (!res.ok || ctype.includes("application/json")) {
+    const json = (await res.json().catch(() => null)) as JSONResponse | null;
+    throw new Error(json?.message || "Couldn't play a preview.");
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const audio = new Audio(url);
+  browserPreviewAudio = audio;
+  audio.onended = () => {
+    URL.revokeObjectURL(url);
+    if (browserPreviewAudio === audio) browserPreviewAudio = null;
+  };
+  audio.onerror = () => {
+    URL.revokeObjectURL(url);
+    if (browserPreviewAudio === audio) browserPreviewAudio = null;
+  };
+  await audio.play();
 }
 
 export async function getDeviceConfig(): Promise<DeviceConfig> {

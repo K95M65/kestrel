@@ -214,7 +214,7 @@ export function ScenarioOnboarding({
               <ul className="lm-guide-summary">
                 <li>{scenario.title}</li>
                 {tried && <li>Tried a line from this guide</li>}
-                {buddyPaired && scenario.buddy === "required" && <li>Mac paired</li>}
+                {buddyPaired && scenario.buddy === "required" && <li>Computer paired</li>}
                 <li>{scenario.honest}</li>
               </ul>
             </StepShell>

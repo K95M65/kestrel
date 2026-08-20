@@ -16,6 +16,7 @@ import { bodyCopy, inferredBodyId } from "./bodyProfile.ts";
 const lamp = capsFromSet(new Set(["audio", "vision", "motion", "light", "expression", "presence", "media"]));
 const reachy = capsFromSet(new Set(["audio", "vision", "motion", "expression", "media"]));
 const intern = capsFromSet(new Set(["audio", "light", "media"]));
+const host = capsFromSet(new Set(["audio", "vision", "companion"]));
 
 const lampSteps = guideSteps(lamp);
 const reachySteps = guideSteps(reachy);
@@ -62,6 +63,8 @@ assert.equal(inferredBodyId("reachy-mini", reachy), "reachy-mini");
 assert.equal(inferredBodyId("", reachy), "reachy-mini");
 assert.equal(inferredBodyId("", lamp), "lamp");
 assert.equal(inferredBodyId("", intern), "intern-v2");
+assert.equal(inferredBodyId("kestrel-host", host), "kestrel-host");
+assert.equal(inferredBodyId("", host), "kestrel-host");
 
 const rc = bodyCopy("reachy-mini", reachy);
 assert.match(rc.introLead, /ears/i);
@@ -75,6 +78,16 @@ assert.match(lc.sleep, /limp/i);
 const ic = bodyCopy("intern-v2", intern);
 assert.doesNotMatch(ic.introLead, /let it see you/i);
 assert.match(ic.proveLead, /ring/i);
+
+const hc = bodyCopy("kestrel-host", host);
+assert.match(hc.introLead, /camera/i);
+assert.doesNotMatch(hc.introLead, /ring/i);
+assert.doesNotMatch(hc.talkLead("Bobert"), /head and ears|ring/i);
+assert.match(hc.talkLead("Bobert"), /Bobert/);
+assert.match(hc.faceLead, /desk computer/i);
+assert.deepEqual(proveActs(host), []);
+assert.ok(!guideSteps(host).includes("prove"));
+assert.ok(guideSteps(host).includes("see"));
 
 assert.equal(ownsEnter("talk"), true);
 assert.equal(ownsEnter("name"), false);

@@ -1,9 +1,6 @@
-import { useState } from "react";
-import { toast } from "sonner";
 import { C, LockedField, LockedPasswordField, SectionCard } from "@/components/setup/shared";
-import { testTTSVoice } from "@/lib/api";
 import { ttsProviderLabel } from "@/lib/ttsLabels";
-import { HW } from "@/pages/monitor/types";
+import { VoicePreview } from "@/components/setup/VoicePreview";
 import type { LlmLoadedState } from "@/hooks/setup/types";
 
 export interface TtsLoadedState {
@@ -33,35 +30,6 @@ export function TTSSection({
   ttsVoices: string[];
   sttLanguage: string;
 }) {
-  const [testing, setTesting] = useState(false);
-
-  async function preview() {
-    if (testing) return;
-    setTesting(true);
-    try {
-      await testTTSVoice(ttsVoice, { lang: sttLanguage, provider: ttsProvider });
-      toast.success("Playing on the robot.");
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "";
-      if (/muted/i.test(msg)) {
-        toast.error("Speaker is muted — unmute, then try again.", {
-          action: {
-            label: "Unmute",
-            onClick: () => {
-              void fetch(`${HW}/speaker/unmute`, { method: "POST" })
-                .then(() => toast.message("Speaker unmuted. Test Voice again."))
-                .catch(() => toast.error("Couldn't unmute."));
-            },
-          },
-        });
-      } else {
-        toast.error(msg || "Couldn't play a preview.");
-      }
-    } finally {
-      setTesting(false);
-    }
-  }
-
   return (
     <SectionCard id="tts" title="Voice" active={active} description="How the robot sounds when it talks.">
       <details style={{ marginBottom: 14 }}>
@@ -110,22 +78,7 @@ export function TTSSection({
             <option key={v} value={v}>{v}</option>
           ))}
         </select>
-        <button
-          type="button"
-          disabled={testing}
-          onClick={() => void preview()}
-          style={{
-            marginTop: 8, width: "100%", padding: "8px 0",
-            background: C.amber, color: "#fff", border: "none",
-            borderRadius: 7, fontSize: 12, cursor: testing ? "wait" : "pointer", fontWeight: 600,
-            opacity: testing ? 0.7 : 1,
-          }}
-        >
-          {testing ? "Playing…" : "Test Voice"}
-        </button>
-        <p style={{ margin: "6px 0 0", fontSize: 11, color: C.textDim, lineHeight: 1.4 }}>
-          Plays through the robot speaker. If Home shows Speaker MUTED, unmute first.
-        </p>
+        <VoicePreview ttsVoice={ttsVoice} ttsProvider={ttsProvider} sttLanguage={sttLanguage} />
       </div>
     </SectionCard>
   );

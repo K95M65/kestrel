@@ -160,7 +160,7 @@ export interface DisplayEvent extends MonitorEvent {
   _seq: number;
 }
 
-export type Section = "overview" | "system" | "flow" | "camera" | "servo" | "face-owners" | "analytics" | "logs" | "chat" | "cli" | "sensing" | "bluetooth" | "api-docs" | "agent-config" | "settings:device" | "settings:wifi" | "settings:llm" | "settings:runtime" | "settings:voice" | "settings:face" | "settings:tts" | "settings:realtime" | "settings:stt" | "settings:channel" | "settings:mqtt" | "settings:mcp" | "settings:plugins" | "settings:timezone" | "settings:sleep" | "settings:behaviors" | "settings:uses";
+export type Section = "overview" | "system" | "flow" | "camera" | "servo" | "face-owners" | "analytics" | "logs" | "chat" | "cli" | "sensing" | "bluetooth" | "api-docs" | "agent-config" | "guide" | "settings:device" | "settings:wifi" | "settings:llm" | "settings:runtime" | "settings:voice" | "settings:face" | "settings:tts" | "settings:realtime" | "settings:stt" | "settings:channel" | "settings:mqtt" | "settings:mcp" | "settings:plugins" | "settings:timezone" | "settings:sleep" | "settings:behaviors" | "settings:uses";
 
 // ─── Area + URL serialization ────────────────────────────────────────────────
 //
@@ -245,7 +245,7 @@ export const Cap = {
 // A nav leaf may declare the capability it requires; the nav hides it and the
 // router redirects away when the device lacks that capability. Omit `cap` for
 // sections with no hardware dependency (always shown).
-export type NavLeaf = { id: Section; label: string; icon: string; cap?: string };
+export type NavLeaf = { id: Section; label: string; icon: string; cap?: string; terms?: string };
 export type NavLink = { href: string; label: string; icon: string; external?: boolean };
 export type NavChild = NavLeaf | NavLink;
 export type NavGroup = { group: string; label: string; icon: string; children: NavChild[] };
@@ -279,6 +279,7 @@ export const NAV: NavEntry[] = [
     children: [
       { id: "camera",            label: "Camera",    icon: "◎", cap: Cap.Vision },
       { id: "settings:tts",      label: "Voice",     icon: "♫" },
+      { id: "guide",             label: "Guide",     icon: "?", terms: "wiki docs help handbook documentation" },
       { id: "settings:device",   label: "General",   icon: "⚙" },
       { id: "settings:wifi",     label: "Wi-Fi",     icon: "⌁" },
       { id: "settings:timezone", label: "Timezone",  icon: "◷" },

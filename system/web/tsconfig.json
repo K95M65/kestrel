@@ -2,7 +2,10 @@
   "files": [],
   "compilerOptions": {
     "baseUrl": ".",
-    "paths": { "@/*": ["./src/*"] }
+    "paths": {
+      "@/*": ["./src/*"],
+      "@wiki/*": ["../../docs/wiki/*"]
+    }
   },
   "references": [
     { "path": "./tsconfig.app.json" },

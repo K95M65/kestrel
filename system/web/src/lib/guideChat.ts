@@ -2,18 +2,7 @@
 // + /api/agent/events), trimmed to a promise so the guide isn't coupled to
 // ChatSection's conversation store.
 
-const HW_LINK_RE = /\[([^\]]*)\]\(\s*HW:\s*(?:\/[^(){:\s]+(?::[^(){:\s]+)*)(?::\{[^}]*\})?:?\s*\)/gi;
-const HW_MARKER_RE = /\[HW:\/[^{\]]*(?:\{[^}]*\})?\]/g;
-const BARE_EMOTION_RE = /\[(?:excited|happy|sad|curious|caring|thinking|idle|shy|shock|confused|sleepy|greeting|goodbye|acknowledge|laugh|listening|music_chill|music_strong)\]/gi;
-
-function stripHWMarkers(text: string): string {
-  return text
-    .replace(HW_LINK_RE, (_m, label: string) => (/^hw:/i.test(label) ? "" : label))
-    .replace(HW_MARKER_RE, "")
-    .replace(BARE_EMOTION_RE, "")
-    .replace(/\s{2,}/g, " ")
-    .trim();
-}
+import { stripChatMarkers } from "./stripChatMarkers";
 
 type Loose = Record<string, unknown>;
 
@@ -74,7 +63,7 @@ function waitForRun(
       clearTimeout(timer);
       es.close();
       if (err) reject(err);
-      else resolve(stripHWMarkers(text || "…"));
+      else resolve(stripChatMarkers(text || "…"));
     };
 
     const timer = window.setTimeout(() => {
@@ -98,7 +87,7 @@ function waitForRun(
         const delta = String(ev.summary ?? "");
         if (delta) {
           buf += delta;
-          onDelta?.(stripHWMarkers(buf));
+          onDelta?.(stripChatMarkers(buf));
         }
         return;
       }
@@ -119,7 +108,7 @@ function waitForRun(
         }
         if (chatMsg) {
           buf = chatMsg;
-          onDelta?.(stripHWMarkers(buf));
+          onDelta?.(stripChatMarkers(buf));
         }
         return;
       }

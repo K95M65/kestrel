@@ -87,7 +87,11 @@ Four rooms in `NAV` (`system/web/src/pages/monitor/types.ts`):
 | Talk | Chat |
 | Home | Product Home (was Overview) |
 | House | Behaviors, Quiet hours, People |
-| Device | Wi-Fi, Voice, My Voice, Channels, General, Camera, Timezone, Plugins, Face enroll, Logs. Advanced (Language, Realtime, AI Brain, Runtime, MQTT, MCP, System, Flow, Sensing, Servo, Bluetooth, CLI, API Docs) is `?debug=true` only. |
+| Device | Wi-Fi, Voice, Guide, My Voice, Channels, General, Camera, Timezone, Plugins, Face enroll, Logs. Advanced (Language, Realtime, AI Brain, Runtime, MQTT, MCP, System, Flow, Sensing, Servo, Bluetooth, CLI, API Docs) is `?debug=true` only. |
+
+**Guide** (`/monitor#guide`, `GuideSection.tsx`) — in-app handbook. Pages are the markdown files in [`docs/wiki/`](wiki/). Deep-link a page with `?doc=voice` (e.g. `/monitor?doc=voice#guide`).
+
+**Voice preview** (Device → Voice) — two buttons: **On robot** (`POST /api/voice/preview` → HAL speak) and **In this browser** (`POST /api/voice/preview-audio` → WAV played in the page). Credentials stay on the device. Browser preview works when the robot speaker is muted and does not need sounddevice on the host.
 
 Bottom of sidebar shows last update time.
 
