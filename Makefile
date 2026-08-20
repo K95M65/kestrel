@@ -26,10 +26,21 @@ HAL_PORT       := 5001
 # OS services (Go) — build | generate | lint | test
 # ============================================================================
 
-.PHONY: os-build os-build-bootstrap os-generate os-lint os-test
+.PHONY: os-build os-build-bootstrap os-generate os-lint os-test sideload
 
 os-build:
 	cd $(OS_DIR) && GOOS=linux GOARCH=arm64 go build -ldflags "-s -w $(LDFLAGS_OS)" -o os-server ./cmd/os-server
+
+# Copy os-server + web to any Linux ssh host (Lima VM, Pi, NUC). Not hardcoded
+# to the desk Reachy. First boot on a blank VM still needs nginx + HAL.
+#   make sideload TARGET=pollen@10.10.2.160
+#   make sideload TARGET=lima@127.0.0.1
+sideload:
+	@test -n "$(TARGET)" || { echo "usage: make sideload TARGET=user@host" >&2; exit 2; }
+	$(MAKE) os-build web-build
+	scp $(OS_DIR)/os-server $(TARGET):/tmp/os-server
+	rsync -az --delete $(WEB_DIR)/dist/ $(TARGET):/tmp/kestrel-web/
+	ssh $(TARGET) 'sudo install -m 755 /tmp/os-server /usr/local/bin/os-server && sudo mkdir -p /usr/share/nginx/html/setup && sudo rsync -a --delete /tmp/kestrel-web/ /usr/share/nginx/html/setup/ && (sudo systemctl restart os-server || true) && (sudo nginx -s reload || true) && /usr/local/bin/os-server --version'
 
 
 os-build-bootstrap:
