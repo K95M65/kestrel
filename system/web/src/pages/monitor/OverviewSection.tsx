@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import { Satellite, Globe, Eye, Volume2, Cpu, Drama, Clapperboard, Bot, Tag, Moon, Sparkles, Library } from "lucide-react";
+import { Satellite, Globe, Eye, Volume2, Cpu, Drama, Clapperboard, Bot, Tag, Moon, Sparkles, Library, QrCode } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
+import { deviceReach } from "@/lib/deviceReach";
 import { getSleep, sleepNow, wakeNow, getBehaviors, setMeeting, fireBriefNow, type SleepStatus, type BehaviorsStatus } from "@/lib/api";
 import { displayRobotName } from "@/lib/robotName";
 import { useRobotName } from "@/lib/useRobotName";
@@ -164,6 +166,7 @@ export function OverviewSection({
       <div className="lm-home-stage">
         <HomeHero oc={oc} presence={presence} onTalk={onTalk} />
         <HomeUsesStrip />
+        <FindRobotCard ip={net?.ip} hostId={sys?.deviceId} />
 
         <div className="lm-mon-card" style={monCard}>
           <div style={{ marginBottom: 12 }}><CardLabel icon={<Volume2 size={13} />} text="Sound" /></div>
@@ -867,6 +870,72 @@ function QuietHoursCard() {
           Schedule {st.schedule.sleep_at} → {st.schedule.wake_at}
         </div>
       )}
+    </div>
+  );
+}
+
+function FindRobotCard({ ip, hostId }: { ip?: string; hostId?: string }) {
+  const reach = deviceReach({
+    ip,
+    hostId,
+    origin: typeof window !== "undefined" ? window.location.origin : "",
+  });
+  const [copied, setCopied] = useState(false);
+  if (!reach.primary) return null;
+
+  function copy() {
+    const text = reach.primary;
+    const flash = () => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    };
+    if (navigator.clipboard?.writeText) {
+      void navigator.clipboard.writeText(text).then(flash).catch(() => {});
+      return;
+    }
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.top = "-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      if (document.execCommand("copy")) flash();
+      document.body.removeChild(ta);
+    } catch { /* leave the URL visible */ }
+  }
+
+  return (
+    <div className="lm-mon-card" style={{ ...S.card, boxShadow: undefined, marginTop: 12 }}>
+      <div style={{ marginBottom: 10 }}><CardLabel icon={<QrCode size={13} />} text="This robot" /></div>
+      <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+        <QRCodeSVG
+          value={reach.primary}
+          size={88}
+          marginSize={1}
+          bgColor="transparent"
+          fgColor="currentColor"
+          title={reach.primary}
+        />
+        <div style={{ minWidth: 0, flex: "1 1 180px" }}>
+          <p style={{ margin: "0 0 8px", fontSize: 13, lineHeight: 1.45, color: "var(--lm-text)" }}>
+            Open this on another computer on the same network.
+          </p>
+          <button
+            type="button"
+            className="lm-u-btn"
+            onClick={copy}
+            style={{ fontSize: 12, padding: "5px 10px", fontFamily: "ui-monospace, monospace" }}
+          >
+            {copied ? "Copied" : reach.primary.replace(/^https?:\/\//, "")}
+          </button>
+          {reach.mdns && reach.mdns !== reach.primary && (
+            <div style={{ marginTop: 6, fontSize: 11, color: "var(--lm-text-muted)", wordBreak: "break-all" }}>
+              Also {reach.mdns.replace(/^https?:\/\//, "")} — some routers block that name.
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

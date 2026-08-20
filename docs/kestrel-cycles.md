@@ -17,3 +17,13 @@ New ideas may be appended only as a direct follow-on of the last next-step.
 Deferred on purpose (not this loop): iOS/Android app, flash Reachy, six-runtime hop on the live desk, Matter/Zigbee/OT, ScoutHQ.
 
 ## Decisions
+
+### Cycle 1 — 2ffd9fff
+Done: Talk strip, Voice on-robot/in-browser, Guide + docs/wiki, kestrel-host copy, Uses “Needs a computer”.
+What would I do next? Find this robot on Home (LAN IP, mDNS, copy, QR).
+Why: last product question was finding the body on the network; IP is more reliable than `.local`.
+
+### Cycle 2
+Done: Home **This robot** card from `deviceReach` (LAN first, mDNS extra, loopback never shared). Guide page `find`.
+What would I do next? Guide page on brains / runtime switch honesty (seed 3).
+Why: the previous conversation asked if OpenClaw/Hermes/etc. are easy to swap; Home users should read that before Advanced Runtime.

@@ -11,4 +11,5 @@ How this desk companion works. Same pages live in the repo under `docs/wiki`.
 - [Kestrel Buddy](buddy) — drive a computer next to it
 - [Telegram](telegram) — text it from your phone
 - [Dummy host](dummy-host) — a Linux VM with no motors
+- [Find this robot](find) — LAN address, QR
 - [Kids and safety](safety) — what stays off
