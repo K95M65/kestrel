@@ -75,8 +75,37 @@ type Privacy struct {
 	FaceFollowAfterWake bool `json:"face_follow_after_wake"`
 }
 
+// Connector ask levels — ChatGPT's permission model. DraftNotSend stays in
+// sync so older skills that only read that flag keep working.
+const (
+	AskAlways    = "always_ask"
+	AskChanges   = "any_changes"
+	AskImportant = "important_actions"
+	AskNever     = "never_ask"
+)
+
 type ConnectorGate struct {
-	DraftNotSend bool `json:"draft_not_send"`
+	DraftNotSend bool   `json:"draft_not_send"`
+	Ask          string `json:"ask,omitempty"`
+}
+
+// NormalizeAsk fills Ask and keeps DraftNotSend aligned.
+func (g *ConnectorGate) NormalizeAsk() {
+	if g == nil {
+		return
+	}
+	a := strings.ToLower(strings.TrimSpace(g.Ask))
+	switch a {
+	case AskAlways, AskChanges, AskImportant, AskNever:
+		g.Ask = a
+	default:
+		if g.DraftNotSend {
+			g.Ask = AskImportant
+		} else {
+			g.Ask = AskNever
+		}
+	}
+	g.DraftNotSend = g.Ask != AskNever
 }
 
 type PresenceIdle struct {
@@ -155,7 +184,7 @@ func DefaultBehaviors() Behaviors {
 		Remember:   Remember{Enabled: true, MaxItems: 200},
 		Dance:      Dance{Enabled: true, DefaultQuery: "upbeat dance pop"},
 		Privacy:    Privacy{CameraOnDemand: true, FaceFollowAfterWake: true},
-		Connectors: ConnectorGate{DraftNotSend: true},
+		Connectors: ConnectorGate{DraftNotSend: true, Ask: AskImportant},
 		Presence:   PresenceIdle{IdleMotion: true},
 		Focus:      FocusCoach{PhoneNag: true, CooldownMin: 15},
 		Kids:       KidsProfile{SessionMin: 30},
@@ -226,6 +255,7 @@ func (b *Behaviors) FillDefaults() {
 	if b.Pomodoro.BreakMin <= 0 {
 		b.Pomodoro.BreakMin = d.Pomodoro.BreakMin
 	}
+	b.Connectors.NormalizeAsk()
 }
 
 func ValidateBehaviors(b Behaviors) error {
@@ -281,6 +311,11 @@ func ValidateBehaviors(b Behaviors) error {
 	case "", "none", "oura", "whoop", "garmin":
 	default:
 		return fmt.Errorf("wearables.provider must be none, oura, whoop, or garmin")
+	}
+	switch b.Connectors.Ask {
+	case "", AskAlways, AskChanges, AskImportant, AskNever:
+	default:
+		return fmt.Errorf("connectors.ask must be always_ask, any_changes, important_actions, or never_ask")
 	}
 	return validDays(b.MorningBrief.Days)
 }

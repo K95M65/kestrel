@@ -213,6 +213,16 @@ type Config struct {
 	// scheduled jobs off until the operator opts in on Settings → Behaviors.
 	Behaviors *Behaviors `json:"behaviors,omitempty" yaml:"behaviors"`
 
+	// Household is who claimed this body (owner, family, kid, guest). Nil means
+	// unclaimed — Home shows a setup PIN and claim QR.
+	Household *Household `json:"household,omitempty" yaml:"household"`
+
+	// GoogleOAuthClientID / Secret are a TV/limited-input OAuth client the
+	// operator created in Google Cloud. Empty = Sign in with Google stays off;
+	// Gmail/Calendar keep the app-password / iCal path. Secret never leaves GET.
+	GoogleOAuthClientID     string `json:"google_oauth_client_id,omitempty" yaml:"googleOAuthClientID"`
+	GoogleOAuthClientSecret string `json:"google_oauth_client_secret,omitempty" yaml:"googleOAuthClientSecret"`
+
 	// DeviceType is the device class/profile id — the folder name under robots/
 	// (e.g. "lamp", "intern-v2", "unitree-go2w"). Selects which ROBOT.md/SOUL.md the
 	// runtime loads. Empty resolves to "" — no "lamp" fallback (see DeviceTypeOrDefault;

@@ -5,6 +5,7 @@ import { SourceFooter } from "@/components/SourceFooter";
 import Setup from "@/pages/setup";
 import { SetupSkeleton } from "@/pages/setup/SetupSkeleton";
 import Login from "@/pages/Login";
+import Claim from "@/pages/Claim";
 import Monitor from "@/pages/monitor";
 import GwConfig from "@/pages/GwConfig";
 import { checkInternet, getDeviceConfig, getSetupStatus, safeSearch, scrubLocationSecrets, setApiToken } from "@/lib/api";
@@ -235,6 +236,7 @@ function App() {
         <Route path="/" element={<RootRedirect />} />
         <Route path="/setup" element={<SetupGate />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/claim" element={<Claim />} />
         {/* Monitor + Settings share ONE shell instance. Both paths are child
             routes of a single layout route whose element renders <Monitor/>.
             React Router keeps the layout element mounted while only the matched

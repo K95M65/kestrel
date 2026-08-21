@@ -14,6 +14,7 @@ import {
 } from "@/lib/behaviorsModel";
 import { BehaviorsOnboarding } from "@/pages/settings/BehaviorsOnboarding";
 import { useCapabilities } from "@/hooks/useCapabilities";
+import { ASK_LEVELS, draftFromAsk, normalizeAsk, type AskLevel } from "@/lib/askLevels";
 import { bodyCopy } from "@/lib/bodyProfile";
 import { capsFromSet, clampBehaviors, featureSupported, UNSUPPORTED } from "@/lib/guideWalk";
 
@@ -33,7 +34,7 @@ const FEATURE_META: Record<FeatureKey, { title: string; hint: string; badge?: st
   greeter: { title: "Office greeter", hint: "Hello when someone walks in." },
   look: { title: "Look at this", hint: "One JPEG on demand — not a live stream." },
   privacy: { title: "Camera snapshots", hint: "“Look at this” does not leave the stream running." },
-  connectors: { title: "Draft, do not send", hint: "Mail and calendar writes stay drafts." },
+  connectors: { title: "Ask before sending", hint: "Mail and calendar. Default is important actions — drafts only." },
   kids: { title: "Kids profile", hint: "No mail, calendar, HA, or computer-use. Gentle stories." },
   stories: { title: "Stories", hint: "Bedtime / tell-me-a-story, time-capped." },
   focus: { title: "Phone / focus coach", hint: "Nag when a phone is in frame." },
@@ -170,7 +171,7 @@ export function BehaviorsSection({ active }: { active: boolean }) {
       case "greeter": setCfg({ ...cfg, greeter: { ...cfg.greeter, enabled: on } }); break;
       case "look": setCfg({ ...cfg, look: { enabled: on } }); break;
       case "privacy": setCfg({ ...cfg, privacy: { ...cfg.privacy, camera_on_demand: on } }); break;
-      case "connectors": setCfg({ ...cfg, connectors: { draft_not_send: on } }); break;
+      case "connectors": setCfg({ ...cfg, connectors: { draft_not_send: on, ask: on ? "important_actions" : "never_ask" } }); break;
       case "kids": setCfg({ ...cfg, kids: { ...cfg.kids, enabled: on } }); break;
       case "stories": setCfg({ ...cfg, stories: { ...cfg.stories, enabled: on } }); break;
       case "focus": setCfg({ ...cfg, focus: { ...cfg.focus, enabled: on } }); break;
@@ -212,6 +213,26 @@ export function BehaviorsSection({ active }: { active: boolean }) {
           <button type="button" disabled={!!busy} onClick={() => void act("brief", fireBriefNow)} style={btn(false, busy === "brief")}>
             {busy === "brief" ? "…" : "Brief now"}
           </button>
+        </>
+      );
+    }
+    if (key === "connectors") {
+      const ask = normalizeAsk(cfg.connectors.ask, cfg.connectors.draft_not_send);
+      return (
+        <>
+          {ASK_LEVELS.map((lv) => (
+            <label key={lv.id} style={{ display: "flex", gap: 8, alignItems: "flex-start", margin: "8px 0", fontSize: 13, cursor: "pointer" }}>
+              <input type="radio" name="ask" checked={ask === lv.id}
+                onChange={() => setCfg({
+                  ...cfg,
+                  connectors: { ask: lv.id, draft_not_send: draftFromAsk(lv.id as AskLevel) },
+                })} />
+              <span>
+                <strong>{lv.title}</strong>
+                <span style={{ display: "block", fontSize: 12, color: C.textMuted }}>{lv.hint}</span>
+              </span>
+            </label>
+          ))}
         </>
       );
     }

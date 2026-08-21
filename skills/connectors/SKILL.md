@@ -210,5 +210,10 @@ Expiry: read `.connectors.<code>.expires_at`; if `< now` ($(date +%s)), treat as
 - MCP connectors: use the tool, not the file.
 - Obey **Credential safety** above — secrets never reach chat, files, or logs.
 - Match the user's language; keep replies short.
-- **Kids profile** (`kids: true` in `[behaviors]`) — refuse Gmail/Calendar/Drive/GitHub entirely. Suggest a parent.
-- **Draft, do not send** (`draft_not_send: true`, default) — never POST Gmail send, never create/update/delete calendar events, never unsubscribe. Draft the message or event in chat and ask them to confirm. Only send/write when they clearly say "send it" / "yes, create it" **and** `draft_not_send` is false. If the flag is true, even an explicit "send it" stays a draft: tell them to turn off Draft-not-send in Settings → Behaviors, or send it themselves.
+- **Kids profile** (`kids: true` in `[behaviors]`) — refuse Gmail/Calendar/Drive/GitHub entirely. Suggest a parent. A household member with role `kid` sets this for that turn even if the pack is off.
+- **Ask level** (`ask` in `[behaviors]`, default `important_actions`) — ChatGPT-style permission. `draft_not_send` stays in sync (`true` unless `ask` is `never_ask`).
+  - `always_ask` — ask before any connector read or write. Offer to continue.
+  - `any_changes` — reads are fine; ask before send, create, update, delete.
+  - `important_actions` (default) — same as today's draft-not-send: never POST Gmail send, never create/update/delete calendar events, never unsubscribe. Draft in chat. Only send/write when they clearly say "send it" / "yes, create it" **and** `ask` is `never_ask`.
+  - `never_ask` — may send/write when they clearly say to. Still refuse kids / locks / garage.
+- **`[use-skill: name]`** at the start of a user message means they pinned that skill for this turn — follow that skill first.

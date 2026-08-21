@@ -42,6 +42,10 @@ type behaviorsDigest struct {
 	Dance               bool   `json:"dance"`
 	DanceQuery          string `json:"dance_query,omitempty"`
 	DraftNotSend        bool   `json:"draft_not_send"`
+	Ask                 string `json:"ask,omitempty"`
+	Room                string `json:"room,omitempty"`
+	OwnerEmail          string `json:"owner_email,omitempty"`
+	Claimed             bool   `json:"claimed,omitempty"`
 	CameraOnDemand      bool   `json:"camera_on_demand"`
 	FaceFollowAfterWake bool   `json:"face_follow_after_wake"`
 	IdleMotion          bool   `json:"idle_motion"`
@@ -80,12 +84,18 @@ type behaviorsDigest struct {
 // turn should carry so skills can honor the dashboard pack without a tool call.
 func BuildBehaviorsContext() string {
 	b := CurrentBehaviors()
+	h := CurrentHousehold()
+	kids := b.Kids.Enabled || KidsBound()
 	d := behaviorsDigest{
 		MorningBrief:        b.MorningBrief.Enabled,
 		Remember:            b.Remember.Enabled,
 		Dance:               b.Dance.Enabled,
 		DanceQuery:          b.Dance.DefaultQuery,
 		DraftNotSend:        b.Connectors.DraftNotSend,
+		Ask:                 b.Connectors.Ask,
+		Room:                h.Room,
+		OwnerEmail:          h.OwnerEmail,
+		Claimed:             h.Claimed,
 		CameraOnDemand:      b.Privacy.CameraOnDemand,
 		FaceFollowAfterWake: b.Privacy.FaceFollowAfterWake,
 		IdleMotion:          b.Presence.IdleMotion,
@@ -94,7 +104,7 @@ func BuildBehaviorsContext() string {
 		Focus:               b.Focus.Enabled,
 		PhoneNag:            b.Focus.PhoneNag,
 		FocusCooldownMin:    b.Focus.CooldownMin,
-		Kids:                b.Kids.Enabled,
+		Kids:                kids,
 		KidsSessionMin:      b.Kids.SessionMin,
 		Greeter:             b.Greeter.Enabled,
 		GreeterNamedOnly:    b.Greeter.NamedOnly,

@@ -37,6 +37,8 @@ type Service struct {
 	sleep           sleepRuntime
 	behaviorsMu     sync.Mutex
 	behaviors       behaviorsRuntime
+	inviteMu        sync.Mutex
+	invite          *pendingInvite
 
 	sessionResetMu       sync.Mutex
 	sessionResetInFlight bool
@@ -54,6 +56,7 @@ func ProvideService(config *config.Config, ns *network.Service, gw domain.AgentG
 		setupState:     setupState{phase: SetupPhaseIdle},
 	}
 	s.initBehaviors()
+	s.initHousehold()
 	return s
 }
 

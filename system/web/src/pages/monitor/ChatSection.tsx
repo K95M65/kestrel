@@ -5,7 +5,9 @@ import {
   Wrench, Lightbulb, Cog, Music, Palette, Search, Smile, ChevronDown,
 } from "lucide-react";
 import { API } from "./types";
-import { getDeviceConfig } from "@/lib/api";
+import { getDeviceConfig, listInstalledSkills } from "@/lib/api";
+import { applySkillMention, filterSkills, insertMention, mentionQuery, type SkillHint } from "@/lib/mentionSkills";
+import { SkillMentionList } from "./chat/SkillMentionList";
 import { talkName, talkNameTitle } from "@/lib/robotName";
 import { useRobotName } from "@/lib/useRobotName";
 import {
@@ -611,6 +613,7 @@ export function ChatSection({ events, isActive }: Props) {
     return saved && loadConvos().some((c) => c.id === saved) ? saved : null;
   });
   const [input, setInput] = useState("");
+  const [skills, setSkills] = useState<SkillHint[]>([]);
   const [sending, setSending] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -734,6 +737,11 @@ export function ChatSection({ events, isActive }: Props) {
   // Persist
   useEffect(() => { saveConvos(convos); }, [convos]);
   useEffect(() => { saveActiveId(activeId); }, [activeId]);
+  useEffect(() => {
+    listInstalledSkills()
+      .then((list) => setSkills(list.map((s) => ({ name: s.name, description: s.description }))))
+      .catch(() => {});
+  }, []);
 
   // Keyboard shortcut: Cmd/Ctrl+N for new chat
   useEffect(() => {
@@ -1454,7 +1462,7 @@ export function ChatSection({ events, isActive }: Props) {
       : null;
 
     try {
-      const body: Record<string, unknown> = { type: "web_chat", message: text };
+      const body: Record<string, unknown> = { type: "web_chat", message: applySkillMention(text) };
       if (sendImage) body.image = sendImage;
       if (sendFile) body.file = sendFile;
       const res = await fetch(`${API}/sensing/event`, {
@@ -1547,7 +1555,15 @@ export function ChatSection({ events, isActive }: Props) {
   // base64 here would make every attachment look like an image.
   const send = () => { sendText(input.trim()); };
 
+  const mention = mentionQuery(input);
+  const mentionHits = mention ? filterSkills(skills, mention.q) : [];
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (mention && mentionHits.length > 0 && e.key === "Tab") {
+      e.preventDefault();
+      setInput(insertMention(input, mention.at, mentionHits[0].name));
+      return;
+    }
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
   };
 
@@ -2221,8 +2237,14 @@ export function ChatSection({ events, isActive }: Props) {
               )}
 
               <div style={{
-                display: "flex", alignItems: "flex-end", gap: 6,
+                display: "flex", alignItems: "flex-end", gap: 6, position: "relative",
               }}>
+              {mention && (
+                <SkillMentionList
+                  items={mentionHits}
+                  onPick={(name) => setInput(insertMention(input, mention.at, name))}
+                />
+              )}
               <PlusMenu
                 disabled={sending}
                 onAttachFile={() => fileInputRef.current?.click()}

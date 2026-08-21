@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from "re
 import { Users, Mic, ScanFace, UserCheck, UserPlus, RefreshCw } from "lucide-react";
 import { S } from "./styles";
 import { useTheme } from "@/lib/useTheme";
-import { getBehaviors, getDeviceConfig, hwUrl, setMe } from "@/lib/api";
+import { getBehaviors, getDeviceConfig, getHousehold, hwUrl, setMe, setMemberRole, startHouseholdInvite, type HouseholdPublic } from "@/lib/api";
 import { talkName } from "@/lib/robotName";
 import { useRobotName } from "@/lib/useRobotName";
 import { useFaceEnroll } from "@/hooks/setup/useFaceEnroll";
@@ -36,6 +36,7 @@ export function FaceOwnersSection({
   const agentName = useRobotName();
   const [meLabel, setMeLabel] = useState("");
   const [settingMe, setSettingMe] = useState(false);
+  const [house, setHouse] = useState<HouseholdPublic | null>(null);
   const [claimAsMe, setClaimAsMe] = useState(false);
   const meLabelRef = useRef("");
   useEffect(() => { meLabelRef.current = meLabel; }, [meLabel]);
@@ -62,6 +63,7 @@ export function FaceOwnersSection({
     getBehaviors()
       .then((b) => setMeLabel((b.config?.me ?? "").toLowerCase()))
       .catch(() => {});
+    getHousehold().then(setHouse).catch(() => {});
   }, []);
 
   const [photoFor, setPhotoFor] = useState<string | null>(null);
@@ -250,7 +252,24 @@ export function FaceOwnersSection({
             >
               <RefreshCw size={14} className={manualRefreshing ? "lm-spin" : undefined} />
             </button>
+            {house?.claimed && (
+              <button
+                type="button"
+                className="lm-home-ghost"
+                onClick={() => {
+                  void startHouseholdInvite("family").then(setHouse).catch(() => {});
+                }}
+              >
+                Invite
+              </button>
+            )}
           </div>
+          {house?.invite_code && (
+            <p style={{ margin: "10px 0 0", fontSize: 13 }}>
+              Invite code <code style={{ fontSize: 16, letterSpacing: 2 }}>{house.invite_code}</code>
+              {" "}({house.invite_role}) — they open /claim on this network.
+            </p>
+          )}
         </div>
       </div>
       </div>
@@ -412,6 +431,10 @@ export function FaceOwnersSection({
               isMe={person.label === meLabel}
               settingMe={settingMe}
               onSetMe={person.label === "unknown" ? undefined : handleSetMe}
+              role={house?.members?.find((m) => m.label === person.label)?.role}
+              onSetRole={person.label === "unknown" ? undefined : (label, role) => {
+                void setMemberRole(label, role).then(setHouse).catch(() => {});
+              }}
               expandedPerson={expandedPerson}
               setExpandedPerson={setExpandedPerson}
               hoveredPerson={hoveredPerson}

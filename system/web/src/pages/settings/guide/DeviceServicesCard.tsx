@@ -5,9 +5,9 @@ import { GuideConnectStep } from "@/pages/settings/guide/GuideConnectStep";
 export function DeviceServicesCard() {
   return (
     <div style={{ marginTop: 22, paddingTop: 18, borderTop: "1px solid var(--lm-border)" }}>
-      <div style={{ fontSize: 13, fontWeight: 650, marginBottom: 4 }}>Mail and calendar</div>
+      <div style={{ fontSize: 13, fontWeight: 650, marginBottom: 4 }}>Mail, calendar, and Google</div>
       <GuideConnectStep
-        lead="Gmail uses an app password. Calendar uses the secret iCal address from Google Calendar. Mail stays a draft."
+        lead="Sign in with Google when you can. Or skip and paste an app password / iCal address. Mail stays a draft unless you change Ask under House → Behaviors."
         services={LIFE_RECIPES.desk.services.filter((s) => s.kind === "connector")}
       />
     </div>

@@ -30,8 +30,17 @@ func (h *PluginHandler) Install(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, serializers.ResponseError(err.Error()))
 		return
 	}
+	if req.ID != "" {
+		app, ok := domain.LookupTrustedPlugin(req.ID)
+		if !ok {
+			c.JSON(http.StatusBadRequest, serializers.ResponseError("unknown trusted plugin"))
+			return
+		}
+		req.URL = app.InstallURL
+		req.Subdir = app.Subdir
+	}
 	if req.URL == "" {
-		c.JSON(http.StatusBadRequest, serializers.ResponseError("url is required"))
+		c.JSON(http.StatusBadRequest, serializers.ResponseError("url or id is required"))
 		return
 	}
 

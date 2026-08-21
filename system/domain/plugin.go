@@ -11,7 +11,9 @@ type Plugin struct {
 }
 
 // PluginInstallRequest is the payload for POST /api/plugin/install.
+// Home users send ID from the trusted catalog. URL is the advanced path.
 type PluginInstallRequest struct {
-	URL    string `json:"url" validate:"required"`
+	URL    string `json:"url"`
 	Subdir string `json:"subdir,omitempty"`
+	ID     string `json:"id,omitempty"`
 }

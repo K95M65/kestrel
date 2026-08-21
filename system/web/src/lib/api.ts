@@ -432,12 +432,16 @@ export async function getCompanionApps(): Promise<CompanionApp[]> {
   return apiRequest<CompanionApp[]>(`${API_BASE}/api/device/companion-apps`);
 }
 
-export async function installPlugin(url: string, subdir?: string): Promise<boolean> {
+export async function installPlugin(url: string, subdir?: string, id?: string): Promise<boolean> {
   return apiRequest<boolean>(`${API_BASE}/api/plugin/install`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ url, subdir: subdir || undefined }),
+    body: JSON.stringify({ url: url || undefined, subdir: subdir || undefined, id: id || undefined }),
   });
+}
+
+export async function installTrustedPlugin(id: string): Promise<boolean> {
+  return installPlugin("", undefined, id);
 }
 
 export async function pollLLMOAuth(provider: string, deviceCode: string): Promise<LLMOAuthPoll> {
@@ -558,7 +562,7 @@ export interface BehaviorsConfig {
   remember: { enabled: boolean; max_items: number };
   dance: { enabled: boolean; default_query: string };
   privacy: { camera_on_demand: boolean; face_follow_after_wake: boolean };
-  connectors: { draft_not_send: boolean };
+  connectors: { draft_not_send: boolean; ask?: string };
   presence: { idle_motion: boolean };
   doa: FeatureFlag;
   layered_motion: FeatureFlag;
@@ -616,7 +620,7 @@ export function defaultBehaviors(): BehaviorsConfig {
     remember: { enabled: true, max_items: 200 },
     dance: { enabled: true, default_query: "upbeat dance pop" },
     privacy: { camera_on_demand: true, face_follow_after_wake: true },
-    connectors: { draft_not_send: true },
+    connectors: { draft_not_send: true, ask: "important_actions" },
     presence: { idle_motion: true },
     doa: { enabled: false },
     layered_motion: { enabled: false },
@@ -699,6 +703,115 @@ export async function removeConnector(code: string): Promise<ServiceStatus[]> {
     method: "DELETE",
   });
   return Array.isArray(raw) ? raw : [];
+}
+
+export interface HouseholdMember {
+  label: string;
+  role: string;
+}
+
+export interface HouseholdPublic {
+  claimed: boolean;
+  room?: string;
+  owner_email?: string;
+  setup_pin?: string;
+  members?: HouseholdMember[];
+  invite_code?: string;
+  invite_role?: string;
+  invite_ttl?: number;
+}
+
+export async function getHousehold(): Promise<HouseholdPublic> {
+  return apiRequest<HouseholdPublic>(`${API_BASE}/api/device/household`);
+}
+
+export async function getClaimPublic(): Promise<HouseholdPublic> {
+  return apiRequest<HouseholdPublic>(`${API_BASE}/api/device/claim`);
+}
+
+export async function confirmClaim(body: {
+  pin?: string; code?: string; name: string; room?: string; role?: string; email?: string;
+}): Promise<HouseholdPublic> {
+  return apiRequest<HouseholdPublic>(`${API_BASE}/api/device/claim`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function startHouseholdInvite(role: string): Promise<HouseholdPublic> {
+  return apiRequest<HouseholdPublic>(`${API_BASE}/api/device/household/invite`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ role }),
+  });
+}
+
+export async function setMemberRole(label: string, role: string): Promise<HouseholdPublic> {
+  return apiRequest<HouseholdPublic>(
+    `${API_BASE}/api/device/household/members/${encodeURIComponent(label)}/role`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role }),
+    },
+  );
+}
+
+export async function setHouseholdRoom(room: string): Promise<HouseholdPublic> {
+  return apiRequest<HouseholdPublic>(`${API_BASE}/api/device/household/room`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ room }),
+  });
+}
+
+export interface GoogleStatus {
+  ready: boolean;
+  connected: boolean;
+  user_email?: string;
+  has_client: boolean;
+  has_secret: boolean;
+  auth_type?: string;
+}
+
+export async function getGoogleStatus(): Promise<GoogleStatus> {
+  return apiRequest<GoogleStatus>(`${API_BASE}/api/device/google`);
+}
+
+export async function setGoogleClient(clientId: string, clientSecret: string): Promise<GoogleStatus> {
+  return apiRequest<GoogleStatus>(`${API_BASE}/api/device/google/client`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ client_id: clientId, client_secret: clientSecret }),
+  });
+}
+
+export interface GoogleOAuthStart {
+  user_code: string;
+  device_code: string;
+  verification_uri: string;
+  verification_uri_complete?: string;
+  expires_in: number;
+  interval: number;
+}
+
+export async function startGoogleOAuth(): Promise<GoogleOAuthStart> {
+  return apiRequest<GoogleOAuthStart>(`${API_BASE}/api/device/google/start`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
+}
+
+export async function pollGoogleOAuth(deviceCode: string): Promise<{
+  pending: boolean; interval?: number; connected?: boolean; user_email?: string;
+}> {
+  return apiRequest(`${API_BASE}/api/device/google/poll`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ device_code: deviceCode }),
+  });
 }
 
 export async function setTelegramChannel(token: string, userId: string): Promise<ServiceStatus[]> {

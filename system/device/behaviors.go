@@ -124,13 +124,26 @@ func (s *Service) SetMe(label string) error {
 	if err != nil {
 		return err
 	}
-	return s.config.WithLockSave(func(c *config.Config) {
+	if err := s.config.WithLockSave(func(c *config.Config) {
 		if c.Behaviors == nil {
 			d := config.DefaultBehaviors()
 			c.Behaviors = &d
 		}
 		c.Behaviors.Me = slug
-	})
+		if slug != "" {
+			if c.Household == nil {
+				c.Household = &config.Household{Claimed: true}
+			}
+			c.Household.DemoteOwners(slug)
+			_ = c.Household.UpsertMember(slug, config.RoleOwner)
+			c.Household.Claimed = true
+			c.Household.SetupPIN = ""
+		}
+	}); err != nil {
+		return err
+	}
+	s.initHousehold()
+	return nil
 }
 
 func (s *Service) IsMeeting() bool {

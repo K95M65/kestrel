@@ -56,3 +56,7 @@ Why: last remaining seed item; Device → Channels still opened on bot tokens.
 ### Cycle 8
 Done: Channels card lead: text this robot from your phone, not iMessage.
 What would I do next? Stop. Seed list is covered. Remaining product (storage prune, forget Wi-Fi, six-runtime hop) stays deferred as in Non-goals / seed deferrals.
+
+### Cycle 9
+Done: Sign in with Google (device-code OAuth), claim QR + household roles, ChatGPT-style ask levels, `@skill` in Talk, trusted plugin list. Apple Sign in, Matter/HomeKit, and a phone app stay deferred.
+What would I do next? Not in this loop unless asked.

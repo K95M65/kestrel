@@ -3,6 +3,7 @@ import { Pencil, Trash2, History, ChevronDown, ChevronRight, X, Mic, Camera, Sta
 import { hwUrl } from "@/lib/api";
 import { mainFacePhoto } from "@/lib/facePhoto";
 import type { FaceOwnerDetail } from "../types";
+import { HOUSEHOLD_ROLES, roleTitle } from "@/lib/householdRoles";
 
 // One enrolled-person card. All state and handlers stay in the parent
 // (FaceOwnersSection) and are passed in; this is purely the card's presentation.
@@ -16,7 +17,7 @@ export function PersonCard({
   preview, previewLoading, setPreview,
   playingAudio,
   onRename, onRemove, onRemovePhoto, onRemoveVoiceFile, onOpenFile, onTimeline,
-  onRecordVoice, onAddPhoto, onSetMe, isMe, settingMe,
+  onRecordVoice, onAddPhoto, onSetMe, isMe, settingMe, role, onSetRole,
   monCard, iconBtnStyle,
 }: {
   person: FaceOwnerDetail;
@@ -47,6 +48,8 @@ export function PersonCard({
   onSetMe?: (label: string) => void;
   isMe?: boolean;
   settingMe?: boolean;
+  role?: string;
+  onSetRole?: (label: string, role: string) => void;
   monCard: CSSProperties;
   iconBtnStyle: CSSProperties;
 }) {
@@ -134,7 +137,7 @@ export function PersonCard({
             background: "var(--lm-surface)", color: "var(--lm-text-muted)",
             border: "1px solid var(--lm-border)",
             fontWeight: 600, letterSpacing: 0.3,
-          }}>Friend</span>
+          }}>{roleTitle(role)}</span>
         )}
         {isCurrent && (
           <span className="lm-pulse" style={{
@@ -183,6 +186,24 @@ export function PersonCard({
                     className="lm-u-btn"
                     style={{ ...iconBtnStyle, ...hoverStyle }}
                   ><Pencil size={14} /></button>
+                  {onSetRole && (
+                    <select
+                      value={role || (isMe ? "owner" : "family")}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => { e.stopPropagation(); onSetRole(person.label, e.target.value); }}
+                      title="Household role"
+                      aria-label="Household role"
+                      style={{
+                        fontSize: 10, fontWeight: 700, height: 24, borderRadius: 6,
+                        border: "1px solid var(--lm-border)", background: "var(--lm-surface)",
+                        color: "var(--lm-text)",
+                      }}
+                    >
+                      {HOUSEHOLD_ROLES.map((r) => (
+                        <option key={r.id} value={r.id}>{r.title}</option>
+                      ))}
+                    </select>
+                  )}
                   {onSetMe && (
                     <button
                       onClick={(e) => { e.stopPropagation(); onSetMe(isMe ? "" : person.label); }}

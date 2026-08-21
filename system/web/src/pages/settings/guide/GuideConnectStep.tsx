@@ -5,6 +5,7 @@ import {
   type ServiceStatus,
 } from "@/lib/api";
 import type { RecipeService } from "@/lib/lifeRecipes";
+import { GoogleSignIn } from "@/pages/settings/guide/GoogleSignIn";
 
 export function GuideConnectStep({
   services, onStatus, lead,
@@ -37,8 +38,9 @@ export function GuideConnectStep({
   return (
     <>
       <p className="lm-guide-lead">
-        {lead ?? "These accounts make the brief and remote chat work. Skip any you do not want. Mail stays a draft — it never sends from this device."}
+        {lead ?? "Sign in with Google when you can. Or skip and paste an app password / iCal address. Mail stays a draft unless you change Ask under House → Behaviors."}
       </p>
+      <GoogleSignIn onChanged={() => void reload()} />
       <div className="lm-guide-choices">
         {services.map((svc) => {
           const st = rowFor(svc.id);

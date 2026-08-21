@@ -4,7 +4,8 @@ import { useNavigate } from "react-router-dom";
 import { Satellite, Globe, Eye, Volume2, Cpu, Drama, Clapperboard, Bot, Tag, Moon, Sparkles, Library, QrCode } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { deviceReach } from "@/lib/deviceReach";
-import { getSleep, sleepNow, wakeNow, getBehaviors, setMeeting, fireBriefNow, type SleepStatus, type BehaviorsStatus } from "@/lib/api";
+import { getSleep, sleepNow, wakeNow, getBehaviors, getHousehold, setMeeting, fireBriefNow, type SleepStatus, type BehaviorsStatus, type HouseholdPublic } from "@/lib/api";
+import { claimUrl } from "@/lib/askLevels";
 import { displayRobotName } from "@/lib/robotName";
 import { useRobotName } from "@/lib/useRobotName";
 import { isRobotQuiet, sleepToggleKind, sleepToggleLabel, withSleeping } from "@/lib/sleepToggle";
@@ -881,7 +882,12 @@ function FindRobotCard({ ip, hostId }: { ip?: string; hostId?: string }) {
     origin: typeof window !== "undefined" ? window.location.origin : "",
   });
   const [copied, setCopied] = useState(false);
+  const [house, setHouse] = useState<HouseholdPublic | null>(null);
+  useEffect(() => { getHousehold().then(setHouse).catch(() => {}); }, []);
   if (!reach.primary) return null;
+  const claim = house && !house.claimed && house.setup_pin
+    ? claimUrl(reach.primary, house.setup_pin)
+    : "";
 
   function copy() {
     const text = reach.primary;
@@ -936,6 +942,23 @@ function FindRobotCard({ ip, hostId }: { ip?: string; hostId?: string }) {
           )}
         </div>
       </div>
+      {claim && (
+        <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--lm-border)", display: "flex", gap: 14, alignItems: "center" }}>
+          <QRCodeSVG value={claim} size={88} marginSize={1} bgColor="transparent" fgColor="currentColor" title={claim} />
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 650, marginBottom: 4 }}>Claim this robot</div>
+            <p style={{ margin: 0, fontSize: 12, color: "var(--lm-text-dim)", lineHeight: 1.45 }}>
+              Scan to name it and pick a room — like adding a Home accessory. Code{" "}
+              <code style={{ fontFamily: "ui-monospace, monospace" }}>{house?.setup_pin}</code>
+            </p>
+          </div>
+        </div>
+      )}
+      {house?.claimed && house.room && (
+        <div style={{ marginTop: 10, fontSize: 12, color: "var(--lm-text-muted)" }}>
+          Claimed · {house.room}{house.owner_email ? ` · ${house.owner_email}` : ""}
+        </div>
+      )}
     </div>
   );
 }

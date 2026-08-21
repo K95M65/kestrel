@@ -3,8 +3,8 @@ import { Blocks } from "lucide-react";
 // Download, Heart — PARKED with the browse block (#213)
 import { toast } from "sonner";
 import { C, SectionCard, LABEL_STYLE, INPUT_STYLE } from "@/components/setup/shared";
-import { listPlugins, installPlugin, startPlugin, stopPlugin, uninstallPlugin } from "@/lib/api";
-import type { Plugin } from "@/lib/api";
+import { listPlugins, installPlugin, installTrustedPlugin, startPlugin, stopPlugin, uninstallPlugin, getCompanionApps } from "@/lib/api";
+import type { Plugin, CompanionApp } from "@/lib/api";
 // PARKED (#213): plugin discovery moves off Hugging Face Spaces to our own
 // catalog. Restore alongside the api.ts pair, the Go handler, and its route.
 // import { searchHFPlugins } from "@/lib/api";
@@ -16,6 +16,8 @@ export function PluginsSection({ active }: { active: boolean }) {
   const [url, setUrl] = useState("");
   const [installing, setInstalling] = useState(false);
   const [acting, setActing] = useState<string | null>(null);
+  const [trusted, setTrusted] = useState<CompanionApp[]>([]);
+  const isDebug = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("debug") === "true";
 
   // HF browse state — PARKED (#213)
   // const [hfSpaces, setHfSpaces] = useState<HFSpace[]>([]);
@@ -61,6 +63,11 @@ export function PluginsSection({ active }: { active: boolean }) {
   // }
 
   useEffect(() => { refresh(); }, []);
+  useEffect(() => {
+    getCompanionApps()
+      .then((list) => setTrusted(list.filter((a) => a.kind === "robot-app")))
+      .catch(() => {});
+  }, []);
 
   async function handleInstall() {
     const u = url.trim();
@@ -133,8 +140,44 @@ export function PluginsSection({ active }: { active: boolean }) {
   return (
     <SectionCard id="plugins" title="Plugins" icon={<Blocks size={17} />} active={active}>
       <div style={{ fontSize: 12.5, color: C.textDim, marginBottom: 14, lineHeight: 1.6 }}>
-        Install extra abilities for this robot. They stay on the device.
+        Trusted plugins from this repo. They stay on the device. A raw git URL stays behind Advanced.
       </div>
+
+      {trusted.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: C.textMuted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>
+            Trusted
+          </div>
+          {trusted.map((app) => {
+            const installed = plugins.some((p) => p.name === app.id);
+            return (
+              <div key={app.id} style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                gap: 8, padding: "10px 12px", marginBottom: 6,
+                background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8,
+              }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{app.name}</div>
+                  <div style={{ fontSize: 11, color: C.textDim }}>{app.summary}</div>
+                </div>
+                {installed ? (
+                  <span style={{ fontSize: 11, color: C.green }}>Installed</span>
+                ) : (
+                  <button type="button" disabled={installing} style={BTN}
+                    onClick={() => {
+                      setInstalling(true);
+                      installTrustedPlugin(app.id)
+                        .then(() => { toast.success("Install started."); setTimeout(refresh, 4000); })
+                        .catch((e: Error) => toast.error(e.message))
+                        .finally(() => setInstalling(false));
+                    }}
+                  >Install</button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {loading ? (
         <div style={{ fontSize: 12, color: C.textMuted }}>Loading...</div>
@@ -286,41 +329,40 @@ export function PluginsSection({ active }: { active: boolean }) {
 
           */}
 
-          {/* Manual install form */}
-          <div style={{ marginBottom: 6 }}>
-            <label htmlFor="plugin-url" style={LABEL_STYLE}>Install from URL</label>
-            <input
-              id="plugin-url"
-              type="text"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://github.com/user/my-plugin"
-              style={INPUT_STYLE}
-            />
-          </div>
-
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              type="button"
-              onClick={handleInstall}
-              disabled={installing || !url.trim()}
-              style={{
-                ...BTN,
-                background: C.amber, color: "#000", borderColor: C.amber,
-                opacity: installing || !url.trim() ? 0.5 : 1,
-                cursor: installing ? "not-allowed" : "pointer",
-              }}
-            >
-              {installing ? "Installing..." : "Install"}
-            </button>
-            <button
-              type="button"
-              onClick={refresh}
-              style={BTN}
-            >
-              Refresh
-            </button>
-          </div>
+          {isDebug && (
+            <>
+              <div style={{ marginBottom: 6 }}>
+                <label htmlFor="plugin-url" style={LABEL_STYLE}>Install from URL</label>
+                <input
+                  id="plugin-url"
+                  type="text"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  placeholder="https://github.com/user/my-plugin"
+                  style={INPUT_STYLE}
+                />
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={handleInstall}
+                  disabled={installing || !url.trim()}
+                  style={{
+                    ...BTN,
+                    background: C.amber, color: "#000", borderColor: C.amber,
+                    opacity: installing || !url.trim() ? 0.5 : 1,
+                    cursor: installing ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {installing ? "Installing..." : "Install"}
+                </button>
+                <button type="button" onClick={refresh} style={BTN}>Refresh</button>
+              </div>
+            </>
+          )}
+          {!isDebug && (
+            <button type="button" onClick={refresh} style={BTN}>Refresh</button>
+          )}
         </>
       )}
     </SectionCard>

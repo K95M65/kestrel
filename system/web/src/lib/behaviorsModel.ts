@@ -63,6 +63,7 @@ export function applyPreset(base: BehaviorsConfig, id: PresetId): BehaviorsConfi
   next.me = b.me;
   next.home_assistant = ha;
   next.connectors.draft_not_send = true;
+  next.connectors.ask = "important_actions";
   next.privacy.camera_on_demand = true;
   next.privacy.face_follow_after_wake = true;
   next.presence.idle_motion = true;
@@ -152,7 +153,7 @@ export function isFeatureOn(cfg: BehaviorsConfig, key: FeatureKey): boolean {
     case "greeter": return cfg.greeter.enabled;
     case "look": return cfg.look.enabled;
     case "privacy": return cfg.privacy.camera_on_demand;
-    case "connectors": return cfg.connectors.draft_not_send;
+    case "connectors": return (cfg.connectors.ask || "important_actions") !== "never_ask";
     case "kids": return cfg.kids.enabled;
     case "stories": return cfg.stories.enabled;
     case "focus": return cfg.focus.enabled;
@@ -178,7 +179,7 @@ export function summaryLines(cfg: BehaviorsConfig): string[] {
   if (cfg.dance.enabled) out.push("Dances to songs");
   if (cfg.greeter.enabled) out.push(cfg.greeter.named_only ? "Greets named friends" : "Greets people who walk in");
   if (cfg.kids.enabled) out.push("Kids profile on");
-  if (cfg.connectors.draft_not_send) out.push("Drafts mail, never sends");
+  if ((cfg.connectors.ask || "important_actions") !== "never_ask") out.push("Asks before sending mail");
   if (cfg.privacy.camera_on_demand) out.push("Camera is one snapshot");
   if (cfg.focus.enabled) out.push("Phone / focus nag");
   if (cfg.pomodoro.enabled) out.push("Pomodoro timer");

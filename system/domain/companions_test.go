@@ -36,4 +36,13 @@ func TestCompanionApps(t *testing.T) {
 	if robots < 4 {
 		t.Fatalf("expected dance/emotions/cameraman/phrase-teacher, got %d", robots)
 	}
+	if _, ok := LookupTrustedPlugin("dance"); !ok {
+		t.Fatal("dance should be trusted")
+	}
+	if _, ok := LookupTrustedPlugin("autonomous-buddy"); ok {
+		t.Fatal("buddy is not a robot-app")
+	}
+	if len(TrustedPlugins()) < 4 {
+		t.Fatal("expected trusted robot apps")
+	}
 }

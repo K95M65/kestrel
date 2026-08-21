@@ -51,7 +51,17 @@ func (s *Service) connectorsDir() string {
 
 // ListServices reports Gmail, Calendar, and Telegram without secrets.
 func (s *Service) ListServices() []ServiceStatus {
+	g := s.GoogleStatus()
 	out := []ServiceStatus{
+		{
+			ID:         "google",
+			Kind:       "account",
+			Connected:  g.Connected,
+			AuthType:   g.AuthType,
+			UserEmail:  g.UserEmail,
+			ConnectHow: "oauth",
+			Label:      labelGoogle(g),
+		},
 		s.connectorStatus("gmail", "pat"),
 		s.connectorStatus("google_calendar", "ical"),
 		{
@@ -63,6 +73,16 @@ func (s *Service) ListServices() []ServiceStatus {
 		},
 	}
 	return out
+}
+
+func labelGoogle(g GoogleStatus) string {
+	if !g.Ready {
+		return "needs OAuth client"
+	}
+	if g.Connected {
+		return g.UserEmail
+	}
+	return "ready"
 }
 
 func (s *Service) connectorStatus(code, how string) ServiceStatus {

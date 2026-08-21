@@ -26,6 +26,27 @@ func githubRepo() string {
 	return "K95M65/kestrel"
 }
 
+// LookupTrustedPlugin is a robot-app from CompanionApps (installable on the body).
+func LookupTrustedPlugin(id string) (CompanionApp, bool) {
+	for _, a := range CompanionApps() {
+		if a.ID == id && a.Kind == "robot-app" && a.InstallURL != "" {
+			return a, true
+		}
+	}
+	return CompanionApp{}, false
+}
+
+// TrustedPlugins is the home-user install list (no raw git URL).
+func TrustedPlugins() []CompanionApp {
+	var out []CompanionApp
+	for _, a := range CompanionApps() {
+		if a.Kind == "robot-app" && a.InstallURL != "" {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
 // CompanionApps is the onboarding catalog (Buddy on Mac, Windows, and Linux).
 func CompanionApps() []CompanionApp {
 	repo := githubRepo()

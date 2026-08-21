@@ -12,6 +12,9 @@ import dummyHostMd from "@wiki/dummy-host.md?raw";
 import findMd from "@wiki/find.md?raw";
 import brainsMd from "@wiki/brains.md?raw";
 import safetyMd from "@wiki/safety.md?raw";
+import claimMd from "@wiki/claim.md?raw";
+import accountsMd from "@wiki/accounts.md?raw";
+import pluginsMd from "@wiki/plugins.md?raw";
 
 export type WikiPage = {
   slug: string;
@@ -26,6 +29,9 @@ export const WIKI_PAGES: WikiPage[] = [
   { slug: "talk", title: "Talk", body: talkMd },
   { slug: "voice", title: "Voice", body: voiceMd },
   { slug: "people", title: "People", body: peopleMd },
+  { slug: "claim", title: "Claim this robot", body: claimMd },
+  { slug: "accounts", title: "Google account", body: accountsMd },
+  { slug: "plugins", title: "Plugins", body: pluginsMd },
   { slug: "uses", title: "Uses", body: usesMd },
   { slug: "house", title: "House", body: houseMd },
   { slug: "buddy", title: "Kestrel Buddy", body: buddyMd },
