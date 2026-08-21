@@ -24,6 +24,7 @@ var Catalog = []string{
 	"greeter",
 	"guard",
 	"habit",
+	"hive",
 	"home-assistant",
 	"input-branching",
 	"kitchen",

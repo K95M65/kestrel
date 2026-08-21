@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"go.autonomous.ai/os/system/beclient"
+	"go.autonomous.ai/os/system/buzz"
 	"go.autonomous.ai/os/system/domain"
 	"go.autonomous.ai/os/system/network"
 	"go.autonomous.ai/os/system/plugin"
@@ -39,6 +40,11 @@ type Service struct {
 	behaviors       behaviorsRuntime
 	inviteMu        sync.Mutex
 	invite          *pendingInvite
+	buzzMu          sync.Mutex
+	buzzCtl         sync.Mutex
+	buzzHub         *buzz.Hub
+	buzzClient      *buzz.Client
+	buzzStop        chan struct{}
 
 	sessionResetMu       sync.Mutex
 	sessionResetInFlight bool

@@ -7,12 +7,12 @@ fleet OTA promote.
 **Do not flash a golden image.** Pollen's daemon owns motors. Autonomous OS sits
 on top.
 
-## Current vs target (measured 2026-08-20)
+## Current vs target (measured 2026-08-21)
 
 | Component | On robot | Local tree | Action |
 |-----------|----------|------------|--------|
-| os-server | **0.1.27** | 0.1.27 | Side-loaded |
-| web | **0.1.36** | 0.1.36 | Side-loaded |
+| os-server | **0.1.31** | 0.1.31 | Side-loaded |
+| web | **0.1.47** | 0.1.47 | Side-loaded |
 | HAL | 0.1.17 | — | Leave running |
 | bootstrap | — | — | Leave |
 | OpenClaw | 2026.6.10 | — | Leave |
@@ -46,6 +46,14 @@ Promoting GCS would move the whole fleet. This unit gets a local arm64 build.
    backup back and restart
 
 HAL, OpenClaw, and the Pollen daemon are not restarted.
+
+## Applied 2026-08-21
+
+Side-loaded on `10.10.2.160` and Lima `kestrel`:
+
+- os-server **0.1.31**, web **0.1.47**
+- LAN hive (`/api/buzz/ws` through nginx), OpenClaw 2026.6.10 on both
+- Backup Bobert `/root/bootstrap/rollback/os-server.0.1.27`
 
 ## Applied 2026-08-20
 

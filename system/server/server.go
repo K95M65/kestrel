@@ -88,6 +88,9 @@ type Server struct {
 	// the MQTT client so it reconnects/resubscribes with the new broker config,
 	// without requiring a full device restart.
 	lastMQTTSig *string
+	// lastBuzzSig is enabled|host|relay so a Channels save restarts the hive
+	// without bouncing os-server.
+	lastBuzzSig *string
 }
 
 // Engine ...
@@ -363,6 +366,19 @@ func (s *Server) Serve(closeFn func()) error {
 	// Claim is LAN: the setup PIN is the secret, like a HomeKit code.
 	device.GET("claim", sameOriginOrLAN(), s.deviceHandler.GetClaimPublic)
 	device.POST("claim", sameOriginOrLAN(), s.deviceHandler.ConfirmClaim)
+	device.GET("buzz", adminAuthMiddleware(s.config), s.deviceHandler.GetBuzz)
+	device.PUT("buzz", adminAuthMiddleware(s.config), s.deviceHandler.SetBuzz)
+	device.POST("buzz/say", adminAuthMiddleware(s.config), s.deviceHandler.SayBuzz)
+	device.GET("matter", adminAuthMiddleware(s.config), s.deviceHandler.GetMatter)
+	device.POST("matter/commission", adminAuthMiddleware(s.config), s.deviceHandler.CommissionMatter)
+	device.GET("apple", adminAuthMiddleware(s.config), s.deviceHandler.GetApple)
+	device.PUT("apple/client", adminAuthMiddleware(s.config), s.deviceHandler.SetAppleClient)
+	device.POST("apple/start", adminAuthMiddleware(s.config), s.deviceHandler.StartAppleOAuth)
+
+	api.GET("buzz/ws", sameOriginOrLAN(), s.deviceHandler.BuzzWS)
+	api.POST("buzz/say", localOnlyMiddleware(), s.deviceHandler.SayBuzz)
+	api.GET("auth/apple/callback", s.deviceHandler.AppleCallback)
+	api.POST("auth/apple/callback", s.deviceHandler.AppleCallback)
 	device.POST("llm-oauth/start", setupOrAdminMiddleware(s.config), s.deviceHandler.StartLLMOAuth)
 	device.POST("llm-oauth/poll", setupOrAdminMiddleware(s.config), s.deviceHandler.PollLLMOAuth)
 	device.GET("realtime-options", s.deviceHandler.GetRealtimeOptions)

@@ -4,6 +4,7 @@ import { SecretUpdateField } from "@/components/SecretUpdateField";
 import type { ChannelType } from "@/types";
 import type { ChannelLoadedState } from "@/hooks/setup/types";
 import { DeviceServicesCard } from "@/pages/settings/guide/DeviceServicesCard";
+import { HiveCard } from "@/pages/settings/guide/HiveCard";
 
 // Bot tokens now go through SecretUpdateField (write-only) — the server only
 // returns has_* booleans so the previous "show saved token" affordance is
@@ -67,6 +68,7 @@ export function ChannelSection({
         </>
       )}
       {active && <DeviceServicesCard />}
+      {active && <HiveCard />}
     </SectionCard>
   );
 }

@@ -68,6 +68,7 @@ System-only skills may be hidden from the default storefront or shown with a
 | `guard` | Safety | monitoring, presence, alerts, smart-home | Lamp, Reachy Mini |
 | `wellbeing` | Health | posture, hydration, breaks, coaching | Lamp, Intern v2, Reachy Mini |
 | `habit` | Health | routines, behavior, personalization | Lamp, Intern v2, Reachy Mini |
+| `hive` | Communication | buzz, lan, multi-robot | Lamp, Intern v2, Reachy Mini |
 | `mood` | Health | emotion, user-state, personalization | Lamp, Intern v2, Reachy Mini |
 | `computer-use` | Productivity | macos, browser, desktop, companion | Lamp, Intern v2, Reachy Mini |
 | `claude-buddy` | Productivity | claude-code, approvals, companion, agent | Lamp, Intern v2, Reachy Mini |

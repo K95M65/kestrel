@@ -4,7 +4,7 @@ import { ChevronDown, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { C, SectionCard, LABEL_STYLE, INPUT_STYLE } from "@/components/setup/shared";
 import {
-  addMemory, defaultBehaviors, deleteMemory, fireBriefNow, getBehaviors,
+  addMemory, commissionMatter, defaultBehaviors, deleteMemory, fireBriefNow, getBehaviors, getMatter,
   listMemories, setBehaviors, setMeeting, startPomodoro, stopPomodoro,
   type BehaviorsConfig, type BehaviorsStatus, type MemoryItem,
 } from "@/lib/api";
@@ -38,7 +38,7 @@ const FEATURE_META: Record<FeatureKey, { title: string; hint: string; badge?: st
   kids: { title: "Kids profile", hint: "No mail, calendar, HA, or computer-use. Gentle stories." },
   stories: { title: "Stories", hint: "Bedtime / tell-me-a-story, time-capped." },
   focus: { title: "Phone / focus coach", hint: "Nag when a phone is in frame." },
-  home_assistant: { title: "Home Assistant", hint: "Lights and climate. Token is write-only." },
+  home_assistant: { title: "Home Assistant", hint: "Lights, climate, and Matter pairing. Token is write-only." },
   tools: { title: "Weather / time / search", hint: "Permission flags — add MCP servers under MCP Tools." },
   telepresence: { title: "Telepresence", hint: "Points at the camera page. No public tunnel.", badge: "needs HAL" },
 };
@@ -53,6 +53,9 @@ export function BehaviorsSection({ active }: { active: boolean }) {
   const [status, setStatus] = useState<BehaviorsStatus | null>(null);
   const [haToken, setHaToken] = useState("");
   const [haSet, setHaSet] = useState(false);
+  const [matterCode, setMatterCode] = useState("");
+  const [matterHint, setMatterHint] = useState("");
+  const [matterReady, setMatterReady] = useState(false);
   const [memories, setMemories] = useState<MemoryItem[]>([]);
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(true);
@@ -71,6 +74,11 @@ export function BehaviorsSection({ active }: { active: boolean }) {
     const [s, mem] = await Promise.all([getBehaviors(), listMemories().catch(() => [] as MemoryItem[])]);
     applyStatus(s);
     setMemories(mem || []);
+    try {
+      const m = await getMatter();
+      setMatterReady(m.ready);
+      setMatterHint(m.hint);
+    } catch { /* */ }
     return s;
   }
 
@@ -372,6 +380,20 @@ export function BehaviorsSection({ active }: { active: boolean }) {
             onChange={(v) => setCfg({ ...cfg, home_assistant: { ...cfg.home_assistant, url: v } })} />
           <Field label={haSet ? "Token (saved — leave blank to keep)" : "Long-lived token"} type="password"
             value={haToken} onChange={setHaToken} />
+          <p style={{ fontSize: 12, color: C.textMuted, margin: "10px 0 6px" }}>
+            {matterHint || "This robot asks Home Assistant to commission a Matter accessory. It is not itself a Matter device."}
+          </p>
+          <Field label="Matter pairing code" value={matterCode} placeholder="MT:… or 1111-222-333"
+            onChange={setMatterCode} />
+          <button type="button" className="lm-u-btn" disabled={!!busy || !matterCode.trim() || !matterReady}
+            style={{ marginTop: 8 }}
+            onClick={() => {
+              setBusy("matter");
+              commissionMatter(matterCode)
+                .then(() => { setMatterCode(""); toast.success("Asked Home Assistant to add the accessory."); })
+                .catch((e: Error) => toast.error(e.message))
+                .finally(() => setBusy(null));
+            }}>Add Matter accessory</button>
         </>
       );
     }

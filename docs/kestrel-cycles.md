@@ -60,3 +60,7 @@ What would I do next? Stop. Seed list is covered. Remaining product (storage pru
 ### Cycle 9
 Done: Sign in with Google (device-code OAuth), claim QR + household roles, ChatGPT-style ask levels, `@skill` in Talk, trusted plugin list. Apple Sign in, Matter/HomeKit, and a phone app stay deferred.
 What would I do next? Not in this loop unless asked.
+
+### Cycle 10
+Done: sideload 0.1.31 / web 0.1.47 onto Lima and Bobert; OpenClaw on the VM with Grok from the desk unit; LAN hive (nginx `/api/buzz/ws`, restart on save, hive skill); Matter commission via Home Assistant; Sign in with Apple web flow (HTTPS return URL); Block Buzz compose script (not on the Pi — different wire).
+What would I do next? `gcloud auth login` then a TV/limited-input OAuth client; HA URL+token if a Matter accessory is on the desk.

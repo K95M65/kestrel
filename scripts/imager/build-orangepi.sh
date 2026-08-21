@@ -1222,6 +1222,16 @@ server {
     proxy_send_timeout 86400s;
   }
 
+  location = /api/buzz/ws {
+    proxy_pass http://backend;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade \$http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host \$host;
+    proxy_read_timeout 86400s;
+    proxy_send_timeout 86400s;
+  }
+
   location /api/ {
     proxy_pass http://backend;
     proxy_set_header Host \$host;

@@ -10,6 +10,7 @@ How this desk companion works. Same pages live in the repo under `docs/wiki`.
 - [Claim this robot](claim) — setup code, like a Home accessory
 - [Google account](accounts) — Sign in with Google for mail and calendar
 - [Plugins](plugins) — trusted installs; `@skill` in Talk
+- [Hive](hive) — Buzz-style rooms, Matter via Home Assistant, Apple HTTPS note
 - [Uses](uses) — jobs it already knows
 - [House](house) — behaviors and quiet hours
 - [Kestrel Buddy](buddy) — drive a computer next to it

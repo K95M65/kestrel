@@ -22,7 +22,7 @@ import (
 //   - web_chat  — the monitor UI's composer (POST /api/sensing/event)
 //   - mqtt_chat — MQTT kind:"chat.send", e.g. a phone app
 func IsChat(eventType string) bool {
-	return eventType == "web_chat" || eventType == "mqtt_chat"
+	return eventType == "web_chat" || eventType == "mqtt_chat" || eventType == "buzz_chat"
 }
 
 // Build returns the message that should be forwarded to the agent for a
@@ -52,7 +52,7 @@ func Build(eventType, message, currentUser, guardTag string) string {
 		// Ambient speech — no wake word. `[user]` for batched-turn priority,
 		// `[ambient]` for voice/SKILL.md's overheard-audio mute guard.
 		return domain.AppendEnrollNudge("[user] [ambient] "+message) + skillcontext.BuildBehaviorsContext()
-	case "web_chat", "mqtt_chat":
+	case "web_chat", "mqtt_chat", "buzz_chat":
 		// Typed text from a chat UI (monitor composer or MQTT chat.send). The
 		// agent sees identical text either way — only the Monitor badge differs.
 		// Slash commands (`/status`, `/think`, …)

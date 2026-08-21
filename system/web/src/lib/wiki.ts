@@ -15,6 +15,7 @@ import safetyMd from "@wiki/safety.md?raw";
 import claimMd from "@wiki/claim.md?raw";
 import accountsMd from "@wiki/accounts.md?raw";
 import pluginsMd from "@wiki/plugins.md?raw";
+import hiveMd from "@wiki/hive.md?raw";
 
 export type WikiPage = {
   slug: string;
@@ -32,6 +33,7 @@ export const WIKI_PAGES: WikiPage[] = [
   { slug: "claim", title: "Claim this robot", body: claimMd },
   { slug: "accounts", title: "Google account", body: accountsMd },
   { slug: "plugins", title: "Plugins", body: pluginsMd },
+  { slug: "hive", title: "Hive", body: hiveMd },
   { slug: "uses", title: "Uses", body: usesMd },
   { slug: "house", title: "House", body: houseMd },
   { slug: "buddy", title: "Kestrel Buddy", body: buddyMd },

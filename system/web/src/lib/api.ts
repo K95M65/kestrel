@@ -444,6 +444,82 @@ export async function installTrustedPlugin(id: string): Promise<boolean> {
   return installPlugin("", undefined, id);
 }
 
+export interface BuzzStatus {
+  enabled: boolean;
+  host: boolean;
+  relay_url?: string;
+  peers: number;
+  ready: boolean;
+}
+
+export async function getBuzz(): Promise<BuzzStatus> {
+  return apiRequest<BuzzStatus>(`${API_BASE}/api/device/buzz`);
+}
+
+export async function setBuzz(body: { enabled: boolean; host: boolean; relay_url?: string }): Promise<BuzzStatus> {
+  return apiRequest<BuzzStatus>(`${API_BASE}/api/device/buzz`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function sayBuzz(text: string): Promise<boolean> {
+  return apiRequest<boolean>(`${API_BASE}/api/device/buzz/say`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+}
+
+export interface MatterStatus {
+  ready: boolean;
+  ha_url?: string;
+  hint: string;
+}
+
+export async function getMatter(): Promise<MatterStatus> {
+  return apiRequest<MatterStatus>(`${API_BASE}/api/device/matter`);
+}
+
+export async function commissionMatter(code: string): Promise<boolean> {
+  return apiRequest<boolean>(`${API_BASE}/api/device/matter/commission`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code }),
+  });
+}
+
+export interface AppleStatus {
+  ready: boolean;
+  hint: string;
+  has_services_id: boolean;
+  has_key?: boolean;
+  return_url?: string;
+  https?: boolean;
+  user_email?: string;
+}
+
+export async function getApple(): Promise<AppleStatus> {
+  return apiRequest<AppleStatus>(`${API_BASE}/api/device/apple`);
+}
+
+export async function setAppleClient(body: {
+  services_id?: string; team_id?: string; key_id?: string; private_key?: string; return_url?: string;
+}): Promise<AppleStatus> {
+  return apiRequest<AppleStatus>(`${API_BASE}/api/device/apple/client`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function startAppleOAuth(): Promise<{ url: string; state: string }> {
+  return apiRequest<{ url: string; state: string }>(`${API_BASE}/api/device/apple/start`, {
+    method: "POST",
+  });
+}
+
 export async function pollLLMOAuth(provider: string, deviceCode: string): Promise<LLMOAuthPoll> {
   return apiRequest<LLMOAuthPoll>(`${API_BASE}/api/device/llm-oauth/poll`, {
     method: "POST",

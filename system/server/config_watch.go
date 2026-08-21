@@ -33,6 +33,7 @@ func (s *Server) runConfigChangeListener(ctx context.Context) {
 			s.handleSetUpCompleteChange(s.config.SetUpCompleted)
 			s.handleDeviceIDChange(s.config.DeviceID)
 			s.handleMQTTConfigChange()
+			s.handleBuzzConfigChange()
 		}
 	}
 }
@@ -106,6 +107,20 @@ func (s *Server) handleMQTTConfigChange() {
 	s.restartMQTT()
 }
 
+func (s *Server) handleBuzzConfigChange() {
+	b := config.Buzz{}
+	if s.config.Buzz != nil {
+		b = *s.config.Buzz
+	}
+	sig := fmt.Sprintf("%v|%v|%s", b.Enabled, b.Host, strings.TrimSpace(b.RelayURL))
+	if s.lastBuzzSig != nil && *s.lastBuzzSig == sig {
+		return
+	}
+	s.lastBuzzSig = &sig
+	slog.Info("buzz config changed, restarting hive", "component", "buzz", "enabled", b.Enabled, "host", b.Host)
+	s.deviceService.RestartBuzz()
+}
+
 // waitAndPaintSetupReady polls HAL /health up to 30s; when LED hardware
 // reports ready it paints the strip solid white as the "device awaiting WiFi
 // setup" cue. Exits early if setup completes mid-wait so we don't repaint
@@ -173,6 +188,7 @@ func (s *Server) handleSetUpCompleteChange(setupCompleted bool) {
 
 		safego.Go("sleep-schedule", func() { s.deviceService.StartSleepLoop(s.monitorCtx) })
 		safego.Go("behaviors-loop", func() { s.deviceService.StartBehaviorsLoop(s.monitorCtx) })
+		safego.Go("buzz-hive", func() { s.deviceService.StartBuzz(s.monitorCtx) })
 
 		s.restartMQTT()
 

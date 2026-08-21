@@ -136,6 +136,15 @@ server {
     proxy_read_timeout 86400s;
   }
 
+  location = /api/buzz/ws {
+    proxy_pass http://spike_backend;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade \$http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host \$host;
+    proxy_read_timeout 86400s;
+  }
+
   # HAL is loopback-only, exactly as in production. The browser must reach
   # hardware through os-server's authenticated /api/hardware/* proxy — exposing
   # /hw/ to the LAN would hand every host on the network unauthenticated servo,

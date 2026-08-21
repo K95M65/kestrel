@@ -223,6 +223,15 @@ type Config struct {
 	GoogleOAuthClientID     string `json:"google_oauth_client_id,omitempty" yaml:"googleOAuthClientID"`
 	GoogleOAuthClientSecret string `json:"google_oauth_client_secret,omitempty" yaml:"googleOAuthClientSecret"`
 
+	// Apple Sign in with Apple (Services ID + JWT key). Needs HTTPS return URL.
+	AppleServicesID string `json:"apple_services_id,omitempty" yaml:"appleServicesID"`
+	AppleTeamID     string `json:"apple_team_id,omitempty" yaml:"appleTeamID"`
+	AppleKeyID      string `json:"apple_key_id,omitempty" yaml:"appleKeyID"`
+	ApplePrivateKey string `json:"apple_private_key,omitempty" yaml:"applePrivateKey"`
+	AppleReturnURL  string `json:"apple_return_url,omitempty" yaml:"appleReturnURL"`
+
+	Buzz *Buzz `json:"buzz,omitempty" yaml:"buzz"`
+
 	// DeviceType is the device class/profile id — the folder name under robots/
 	// (e.g. "lamp", "intern-v2", "unitree-go2w"). Selects which ROBOT.md/SOUL.md the
 	// runtime loads. Empty resolves to "" — no "lamp" fallback (see DeviceTypeOrDefault;
@@ -406,6 +415,10 @@ func ProvideConfig() *Config {
 		panic(fmt.Errorf("parse config %s: %w", configPath, err))
 	}
 	cfg.notify = make(chan bool, 1)
+
+	if strings.TrimSpace(cfg.OpenclawConfigDir) == "" {
+		cfg.OpenclawConfigDir = "/root/.openclaw"
+	}
 
 	// Migrate old openclaw config dir /root/openclaw → /root/.openclaw on startup.
 	if cfg.OpenclawConfigDir == "/root/openclaw" {

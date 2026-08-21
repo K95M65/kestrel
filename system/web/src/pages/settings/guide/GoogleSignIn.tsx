@@ -75,7 +75,7 @@ export function GoogleSignIn({ onChanged }: { onChanged?: () => void }) {
     <div className="lm-guide-extra" style={{ marginTop: 8 }}>
       <p className="lm-guide-lead" style={{ margin: "0 0 8px" }}>
         Sign in with Google for mail and calendar. Needs a Google Cloud OAuth client
-        of type <strong>TV and limited input</strong>. Sign in with Apple is not in this build.
+        of type <strong>TV and limited input</strong>. Sign in with Apple is under Channels → Hive and needs HTTPS.
       </p>
       {st?.connected && (
         <p className="lm-guide-lead" style={{ margin: "0 0 8px" }}>

@@ -10,6 +10,6 @@ Gmail and Calendar then share that Google account. House → Behaviors **Ask bef
 
 Without that client, Gmail still accepts an app password and Calendar still accepts a secret iCal address.
 
-**Apple.** Sign in with Apple is not in this build. It needs an Apple Service ID we do not ship.
+**Apple.** Sign in with Apple is on Device → Channels → Hive. Apple will not finish on a LAN `http://` page. Put a HTTPS tunnel in front (`cloudflared tunnel`), register that URL as the Services ID return URL (`https://…/api/auth/apple/callback`), paste the Services ID / Team ID / Key ID / `.p8`, then tap Sign in with Apple. On the desk, Google is the path that works today.
 
 See [Claim this robot](claim) for the HomeKit-style setup code.

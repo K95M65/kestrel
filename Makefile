@@ -42,6 +42,16 @@ sideload:
 	rsync -az --delete $(WEB_DIR)/dist/ $(TARGET):/tmp/kestrel-web/
 	ssh $(TARGET) 'sudo install -m 755 /tmp/os-server /usr/local/bin/os-server && sudo mkdir -p /usr/share/nginx/html/setup && sudo rsync -a --delete /tmp/kestrel-web/ /usr/share/nginx/html/setup/ && (sudo systemctl restart os-server || true) && (sudo nginx -s reload || true) && /usr/local/bin/os-server --version'
 
+# Lima VM on this Mac (port-forward 8080). Does not flash Reachy.
+# Stamps system/VERSION_OS_SERVER unless you pass VERSION=.
+.PHONY: sideload-lima
+sideload-lima:
+	$(MAKE) os-build web-build VERSION=$(or $(VERSION),$(shell cat $(OS_DIR)/VERSION_OS_SERVER))
+	limactl copy $(OS_DIR)/os-server kestrel:/tmp/os-server
+	tar czf /tmp/kestrel-web.tgz -C $(WEB_DIR)/dist .
+	limactl copy /tmp/kestrel-web.tgz kestrel:/tmp/kestrel-web.tgz
+	limactl shell kestrel -- sudo bash -lc 'install -m 755 /tmp/os-server /usr/local/bin/os-server && mkdir -p /usr/share/nginx/html/setup && tar xzf /tmp/kestrel-web.tgz -C /usr/share/nginx/html/setup && systemctl restart os-server && nginx -s reload || true && /usr/local/bin/os-server --version'
+
 
 os-build-bootstrap:
 	cd $(OS_DIR) && GOOS=linux GOARCH=arm64 go build -ldflags "-s -w $(LDFLAGS_BOOT)" -o bootstrap-server ./cmd/bootstrap
