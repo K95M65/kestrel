@@ -141,7 +141,8 @@ export function PluginsSection({ active }: { active: boolean }) {
     <SectionCard id="plugins" title="Plugins" icon={<Blocks size={17} />} active={active}>
       <div style={{ fontSize: 12.5, color: C.textDim, marginBottom: 14, lineHeight: 1.6 }}>
         Same idea as ChatGPT’s plugin directory: pick a trusted app, install it, it stays on this robot.
-        Talk can pin one with <code>@skill</code>. Mail and calendar still honor House → Behaviors → Ask.
+        Talk can start and stop them (“put the radio on”, “stop cameraman”). Cameraman and photobooth use the camera until Stop.
+        Radio uses the speaker until Stop. Kids profile keeps camera apps off. Mail and calendar still honor House → Behaviors → Ask.
         A raw git URL is Advanced (<code>?debug=true</code>).
       </div>
 
@@ -161,6 +162,7 @@ export function PluginsSection({ active }: { active: boolean }) {
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={{ fontSize: 13, fontWeight: 600 }}>{app.name}</div>
                   <div style={{ fontSize: 11, color: C.textDim }}>{app.summary}</div>
+                  {app.hint && <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>{app.hint}</div>}
                 </div>
                 {installed ? (
                   <span style={{ fontSize: 11, color: C.green }}>Installed</span>

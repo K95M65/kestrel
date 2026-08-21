@@ -71,4 +71,8 @@ What would I do next? Docs match the desk (versions, Lima hive, plugins vs skill
 
 ### Cycle 12
 Done: README, Reachy/Lima/wiki/plugin-system/apps-and-tools/deploy overlay versions (0.1.32 / 0.1.49), Buddy networking no longer called a scaffold, hive/Google/Matter/claim in the handbook.
-What would I do next? Plugin v2 (MCP from robot-apps) or a short trusted-app that fills a Siri/ChatGPT gap the skills list does not.
+What would I do next? Talk start/stop for trusted apps; radio + photobooth.
+
+### Cycle 13
+Done: `[HW:/plugin/start|stop]`, kids refuse cameraman/photobooth, radio and photobooth trusted apps, Talk skills for robot-apps/radio/photobooth.
+What would I do next? Install radio/photobooth on Bobert from Device → Plugins; full MCP auto-register still later.

@@ -5,7 +5,13 @@ description: Make Reachy dance, with or without music. Use when they say dance, 
 
 # Dance
 
-Drive HAL directly. The Apps plugin is for the operator dash; do not POST `/api/plugin/...` (that endpoint needs admin auth).
+**Keep dancing until they say stop** — start the dance app:
+```
+[HW:/plugin/start:{"name":"dance"}]
+```
+Stop with `[HW:/plugin/stop:{"name":"dance"}]`. If start fails, Install Dance under Device → Plugins, or use the one-song path below.
+
+Drive HAL directly for a **single song**. Do not curl `/api/plugin/...`.
 
 Read `[behaviors: dance]`. If `dance` is false, a spoken "I am sitting this one out" is enough — no motion, no music.
 

@@ -5,7 +5,13 @@ description: Follow a face with the camera/head. Use when they say follow me, ke
 
 # Cameraman
 
-Drive HAL directly. Do not POST `/api/plugin/...` (admin auth).
+Kids (`kids: true`) → refuse. Camera stays off.
+
+Prefer the cameraman app (keeps following until Stop):
+```
+[HW:/plugin/start:{"name":"cameraman"}]
+```
+Stop: `[HW:/plugin/stop:{"name":"cameraman"}]`. If start fails, Install Cameraman under Device → Plugins, or drive HAL:
 
 ```
 [HW:/emotion:{"emotion":"curious","intensity":0.7}]
@@ -13,4 +19,4 @@ Drive HAL directly. Do not POST `/api/plugin/...` (admin auth).
 ```
 
 If face tracking fails, try `[HW:/servo/track:{"target":"person"}]`. Stop with `[HW:/servo/track/stop]`.
-One short spoken line, then track. Do not narrate PID or cameras.
+One short spoken line. Do not narrate PID or cameras.

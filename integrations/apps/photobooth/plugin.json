@@ -1,0 +1,9 @@
+{
+  "name": "photobooth",
+  "version": "1.0.0",
+  "description": "Say cheese, take one JPEG, done",
+  "entry": "main.py",
+  "oneshot": true,
+  "kind": "app",
+  "capabilities": ["vision", "audio"]
+}

@@ -413,6 +413,8 @@ func (s *Server) Serve(closeFn func()) error {
 	// example plugins before llm_api_key / the session cookie exist.
 	pluginGroup.POST("install", setupOrAdminMiddleware(s.config), s.pluginHandler.Install)
 	pluginGroup.GET("", setupOrAdminMiddleware(s.config), s.pluginHandler.List)
+	pluginGroup.POST("start", localOnlyMiddleware(), s.pluginHandler.StartBody)
+	pluginGroup.POST("stop", localOnlyMiddleware(), s.pluginHandler.StopBody)
 	pluginGroup.POST(":name/start", adminAuthMiddleware(s.config), s.pluginHandler.Start)
 	pluginGroup.POST(":name/stop", adminAuthMiddleware(s.config), s.pluginHandler.Stop)
 	pluginGroup.DELETE(":name", adminAuthMiddleware(s.config), s.pluginHandler.Uninstall)

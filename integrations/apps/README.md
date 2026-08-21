@@ -20,3 +20,7 @@ Then `POST /api/plugin/dance/start`. Cameraman stays running until `/stop`.
 | `emotions` | Spoken tour of built-in faces. |
 | `cameraman` | Track a face until stopped. |
 | `asl-teacher` | Five phrases with head/body (no hands). |
+| `radio` | Station on the speaker until Stop. |
+| `photobooth` | Say cheese, one JPEG. Kids keep this off. |
+
+Talk starts and stops them with `[HW:/plugin/start:{"name":"radio"}]` (and `/plugin/stop`). Device → Plugins still Installs.

@@ -1,0 +1,9 @@
+{
+  "name": "radio",
+  "version": "1.0.0",
+  "description": "Play a radio stream on the speaker until Stop",
+  "entry": "main.py",
+  "oneshot": false,
+  "kind": "app",
+  "capabilities": ["audio"]
+}

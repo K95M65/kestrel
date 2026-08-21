@@ -35,7 +35,7 @@ callable tools.
 | Connector | Device → Channels | Gmail, Calendar, Telegram |
 | Hive | Device → Channels | LAN JSON websocket, not Block Buzz |
 
-Plugin v2 (MCP auto-register from `tools.json`) is **not** shipped. Until then a robot-app that the brain should *call* also needs a `SKILL.md` (the four trusted apps already have one).
+The brain starts and stops robot-apps with `[HW:/plugin/start:{"name":"radio"}]` / `[HW:/plugin/stop:…]` (loopback `POST /api/plugin/start`). That is the shipped agent hook. Full MCP auto-register from `tools.json` is still later. Each trusted app still ships a `SKILL.md`. Kids cannot start cameraman or photobooth.
 
 ## What we already have
 

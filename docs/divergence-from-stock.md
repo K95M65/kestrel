@@ -133,7 +133,7 @@ script after `git fetch`. Notable:
 | | |
 |---|---|
 | Host | `10.10.2.160` (`reachy-mini`, user `pollen`) |
-| Overlay | os-server **0.1.32**, web **0.1.49** |
+| Overlay | os-server **0.1.33**, web **0.1.50** |
 | Rollback | `/root/bootstrap/rollback/os-server.0.1.27` |
 | Do not touch | Pollen daemon, HAL 0.1.17 unless a listed overlay needs it |
 

@@ -120,5 +120,13 @@ func CompanionApps() []CompanionApp {
 			"Teach hello, yes, no, thank you, and happy with Reachy's body (no hands).",
 			"Honest about having no fingers. Five phrases only.",
 			"asl-teacher"),
+		robot("radio", "Radio",
+			"Leave a station on the speaker until you Stop.",
+			"Uses the speaker until Stop. Say stop in Talk or tap Stop here. Kids may use radio.",
+			"radio"),
+		robot("photobooth", "Photobooth",
+			"Say cheese, one JPEG, done.",
+			"Uses the camera for one shot. Kids profile keeps this off.",
+			"photobooth"),
 	}
 }

@@ -5,8 +5,10 @@ description: Follow a face with the camera/head. Use when they say follow me, ke
 
 # Cameraman
 
-If the `cameraman` plugin is installed:
-`POST http://127.0.0.1:5000/api/plugin/cameraman/start`
+Kids → refuse.
+
+Start: `[HW:/plugin/start:{"name":"cameraman"}]`
+Stop: `[HW:/plugin/stop:{"name":"cameraman"}]`
 
 Otherwise:
 ```

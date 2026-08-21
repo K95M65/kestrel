@@ -215,7 +215,8 @@ func (h *AgentHandler) fireHWCall(c hwCall, flowRunID string, client *http.Clien
 		strings.HasPrefix(c.path, "/posture/") ||
 		strings.HasPrefix(c.path, "/buddy/") ||
 		strings.HasPrefix(c.path, "/behaviors/") ||
-		strings.HasPrefix(c.path, "/buzz/") {
+		strings.HasPrefix(c.path, "/buzz/") ||
+		strings.HasPrefix(c.path, "/plugin/") {
 		postURL = "http://127.0.0.1:5000/api" + c.path
 	}
 	isBuddy := strings.HasPrefix(c.path, "/buddy/")

@@ -33,8 +33,14 @@ func TestCompanionApps(t *testing.T) {
 			t.Fatalf("robot app %s missing install_url/subdir: %+v", a.ID, a)
 		}
 	}
-	if robots < 4 {
-		t.Fatalf("expected dance/emotions/cameraman/phrase-teacher, got %d", robots)
+	if robots < 6 {
+		t.Fatalf("expected dance/emotions/cameraman/phrase-teacher/radio/photobooth, got %d", robots)
+	}
+	if _, ok := LookupTrustedPlugin("radio"); !ok {
+		t.Fatal("radio should be trusted")
+	}
+	if _, ok := LookupTrustedPlugin("photobooth"); !ok {
+		t.Fatal("photobooth should be trusted")
 	}
 	if _, ok := LookupTrustedPlugin("dance"); !ok {
 		t.Fatal("dance should be trusted")
@@ -42,7 +48,7 @@ func TestCompanionApps(t *testing.T) {
 	if _, ok := LookupTrustedPlugin("autonomous-buddy"); ok {
 		t.Fatal("buddy is not a robot-app")
 	}
-	if len(TrustedPlugins()) < 4 {
+	if len(TrustedPlugins()) < 6 {
 		t.Fatal("expected trusted robot apps")
 	}
 }

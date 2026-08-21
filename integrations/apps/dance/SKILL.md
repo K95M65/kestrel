@@ -20,7 +20,8 @@ Silent groove (no music):
 [HW:/emotion:{"emotion":"music_strong","intensity":0.9}]
 ```
 
-If the plugin is installed:
-`POST http://127.0.0.1:5000/api/plugin/dance/start`
-
-Stop music with `[HW:/audio/stop]`. Say one short line ("Let's dance!") and do not call extra tools.
+Keep dancing until stop:
+```
+[HW:/plugin/start:{"name":"dance"}]
+```
+Stop: `[HW:/plugin/stop:{"name":"dance"}]` or `[HW:/audio/stop]`. One short line. Do not curl.
