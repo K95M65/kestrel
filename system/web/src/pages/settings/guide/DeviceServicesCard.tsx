@@ -7,7 +7,7 @@ export function DeviceServicesCard() {
     <div style={{ marginTop: 22, paddingTop: 18, borderTop: "1px solid var(--lm-border)" }}>
       <div style={{ fontSize: 13, fontWeight: 650, marginBottom: 4 }}>Mail, calendar, and Google</div>
       <GuideConnectStep
-        lead="Sign in with Google when you can. Or skip and paste an app password / iCal address. Mail stays a draft unless you change Ask under House → Behaviors."
+        lead="Sign in with Google for mail and calendar, or skip and paste an app password / iCal address. Mail stays a draft unless you change Ask under House → Behaviors. This is not Google Home."
         services={LIFE_RECIPES.desk.services.filter((s) => s.kind === "connector")}
       />
     </div>

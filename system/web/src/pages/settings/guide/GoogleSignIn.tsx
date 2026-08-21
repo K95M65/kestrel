@@ -10,6 +10,7 @@ export function GoogleSignIn({ onChanged }: { onChanged?: () => void }) {
   const [st, setSt] = useState<GoogleStatus | null>(null);
   const [clientId, setClientId] = useState("");
   const [secret, setSecret] = useState("");
+  const [showClient, setShowClient] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [login, setLogin] = useState<{
@@ -74,31 +75,17 @@ export function GoogleSignIn({ onChanged }: { onChanged?: () => void }) {
   return (
     <div className="lm-guide-extra" style={{ marginTop: 8 }}>
       <p className="lm-guide-lead" style={{ margin: "0 0 8px" }}>
-        Sign in with Google for mail and calendar. Needs a Google Cloud OAuth client
-        of type <strong>TV and limited input</strong>. Sign in with Apple is under Channels → Hive and needs HTTPS.
+        Use your Google account for mail and calendar. Same idea as signing in on a TV:
+        a code on this page, you confirm on your phone. This does not add the robot to Google Home.
       </p>
       {st?.connected && (
         <p className="lm-guide-lead" style={{ margin: "0 0 8px" }}>
           Signed in as {st.user_email || "Google"}.
         </p>
       )}
-      {!st?.ready && (
-        <>
-          <label htmlFor="g-cid" style={LABEL_STYLE}>OAuth client ID</label>
-          <input id="g-cid" value={clientId} onChange={(e) => setClientId(e.target.value)}
-            placeholder="….apps.googleusercontent.com" autoComplete="off" style={INPUT_STYLE} />
-          <label htmlFor="g-sec" style={LABEL_STYLE}>Client secret</label>
-          <input id="g-sec" type="password" value={secret} onChange={(e) => setSecret(e.target.value)}
-            placeholder={st?.has_secret ? "saved" : ""} autoComplete="off" style={INPUT_STYLE} />
-          <button type="button" className="lm-u-btn" disabled={!!busy || !clientId.trim()}
-            onClick={() => void saveClient()} style={{ marginTop: 8 }}>
-            {busy === "client" ? "Saving…" : "Save client"}
-          </button>
-        </>
-      )}
       {st?.ready && !login && (
         <button type="button" className="lm-u-btn" disabled={!!busy} onClick={() => void start()}
-          style={{ marginTop: 8 }}>
+          style={{ marginTop: 4 }}>
           {busy === "start" ? "Starting…" : st.connected ? "Sign in again" : "Sign in with Google"}
         </button>
       )}
@@ -113,10 +100,39 @@ export function GoogleSignIn({ onChanged }: { onChanged?: () => void }) {
             <a href={login.verification_uri} target="_blank" rel="noreferrer" className="lm-wiki-link">
               {login.verification_uri.replace(/^https?:\/\//, "")}
             </a>
-            <p className="lm-guide-lead" style={{ margin: "6px 0 0" }}>Enter that code, then return here.</p>
+            <p className="lm-guide-lead" style={{ margin: "6px 0 0" }}>Open that page, enter the code, then come back.</p>
           </div>
         </div>
       )}
+      {!st?.ready && (
+        <>
+          <p className="lm-guide-lead" style={{ margin: "8px 0" }}>
+            Skip for now and paste an app password or iCal address below. Sign-in with Google needs a
+            one-time TV client from Google Cloud.
+          </p>
+          <button type="button" className="lm-wiki-link" style={{ background: "none", border: 0, padding: 0, cursor: "pointer" }}
+            onClick={() => setShowClient(!showClient)}>
+            {showClient ? "Hide Google Cloud client" : "I have a Google Cloud TV client"}
+          </button>
+          {showClient && (
+            <div style={{ marginTop: 8 }}>
+              <label htmlFor="g-cid" style={LABEL_STYLE}>OAuth client ID</label>
+              <input id="g-cid" value={clientId} onChange={(e) => setClientId(e.target.value)}
+                placeholder="….apps.googleusercontent.com" autoComplete="off" style={INPUT_STYLE} />
+              <label htmlFor="g-sec" style={LABEL_STYLE}>Client secret</label>
+              <input id="g-sec" type="password" value={secret} onChange={(e) => setSecret(e.target.value)}
+                placeholder={st?.has_secret ? "saved" : ""} autoComplete="off" style={INPUT_STYLE} />
+              <button type="button" className="lm-u-btn" disabled={!!busy || !clientId.trim()}
+                onClick={() => void saveClient()} style={{ marginTop: 8 }}>
+                {busy === "client" ? "Saving…" : "Save client"}
+              </button>
+            </div>
+          )}
+        </>
+      )}
+      <p className="lm-guide-lead" style={{ margin: "12px 0 0" }}>
+        Sign in with Apple needs a public https:// page. On this desk, use Google.
+      </p>
       {err && <p className="lm-guide-lead" style={{ color: "var(--lm-red)", margin: "8px 0 0" }}>{err}</p>}
     </div>
   );

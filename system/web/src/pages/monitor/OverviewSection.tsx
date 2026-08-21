@@ -948,7 +948,7 @@ function FindRobotCard({ ip, hostId }: { ip?: string; hostId?: string }) {
           <div>
             <div style={{ fontSize: 13, fontWeight: 650, marginBottom: 4 }}>Claim this robot</div>
             <p style={{ margin: 0, fontSize: 12, color: "var(--lm-text-dim)", lineHeight: 1.45 }}>
-              Scan to name it and pick a room — like adding a Home accessory. Code{" "}
+              Scan like Apple Home’s Add Accessory. Name, room, this code. Not Apple Home or Google Home.{" "}
               <code style={{ fontFamily: "ui-monospace, monospace" }}>{house?.setup_pin}</code>
             </p>
           </div>

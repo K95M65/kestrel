@@ -38,7 +38,7 @@ export function GuideConnectStep({
   return (
     <>
       <p className="lm-guide-lead">
-        {lead ?? "Sign in with Google when you can. Or skip and paste an app password / iCal address. Mail stays a draft unless you change Ask under House → Behaviors."}
+        {lead ?? "Sign in with Google for mail and calendar, or skip and paste an app password / iCal address. Mail stays a draft unless you change Ask under House → Behaviors. This is not Google Home."}
       </p>
       <GoogleSignIn onChanged={() => void reload()} />
       <div className="lm-guide-choices">

@@ -21,6 +21,7 @@ type BuzzStatus struct {
 	Enabled bool   `json:"enabled"`
 	Host    bool   `json:"host"`
 	Relay   string `json:"relay_url,omitempty"`
+	JoinURL string `json:"join_url,omitempty"`
 	Peers   int    `json:"peers"`
 	Ready   bool   `json:"ready"`
 }
@@ -28,6 +29,11 @@ type BuzzStatus struct {
 func (s *Service) BuzzStatus() BuzzStatus {
 	b := s.buzzCfg()
 	st := BuzzStatus{Enabled: b.Enabled, Host: b.Host, Relay: b.RelayURL}
+	if s.networkService != nil {
+		if ip, err := s.networkService.GetCurrentIP(); err == nil && ip != "" {
+			st.JoinURL = "ws://" + ip + "/api/buzz/ws"
+		}
+	}
 	s.buzzMu.Lock()
 	if s.buzzHub != nil {
 		st.Peers = s.buzzHub.Count()

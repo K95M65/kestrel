@@ -7,10 +7,11 @@ How this desk companion works. Same pages live in the repo under `docs/wiki`.
 - [Talk](talk) — type or speak
 - [Voice](voice) — how it sounds; test on the robot or in this browser
 - [People](people) — faces, names, household roles
-- [Claim this robot](claim) — setup code, like a Home accessory
+- [Claim this robot](claim) — setup code, like adding a Home accessory
 - [Google account](accounts) — Sign in with Google for mail and calendar
 - [Plugins](plugins) — trusted installs; `@skill` in Talk
-- [Hive](hive) — Buzz-style rooms, Matter via Home Assistant, Apple HTTPS note
+- [Hive](hive) — talk to another robot on this Wi-Fi
+- [Compared with Siri and ChatGPT](compare) — what maps, what does not
 - [Uses](uses) — jobs it already knows
 - [House](house) — behaviors and quiet hours
 - [Kestrel Buddy](buddy) — drive a computer next to it

@@ -3,7 +3,7 @@
 export const ASK_LEVELS = [
   { id: "always_ask", title: "Always ask", hint: "Ask before any mail or calendar read or write." },
   { id: "any_changes", title: "Any changes", hint: "Reads are fine. Ask before send, create, or delete." },
-  { id: "important_actions", title: "Important actions", hint: "Default. Mail stays a draft. Ask before send." },
+  { id: "important_actions", title: "Important actions", hint: "Default. Same idea as ChatGPT apps. Mail stays a draft. Ask before send." },
   { id: "never_ask", title: "Never ask", hint: "May send when you clearly say to." },
 ] as const;
 

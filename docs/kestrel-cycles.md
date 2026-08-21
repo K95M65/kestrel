@@ -63,4 +63,8 @@ What would I do next? Not in this loop unless asked.
 
 ### Cycle 10
 Done: sideload 0.1.31 / web 0.1.47 onto Lima and Bobert; OpenClaw on the VM with Grok from the desk unit; LAN hive (nginx `/api/buzz/ws`, restart on save, hive skill); Matter commission via Home Assistant; Sign in with Apple web flow (HTTPS return URL); Block Buzz compose script (not on the Pi — different wire).
-What would I do next? `gcloud auth login` then a TV/limited-input OAuth client; HA URL+token if a Matter accessory is on the desk.
+What would I do next? Home-user onboarding cards for Google, hive, Matter, claim (Apple/Google add-device analog).
+
+### Cycle 11
+Done: onboarding cards — Google (TV sign-in, client behind a disclosure), hive (join QR like a pairing code), Matter (House, three steps), claim/Home copy as Add Accessory. Apple developer fields Advanced. Guide: compared with Siri AI and ChatGPT plugins. Ask levels named as ChatGPT’s. Join URL on hive host.
+What would I do next? Paste a Google TV OAuth client; HA URL+token if a Matter accessory is on the desk.

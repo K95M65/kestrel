@@ -448,6 +448,7 @@ export interface BuzzStatus {
   enabled: boolean;
   host: boolean;
   relay_url?: string;
+  join_url?: string;
   peers: number;
   ready: boolean;
 }

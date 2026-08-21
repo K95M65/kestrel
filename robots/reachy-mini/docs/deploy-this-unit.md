@@ -11,8 +11,8 @@ on top.
 
 | Component | On robot | Local tree | Action |
 |-----------|----------|------------|--------|
-| os-server | **0.1.31** | 0.1.31 | Side-loaded |
-| web | **0.1.47** | 0.1.47 | Side-loaded |
+| os-server | **0.1.32** | 0.1.32 | Side-loaded |
+| web | **0.1.48** | 0.1.48 | Side-loaded |
 | HAL | 0.1.17 | — | Leave running |
 | bootstrap | — | — | Leave |
 | OpenClaw | 2026.6.10 | — | Leave |

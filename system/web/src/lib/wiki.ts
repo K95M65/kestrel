@@ -16,6 +16,7 @@ import claimMd from "@wiki/claim.md?raw";
 import accountsMd from "@wiki/accounts.md?raw";
 import pluginsMd from "@wiki/plugins.md?raw";
 import hiveMd from "@wiki/hive.md?raw";
+import compareMd from "@wiki/compare.md?raw";
 
 export type WikiPage = {
   slug: string;
@@ -34,6 +35,7 @@ export const WIKI_PAGES: WikiPage[] = [
   { slug: "accounts", title: "Google account", body: accountsMd },
   { slug: "plugins", title: "Plugins", body: pluginsMd },
   { slug: "hive", title: "Hive", body: hiveMd },
+  { slug: "compare", title: "Compared with Siri and ChatGPT", body: compareMd },
   { slug: "uses", title: "Uses", body: usesMd },
   { slug: "house", title: "House", body: houseMd },
   { slug: "buddy", title: "Kestrel Buddy", body: buddyMd },

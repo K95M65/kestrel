@@ -140,7 +140,9 @@ export function PluginsSection({ active }: { active: boolean }) {
   return (
     <SectionCard id="plugins" title="Plugins" icon={<Blocks size={17} />} active={active}>
       <div style={{ fontSize: 12.5, color: C.textDim, marginBottom: 14, lineHeight: 1.6 }}>
-        Trusted plugins from this repo. They stay on the device. A raw git URL stays behind Advanced.
+        Same idea as ChatGPT’s plugin directory: pick a trusted app, install it, it stays on this robot.
+        Talk can pin one with <code>@skill</code>. Mail and calendar still honor House → Behaviors → Ask.
+        A raw git URL is Advanced (<code>?debug=true</code>).
       </div>
 
       {trusted.length > 0 && (

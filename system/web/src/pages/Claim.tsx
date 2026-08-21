@@ -46,8 +46,9 @@ export default function Claim() {
         {st?.claimed ? "Join this robot" : "Claim this robot"}
       </h1>
       <p style={{ fontSize: 14, color: "var(--lm-text-dim)", lineHeight: 1.5 }}>
-        Same idea as adding a HomeKit accessory: a code on the robot, your name, a room.
-        This stays on the local network. It does not join an Apple or Google Home.
+        Apple Home and Google Home add a device by scanning a code on the box, then naming a room.
+        This is that step for this robot. Same Wi-Fi. Your name. A room. The setup code.
+        It does not join Apple Home or Google Home.
       </p>
       {done ? (
         <p style={{ marginTop: 18, fontSize: 14 }}>
