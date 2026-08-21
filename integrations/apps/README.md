@@ -1,8 +1,10 @@
 # Reachy example apps
 
-Downloadable robot apps for Kestrel. Each folder is a plugin (`plugin.json` + `main.py`).
+Trusted **robot-apps** for Device → Plugins. Each folder is a plugin
+(`plugin.json` + `main.py` + `SKILL.md`). Skills in `skills/` are separate —
+the brain reads those without an install.
 
-Install from the dash **Apps** step or:
+Install from Device → Plugins (trusted list) or:
 
 ```bash
 curl -X POST http://127.0.0.1:5000/api/plugin/install \

@@ -58,6 +58,16 @@ Talk, Home, House, Device. Hardware, runtime, and MQTT stay behind Advanced / `?
 
 **Grok as a first-class brain.** Device-code login with a SuperGrok account. Hermes, OpenClaw, Codex, Claude Code, and the others stay swappable.
 
+**Claim it like a Home accessory.** Home shows a setup code and QR. Scan `/claim` on the same Wi-Fi. That person is the owner. It does not join Apple Home or Google Home.
+
+**Sign in with Google for mail and calendar** (TV-style code + QR). Skip with an app password / iCal. Sign in with Apple needs public HTTPS — Advanced.
+
+**Hive.** Two robots on this Wi-Fi can hear each other in Talk. One hosts; the other pastes the join address (QR on Device → Channels).
+
+**Matter via Home Assistant.** This robot commissions a bulb; it is not itself a Matter accessory. House → Behaviors → Home Assistant, then paste the code from the box.
+
+**Plugins vs skills.** Device → Plugins is a short trusted list (dance, emotions, cameraman, phrase teacher). Skills are markdown the brain reads (`@skill` in Talk). Guide: [Compared with Siri and ChatGPT](docs/wiki/compare.md).
+
 **Reachy Mini without a flash.** Pollen’s daemon keeps the motors. Kestrel sits beside it. Install is one command; undo is documented. Lamp and Intern keep working on the same contract.
 
 **We do not take Autonomous’s OTA.** A public `software-update` would overwrite this overlay. Side-load this tree. When stock ships a fix, we port it by hand — [`docs/divergence-from-stock.md`](docs/divergence-from-stock.md).

@@ -21,13 +21,13 @@ want a real image; until then the camera is virtual.
 After that, treat it like any other unit:
 
 ```bash
-# from this repo, on the Mac
-make os-build web-build
-make sideload TARGET=lima-kestrel
+# from this repo, on the Mac — stamps system/VERSION_OS_SERVER
+make sideload-lima
 ```
 
-`TARGET` is any `user@host` you can ssh to — the VM, or `pollen@10.10.2.160`.
-It is not hardcoded to the Pi.
+`make sideload TARGET=user@host` is the same copy for any ssh box (the VM, or `pollen@10.10.2.160`). It is not hardcoded to the Pi.
+
+The Lima VM `kestrel` on this Mac runs as a full bot: OpenClaw + Grok, named Lima, HAL simulated. Hive: Bobert hosts; Lima joins `ws://10.10.2.160/api/buzz/ws`. The UI is `http://127.0.0.1:8080` (Lima port-forward) or the guest IP `192.168.5.15`. Bobert cannot reach Lima; Lima can reach Bobert.
 
 ## Virtual devices
 

@@ -25,6 +25,18 @@ callable tools.
 
 ---
 
+## What Kestrel ships today (desk)
+
+| Kind | Where | Examples |
+|---|---|---|
+| Skill | `skills/`, Talk `@skill` | hive, connectors, home-assistant, news |
+| Trusted robot-app | Device → Plugins | dance, emotions, cameraman, asl-teacher (`integrations/apps/`) |
+| Buddy | Home pair + download | Mac / Windows / Linux desktop |
+| Connector | Device → Channels | Gmail, Calendar, Telegram |
+| Hive | Device → Channels | LAN JSON websocket, not Block Buzz |
+
+Plugin v2 (MCP auto-register from `tools.json`) is **not** shipped. Until then a robot-app that the brain should *call* also needs a `SKILL.md` (the four trusted apps already have one).
+
 ## What we already have
 
 ```

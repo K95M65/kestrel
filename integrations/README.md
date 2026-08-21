@@ -10,7 +10,7 @@ cloud GPU perception.
 
 | Project | What it is | Language / platform | How it talks to the device |
 |---------|-----------|---------------------|----------------------------|
-| [`companions/autonomous-buddy/`](companions/autonomous-buddy/) | Menu-bar app the device's voice agent will use to control your computer | Swift (macOS 13+, SPM) | Device → Mac over WebSocket with 6-digit pairing (Phase 1A scaffold; networking not built yet) |
+| [`companions/autonomous-buddy/`](companions/autonomous-buddy/) | Menu-bar / desktop app so the robot can open apps, type, click, and screenshot on your computer | Swift (macOS 13+) + Go desktop (Windows/Linux) | Device → computer over WebSocket; 6-digit pair from Home |
 | [`companions/claude-desktop-buddy/`](companions/claude-desktop-buddy/) | Device-side daemon that mirrors Claude Desktop / Claude Code activity onto the device (LED, display, TTS) and relays voice approvals | Go (runs **on** the device) | Mac → device over BLE (Nordic UART) from Claude Desktop; HTTP `:5002` push from the bundled `claude-code-buddy` plugin |
 | [`chat-bridges/twitch-chat-hook/`](chat-bridges/twitch-chat-hook/) | Twitch live chat → device sensing events | Go (stdlib only) | Twitch EventSub webhook (HTTPS) or anonymous IRC fallback in; `POST /api/sensing/event` out |
 | [`chat-bridges/autonomous-chat-hook/`](chat-bridges/autonomous-chat-hook/) | Autonomous web chat → device sensing events | Go | MQTT subscribe in; `POST /api/sensing/event` out |
@@ -29,9 +29,9 @@ cloud GPU perception.
 ## Projects
 
 **`companions/autonomous-buddy/`** — TeamViewer-style remote control of your computer, driven
-by AI through the device. Currently a Phase 1A macOS scaffold: the menu-bar shell runs but does
-no networking; discovery, pairing, WebSocket, and command execution land in later phases. Ships
-a Go `mock-device` for end-to-end testing. See [its README](companions/autonomous-buddy/README.md).
+by AI through the device. Pairing code from Home, persistent `/api/buddy/ws`, command
+dispatch. Mac is the full click/screenshot path; Windows/Linux open sites and type.
+See [its README](companions/autonomous-buddy/README.md).
 
 **`companions/claude-desktop-buddy/`** — a small Go daemon on the device that receives Claude
 Desktop's live activity over Bluetooth LE, derives a state (`idle` / `busy` / `attention`), and

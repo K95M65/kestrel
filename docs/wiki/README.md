@@ -7,3 +7,5 @@ Edit here, not a second copy under `system/web`. Keep pages short. Link
 between pages with a slug, not a URL: `[Voice](voice)`.
 
 Builder-level HAL / runtime docs stay in `docs/` (not this folder).
+
+`compare.md` is Siri AI / ChatGPT plugins vs this robot. `plugins.md` is skills vs robot-apps vs Buddy.

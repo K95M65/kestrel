@@ -12,7 +12,7 @@ on top.
 | Component | On robot | Local tree | Action |
 |-----------|----------|------------|--------|
 | os-server | **0.1.32** | 0.1.32 | Side-loaded |
-| web | **0.1.48** | 0.1.48 | Side-loaded |
+| web | **0.1.49** | 0.1.49 | Side-loaded |
 | HAL | 0.1.17 | — | Leave running |
 | bootstrap | — | — | Leave |
 | OpenClaw | 2026.6.10 | — | Leave |
@@ -47,7 +47,16 @@ Promoting GCS would move the whole fleet. This unit gets a local arm64 build.
 
 HAL, OpenClaw, and the Pollen daemon are not restarted.
 
-## Applied 2026-08-21
+## Applied 2026-08-21 (later)
+
+Side-loaded on `10.10.2.160` and Lima `kestrel`:
+
+- os-server **0.1.32**, web **0.1.48**
+- Home-user cards: Google TV sign-in, hive join QR, Matter on House, claim as Add Accessory
+- LAN hive (`join_url` `ws://10.10.2.160/api/buzz/ws`), OpenClaw 2026.6.10 on both
+- Backup Bobert `/root/bootstrap/rollback/os-server.0.1.27`
+
+## Applied 2026-08-21 (earlier)
 
 Side-loaded on `10.10.2.160` and Lima `kestrel`:
 

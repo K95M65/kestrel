@@ -13,3 +13,5 @@ Switch under Device → Runtime (Advanced). First switch can take minutes. The b
 Live chat history does not move. Name, soul, and MEMORY.md do.
 
 Do not switch to try a coding CLI unless you mean to debug.
+
+Lima (`kestrel-host`) on this Mac is a full OpenClaw bot with Grok, no motors. See [Dummy host](dummy-host).

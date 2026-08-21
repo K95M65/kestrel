@@ -38,13 +38,13 @@ stock for overlapping fixes with `./scripts/check-upstream-divergence.sh`.
 SSH into your robot and run:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/autonomous-ai/autonomous-os/main/robots/reachy-mini/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/K95M65/kestrel/main/robots/reachy-mini/install.sh | sudo bash
 ```
 
-That is the whole thing. No repo to clone, no Go or Node toolchain, no build
-step, nothing copied from your laptop — the installer pulls every component from
-the released OTA feed and puts each one behind a systemd unit, so the stack
-comes back on its own after a reboot.
+That installer is for a **fresh** Reachy. This desk unit (Bobert) is already provisioned — **side-load** this tree; do not flash and do not `software-update` from the public Autonomous feed. See [`docs/deploy-this-unit.md`](docs/deploy-this-unit.md).
+
+On a fresh unit: no repo to clone, no Go or Node toolchain — the installer pulls
+components and puts each behind a systemd unit so the stack comes back after a reboot.
 
 Takes ~10–15 minutes on a first run, most of it building HAL's Python
 environment. When it finishes, open

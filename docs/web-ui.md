@@ -1,6 +1,11 @@
 # Web UI — Monitor Dashboard
 
-## Last updated: 2026-08-17
+Kestrel product rooms are **Talk / Home / House / Device**. In-app Guide is
+`docs/wiki/` (claim, Google, hive, plugins, Siri/ChatGPT compare). Tweaker
+pages stay behind `?debug=true`. Home-user Channels includes Google sign-in,
+hive join QR, and trusted plugins — not Hugging Face browse.
+
+## Last updated: 2026-08-21
 
 ---
 

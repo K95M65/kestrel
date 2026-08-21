@@ -133,8 +133,8 @@ script after `git fetch`. Notable:
 | | |
 |---|---|
 | Host | `10.10.2.160` (`reachy-mini`, user `pollen`) |
-| Overlay | os-server **0.1.27**, web **0.1.36** |
-| Rollback | `/root/bootstrap/rollback/os-server.0.1.23` |
-| Do not touch | Pollen daemon, HAL 0.1.12 unless a listed overlay needs it |
+| Overlay | os-server **0.1.32**, web **0.1.49** |
+| Rollback | `/root/bootstrap/rollback/os-server.0.1.27` |
+| Do not touch | Pollen daemon, HAL 0.1.17 unless a listed overlay needs it |
 
 Working queue: [`docs/product-work-queue.md`](product-work-queue.md).

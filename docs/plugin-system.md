@@ -1,10 +1,14 @@
 # Plugin System
 
-Standalone Python apps that extend Autonomous OS device capabilities. Plugins
-run as independent processes managed by systemd, accessing hardware through
-HAL's HTTP API.
+Standalone Python apps that extend device capabilities. Plugins run as
+independent processes managed by systemd, accessing hardware through HAL's
+HTTP API.
 
-Written July 2026. Status: **v1 implemented.**
+Written July 2026. Status: **v1 implemented.** Kestrel home UI: Device →
+Plugins is a **trusted list** (dance, emotions, cameraman, phrase teacher)
+from `integrations/apps/`. Hugging Face **Browse** is parked. A raw git URL
+is Advanced (`?debug=true`). Skills (`skills/*/SKILL.md`, `@skill` in Talk)
+are not plugins — see [`docs/wiki/plugins.md`](wiki/plugins.md).
 
 ## Architecture
 
@@ -114,13 +118,13 @@ Each plugin runs as a systemd service (`os-plugin-<name>.service`):
 
 ### Web UI
 
-**Settings > Plugins** tab provides:
-- **Installed** — list of installed plugins with status (running/stopped/failed),
-  Start/Stop/Uninstall controls
-- **Browse** — discover community plugins from HuggingFace Spaces tagged
-  `autonomous-os-plugin`, one-click install. Backend proxies HF API to avoid
-  CORS (`GET /api/plugin/browse`)
-- **Install from URL** — paste any git URL for non-HF plugins (GitHub, GitLab, etc.)
+**Device → Plugins** (home user):
+- **Trusted** — install by id from this repo (`POST /api/plugin/install` with `id`)
+- **Installed** — status, Start / Stop / Uninstall
+
+**Advanced** (`?debug=true`):
+- **Install from URL** — paste any git URL
+- Hugging Face **Browse** (`GET /api/plugin/browse`) is parked in the UI (#213)
 
 ## Roadmap
 

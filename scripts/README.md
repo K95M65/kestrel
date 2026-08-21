@@ -23,6 +23,8 @@ from the repo root — the Makefile targets are thin wrappers around these scrip
 - **`setup-ap.sh`** — AP-only subset of `setup.sh` (hostapd + dnsmasq + the mode-switch helpers), no app installs. Published via `make upload-setup-ap`.
 - **`install-openclaw.sh`** — standalone OpenClaw (re)install on an already-provisioned device.
 - **`setup-claude-desktop-buddy.sh`** — standalone Buddy plugin install; requires `setup.sh` to have run (reads `metadata_url` from `/root/config/bootstrap.json`).
+- **`google-oauth-client.sh`** — prints the Google Cloud console steps for a TV / limited-input OAuth client (gcloud cannot mint that type). Paste the id+secret on Device → Channels.
+- **`buzz-relay.sh`** — optional Block Buzz Docker relay on a machine with disk. Not the Kestrel LAN hive. Not for the Pi.
 
 ## release/ — the OTA pipeline
 

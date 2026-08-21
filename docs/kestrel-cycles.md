@@ -67,4 +67,8 @@ What would I do next? Home-user onboarding cards for Google, hive, Matter, claim
 
 ### Cycle 11
 Done: onboarding cards — Google (TV sign-in, client behind a disclosure), hive (join QR like a pairing code), Matter (House, three steps), claim/Home copy as Add Accessory. Apple developer fields Advanced. Guide: compared with Siri AI and ChatGPT plugins. Ask levels named as ChatGPT’s. Join URL on hive host.
-What would I do next? Paste a Google TV OAuth client; HA URL+token if a Matter accessory is on the desk.
+What would I do next? Docs match the desk (versions, Lima hive, plugins vs skills).
+
+### Cycle 12
+Done: README, Reachy/Lima/wiki/plugin-system/apps-and-tools/deploy overlay versions (0.1.32 / 0.1.49), Buddy networking no longer called a scaffold, hive/Google/Matter/claim in the handbook.
+What would I do next? Plugin v2 (MCP from robot-apps) or a short trusted-app that fills a Siri/ChatGPT gap the skills list does not.
